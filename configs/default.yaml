@@ -1,0 +1,28 @@
+# Global defaults. Per-sport parameters live in each adapter; per-league soccer configs in configs/leagues/.
+risk:
+  kelly_fraction: 0.25
+  min_edge: 0.02
+  max_stake_pct: 0.02
+  max_daily_exposure_pct: 0.10
+  max_plausible_edge: 0.15   # edges above this are flagged as probable miscalibration, not staked
+  market_shrink: 0.5         # blend model prob toward no-vig market: p=(1-s)*model+s*market
+odds:
+  regions: "us,eu"
+  markets: "h2h,spreads,totals"
+  odds_format: "decimal"
+simulation:
+  n_sims: 20000
+  seed: 42
+# Per-(league, market) probability calibration applied to live estimates before
+# edge/stake. OFF by default: enable only after train_calibration.py shows the
+# out-of-sample ECE improves. The retraining target stays uncalibrated.
+calibration:
+  enabled: true
+  method: isotonic   # isotonic | beta
+# Markets suspended from staking (still estimated; picks recorded flagged
+# "market_paused", stake 0). MLB totals paused 2026-06-14: realized ROI -11.3%
+# vs positive estimated edge (Poisson margin too thin-tailed, underprices
+# blowouts). Resume after accruing enough settled sample. See docs/AUDIT-2026-06-14.
+paused_markets:
+  mlb:
+    - totals
