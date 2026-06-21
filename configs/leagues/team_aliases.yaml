@@ -1,0 +1,23 @@
+# Cross-vendor team-name aliases, per league. Maps any vendor spelling of a
+# team to a canonical name, so the ratings built from results (ESPN / MLB Stats
+# API names) bind to the live event names (The Odds API).
+#
+# Matching is accent / case / punctuation insensitive already, so you only need
+# entries for GENUINELY different names (abbreviations, nicknames, translations).
+# Both sides may be written in natural form; they are reduced to a normalized
+# key internally. The canonical (right-hand) value should match a name present
+# in your stored results history.
+#
+# Discover what to add (no API quota; reads persisted data):
+#   python scripts/audit_team_names.py --leagues epl nba ligamx
+#
+# Ships EMPTY on purpose: no mappings are invented. Example of the format:
+#
+# leagues:
+#   epl:
+#     "Man City": "Manchester City"
+#     "Spurs": "Tottenham Hotspur"
+#     "Nott'm Forest": "Nottingham Forest"
+#   mlb:
+#     "St. Louis Cardinals": "St. Louis Cardinals"   # already auto-matches; example only
+leagues: {}

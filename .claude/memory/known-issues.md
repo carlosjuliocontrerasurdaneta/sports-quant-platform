@@ -1,0 +1,79 @@
+# Known Issues
+
+Format:
+- ID:
+- Severity:
+- Description:
+- Affected files:
+- Proposed fix:
+- Status:
+
+- ID: KI-001
+- Severity: Alta
+- Description: Los ratings en modo live se construyen solo con la ventana de scores de 3 días de The Odds API (NBA: 1 resultado, WNBA: 9 el 2026-06-12). Las probabilidades estimadas resultantes no son confiables; el pipeline ya emite WARNING pero igual produce estimaciones.
+- Affected files: src/sqp/pipeline/daily.py (fetch_scores daysFrom=3), adaptadores en src/sqp/sports/.
+- Proposed fix: Backfill de historial de resultados de temporada completa por liga (fuente histórica propia, no el endpoint /scores) y fit de ratings desde ese histórico.
+- Status: Resuelto (2026-06-12). Implementado: `scripts/backfill_results.py` (ESPN scoreboard API + MLB Stats API) → `data/historical/results_{league}.csv` (append-only, dedup por fecha/home/away) → `run_league` fusiona histórico + scores recientes. Backfill inicial: NBA 1395, WNBA 207, Liga MX 300 resultados. Caveat: nombres de equipos ESPN vs Odds API coinciden en NBA/WNBA (verificado); en soccer con acentos podría haber mismatches — el warning de confiabilidad por evento los delataría.
+
+- ID: KI-002
+- Severity: Media
+- Description: Posible mismatch de nombres de equipos entre ESPN (histórico, con acentos: "Club América") y The Odds API (eventos live) en ligas de fútbol. Un mismatch deja al equipo con rating default y dispara el warning de confiabilidad por evento, pero degrada la estimación en silencio si no se revisa la columna `warning`. NBA/WNBA verificados sin mismatch.
+- Affected files: src/sqp/providers/espn_results.py, src/sqp/sports/base.py (Elo keyed por nombre).
+- Proposed fix: Normalización unicode (NFKD, sin acentos, casefold) en la frontera de fit/lookup de Elo cuando Liga MX se reactive y se pueda verificar empíricamente.
+- Status: Abierto (2026-06-12). Verificable cuando el Apertura 2026 reactive `soccer_mexico_ligamx` (~después del 19-jul).
+
+- ID: KI-003
+- Severity: Alta
+- Description: Con ratings de temporada completa el run live ya genera candidatos sobre min edge (2026-06-12: NBA 3, WNBA 15), pero el Elo baseline no tiene backtest walk-forward ni calibración validada sobre el nuevo histórico. Los edges estimados no deben usarse para apostar sin esa validación.
+- Affected files: src/sqp/backtesting/engine.py, src/sqp/calibration/metrics.py, data/historical/.
+- Proposed fix: Correr walk-forward backtest por liga sobre data/historical/, revisar Brier/calibración, ajustar elo_k/home_advantage por liga antes de operar candidatos.
+- Status: Parcialmente resuelto (2026-06-12). Backtest corrido y `elo_home_adv` tuneado por liga (NBA 75, WNBA 30, Liga MX 45 en configs/leagues/ratings.yaml). Las tres ligas baten el baseline de tasa local (Brier: NBA 0.2100, WNBA 0.2292, Liga MX 0.2093). Sigue abierto lo esencial: (a) tuning in-sample — re-validar con partidos nuevos; (b) sin odds históricas reales no hay ROI realizado: la calibración sola NO habilita operar candidatos.
+
+- ID: KI-004
+- Severity: Media
+- Description: El Poisson independiente subestima el empate en Liga MX (estimado 0.237 vs observado 0.254 en 240 partidos walk-forward). Limitación estructural conocida del modelo: no captura la correlación de marcadores bajos.
+- Affected files: src/sqp/sports/adapters.py (PoissonAdapter), src/sqp/models/distributions.py.
+- Proposed fix: Ajuste Dixon-Coles (tau para marcadores ≤1) como primer upgrade del modelo soccer; mayor ganancia esperada en ligas de pocos goles.
+- Status: Resuelto (2026-06-12). Implementado `dc_rho` en poisson_match_probs (tau DC-1997, renormalizado) + tune_dc_rho por log loss 3-way. Liga MX: dc_rho=−0.10 → empate estimado 0.2589 vs observado 0.2542 (gap cerrado desde −1.8pts). Persistido en configs/leagues/ratings.yaml; el run diario lo consume automáticamente. Caveat: in-sample sobre 240 partidos — re-validar cuando el Apertura 2026 reactive la liga.
+
+- ID: KI-005
+- Severity: Baja
+- Description: La Frauen-Bundesliga (configurada en configs/leagues/soccer.yaml) no tiene vendor de resultados históricos: no existe en el catálogo de ESPN (verificado contra las 244 ligas soccer de sports.core.api.espn.com el 2026-06-12; sí existen eng.w.1, esp.w.1, fra.w.1, ned.w.1). Sin histórico, sus ratings dependerán solo de la ventana de 3 días de The Odds API.
+- Affected files: src/sqp/providers/espn_results.py (documentado en ESPN_PATHS), configs/leagues/soccer.yaml.
+- Proposed fix: Integrar un vendor alternativo para esa liga (p. ej. football-data u otro con cobertura femenina alemana) implementando ResultsProvider.
+- Status: Abierto (2026-06-12).
+
+- ID: KI-006
+- Severity: Alta
+- Description: MLB pierde contra el baseline de tasa local en backtest walk-forward (Brier 0.2500 vs 0.2491, sobreconfianza en ambas colas: underdogs est. 0.27 ganan 47%) incluso con datos limpios; NHL apenas empata (0.2482 vs 0.2496). El Elo puro de equipo no captura al abridor (MLB) ni al portero (NHL). Ambos tunearon elo_home_adv=0 (borde).
+- Affected files: src/sqp/sports/adapters.py (PoissonAdapter), src/sqp/providers/mlb_statsapi.py (fetch_probable_pitchers ya existe, sin uso en el modelo).
+- Proposed fix: Features de abridor/bullpen para MLB y portero/xG para NHL como ajustes a lambda (roadmap de los skills quant-baseball-mlb y quant-hockey-nhl). NO operar candidatos MLB/NHL hasta entonces.
+- Status: Parcialmente resuelto (2026-06-12). MLB: la sobreconfianza era del tilt_scale (0.8→0.4 tuneado): Brier 0.2474 ya bate el baseline 0.2491, ECE 0.019. El feature de abridor v1 (RA por apertura) fue RECHAZADO por evidencia (empeora en todo el grid) y está apagado (pitcher_bound 0.0); la infraestructura queda lista para v2 con FIP por apertura desde boxscores. NHL sigue abierto (portero/xG pendiente). Batir al baseline trivial NO es batir al mercado: mantener no-operar hasta validar ROI con odds reales. Actualización 2026-06-15: KI-009 (H2) cerró un contribuyente real al "pitcher no mueve el estimado" (fallo silencioso por nombres divergentes entre vendors). H4 INVESTIGADO con datos reales: el "factor pitcher = 1.0" NO es bug — es por diseño (`pitcher_bound: 0.0` en ratings.yaml apaga el v1). El pipeline está sano: results_mlb=8371 (todas con game_id), 4933 con starters adjuntos, 438 pitchers con ≥3 starts, league_mean 4.513; forzando bound=0.35 los 438 factores se mueven (0.66–1.35). NO reactivar bound>0 con el v1 (RA, ya rechazado); el upgrade real es v2 FIP por apertura. Demostración: factor de supresor = 1.0000 (bound 0) vs 0.6500 (bound 0.35). Actualización 2026-06-16: v2 (FIP por apertura) CONSTRUIDO y VALIDADO — resultado NEGATIVO. Backfill de 2.438 starts (boxscore MLB), walk-forward sobre la temporada con FIP (2.130 juegos): FIP solo EMPATA al baseline (mejor en bound 0.05: log-loss 0.6874→0.6867, −0.0007; Brier 0.2471→0.2468) y empeora monotónicamente desde 0.10; ECE empeora (0.0225→0.0278). La ganancia (−0.0007) está por DEBAJO del margen de aceptación del proyecto (0.002), asi que v2 NO se activa (pitcher_signal sigue "ra", pitcher_bound 0.0). FIP es menos malo que v1 (RA) pero el Elo de equipo + tilt ya captura la señal. Infra + datos quedan para un v3 mejor especificado (FIP con ajuste por oponente / recencia / matchup). Commit bce6b1b.
+
+- ID: KI-007
+- Severity: Media
+- Description: Varios parámetros tuneados quedaron en bordes de grilla y no son óptimos confiables: elo_home_adv 150 (techo) en NCAAF y NCAAB; 0 (piso) en MLB, NHL y Serie A; dc_rho −0.20 (piso) en EPL y Bundesliga; +0.05 (techo) en La Liga, UCL y Chile.
+- Affected files: src/sqp/backtesting/tuning.py (DEFAULT_HOME_ADV_GRID, DEFAULT_DC_RHO_GRID), configs/leagues/ratings.yaml.
+- Proposed fix: Ampliar grillas (home_adv hasta ~250 para college; dc_rho hasta ±0.35 con validación del rango de no-negatividad del tau) y re-tunear solo las ligas en frontera.
+- Status: Resuelto (2026-06-12). Flags --ha-grid/--rho-grid en tune_ratings.py; 9 ligas re-tuneadas. NCAAF 180, Bundesliga dc_rho −0.25, UCL +0.30 (óptimos interiores nuevos); NCAAB 150, EPL −0.20, La Liga +0.05 confirmados; MLB/NHL/Serie A 0 confirmado con tramo negativo disponible (la localía Elo no aporta bajo este modelo). Residuo: Chile dc_rho +0.35 en frontera con parada deliberada (curva plana, muestra de ~30 empates atípicamente baja vs histórico de la liga) — re-validar UCL/Chile con temporada nueva; rho positivo en soccer es sospechoso de artefacto muestral.
+
+- ID: KI-008
+- Severity: Alta (riesgo de capital)
+- Description: `max_daily_exposure_pct` (def. 10%) estaba definido y cargado en config pero NUNCA se aplicaba en el pipeline; solo el cap por apuesta (`max_stake_pct` 2%) acotaba un stake individual. Un día con muchas señales podía comprometer mucho más que el límite de exposición de la política.
+- Affected files: src/sqp/pipeline/daily.py, src/sqp/config.py, configs/default.yaml.
+- Proposed fix: Tras construir candidatos, sumar stakes positivos del día y, si superan bankroll*cap_pct, escalar proporcionalmente con flag de auditoría.
+- Status: Resuelto (2026-06-15, H1, commit 609eb95). Nuevo `_apply_daily_exposure_cap`: escalado proporcional de stake y kelly%, marca `daily_exposure_scaled`, excluye filas stake 0; `_finalize` cuenta no-accionables por `stake<=0`. Tests en tests/test_daily_exposure.py (4). Nota de política: el escalado es proporcional entre todos los stakes positivos; priorizar por edge sería un cambio aparte. `max_daily_exposure_pct` solo configurable por YAML.
+
+- ID: KI-009
+- Severity: Alta
+- Description: `_attach_probable_pitchers` emparejaba la clave `(home, away)` con nombres CRUDOS; los eventos vienen de The Odds API y los probable pitchers de la MLB Stats API, que escriben los equipos distinto (puntuación, mayúsculas, acentos). Para cualquier equipo con grafía divergente entre vendors el pitcher no se adjuntaba EN SILENCIO → evento marcado "starter unknown" → sin candidatos MLB. Contribuyente directo de KI-006 (factor pitcher sin efecto). Riesgo vivo con la reubicación de los Athletics.
+- Affected files: src/sqp/pipeline/daily.py (_attach_probable_pitchers), src/sqp/sports/team_names.py.
+- Proposed fix: Aplicar el normalizador del adaptador a ambos lados de la clave (igual que ya hacía _merge_results).
+- Status: Resuelto (2026-06-15, H2, commit d0102f1). `_attach_probable_pitchers` recibe `normalize` y normaliza ambos lados; run_league pasa `adapter.normalize`. Test de nombres divergentes en tests/test_probable_pitchers_series.py. NO cierra KI-006: la otra rama (población de StarterRatings / procedencia de game_id) sigue abierta como H4.
+
+- ID: KI-010
+- Severity: Media
+- Description: El tenis no se podia auditar: The Odds API no entrega scores de tenis, y ademas el tenis no estaba cableado en la generacion (TennisAdapter existia pero _league_meta/_supported_leagues lo excluian). Sin generacion ni resultados, no habia nada que liquidar.
+- Affected files: src/sqp/providers/espn_tennis.py (nuevo), src/sqp/pipeline/daily.py, src/sqp/settlement/runner.py, scripts/run_all.py.
+- Proposed fix: vertical completa con resultados ESPN (atp/wta) y liquidacion por nombre+fecha.
+- Status: Resuelto (2026-06-16). Generacion por clave de torneo (Elo de jugador tour-wide desde ESPN, singles + moneyline), proveedor ESPN tenis (parser torneo->groupings->partidos), liquidacion por nombre normalizado + fecha reutilizando settle_candidates, descubrimiento de torneos activos via /sports. Verificado en vivo (ATP Halle 12 eventos/8 candidatos). 4 tests nuevos. CAVEAT: cierra AUDITABILIDAD, no habilita operar (sin cierre real/OOS); ESPN es endpoint no oficial.

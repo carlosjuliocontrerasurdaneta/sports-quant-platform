@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./data/odds/**)",
+      "Read(./data/historical/**)",
+      "Read(./data/processed/**)",
+      "Read(./data/predictions/**/*.csv)",
+      "Read(./data/predictions/**/*.parquet)",
+      "Read(./data/cache/**)",
+      "Read(./data/raw/**)",
+      "Read(./historical/**)",
+      "Read(./exports/**)",
+      "Read(./logs/**)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-format.sh\"",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-secrets.sh\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-tests-after-change.sh\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

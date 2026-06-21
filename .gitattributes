@@ -1,0 +1,20 @@
+# Normalize line endings: store LF in the repo and check out LF everywhere,
+# so Windows working copies stop triggering LF->CRLF churn in diffs.
+* text=auto eol=lf
+
+# Windows batch files run under cmd.exe: keep CRLF in the working copy.
+*.bat text eol=crlf
+
+# Shell scripts (including .claude/hooks/*.sh) must stay LF to execute.
+*.sh text eol=lf
+
+# Binary assets: no EOL conversion, no diff noise.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.parquet binary
+*.zip  binary
+*.gz   binary

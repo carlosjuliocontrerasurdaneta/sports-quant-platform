@@ -1,0 +1,3 @@
+# Incidents
+
+Store incident records.
