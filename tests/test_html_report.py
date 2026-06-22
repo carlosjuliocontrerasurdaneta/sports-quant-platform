@@ -107,6 +107,18 @@ def test_dashboard_embeds_only_actionable_picks(tmp_path):
     assert any(" @ " in p["partido"] for p in data["picks"])
 
 
+def test_dashboard_has_per_sport_toggle_tags(tmp_path):
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    # The tag pills are rendered client-side from DATA.picks (like project 2), so
+    # assert the machinery + container are present and the old dropdown is gone.
+    assert 'id="sportTags"' in text and "buildSportTags()" in text
+    assert "toggleSport(" in text and "activeSports" in text
+    assert 'id="fSport"' not in text                        # dropdown replaced by tags
+    # the league each tag is built from is embedded in the picks payload
+    assert '"league": "nba"' in text or '"league":"nba"' in text
+
+
 def test_dashboard_audit_and_history_render(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
