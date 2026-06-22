@@ -230,3 +230,18 @@ Corrido `scripts/validate_oos.py` (congela tilt_scale/elo_home_adv/dc_rho solo e
 ## 2026-06-22 — max_plausible_edge 0.15 → 0.075 (techo del proyecto 2), probado OOS y activado
 
 Probado OOS (realized ROI 0.15 vs 0.075 sobre odds capturadas, con la penalización de EV ya activa): **MLB** (n=1174→652) ROI +0.41%→**+2.42%**, profit +19→+51, exposición a la mitad; **agregado** +0.24%→+0.71%, exposición ~a la mitad. **WNBA** contradice (−2.1%→−14.5%) pero n=62 (ruido); tenis ruido. La evidencia (impulsada por MLB) favorece bajarlo: marca más edges sobreconfiados y reduce riesgo sin sacrificar ROI. Activado en `configs/default.yaml` (`max_plausible_edge: 0.075`); el default del dataclass queda en 0.15 (test pinned `test_risk_config_has_plausibility_cap_default`). 183 passed. Sigue ≈ break-even (proxy de cierre de un snapshot, sin IC) → control de riesgo, no rentabilidad. Cierra el pendiente del techo 0.075. Mitiga más KI-012.
+
+## 2026-06-22 — Park factor MLB (PRIMERA señal por deporte que bate al baseline) + totals des-pausado
+
+El usuario eligió "MLB park factors → totals" entre las señales por deporte (vs rest/B2B basketball y portero NHL). Restricción: solo MLB (1148 graded) y WNBA (170) tienen muestra OOS; el abridor MLB ya fue rechazado (KI-006). Hallazgo de infra: las features de equipo (NBA/NFL/NHL en `features/`, incl. rest_days) alimentan la ruta ML, NO los adapters de producción; una señal hay que enchufarla en el adapter (ajuste de lambda).
+
+**Implementado (`src/sqp/models/park.py::ParkFactors`):** factor de parque = carreras totales en juegos de LOCAL del equipo / carreras en sus juegos de VISITA (el mismo equipo en ambos aísla el parque de su nivel ofensivo — park factor clásico). Regresado por muestra, acotado, leakage-safe (walk-forward). Enchufado en BaseballAdapter (update en observe; escala AMBAS lambdas en _rates → mueve Over/Under, no el moneyline). Gated por `park_bound` (default 0.0 = no-op).
+
+**Validación OOS (config de producción: penalización EV + max_plausible_edge 0.075):**
+- TOTALS ROI: off **−17.1%** → 0.10 **+2.8%** → 0.20 +1.0% (n≈187).
+- MLB global ROI: off +2.4% → **+7.8%** (0.10), profit +51→+166.
+- Held-out (mitad ≥ 2026-05-09, n≈89-111): off −15.9% → 0.10 +3.8% / 0.20 +7.0%. **Generaliza** en ambas mitades y ambos bounds → no es selección in-sample del bound. El park se estima walk-forward sobre toda la temporada; el split solo restringe qué se apuesta.
+
+**Activado:** `ratings.yaml mlb.park_bound: 0.10` (elegido sobre 0.20 por menos sobre-corrección) + **mlb/totals DES-PAUSADO** en default.yaml (con totals pausado el factor no tenía efecto live, así que van juntos). Tests 187 passed (+4 test_park.py; test_default_config_*_mlb_totals actualizado al estado des-pausado + park activo).
+
+**Lectura:** PRIMERA señal específica por deporte que bate al baseline de forma robusta (el abridor solo empataba). Pero una sola temporada de odds capturadas, proxy de cierre de un snapshot, sin IC → no es rentabilidad demostrada. Vigilar el ROI realizado de totals en la auditoría tras unos días y re-pausar si vuelve a negativo. Próximas señales: basketball rest/B2B (WNBA, muestra chica) o portero NHL (cuando haya cobertura OOS).

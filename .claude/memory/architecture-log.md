@@ -132,3 +132,11 @@ Format:
 **Cambio:** Pills toggleables por deporte en Picks (multi-select, reemplaza el dropdown #fSport); orden por columna genérico (makeSortable/initSortable, numeric-aware) en todas las tablas .grid server-rendered salvo la de picks (que tiene su propio sorter); filtros de Historial por deporte/mercado/rango-de-fecha con filas data-* y contador en vivo. initSortable/initHistory corren al inicio de init() (funcionan sin picks). Sigue autónomo (sin assets externos).
 **Razón:** pedido del usuario, replicando el reporte del proyecto 2 pero para todos los deportes; las tablas de Auditoría/Patrones/Historial eran estáticas.
 **Validación:** 183 passed (+2). ruff limpio. report_latest.html regenerado con datos reales (21 picks, 4 ligas).
+
+## 2026-06-22 — Factor de parque MLB (primera señal por deporte, totales)
+
+**Tipo:** feature de modelo (señal específica por deporte, validada + activada)
+**Módulos afectados:** src/sqp/models/park.py (nuevo), src/sqp/sports/adapters.py (BaseballAdapter), configs/leagues/ratings.yaml (mlb.park_bound), configs/default.yaml (un-pause totals), tests/test_park.py (nuevo), tests/test_pipeline_demo.py
+**Cambio:** `ParkFactors` estima el entorno de carreras del parque (totales de local vs de visita del equipo local → aísla el parque), regresado/acotado/leakage-safe; BaseballAdapter lo actualiza en observe y escala AMBAS lambdas en _rates (mueve Over/Under, no el moneyline). Gated por `park_bound` (0.0 = no-op). Activado 0.10 para MLB + mlb/totals des-pausado.
+**Razón:** MLB totals era el mercado débil (OOS −17.1%, pausado). El Elo+scoring de equipo no captura el parque.
+**Validación:** OOS sobre odds capturadas (config de producción): totals −17.1%→+2.8%, MLB global +2.4%→+7.8%; held-out (≥2026-05-09) −15.9%→+3.8%/+7.0% → generaliza. 187 passed (+4). PRIMERA señal por deporte que bate al baseline (el abridor solo empataba, KI-006). Una temporada / snapshot proxy → no rentabilidad demostrada.
