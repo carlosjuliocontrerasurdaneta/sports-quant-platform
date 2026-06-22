@@ -47,9 +47,8 @@ calibration:
   enabled: true
   method: isotonic   # isotonic | beta
 # Markets suspended from staking (still estimated; picks recorded flagged
-# "market_paused", stake 0). MLB totals paused 2026-06-14: realized ROI -11.3%
-# vs positive estimated edge (Poisson margin too thin-tailed, underprices
-# blowouts). Resume after accruing enough settled sample. See docs/AUDIT-2026-06-14.
-paused_markets:
-  mlb:
-    - totals
+# "market_paused", stake 0). MLB totals was paused 2026-06-14 (realized ROI
+# negative vs positive estimated edge); UN-PAUSED 2026-06-22 after the ballpark
+# run-environment factor (ratings.yaml mlb.park_bound 0.10) fixed totals OOS
+# (-17.1% -> +2.8% ROI). Re-pause if realized totals ROI turns negative again.
+paused_markets: {}
