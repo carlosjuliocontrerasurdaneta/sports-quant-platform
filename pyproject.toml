@@ -27,3 +27,13 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+# The default rule set (E4/E7/E9 + pyflakes F) is kept, EXCEPT the compact-style
+# checks the project uses deliberately: E701 (one-line `if ...: return ...`, e.g.
+# settle._grade) and E702 (semicolon-joined setup lines, e.g. test fixtures).
+# All pyflakes checks (unused imports/vars, etc.) stay enabled.
+ignore = ["E701", "E702"]

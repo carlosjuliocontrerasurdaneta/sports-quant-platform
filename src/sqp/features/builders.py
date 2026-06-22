@@ -7,7 +7,7 @@ one pure function driven by a per-sport config. MLB keeps a dedicated builder
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import pandas as pd
 
