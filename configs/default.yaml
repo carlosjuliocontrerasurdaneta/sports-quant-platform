@@ -19,6 +19,15 @@ risk:
   anomaly_extra_penalty: 0.02
   low_book_penalty: 0.015
   min_books_for_consensus: 2
+# Bankroll. current balance = initial + realized PnL (real settled bets) + manual
+# adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
+# after verifying the ledger balance (937.28 = 1000 - 62.72 over 93 graded bets,
+# consistent with the settlement audit). When dynamic, the live run sizes Kelly +
+# the daily-exposure cap on the running balance; demo keeps the static initial.
+# See sqp.risk.bankroll; audit anytime with scripts/bankroll_status.py.
+bankroll:
+  initial: 1000
+  dynamic: true
 odds:
   regions: "us,eu"
   markets: "h2h,spreads,totals"
