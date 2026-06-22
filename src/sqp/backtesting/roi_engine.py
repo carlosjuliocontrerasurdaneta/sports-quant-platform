@@ -74,20 +74,28 @@ def load_closing_odds(root: Path, league: str) -> dict[str, EventOdds]:
     return out
 
 
-def _match_index(odds_by_id: dict[str, EventOdds]) -> dict[tuple[str, str], list]:
-    idx: dict[tuple[str, str], list] = defaultdict(list)
+def _pair_key(home: str, away: str, order_insensitive: bool):
+    """Match key for a (home, away) pair. Team sports keep orientation (home
+    advantage distinguishes the two games of a series); tennis has no home/away,
+    so players match order-insensitively (frozenset)."""
+    a, b = normalize_key(home), normalize_key(away)
+    return frozenset((a, b)) if order_insensitive else (a, b)
+
+
+def _match_index(odds_by_id: dict[str, EventOdds], order_insensitive: bool = False) -> dict:
+    idx: dict = defaultdict(list)
     for eo in odds_by_id.values():
-        key = (normalize_key(eo.event.home), normalize_key(eo.event.away))
-        idx[key].append((str(eo.event.start_time)[:10], eo))
+        idx[_pair_key(eo.event.home, eo.event.away, order_insensitive)].append(
+            (str(eo.event.start_time)[:10], eo))
     return idx
 
 
-def _match_result(r: dict, idx: dict[tuple[str, str], list], used: set[str]) -> EventOdds | None:
-    """Match a result row to its odds event by normalized (home, away) and a
+def _match_result(r: dict, idx: dict, used: set[str],
+                  order_insensitive: bool = False) -> EventOdds | None:
+    """Match a result row to its odds event by normalized players/teams and a
     commence date within +-1 day (UTC vs local date drift). Each odds event is
-    consumed at most once."""
-    key = (normalize_key(r["home"]), normalize_key(r["away"]))
-    cands = idx.get(key)
+    consumed at most once. Tennis matches order-insensitively (no home/away)."""
+    cands = idx.get(_pair_key(r["home"], r["away"], order_insensitive))
     if not cands:
         return None
     rday = str(r.get("date", ""))[:10]
@@ -140,7 +148,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     This is the out-of-sample evaluation window: parameters frozen on the train
     period (date < bet_from_date) are scored only on later, unseen games."""
     adapter = get_adapter(league, family, league_params)
-    idx = _match_index(odds_by_id)
+    order_insensitive = family == "tennis"  # players have no home/away orientation
+    idx = _match_index(odds_by_id, order_insensitive)
     used: set[str] = set()
     cand_rows: list[dict] = []
     scores: dict[str, tuple[int, int, str]] = {}
@@ -148,7 +157,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     for i, r in enumerate(results):
         in_window = bet_from_date is None or str(r.get("date", ""))[:10] >= bet_from_date
         if i >= warmup and in_window:
-            eo = _match_result(r, idx, used)
+            eo = _match_result(r, idx, used, order_insensitive)
             if eo is not None:
                 n_matched += 1
                 ev = Event(event_id=eo.event.event_id, sport_key="bt", league=league,
