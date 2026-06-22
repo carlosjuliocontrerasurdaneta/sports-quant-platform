@@ -6,6 +6,19 @@ risk:
   max_daily_exposure_pct: 0.10
   max_plausible_edge: 0.15   # edges above this are flagged as probable miscalibration, not staked
   market_shrink: 0.5         # blend model prob toward no-vig market: p=(1-s)*model+s*market
+  # EV uncertainty penalty (ported from project 2; see sqp.markets.edge). Deflates
+  # the edge by the model-vs-market gap and folds it into the staked probability,
+  # so it shrinks the Kelly stake too. ENABLED 2026-06-21 after a walk-forward OOS
+  # over captured odds (1654 bets, mostly MLB): aggregate realized ROI -0.74% ->
+  # +0.37% and staked exposure roughly halved (MLB and WNBA both improved). Still
+  # ~break-even and in-sample on parameters -> not a profit claim. Disable by
+  # setting the coefficients to 0. max_plausible_edge left at 0.15 pending its own
+  # check (project-2 ceiling is 0.075).
+  uncertainty_penalty: 0.35
+  anomaly_edge_gap: 0.06
+  anomaly_extra_penalty: 0.02
+  low_book_penalty: 0.015
+  min_books_for_consensus: 2
 odds:
   regions: "us,eu"
   markets: "h2h,spreads,totals"

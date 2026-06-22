@@ -69,5 +69,12 @@ class BetCandidate:
     # estimated_probability when calibration is off or no model exists. The
     # uncalibrated estimated_probability remains the calibrator's training target.
     calibrated_probability: float = float("nan")
+    # Edge after the uncertainty/thin-market penalty (sqp.markets.edge). The stake
+    # is sized on this; estimated_edge stays the RAW edge for audit. Equals
+    # estimated_edge when the penalty is off. edge_penalty is the EV deducted;
+    # books_count is how many bookmakers quoted the staked line.
+    adjusted_edge: float = float("nan")
+    edge_penalty: float = 0.0
+    books_count: int = 0
     flags: str = ""  # e.g. "edge_exceeds_max_plausible": flagged, not staked
     generated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

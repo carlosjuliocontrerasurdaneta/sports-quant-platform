@@ -77,3 +77,10 @@ Format:
 - Affected files: src/sqp/providers/espn_tennis.py (nuevo), src/sqp/pipeline/daily.py, src/sqp/settlement/runner.py, scripts/run_all.py.
 - Proposed fix: vertical completa con resultados ESPN (atp/wta) y liquidacion por nombre+fecha.
 - Status: Resuelto (2026-06-16). Generacion por clave de torneo (Elo de jugador tour-wide desde ESPN, singles + moneyline), proveedor ESPN tenis (parser torneo->groupings->partidos), liquidacion por nombre normalizado + fecha reutilizando settle_candidates, descubrimiento de torneos activos via /sports. Verificado en vivo (ATP Halle 12 eventos/8 candidatos). 4 tests nuevos. CAVEAT: cierra AUDITABILIDAD, no habilita operar (sin cierre real/OOS); ESPN es endpoint no oficial.
+
+- ID: KI-011
+- Severity: Media (integridad de datos / auditabilidad)
+- Description: `_persist_settled` apendaba filas a `settled_<liga>.csv` con `mode="a"` y `header=not out.exists()`, sin reconciliar columnas. Cuando el esquema de `BetCandidate` crece (se añadió `calibrated_probability` entre `model_probability` y `flags`), los `settled_*.csv` previos quedan con un header viejo (19 cols, sin esa columna) y las filas nuevas se escriben en el orden nuevo bajo el header viejo → cada valor se desalinea al releer. El CSV alimenta build_pick_history → entrenamiento de calibradores, así que la corrupción se propaga en silencio a la auditoría de ROI y a la calibración.
+- Affected files: src/sqp/settlement/runner.py (_persist_settled).
+- Proposed fix: tomar la unión de columnas (orden del archivo previo + campos nuevos) y reescribir el archivo alineado en vez de apendar a ciegas.
+- Status: Resuelto (2026-06-21, auditoría full-audit, commit `7e233f7`). CONFIRMADO contra los headers reales de los 7 settled_*.csv existentes (todos sin `calibrated_probability`). Fix reescribe con unión de columnas y auto-sana archivos de esquema viejo. Regresión en tests/test_settle_persist.py (drift de esquema + idempotencia del dedup). pytest 167 passed.

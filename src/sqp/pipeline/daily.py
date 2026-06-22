@@ -13,6 +13,7 @@ from sqp.config import Settings, ROOT, CONFIG_DIR, load_yaml
 from sqp.domain.models import EventOdds, BetCandidate
 from sqp.calibration.calibrator import calibrate_probability
 from sqp.markets.vig import remove_vig_power
+from sqp.markets.edge import adjusted_edge
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.kelly import kelly_fraction_stake, edge
@@ -65,6 +66,15 @@ def _consensus_lines(eo: EventOdds) -> dict:
         groups[(ln.market, ln.outcome, ln.point)].append(ln.price_decimal)
     cons = {k: sorted(v)[len(v) // 2] for k, v in groups.items()}
     return cons
+
+
+def _consensus_counts(eo: EventOdds) -> dict:
+    """How many bookmakers quoted each (market, outcome, point). Feeds the
+    thin-market term of the edge penalty (a one-book line is less reliable)."""
+    counts: dict[tuple, int] = defaultdict(int)
+    for ln in eo.lines:
+        counts[(ln.market, ln.outcome, ln.point)] += 1
+    return dict(counts)
 
 
 def _novig_probs(cons: dict, market: str, point=None) -> dict:
@@ -449,6 +459,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             started_msg = "Event already started: prices are in-play, pregame estimate invalid, no candidates."
             warn = f"{warn} {started_msg}" if warn else started_msg
         cons = _consensus_lines(eo)
+        cons_n = _consensus_counts(eo)
         h2h_fair = _novig_probs(cons, "h2h")
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
@@ -492,7 +503,18 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 p_decision = calibrate_probability(p_used, league, key[0],
                                                    settings.calibration_method)
             e = edge(p_decision, price)
-            stake, pct = kelly_fraction_stake(p_decision, price, settings.bankroll,
+            # Deflate the EV by the model-vs-market disagreement (and thin markets)
+            # and stake on the resulting effective probability, so an overconfident
+            # edge produces a smaller stake (and often falls below min_edge). No-op
+            # when the penalty coefficients are 0. estimated_edge stays the RAW e.
+            adj = adjusted_edge(p_decision, price, fair, cons_n.get(key),
+                                uncertainty_penalty=settings.risk.uncertainty_penalty,
+                                anomaly_edge_gap=settings.risk.anomaly_edge_gap,
+                                anomaly_extra_penalty=settings.risk.anomaly_extra_penalty,
+                                low_book_penalty=settings.risk.low_book_penalty,
+                                min_books_for_consensus=settings.risk.min_books_for_consensus)
+            stake, pct = kelly_fraction_stake(adj.effective_probability, price,
+                                              settings.bankroll,
                                               settings.risk.kelly_fraction,
                                               settings.risk.max_stake_pct,
                                               settings.risk.min_edge)
@@ -523,6 +545,9 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 calibrated_probability=round(p_decision, 4),
                 implied_probability_novig=round(fair, 4) if fair is not None else float("nan"),
                 estimated_edge=round(e, 4),
+                adjusted_edge=round(adj.adjusted_edge, 4),
+                edge_penalty=round(adj.penalty, 4),
+                books_count=int(cons_n.get(key) or 0),
                 kelly_stake_pct=round(pct, 4), stake=stake,
                 data_label=eo.event.data_label,
                 flags=flag))

@@ -34,6 +34,18 @@ class RiskConfig:
     # +1.5 overestimated ~5pts) and has no proven edge, so 0 < s anchors it to the
     # market. 0 = pure model, 1 = pure market. See audit 2026-06.
     market_shrink: float = 0.5
+    # Edge-realism penalty (ported from project 2). Deflate the EV by how far the
+    # model strays from the no-vig market: penalty = gap*uncertainty_penalty
+    # (+anomaly_extra_penalty if gap>anomaly_edge_gap) (+low_book_penalty if a line
+    # has < min_books_for_consensus books). The penalty is folded into the staked
+    # probability, so it shrinks the Kelly stake too. Defaults 0 = no-op; the
+    # shipped configs/default.yaml activates the recommended values. See
+    # sqp.markets.edge and the 2026-06-21 realized-ROI audit (edges overconfident).
+    uncertainty_penalty: float = 0.0
+    anomaly_edge_gap: float = 0.0
+    anomaly_extra_penalty: float = 0.0
+    low_book_penalty: float = 0.0
+    min_books_for_consensus: int = 0
 
 
 @dataclass
@@ -85,6 +97,12 @@ class Settings:
                                                    r.get("max_plausible_edge", 0.15))),
                 market_shrink=float(os.getenv("MARKET_SHRINK",
                                               r.get("market_shrink", 0.5))),
+                uncertainty_penalty=float(os.getenv("UNCERTAINTY_PENALTY",
+                                          r.get("uncertainty_penalty", 0.0))),
+                anomaly_edge_gap=float(r.get("anomaly_edge_gap", 0.0)),
+                anomaly_extra_penalty=float(r.get("anomaly_extra_penalty", 0.0)),
+                low_book_penalty=float(r.get("low_book_penalty", 0.0)),
+                min_books_for_consensus=int(r.get("min_books_for_consensus", 0)),
             )
             s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                                 for lg, mk in (cfg.get("paused_markets") or {}).items()}

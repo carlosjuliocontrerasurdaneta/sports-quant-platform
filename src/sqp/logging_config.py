@@ -1,4 +1,5 @@
-import logging, sys
+import logging
+import sys
 from pathlib import Path
 
 def get_logger(name: str = "sqp") -> logging.Logger:
