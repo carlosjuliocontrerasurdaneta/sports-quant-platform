@@ -4,7 +4,12 @@ risk:
   min_edge: 0.02
   max_stake_pct: 0.02
   max_daily_exposure_pct: 0.10
-  max_plausible_edge: 0.15   # edges above this are flagged as probable miscalibration, not staked
+  # Edges above this are flagged as probable miscalibration, not staked. Lowered
+  # 0.15 -> 0.075 (project-2 ceiling) on 2026-06-22 OOS evidence: on captured odds
+  # MLB test ROI +0.41% -> +2.42% (profit +19 -> +51) at half the staked exposure;
+  # aggregate +0.24% -> +0.71%, exposure ~halved. WNBA contradicts on a tiny n=62.
+  # Still ~break-even (single-snapshot proxy) -> risk control, not a profit claim.
+  max_plausible_edge: 0.075
   market_shrink: 0.5         # blend model prob toward no-vig market: p=(1-s)*model+s*market
   # EV uncertainty penalty (ported from project 2; see sqp.markets.edge). Deflates
   # the edge by the model-vs-market gap and folds it into the staked probability,
