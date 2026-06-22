@@ -13,6 +13,12 @@ leagues:
     pitcher_bound: 0.0
     pitcher_prior_starts: 5.0
     tilt_scale: 0.4
+    # Ballpark run-environment factor on the total (sqp.models.park). ENABLED
+    # 2026-06-22: on captured odds it flips MLB totals from -17.1% to +2.8% ROI
+    # (held-out -15.9% -> +3.8%/+7.0%) and lifts overall MLB ROI +2.4% -> +7.8%.
+    # 0.10 chosen over 0.20 (less over-correction). One season, single-snapshot
+    # proxy -> not a profit claim. mlb/totals un-paused alongside this.
+    park_bound: 0.10
   mls:
     elo_home_adv: 30.0
   ncaaf:

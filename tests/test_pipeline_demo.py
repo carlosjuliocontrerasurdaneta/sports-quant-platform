@@ -40,9 +40,14 @@ def test_spread_novig_pairs_only_the_main_line():
     assert _spread_novig(cons, "New York Mets", "Atlanta Braves", None) == {}
 
 
-def test_default_config_pauses_mlb_totals():
-    # The shipped default.yaml suspends MLB totals (audit 2026-06-14).
-    assert "totals" in Settings.load().paused_markets.get("mlb", [])
+def test_default_config_unpauses_mlb_totals_with_park_factor():
+    # MLB totals was paused 2026-06-14, UN-PAUSED 2026-06-22 once the ballpark
+    # factor (ratings.yaml mlb.park_bound) fixed totals OOS.
+    settings = Settings.load()
+    assert "totals" not in settings.paused_markets.get("mlb", [])
+    from sqp.config import CONFIG_DIR, load_yaml
+    mlb = (load_yaml(CONFIG_DIR / "leagues" / "ratings.yaml").get("leagues") or {}).get("mlb", {})
+    assert float(mlb.get("park_bound", 0.0)) > 0.0   # park factor enabled
 
 
 def test_paused_market_produces_no_actionable_candidates():

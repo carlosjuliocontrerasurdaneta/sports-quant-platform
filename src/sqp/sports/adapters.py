@@ -12,6 +12,7 @@ sport skill in skills/ for the full feature spec.
 from __future__ import annotations
 from sqp.domain.models import Event, EstimatedProbabilities
 from sqp.models import distributions as dist
+from sqp.models.park import ParkFactors
 from sqp.models.starters import StarterRatings
 from sqp.models.team_scoring import TeamScoringRates
 from sqp.logging_config import get_logger
@@ -131,9 +132,16 @@ class BaseballAdapter(PoissonAdapter):
         # (v1, full-game runs allowed). Kept separate so the rating pool never
         # mixes the two scales; "fip" ignores RA and vice versa.
         self.pitcher_signal = params.get("pitcher_signal", "ra")
+        # Ballpark run-environment factor on the TOTAL. Bound 0.0 (default) = no-op
+        # (factor always 1.0); set park_bound > 0 (e.g. 0.20) to enable after an OOS
+        # check. Estimated home-vs-away runs for the home team (isolates the venue).
+        self.park = ParkFactors(prior_games=params.get("park_prior_games", 20.0),
+                                bound=params.get("park_bound", 0.0),
+                                normalize=self.normalize)
 
     def observe(self, r: dict) -> None:
         super().observe(r)
+        self.park.update(r["home"], r["away"], r["home_score"] + r["away_score"])
         if self.pitcher_signal == "fip":
             # Each starter rated by his own per-start FIP (independent of defense
             # and opponent offense -- the v1 confound). Rows without FIP are skipped
@@ -151,11 +159,14 @@ class BaseballAdapter(PoissonAdapter):
         lam_h, lam_a = super()._rates(event)
         f_vs_away_starter = self.starters.factor(event.away_pitcher)
         f_vs_home_starter = self.starters.factor(event.home_pitcher)
-        if f_vs_away_starter != 1.0 or f_vs_home_starter != 1.0:
-            log.debug("[%s] %s@%s pitcher lambda adj: home x%.3f (vs %s), away x%.3f (vs %s)",
+        # Park factor scales BOTH lambdas (a total-environment adjustment), so it
+        # moves Over/Under without distorting the moneyline split. No-op at bound 0.
+        pf = self.park.factor(event.home)
+        if f_vs_away_starter != 1.0 or f_vs_home_starter != 1.0 or pf != 1.0:
+            log.debug("[%s] %s@%s lambda adj: home x%.3f (vs %s), away x%.3f (vs %s), park x%.3f",
                       self.league, event.away, event.home, f_vs_away_starter,
-                      event.away_pitcher, f_vs_home_starter, event.home_pitcher)
-        return max(0.1, lam_h * f_vs_away_starter), max(0.1, lam_a * f_vs_home_starter)
+                      event.away_pitcher, f_vs_home_starter, event.home_pitcher, pf)
+        return max(0.1, lam_h * f_vs_away_starter * pf), max(0.1, lam_a * f_vs_home_starter * pf)
 
     def reliability_warning(self, event: Event, min_games: int = 10) -> str | None:
         base = super().reliability_warning(event, min_games)
