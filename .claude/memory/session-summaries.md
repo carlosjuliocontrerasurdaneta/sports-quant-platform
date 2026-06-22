@@ -169,3 +169,25 @@
 **Validación:** pytest 165 → 167 passed (2 nuevos). Imports de distributions/run_all/_finalize verificados. Merge a master limpio, 167 passed post-merge.
 
 **Estado al guardar:** master contiene las correcciones; rama de trabajo borrada (estaba mergeada). Sin remoto configurado (no hay push/PR). KI-006/H4 (factor pitcher) y la falta de validación de rentabilidad (sin odds históricas reales → sin ROI realizado) siguen siendo los pendientes de fondo, no tocados esta sesión.
+
+## 2026-06-21 (cont.) — CI + penalización de EV (validada OOS, ACTIVADA) + ledger de bankroll (OFF)
+
+Continuación de la misma sesión tras la auditoría. Tres entregas, cada una en su rama, mergeadas `--no-ff` a master y rama borrada (sin remoto).
+
+**1) CI (commit `077daae`):** `.github/workflows/ci.yml` (push/PR, Python 3.11+3.12, pip cache, `ruff check` + `pytest -q`). `pyproject [tool.ruff]`: default+pyflakes, ignora E701/E702 (estilo compacto deliberado del proyecto). Corregidos los 2 únicos hallazgos reales de ruff (import `field` sin uso en features/builders.py; multi-import en logging_config.py). El config de ruff se había perdido en la re-importación.
+
+**2) Penalización de EV portada del proyecto 2 (`_archive/2`), ACTIVADA (commits `60c633a`+`4f07a58`):**
+- Diagnóstico previo: edges irreales por sobreconfianza. Calibración sobre 93 apuestas liquidadas: modelo crudo ECE 0.198 (media pred 0.607 vs obs 0.409); shrink 0.5 ECE 0.147; mercado no-vig ECE 0.076. Barrido de shrink → mejora monótona hasta s=1 (el modelo no aporta sobre el mercado en esa muestra sesgada).
+- Mecánica del proyecto 2: blend con mercado dominante (ML 60%) + `adjusted_market_edge` que recorta el EV por el gap modelo-mercado (`UNCERTAINTY_PENALTY 0.35`, `+0.02` si gap>0.06, `+0.015` si <2 books) + techo EV 7.5% (flag a 13.5%).
+- Porté solo la penalización: nuevo `src/sqp/markets/edge.py::adjusted_edge` (raw/penalty/adjusted/`p_eff`). El penalty se pliega en una **probabilidad efectiva** `p_eff = p - penalty/d` que alimenta edge+Kelly, así achica también el stake. `estimated_edge` sigue siendo el edge RAW (auditoría); nuevos campos `adjusted_edge`/`edge_penalty`/`books_count` en BetCandidate. Cableado en daily.py (+`_consensus_counts`) y roi_engine.py (espejo). 5 coeficientes nuevos en RiskConfig, default 0 = no-op.
+- **Validación que decidió activar:** el retrospectivo de 93 apuestas comprimía el edge pero NO mejoraba ROI (muestra sesgada). El **walk-forward sobre odds capturadas (1654 apuestas, dominado por MLB)** sí: ROI agregado −0.74%→+0.37%, MLB −0.23%→+0.41%, WNBA −6.2%→−2.1%, **exposición ~a la mitad**. Por esa evidencia se ACTIVÓ en configs/default.yaml (valores del proyecto 2). Sigue ≈ break-even e in-sample en parámetros → no es claim de rentabilidad. `max_plausible_edge` se dejó en 0.15 (el techo 0.075 necesita su propia prueba).
+
+**3) Ledger de bankroll real (commit `baa5f78`), OFF por defecto:**
+- Problema: `Settings.bankroll` estático (1000); Kelly y el cap de exposición dimensionaban sobre capital nominal fijo.
+- `src/sqp/risk/bankroll.py::BankrollLedger`: balance = inicial + PnL realizado (filas settled `data_label=="real"`) + ajustes manuales (`data/bets/bankroll_adjustments.csv`). Derivado de `settled_*.csv` (fuente única, sin store paralelo). `equity_curve`, `summary`, `max_drawdown`. CLI `scripts/bankroll_status.py`.
+- Flag `bankroll_dynamic` (env/yaml, default OFF). Solo el entrypoint live (`run_all.py`) inyecta el balance corriente; demo y `run_league` directo usan el inicial → tests deterministas, comportamiento byte-idéntico apagado.
+- Balance real verificado por el CLI: 1000 − 62.72 (93 apuestas) = **937.28**, ROI −20.81%, drawdown −90.78.
+
+**Validación global:** pytest 167 → **179 passed** (test_edge.py ×6, test_bankroll.py ×6). ruff limpio. Todo en master.
+
+**Recomendación al cerrar (prioridad):** (a) acumular odds capturadas + cargar resultados de tenis/NFL (dieron 0 apuestas) para muestra OOS con IC; (b) validar parámetros OOS (ratings.yaml sigue in-sample); (c) activar `bankroll_dynamic` tras verificar el balance con la liquidación real; (d) recién entonces probar techo 0.075 y señales por deporte. Diagnóstico de fondo: lo que falta no es código sino EVIDENCIA — el sistema está bien construido y honestamente medido, pero ≈ break-even, sin ventaja demostrada.

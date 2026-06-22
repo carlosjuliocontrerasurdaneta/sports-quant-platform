@@ -93,3 +93,26 @@ Format:
 **Cambio:** Senal de abridor FIP (independiente de fildeo/ofensiva rival) por apertura desde boxscore MLB; reutiliza el mismo StarterRatings acotado cambiando solo la FUENTE. pitcher_signal ("fip"|"ra") evita mezclar escalas en el pool. Backfill one-off (~2.440 boxscores, gratis): starter_fip_mlb.csv = 2.438 filas.
 **Razon:** KI-006 — v1 (RA) rechazado por mezclar bullpen + ofensiva rival; FIP era el upgrade documentado.
 **Validacion:** walk-forward sobre la temporada con FIP (2.130 juegos): FIP solo EMPATA al baseline (mejor bound 0.05: log-loss −0.0007, < margen 0.002; ECE empeora). NO se activa: pitcher_signal queda "ra", mlb.pitcher_bound 0.0. Produccion sin cambios. 128 tests verdes. Infra + datos quedan listos para un v3 mejor especificado.
+
+## 2026-06-21 — CI (GitHub Actions) + ruff config
+
+**Tipo:** infraestructura / calidad
+**Módulos afectados:** .github/workflows/ci.yml (nuevo), pyproject.toml ([tool.ruff]), src/sqp/logging_config.py, src/sqp/features/builders.py
+**Cambio:** Workflow CI en push/PR (Python 3.11+3.12, pip cache) que corre `ruff check src tests` + `pytest -q`. Config de ruff (perdido en la re-importación): default+pyflakes, ignora E701/E702 (estilo compacto deliberado). Corregidos los 2 hallazgos reales de ruff.
+**Validación:** ruff limpio; `pytest -q` sin PYTHONPATH (usa pythonpath=["src"] de pyproject) → 167 passed; YAML válido. Sin remoto aún: se activará al añadir uno.
+
+## 2026-06-21 — Penalización de EV por desacuerdo modelo-mercado (portada del proyecto 2, ACTIVADA)
+
+**Tipo:** control de riesgo / realismo de edge
+**Módulos afectados:** src/sqp/markets/edge.py (nuevo), src/sqp/config.py (RiskConfig +5 coef), src/sqp/domain/models.py (BetCandidate +adjusted_edge/edge_penalty/books_count), src/sqp/pipeline/daily.py (_consensus_counts + cableado), src/sqp/backtesting/roi_engine.py (espejo), configs/default.yaml, tests/test_edge.py (nuevo)
+**Cambio:** `adjusted_edge(p, d, market, books, ...)` recorta el EV por `gap*uncertainty_penalty` (+anomalía si gap>0.06, +pocos books) y lo pliega en `p_eff=p-penalty/d` que alimenta edge+Kelly (achica el stake). `estimated_edge` se mantiene RAW. Coeficientes 0 = no-op; default.yaml los activa con los valores del proyecto 2 (0.35/0.06/0.02/0.015/2).
+**Razón:** KI-012 — edges sobreconfiados (media 8.5% post-shrink, ECE crudo 0.198).
+**Validación:** no-op probado (suite idéntica con defaults). Activación gateada por walk-forward sobre odds capturadas (1654 apuestas): ROI agregado −0.74%→+0.37%, exposición ~a la mitad. 173 passed. NO cierra KI-012 (sigue ≈ break-even, in-sample en parámetros).
+
+## 2026-06-21 — Ledger de bankroll para staking dinámico (OFF por defecto)
+
+**Tipo:** fidelidad de staking / gestión de riesgo
+**Módulos afectados:** src/sqp/risk/bankroll.py (nuevo), src/sqp/config.py (flag bankroll_dynamic + bankroll.initial yaml), scripts/run_all.py (inyección live), scripts/bankroll_status.py (nuevo), tests/test_bankroll.py (nuevo)
+**Cambio:** `BankrollLedger` deriva el balance corriente = inicial + PnL realizado (settled_*.csv, data_label=="real") + ajustes manuales (bankroll_adjustments.csv). Solo el entrypoint live lo inyecta cuando `bankroll_dynamic` está ON; demo y run_league directo usan el inicial (tests deterministas). equity_curve/summary/max_drawdown + CLI de auditoría.
+**Razón:** KI-013 — bankroll estático ignoraba el PnL realizado; Kelly y el cap de exposición dimensionaban sobre capital nominal.
+**Validación:** 179 passed (6 nuevos). Balance real verificado por el CLI: 937.28 (1000 − 62.72 sobre 93 apuestas). OFF por defecto → staking byte-idéntico; pendiente activar en producción tras verificar contra la liquidación real.

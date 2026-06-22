@@ -84,3 +84,17 @@ Format:
 - Affected files: src/sqp/settlement/runner.py (_persist_settled).
 - Proposed fix: tomar la unión de columnas (orden del archivo previo + campos nuevos) y reescribir el archivo alineado en vez de apendar a ciegas.
 - Status: Resuelto (2026-06-21, auditoría full-audit, commit `7e233f7`). CONFIRMADO contra los headers reales de los 7 settled_*.csv existentes (todos sin `calibrated_probability`). Fix reescribe con unión de columnas y auto-sana archivos de esquema viejo. Regresión en tests/test_settle_persist.py (drift de esquema + idempotencia del dedup). pytest 167 passed.
+
+- ID: KI-012
+- Severity: Alta (calidad cuantitativa)
+- Description: Los edges estimados son irreales por sobreconfianza del modelo. Sobre 93 apuestas liquidadas: edge medio +8.5% (post shrink 0.5), máx +26%, con ROI realizado fuertemente negativo en h2h (−37%) y spreads (−19%); calibración del modelo crudo ECE 0.198 (predice ~20pts por encima de la frecuencia observada). El mercado no-vig calibra mucho mejor (ECE 0.076). En la muestra sesgada, el shrink óptimo tiende a 1 (el modelo no aporta sobre el mercado).
+- Affected files: src/sqp/sports/adapters.py (Elo+scoring), src/sqp/markets/edge.py, configs/default.yaml (risk), configs/leagues/ratings.yaml.
+- Proposed fix: (1) penalización de EV por desacuerdo modelo-mercado portada del proyecto 2 — IMPLEMENTADA y activada; (2) calibración por (liga,mercado) temporal con muestra suficiente; (3) señales específicas por deporte para generar edge real; (4) evaluar techo max_plausible_edge 0.075.
+- Status: MITIGADO, no cerrado (2026-06-21). Penalización de EV activada (sqp.markets.edge): walk-forward sobre odds capturadas (1654 apuestas) ROI agregado −0.74%→+0.37% y exposición ~a la mitad. Pero el sistema sigue ≈ break-even, in-sample en parámetros, sobre proxy de cierre de un snapshot y sin IC. No hay ventaja demostrada; requiere más muestra OOS. Ver KI-001/KI-003 (validación de rentabilidad) y la falta de odds históricas.
+
+- ID: KI-013
+- Severity: Media (fidelidad de staking)
+- Description: El bankroll usado para dimensionar (Kelly + cap de exposición) era estático (`BANKROLL=1000`), ignorando el PnL realizado; el staking no reflejaba la banca real.
+- Affected files: src/sqp/config.py, scripts/run_all.py, src/sqp/risk/kelly.py (consumidor).
+- Proposed fix: ledger que derive el balance corriente de settled_*.csv + ajustes manuales e inyectarlo en el run live.
+- Status: Resuelto-condicional (2026-06-21, commit `baa5f78`). `BankrollLedger` (src/sqp/risk/bankroll.py) + flag `bankroll_dynamic` (default OFF) + CLI `scripts/bankroll_status.py`. Balance real verificado: 937.28 (1000 − 62.72 sobre 93 apuestas). PENDIENTE de activar en producción tras verificar el balance con la liquidación real del usuario.

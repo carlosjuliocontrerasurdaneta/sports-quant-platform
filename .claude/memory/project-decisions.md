@@ -134,3 +134,21 @@ Format:
 - Reason: Un fallo transitorio dejaba picks viejos que el reporte mostraba como del día (presentación engañosa). `_finalize` ya archiva en archive/ antes de limpiar, así que los picks sin liquidar quedan recuperables; respeta el orden documentado settle(09:00)->run(10:00).
 - Alternatives: Dejar el archivo intacto (rechazado: el reporte muestra picks viejos como del día); marcar la liga como "fetch failed" sin limpiar (rechazado: más complejo y el archivo seguiría mostrándose en el reporte).
 - Consequences: tras un fallo, la liga no aparece con picks del día anterior; un fallo no transitorio podría reescribir a vacío repetidamente (inofensivo). Sin test dedicado nuevo (cambio de robustez).
+
+- Date: 2026-06-21
+- Decision: CI en GitHub Actions (`ruff check src tests` + `pytest -q`, Python 3.11+3.12) y config de ruff en pyproject que IGNORA E701/E702 (one-liners `if: return` y `;` deliberados, p. ej. settle._grade y fixtures), conservando el resto del set default + pyflakes.
+- Reason: 173 tests sin nada que los corra automáticamente en Windows+Task Scheduler. El config de ruff se perdió en la re-importación; los 21 "errores" eran 19 de estilo intencional + 2 reales (corregidos).
+- Alternatives: Reescribir los one-liners para cumplir E701/E702 (rechazado: cambia código de negocio por estilo que el proyecto eligió); CI en windows-latest (rechazado por ahora: el código es cross-platform, ubuntu es más rápido/barato; conmutable si hace falta).
+- Consequences: regresiones detectadas en push/PR cuando haya remoto; hasta entonces `make lint`/`make test` localmente.
+
+- Date: 2026-06-21
+- Decision: Portar del proyecto 2 (`_archive/2`) SOLO la penalización de EV por desacuerdo modelo-mercado (no el ensemble ni el techo 0.075) y ACTIVARLA tras validación OOS. El penalty (`gap*0.35` +anomalía +pocos books) se pliega en una probabilidad efectiva `p_eff=p-penalty/d` que alimenta edge y Kelly, así recorta también el stake. `estimated_edge` se mantiene RAW.
+- Reason: edges irreales por sobreconfianza (KI-012). El diagnóstico mostró que anclar más al mercado + penalizar el desacuerdo es la dirección correcta. La activación se gateó por evidencia: walk-forward sobre odds capturadas (1654 apuestas) ROI −0.74%→+0.37% y exposición ~a la mitad (MLB y WNBA mejoran). El retrospectivo de 93 apuestas NO bastaba (sesgo de selección).
+- Alternatives: Subir market_shrink plano (rechazado: no escala con el desacuerdo); portar también el blend 60% mercado y el techo 0.075 (pospuesto: un cambio a la vez, el techo necesita su propia prueba); dejar la penalización OFF (rechazado: la evidencia OOS la respalda).
+- Consequences: menos apuestas y mitad de exposición en producción; sigue ≈ break-even e in-sample en parámetros (no es claim de rentabilidad). Coeficientes a 0 = desactivar. Nuevos campos de auditoría en BetCandidate (adjusted_edge/edge_penalty/books_count).
+
+- Date: 2026-06-21
+- Decision: El bankroll para staking se deriva de un ledger (inicial + PnL realizado de settled_*.csv con data_label=="real" + ajustes manuales), NO de un store de transacciones paralelo. Gated por flag `bankroll_dynamic` (default OFF); solo el entrypoint live lo inyecta.
+- Reason: el bankroll estático ignoraba el PnL realizado (KI-013). settled_*.csv ya es fuente de verdad deduplicada; un ledger paralelo arriesga doble conteo. Mantener el flag OFF y la inyección solo en run_all evita acoplar los tests (que llaman run_league directo) al contenido de data/bets.
+- Alternatives: Ledger de transacciones completo (rechazado: redundante con settled_*.csv); mutar Settings.bankroll en load() leyendo el ledger (rechazado: haría los tests no deterministas); restar stakes pendientes del balance disponible (pospuesto a v2: con el ciclo SETTLE→RUN no hay apuestas del día colocadas al dimensionar).
+- Consequences: staking fiel a la banca real cuando se active; balance auditado por scripts/bankroll_status.py (937.28 actual); demo nunca toca la banca real; pendiente activar en producción.
