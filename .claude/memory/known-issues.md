@@ -97,4 +97,11 @@ Format:
 - Description: El bankroll usado para dimensionar (Kelly + cap de exposición) era estático (`BANKROLL=1000`), ignorando el PnL realizado; el staking no reflejaba la banca real.
 - Affected files: src/sqp/config.py, scripts/run_all.py, src/sqp/risk/kelly.py (consumidor).
 - Proposed fix: ledger que derive el balance corriente de settled_*.csv + ajustes manuales e inyectarlo en el run live.
-- Status: Resuelto-condicional (2026-06-21, commit `baa5f78`). `BankrollLedger` (src/sqp/risk/bankroll.py) + flag `bankroll_dynamic` (default OFF) + CLI `scripts/bankroll_status.py`. Balance real verificado: 937.28 (1000 − 62.72 sobre 93 apuestas). PENDIENTE de activar en producción tras verificar el balance con la liquidación real del usuario.
+- Status: RESUELTO (2026-06-22, commits `baa5f78` + `0af8106`). `BankrollLedger` (src/sqp/risk/bankroll.py) + flag `bankroll_dynamic` + CLI `scripts/bankroll_status.py`. Balance verificado por CLI (937.28 = 1000 − 62.72 sobre 93 apuestas, consistente con la auditoría) y ACTIVADO en configs/default.yaml (`bankroll: {initial:1000, dynamic:true}`). El run live dimensiona sobre la banca corriente; demo/tests usan el inicial. Conciliación final contra el saldo real de la casa de apuestas queda al usuario (ajustes en data/bets/bankroll_adjustments.csv).
+
+- ID: KI-014
+- Severity: Baja (cobertura OOS de tenis)
+- Description: En el OOS de tenis, WTA Bad Homburg muestra 0 eventos emparejados pese a tener 6 odds capturadas y resultados WTA cargados (8503). Probable mismatch de nombres de jugadoras entre The Odds API y ESPN, o torneo aún en curso al capturar.
+- Affected files: src/sqp/backtesting/roi_engine.py (_match_result), src/sqp/sports/team_names.py (normalize_key), datos data/odds + data/historical/results_wta.csv.
+- Proposed fix: comparar nombres normalizados de las 6 odds vs los resultados WTA del rango; si es grafía, extender el normalizador/alias de jugadoras; si es timing, re-capturar tras el torneo.
+- Status: Abierto (2026-06-22). No bloquea el resto del OOS de tenis (Halle/Queen's/German Open sí emparejan). Menor.

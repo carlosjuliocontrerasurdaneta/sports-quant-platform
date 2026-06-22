@@ -116,3 +116,19 @@ Format:
 **Cambio:** `BankrollLedger` deriva el balance corriente = inicial + PnL realizado (settled_*.csv, data_label=="real") + ajustes manuales (bankroll_adjustments.csv). Solo el entrypoint live lo inyecta cuando `bankroll_dynamic` está ON; demo y run_league directo usan el inicial (tests deterministas). equity_curve/summary/max_drawdown + CLI de auditoría.
 **Razón:** KI-013 — bankroll estático ignoraba el PnL realizado; Kelly y el cap de exposición dimensionaban sobre capital nominal.
 **Validación:** 179 passed (6 nuevos). Balance real verificado por el CLI: 937.28 (1000 − 62.72 sobre 93 apuestas). OFF por defecto → staking byte-idéntico; pendiente activar en producción tras verificar contra la liquidación real.
+
+## 2026-06-22 — OOS de tenis (resultados tour-wide + matching order-insensible)
+
+**Tipo:** habilitación de evaluación / extensión de datos
+**Módulos afectados:** scripts/backfill_tennis_results.py (nuevo), src/sqp/backtesting/roi_engine.py (_pair_key/_match_index/_match_result + flag por family), scripts/validate_oos.py (rama tenis), tests/test_roi_engine.py
+**Cambio:** El tenis daba 0 OOS (sin resultados en ResultsStore + matching ordenado sin home/away). Ahora: backfill persiste resultados ESPN tour-wide bajo la clave de tour (results_atp.csv/results_wta.csv, home=winner 1-0 neutral), el roi_engine empareja order-insensible (frozenset) cuando family=="tennis" reusando la reorientación de marcadores existente, y validate_oos carga resultados tour-wide y omite el freezing (Elo neutral). Deportes de equipo conservan matching ordenado.
+**Razón:** cerrar el hueco de OOS de tenis (el Elo es por jugador tour-wide; las odds son por torneo).
+**Validación:** ATP 6205 / WTA 8503 resultados cargados; Halle 26/9, Queen's 20/3, German Open 15/4; Wimbledon 0 (calendario); Bad Homburg 0 (KI-014). 181 passed (+2). ROI = ruido (capacidad, no señal). CSV fuera de git.
+
+## 2026-06-22 — Interactividad client-side del reporte HTML
+
+**Tipo:** UX / reporte
+**Módulos afectados:** src/sqp/audit/html_report.py (template + _history_section reescrito + JS), tests/test_html_report.py
+**Cambio:** Pills toggleables por deporte en Picks (multi-select, reemplaza el dropdown #fSport); orden por columna genérico (makeSortable/initSortable, numeric-aware) en todas las tablas .grid server-rendered salvo la de picks (que tiene su propio sorter); filtros de Historial por deporte/mercado/rango-de-fecha con filas data-* y contador en vivo. initSortable/initHistory corren al inicio de init() (funcionan sin picks). Sigue autónomo (sin assets externos).
+**Razón:** pedido del usuario, replicando el reporte del proyecto 2 pero para todos los deportes; las tablas de Auditoría/Patrones/Historial eran estáticas.
+**Validación:** 183 passed (+2). ruff limpio. report_latest.html regenerado con datos reales (21 picks, 4 ligas).

@@ -191,3 +191,20 @@ Continuación de la misma sesión tras la auditoría. Tres entregas, cada una en
 **Validación global:** pytest 167 → **179 passed** (test_edge.py ×6, test_bankroll.py ×6). ruff limpio. Todo en master.
 
 **Recomendación al cerrar (prioridad):** (a) acumular odds capturadas + cargar resultados de tenis/NFL (dieron 0 apuestas) para muestra OOS con IC; (b) validar parámetros OOS (ratings.yaml sigue in-sample); (c) activar `bankroll_dynamic` tras verificar el balance con la liquidación real; (d) recién entonces probar techo 0.075 y señales por deporte. Diagnóstico de fondo: lo que falta no es código sino EVIDENCIA — el sistema está bien construido y honestamente medido, pero ≈ break-even, sin ventaja demostrada.
+
+## 2026-06-22 — bankroll_dynamic ACTIVADO + OOS de tenis habilitado + interactividad del reporte
+
+Continuación de la sesión. Tres entregas, cada una en su rama, mergeadas `--no-ff` a master y rama borrada (sin remoto).
+
+**1) `bankroll_dynamic` ACTIVADO (commit `0af8106`):** verificado el balance del ledger por CLI (937.28 = 1000 − 62.72 sobre 93 apuestas, ROI −20.81%, drawdown −90.78, internamente consistente con la auditoría de liquidación). Activado en `configs/default.yaml` (`bankroll: { initial: 1000, dynamic: true }`). El run live ahora dimensiona Kelly + cap de exposición sobre la banca corriente; demo/tests usan el inicial → 181 passed sin cambios. Conciliación final contra el saldo real de la casa de apuestas queda al usuario (ajustes en `data/bets/bankroll_adjustments.csv`).
+
+**2) OOS de tenis habilitado (commit `ea0bebc`):** el tenis daba 0 apuestas en el OOS por dos bloqueos. Diagnóstico con evidencia: NFL no es problema de datos sino de CALENDARIO (odds capturadas 2026-09/10, fuera de temporada; resultados ya cargados 7964) → nada útil que cargar hasta que se jueguen. Tenis sí era hueco de infraestructura: sin resultados en ResultsStore + el roi_engine emparejaba `(home,away)` ordenado mientras el tenis no tiene orientación. Fix en tres piezas: (a) `scripts/backfill_tennis_results.py` persiste resultados ESPN tour-wide bajo la clave de tour (results_atp.csv / results_wta.csv; home=winner, 1-0, neutral) — cargados **ATP 6205 / WTA 8503**; (b) `roi_engine` empareja order-insensible (frozenset) cuando family=="tennis" (la reorientación de marcadores existente maneja la orientación); deportes de equipo mantienen orden; (c) `validate_oos` carga resultados tour-wide para ligas de tenis y omite el freezing de parámetros (Elo neutral). Verificado: ATP Halle 26 matched/9 bets, Queen's 20/3, German Open 15/4; Wimbledon correctamente 0 (futuro). **ROI = ruido (3-9 apuestas/torneo)**: se entrega la capacidad, no señal. Anotado: WTA Bad Homburg 0 matched pese a 6 odds (posible mismatch de nombres → KI-014). Tests 181 passed (+2). Resultados CSV quedan fuera de git (.gitignore).
+
+**3) Interactividad del reporte HTML (commit `f86157b`):** a pedido del usuario, replicando el estilo del proyecto 2 (`_archive/2/data/output/picks_report_all.html`).
+- Picks: dropdown de deporte → **pills toggleables** por deporte (multi-select, todas activas, construidas client-side de `uniq(league)`; etiquetas bonitas incl. tenis "ATP Wimbledon"; color de mapa + paleta fallback).
+- Auditoría (Por liga / Por mercado, incl. `hit_rate`) y Patrones (`hit_rate_%` + todas las situaciones): **orden por columna** client-side genérico (`makeSortable`/`initSortable`, numeric-aware, asc/desc).
+- Historial: **filtros** por deporte (select etiquetado), mercado y rango de fecha (Desde/Hasta), con contador en vivo; tabla reconstruida con `data-fecha/league/market` por fila; también ordenable. `initSortable`/`initHistory` corren al inicio de `init()` (funcionan sin picks). Reporte sigue autónomo (sin assets externos). Tests 183 passed (+2).
+
+**Validación global:** pytest 179 → **183 passed**. ruff limpio. Todo en master. `report_latest.html` regenerado con datos reales (21 picks, 4 ligas).
+
+**Pendientes anotados:** KI-014 (mismatch WTA Bad Homburg en OOS de tenis); NFL OOS bloqueado por calendario; validación OOS de parámetros; señales por deporte. Sigue ≈ break-even — falta evidencia, no código.
