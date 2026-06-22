@@ -208,3 +208,21 @@ Continuación de la sesión. Tres entregas, cada una en su rama, mergeadas `--no
 **Validación global:** pytest 179 → **183 passed**. ruff limpio. Todo en master. `report_latest.html` regenerado con datos reales (21 picks, 4 ligas).
 
 **Pendientes anotados:** KI-014 (mismatch WTA Bad Homburg en OOS de tenis); NFL OOS bloqueado por calendario; validación OOS de parámetros; señales por deporte. Sigue ≈ break-even — falta evidencia, no código.
+
+## 2026-06-22 — Validación OOS de parámetros (VALIDATE_OOS): MLB generaliza, no overfit
+
+Corrido `scripts/validate_oos.py` (congela tilt_scale/elo_home_adv/dc_rho solo en TRAIN, mide ROI realizado en el TEST posterior; compara frozen_train vs full_history vs family_default).
+
+**MLB** (cutoff 2025-06-13, train 5896 / test 2547, 1154 odds; frozen tilt=0.4, home_adv=25):
+- frozen_train: **ROI test +0.41%** (1148 graded, staked 4767, pnl +19.39). Por mercado: h2h +10.6%, spreads +2.4%, totals −4.9%.
+- full_history (ratings.yaml): **IDÉNTICO** a frozen_train (los params OOS-congelados coinciden con ratings.yaml) → el tuning de MLB NO es optimista/overfit.
+- family_default (sin tuning): **ROI test −3.28%** (apuesta MÁS: 1463 graded, staked 7077, pnl −231.95; más sobreconfianza → más/mayores edges → pierde).
+- **Lectura: el tuning de MLB GENERALIZA OOS** (frozen +0.41% vs sin-tuning −3.28%, ~+3.7pp). Pero MLB sigue ≈ break-even, cargado por h2h; totals negativo (coherente con mlb/totals pausado).
+
+**WNBA** (cutoff 2025-07-27, train 659 / test 288, 141 odds; frozen home_adv=70):
+- frozen_train == full_history == family_default: **ROI test −2.13%** (170 bets, pnl −15.86). Por mercado: h2h −2.3%, spreads −11.3%, totals +8.2%.
+- El home_adv congelado (70) coincide con el default de la familia basketball → no hay nada que distinga las 3 configs (nada que validar). Muestra chica (n=170) = ruido.
+
+**Tenis** (Halle/Queen's/German Open; Bad Homburg/Wimbledon 0 por calendario): el tenis NO tiene parámetros que congelar (Elo neutral), así que es solo ROI realizado OOS, no validación de parámetros. Ruido (3-9 apuestas/torneo): Halle +41.9% (n=9), Queen's +104% (n=3), German Open −100% (n=4). Las ligas de 1 evento (nba/nhl) se omitieron (ruido + tuning lento e inútil).
+
+**Conclusión:** los parámetros de MLB generalizan fuera de muestra (no overfit) y baten al baseline sin-tuning por ~3.7pp; WNBA no aporta señal (params = default, muestra chica). Sigue ≈ break-even sobre proxy de cierre de un snapshot, cobertura limitada, sin IC — no es rentabilidad demostrada. Cierra el item "(a) tuning in-sample" de KI-003.
