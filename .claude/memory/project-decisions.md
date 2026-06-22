@@ -122,3 +122,15 @@ Format:
 - Reason: Misma disciplina que rechazo v1: no activar una senal que no bate al baseline por un margen aceptable; perseguir el bound 0.05 seria overfitting sobre senal fina. FIP es menos malo que RA pero el Elo de equipo + tilt ya captura la mayor parte.
 - Alternatives: Activar bound 0.05 (rechazado: ganancia despreciable y peor calibracion); descartar el codigo v2 (rechazado: infra + 2.438 starts backfilleados sirven para un v3 mejor especificado sin re-fetch).
 - Consequences: Produccion sin cambios; pitcher_signal="fip" disponible para experimentar; resultado negativo documentado (KI-006). v3 posible: FIP con ajuste por oponente, ponderacion por recencia o senal de matchup.
+
+- Date: 2026-06-21
+- Decision: La persistencia de liquidaciones (`_persist_settled`) reconcilia esquemas tomando la UNIÓN de columnas (orden del archivo previo + campos nuevos) y reescribiendo el `settled_<liga>.csv` completo alineado, en vez de apendar con `mode="a"`. Auto-sana archivos escritos por un esquema anterior.
+- Reason: El esquema de `BetCandidate` evoluciona (se añadió `calibrated_probability`); un append a ciegas escribía el orden nuevo bajo el header viejo y desalineaba cada valor al releer, corrompiendo la auditoría de ROI y los inputs de calibración (KI-011). El dedup ya leía el archivo previo completo, así que reescribir no añade costo de I/O relevante.
+- Alternatives: Reindexar las filas nuevas al header viejo (rechazado: descartaría silenciosamente las columnas nuevas como calibrated_probability); migración one-off de los CSV viejos (rechazado: la reescritura por unión ya los auto-sana en la próxima liquidación que los toque).
+- Consequences: settled_*.csv siempre alineados y con superconjunto de columnas; mantiene idempotencia del dedup; cubierto por tests/test_settle_persist.py.
+
+- Date: 2026-06-21
+- Decision: Ante un fallo de pipeline de una liga en `run_all.py`, se llama `_finalize(lg, [], [], mode)` en el `except` para archivar y limpiar los picks de esa liga, en vez de dejar el `candidates_<liga>.csv` del día anterior intacto.
+- Reason: Un fallo transitorio dejaba picks viejos que el reporte mostraba como del día (presentación engañosa). `_finalize` ya archiva en archive/ antes de limpiar, así que los picks sin liquidar quedan recuperables; respeta el orden documentado settle(09:00)->run(10:00).
+- Alternatives: Dejar el archivo intacto (rechazado: el reporte muestra picks viejos como del día); marcar la liga como "fetch failed" sin limpiar (rechazado: más complejo y el archivo seguiría mostrándose en el reporte).
+- Consequences: tras un fallo, la liga no aparece con picks del día anterior; un fallo no transitorio podría reescribir a vacío repetidamente (inofensivo). Sin test dedicado nuevo (cambio de robustez).

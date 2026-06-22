@@ -154,3 +154,18 @@
 **Estado al guardar:** rama pushada con upstream, lista para PR (gh no instalado → PR manual en github.com/.../pull/new/fix/mlb-series-probable-pitchers; título y cuerpo entregados).
 
 **Pendiente:** H4 (factor pitcher sin efecto) sigue abierto — requiere traza con datos reales sobre la población de StarterRatings (procedencia de game_id entre ResultsStore y StartersStore); H2 elimina un contribuyente pero no cierra el bug.
+
+## 2026-06-21 — Auditoría integral (skill full-audit) sobre el codebase re-importado: 5 hallazgos corregidos y mergeados a master
+
+**Contexto:** repo re-importado (commits `efabc00` "Import remaining codebase", `70c21f9`). Auditoría de solo lectura (Fases 1-3) sin escanear data/: arquitectura, 7 BAT, scripts, config, tests, deps, integraciones. Baseline pytest 165 passed. Núcleo cuantitativo re-verificado correcto (odds, de-vig power/proporcional con fallback, Kelly con caps, Poisson/Normal con continuity-correction y renormalización de grilla truncada, Dixon-Coles, grading de liquidación, timeouts 30s en todos los requests, `.env` NO trackeado — solo `.env.example`). **Sin bugs críticos.**
+
+**Hallazgos (5) — todos corregidos en rama `audit/settlement-schema-and-ops-fixes`, commit `7e233f7`, mergeada `--no-ff` a master `085c1ef`, rama borrada:**
+- **I-1 (importante, CONFIRMADO) `settlement/runner.py`** — `_persist_settled` apendaba con `mode="a"` sin reconciliar columnas. Verificado contra headers reales: los 7 `settled_*.csv` existentes tienen 19 columnas terminando en `...model_probability,flags,generated_at,...` SIN `calibrated_probability`, que el `BetCandidate` actual inserta entre `model_probability` y `flags`. El próximo append habría desalineado cada valor al releer (corrompiendo la auditoría de ROI y los inputs de calibración vía build_pick_history). Fix: unión de columnas (orden previo + campos nuevos) y reescritura alineada; auto-sana archivos de esquema viejo. Nuevo `tests/test_settle_persist.py` (drift + idempotencia dedup). → KI-011 (Resuelto).
+- **I-2 (operacional) `REFRESH_ML.bat`** — corría 4 scripts sin `if errorlevel 1` y salía 0 ante fallo (enmascaraba fallos del job semanal). Fix: check por paso + etiqueta `:error`.
+- **M-1 `backtesting/roi_engine.py`** — docstring decía "exact staking logic" pero el backtest NO aplica calibración (a diferencia del run live con CALIBRATION_ENABLED). Aclarado que se excluye por circularidad (el historial alimenta a los calibradores). Sin cambio de lógica.
+- **M-3 `scripts/run_all.py`** — un fallo transitorio de una liga dejaba `candidates_<liga>.csv` del día anterior, que el reporte mostraba como del día. Fix: en el `except`, `_finalize(lg, [], [], mode)` archiva y limpia (recuperable en archive/).
+- **M-2 `models/distributions.py`** — eliminado `skellam_home_win` (código muerto, 0 referencias) + imports huérfanos `skellam`/`math` + línea de docstring.
+
+**Validación:** pytest 165 → 167 passed (2 nuevos). Imports de distributions/run_all/_finalize verificados. Merge a master limpio, 167 passed post-merge.
+
+**Estado al guardar:** master contiene las correcciones; rama de trabajo borrada (estaba mergeada). Sin remoto configurado (no hay push/PR). KI-006/H4 (factor pitcher) y la falta de validación de rentabilidad (sin odds históricas reales → sin ROI realizado) siguen siendo los pendientes de fondo, no tocados esta sesión.
