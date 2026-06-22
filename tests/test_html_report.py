@@ -126,6 +126,20 @@ def test_dashboard_audit_and_history_render(tmp_path):
     assert "2026-06-13" in text             # history row (most recent first)
 
 
+def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    # history filter controls
+    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hFrom"', 'id="hTo"',
+                 'id="historyTable"'):
+        assert ctrl in text
+    # each history row carries the filter keys
+    assert 'data-fecha="2026-06-13"' in text
+    assert 'data-league="nba"' in text and 'data-market="h2h"' in text
+    # generic client-side sorting wired for the server-rendered grids
+    assert "makeSortable(" in text and "initSortable()" in text
+
+
 def test_dashboard_empty_is_safe(tmp_path):
     pred = tmp_path / "predictions"
     bets = tmp_path / "bets"

@@ -181,23 +181,48 @@ def _emph(text: str) -> str:
     return "".join(out)
 
 
+_HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
+    ("fecha", "Fecha", True), ("league", "Deporte", True),
+    ("market", "Mercado", True), ("selection", "Seleccion", True),
+    ("line", "Linea", False), ("price_decimal", "Cuota", False),
+    ("stake", "Stake", False), ("result", "Resultado", True),
+    ("pnl", "PnL", False), ("estimated_edge", "Edge est.", False),
+    ("estimated_probability", "Prob. est.", False),
+)
+
+
 def _history_section(bets_dir: Path) -> str:
+    """Chronological graded-bet log with client-side filters (fecha range / sport /
+    market) and sortable columns. Each row carries data-* keys for the filters."""
     df = load_all_settled(bets_dir)
     if df.empty:
         return '<p class="empty">Sin historial de apuestas liquidadas.</p>'
     d = df.copy()
     d["fecha"] = d.get("settled_at", "").astype(str).str[:10]
-    cols = [c for c in ["fecha", "league", "market", "selection", "line",
-                        "price_decimal", "stake", "result", "pnl",
-                        "estimated_edge", "estimated_probability"]
-            if c in d.columns]
-    d = d[cols].sort_values("fecha", ascending=False)
-    d = d.rename(columns={"league": "deporte", "market": "mercado",
-                          "selection": "seleccion", "line": "linea",
-                          "price_decimal": "cuota", "result": "resultado",
-                          "estimated_edge": "edge_estimado",
-                          "estimated_probability": "prob_estimada"})
-    return _df_to_html_table(d, empty_msg="(sin historial)")
+    d = d.sort_values("fecha", ascending=False)
+    cols = [(k, hdr, txt) for k, hdr, txt in _HISTORY_COLUMNS if k in d.columns]
+    controls = (
+        '<div class="filters" id="historyFilters">'
+        '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
+        '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
+        '<label>Desde<input type="date" id="hFrom"></label>'
+        '<label>Hasta<input type="date" id="hTo"></label>'
+        '<label>&nbsp;<span class="gen" id="hCount"></span></label>'
+        '</div>')
+    head = "".join(f'<th class="{"txt" if txt else ""}">{html.escape(hdr)}</th>'
+                   for _, hdr, txt in cols)
+    body = []
+    for _, row in d.iterrows():
+        cells = "".join(
+            f'<td class="{"txt" if txt else ""}">{html.escape(_fmt_cell(row.get(k)))}</td>'
+            for k, _, txt in cols)
+        body.append(
+            f'<tr data-fecha="{html.escape(str(row.get("fecha", "")))}" '
+            f'data-league="{html.escape(str(row.get("league", "")))}" '
+            f'data-market="{html.escape(str(row.get("market", "")))}">{cells}</tr>')
+    table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
+             f'<tbody>{"".join(body)}</tbody></table>')
+    return controls + table
 
 
 def _card(title: str, value: str, sub: str = "") -> str:
@@ -465,7 +490,72 @@ function refresh() {{
   renderTable(list);
 }}
 
+// Generic client-side sorting for the server-rendered tables (Auditoria,
+// Patrones, Historial). Numeric-aware: strips % and thousands separators.
+function cellSortVal(td) {{
+  const t = td.textContent.trim().replace("%", "").replace(/,/g, "");
+  const n = parseFloat(t);
+  return (t !== "" && !isNaN(n)) ? n : t.toLowerCase();
+}}
+function makeSortable(table) {{
+  const ths = [...table.querySelectorAll("thead th")];
+  ths.forEach((th, idx) => {{
+    th.style.cursor = "pointer";
+    th.addEventListener("click", () => {{
+      const dir = th.dataset.dir === "1" ? -1 : 1;
+      ths.forEach(o => {{ o.dataset.dir = ""; o.classList.remove("sorted"); }});
+      th.dataset.dir = dir === 1 ? "1" : "0";
+      th.classList.add("sorted");
+      const tb = table.querySelector("tbody");
+      [...tb.querySelectorAll("tr")].sort((a, b) => {{
+        const x = cellSortVal(a.cells[idx]), y = cellSortVal(b.cells[idx]);
+        if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+        return String(x).localeCompare(String(y)) * dir;
+      }}).forEach(r => tb.appendChild(r));
+    }});
+  }});
+}}
+function initSortable() {{
+  document.querySelectorAll("table.grid").forEach(t => {{
+    if (t.id !== "picksTable") makeSortable(t);   // picks has its own sorter
+  }});
+}}
+
+// Historial: filter rows by sport / market / date range (data-* on each row).
+function initHistory() {{
+  const table = document.getElementById("historyTable");
+  if (!table) return;
+  const rowsArr = [...table.querySelectorAll("tbody tr")];
+  const uniqOf = a => [...new Set(rowsArr.map(r => r.dataset[a]).filter(Boolean))].sort();
+  const sportSel = document.getElementById("hSport");
+  uniqOf("league").forEach(lg => sportSel.add(new Option(labelFor(lg), lg)));
+  const mktSel = document.getElementById("hMarket");
+  uniqOf("market").forEach(m => mktSel.add(new Option(m, m)));
+  ["hSport", "hMarket", "hFrom", "hTo"].forEach(id =>
+    document.getElementById(id).addEventListener("input", filterHistory));
+  filterHistory();
+}}
+function filterHistory() {{
+  const table = document.getElementById("historyTable");
+  const lg = document.getElementById("hSport").value;
+  const m = document.getElementById("hMarket").value;
+  const from = document.getElementById("hFrom").value;
+  const to = document.getElementById("hTo").value;
+  let shown = 0;
+  table.querySelectorAll("tbody tr").forEach(r => {{
+    const d = r.dataset;
+    const ok = (!lg || d.league === lg) && (!m || d.market === m) &&
+               (!from || d.fecha >= from) && (!to || d.fecha <= to);
+    r.style.display = ok ? "" : "none";
+    if (ok) shown++;
+  }});
+  const c = document.getElementById("hCount");
+  if (c) c.textContent = shown + " filas";
+}}
+
 function init() {{
+  initSortable();
+  initHistory();
   activeSports = new Set(uniq("league"));   // all sports active by default
   buildSportTags();
   fillSelect(document.getElementById("fMarket"), uniq("market"));
