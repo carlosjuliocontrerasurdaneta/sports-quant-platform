@@ -1,0 +1,116 @@
+"""Bankroll ledger: the current balance is the configured initial capital plus
+all REALIZED bet PnL plus manual adjustments (deposits/withdrawals/corrections).
+
+The single source of truth for bet PnL is ``data/bets/settled_*.csv`` (append-only,
+deduped by the settlement runner); we never keep a parallel PnL store that could
+drift. Manual, non-bet movements live in ``data/bets/bankroll_adjustments.csv``
+(columns: date, amount, kind, note; ``amount`` positive = deposit, negative =
+withdrawal/correction).
+
+Demo bets never touch the real bankroll: only settled rows with
+``data_label == "real"`` are summed. Used by the live daily run to size Kelly
+stakes and the daily-exposure cap on the actual running balance instead of a
+fixed nominal figure.
+"""
+from __future__ import annotations
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+from sqp.logging_config import get_logger
+
+log = get_logger("sqp.bankroll")
+
+ADJUSTMENTS_FILE = "bankroll_adjustments.csv"
+
+
+@dataclass
+class BankrollLedger:
+    root: Path
+    initial: float
+
+    @property
+    def _bets_dir(self) -> Path:
+        return self.root / "data" / "bets"
+
+    def _settled(self) -> pd.DataFrame:
+        """All settled REAL-money rows across leagues (demo excluded)."""
+        frames: list[pd.DataFrame] = []
+        for f in sorted(self._bets_dir.glob("settled_*.csv")):
+            try:
+                df = pd.read_csv(f)
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                continue  # empty / corrupt file: skip, do not abort the balance
+            if not df.empty:
+                frames.append(df)
+        if not frames:
+            return pd.DataFrame(columns=["pnl", "data_label", "result", "stake", "settled_at"])
+        out = pd.concat(frames, ignore_index=True)
+        if "data_label" in out.columns:
+            out = out[out["data_label"].astype(str) == "real"]
+        return out
+
+    def realized_pnl(self) -> float:
+        df = self._settled()
+        if df.empty or "pnl" not in df.columns:
+            return 0.0
+        return float(pd.to_numeric(df["pnl"], errors="coerce").fillna(0.0).sum())
+
+    def adjustments_total(self) -> float:
+        path = self._bets_dir / ADJUSTMENTS_FILE
+        if not path.exists():
+            return 0.0
+        try:
+            adj = pd.read_csv(path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            return 0.0
+        if "amount" not in adj.columns:
+            return 0.0
+        return float(pd.to_numeric(adj["amount"], errors="coerce").fillna(0.0).sum())
+
+    def current_balance(self) -> float:
+        return round(self.initial + self.realized_pnl() + self.adjustments_total(), 2)
+
+    def equity_curve(self) -> pd.DataFrame:
+        """Running balance by settlement time. Manual adjustments are applied as a
+        flat offset (their timing is not modelled in v1; drawdown is unaffected)."""
+        df = self._settled()
+        if df.empty or "settled_at" not in df.columns or "pnl" not in df.columns:
+            return pd.DataFrame(columns=["settled_at", "pnl", "balance"])
+        d = df.copy()
+        d["pnl"] = pd.to_numeric(d["pnl"], errors="coerce").fillna(0.0)
+        d = d.sort_values("settled_at")
+        base = self.initial + self.adjustments_total()
+        d["balance"] = base + d["pnl"].cumsum()
+        return d[["settled_at", "pnl", "balance"]].reset_index(drop=True)
+
+    def _max_drawdown(self) -> float:
+        eq = self.equity_curve()
+        if eq.empty:
+            return 0.0
+        peak = float("-inf")
+        mdd = 0.0
+        for b in eq["balance"]:
+            peak = max(peak, b)
+            mdd = min(mdd, b - peak)
+        return round(mdd, 2)
+
+    def summary(self) -> dict:
+        df = self._settled()
+        graded = (df[df["result"].isin(["win", "loss"])]
+                  if not df.empty and "result" in df.columns else df.iloc[0:0])
+        staked = (float(pd.to_numeric(graded["stake"], errors="coerce").fillna(0.0).sum())
+                  if not graded.empty and "stake" in graded.columns else 0.0)
+        pnl = self.realized_pnl()
+        return {
+            "initial": round(self.initial, 2),
+            "realized_pnl": round(pnl, 2),
+            "adjustments": round(self.adjustments_total(), 2),
+            "current_balance": self.current_balance(),
+            "n_settled": int(len(df)),
+            "n_graded": int(len(graded)),
+            "total_staked": round(staked, 2),
+            "realized_roi": round(pnl / staked, 4) if staked else 0.0,
+            "max_drawdown": self._max_drawdown(),
+        }
