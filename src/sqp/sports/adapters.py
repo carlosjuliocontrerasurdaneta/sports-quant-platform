@@ -13,6 +13,7 @@ from __future__ import annotations
 from sqp.domain.models import Event, EstimatedProbabilities
 from sqp.models import distributions as dist
 from sqp.models.park import ParkFactors
+from sqp.models.rest import RestModel
 from sqp.models.starters import StarterRatings
 from sqp.models.team_scoring import TeamScoringRates
 from sqp.logging_config import get_logger
@@ -33,14 +34,23 @@ class NormalMarginAdapter(SportAdapter):
         self.scoring = TeamScoringRates(
             prior_games=params.get("scoring_prior_games", 6.0),
             normalize=self.normalize)
+        # Rest / back-to-back margin adjustment. points_per_day 0.0 (default) =
+        # no-op; set rest_points_per_day > 0 to enable after an OOS check.
+        self.rest = RestModel(points_per_day=params.get("rest_points_per_day", 0.0),
+                              max_rest=params.get("rest_max_days", 4),
+                              normalize=self.normalize)
 
     def observe(self, r: dict) -> None:
         super().observe(r)
         self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"])
+        self.rest.observe(r["home"], r["away"], r.get("date"))
 
     def estimate(self, event, spread_line, total_line) -> EstimatedProbabilities:
         diff = self.elo.rating_diff(event.home, event.away)
         mu_margin = dist.elo_diff_to_margin(diff, self.params["points_per_elo"])
+        # Rest differential nudges the home margin (back-to-backs underperform).
+        mu_margin += self.rest.margin_adjustment(event.home, event.away,
+                                                 str(event.start_time)[:10])
         sigma_m = self.params["margin_sigma"]
         mu_total = self.params["avg_total"]
         if self.params.get("scoring_totals", True):
