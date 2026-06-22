@@ -181,23 +181,48 @@ def _emph(text: str) -> str:
     return "".join(out)
 
 
+_HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
+    ("fecha", "Fecha", True), ("league", "Deporte", True),
+    ("market", "Mercado", True), ("selection", "Seleccion", True),
+    ("line", "Linea", False), ("price_decimal", "Cuota", False),
+    ("stake", "Stake", False), ("result", "Resultado", True),
+    ("pnl", "PnL", False), ("estimated_edge", "Edge est.", False),
+    ("estimated_probability", "Prob. est.", False),
+)
+
+
 def _history_section(bets_dir: Path) -> str:
+    """Chronological graded-bet log with client-side filters (fecha range / sport /
+    market) and sortable columns. Each row carries data-* keys for the filters."""
     df = load_all_settled(bets_dir)
     if df.empty:
         return '<p class="empty">Sin historial de apuestas liquidadas.</p>'
     d = df.copy()
     d["fecha"] = d.get("settled_at", "").astype(str).str[:10]
-    cols = [c for c in ["fecha", "league", "market", "selection", "line",
-                        "price_decimal", "stake", "result", "pnl",
-                        "estimated_edge", "estimated_probability"]
-            if c in d.columns]
-    d = d[cols].sort_values("fecha", ascending=False)
-    d = d.rename(columns={"league": "deporte", "market": "mercado",
-                          "selection": "seleccion", "line": "linea",
-                          "price_decimal": "cuota", "result": "resultado",
-                          "estimated_edge": "edge_estimado",
-                          "estimated_probability": "prob_estimada"})
-    return _df_to_html_table(d, empty_msg="(sin historial)")
+    d = d.sort_values("fecha", ascending=False)
+    cols = [(k, hdr, txt) for k, hdr, txt in _HISTORY_COLUMNS if k in d.columns]
+    controls = (
+        '<div class="filters" id="historyFilters">'
+        '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
+        '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
+        '<label>Desde<input type="date" id="hFrom"></label>'
+        '<label>Hasta<input type="date" id="hTo"></label>'
+        '<label>&nbsp;<span class="gen" id="hCount"></span></label>'
+        '</div>')
+    head = "".join(f'<th class="{"txt" if txt else ""}">{html.escape(hdr)}</th>'
+                   for _, hdr, txt in cols)
+    body = []
+    for _, row in d.iterrows():
+        cells = "".join(
+            f'<td class="{"txt" if txt else ""}">{html.escape(_fmt_cell(row.get(k)))}</td>'
+            for k, _, txt in cols)
+        body.append(
+            f'<tr data-fecha="{html.escape(str(row.get("fecha", "")))}" '
+            f'data-league="{html.escape(str(row.get("league", "")))}" '
+            f'data-market="{html.escape(str(row.get("market", "")))}">{cells}</tr>')
+    table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
+             f'<tbody>{"".join(body)}</tbody></table>')
+    return controls + table
 
 
 def _card(title: str, value: str, sub: str = "") -> str:
@@ -286,6 +311,12 @@ _TEMPLATE = """<!DOCTYPE html>
   .card .sub {{ color:var(--muted); font-size:11px; margin-top:2px; }}
   .filters {{ display:flex; gap:14px; flex-wrap:wrap; align-items:end; margin-bottom:12px; }}
   .filters label {{ display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:4px; }}
+  .tagfilter {{ display:flex; gap:6px; flex-wrap:wrap; }}
+  .tag {{ cursor:pointer; padding:4px 12px; border-radius:9999px; font-size:12px;
+          font-weight:600; border:1.5px solid transparent; background:var(--panel);
+          user-select:none; transition:all .15s; }}
+  .tag.active {{ border-color:currentColor; }}
+  .tag.inactive {{ opacity:0.35; }}
   select,input {{ background:var(--panel); color:var(--ink); border:1px solid var(--line);
                   border-radius:6px; padding:6px 8px; font-size:13px; }}
   table.grid {{ border-collapse:collapse; width:100%; font-size:13px; }}
@@ -320,7 +351,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <section class="panel active" id="picks">
     <div class="stats" id="statsBar"></div>
     <div class="filters">
-      <label>Deporte<select id="fSport"></select></label>
+      <label>Deporte<div class="tagfilter" id="sportTags"></div></label>
       <label>Mercado<select id="fMarket"></select></label>
       <label>EV minimo<input id="fEv" type="number" step="0.01" value="0" style="width:90px"></label>
       <label>&nbsp;<span class="gen" id="count"></span></label>
@@ -337,6 +368,53 @@ const DATA = {data_json};
 const COLS = DATA.columns;
 let rows = DATA.picks.slice();
 let sortKey = "estimated_edge", sortDir = -1;
+let activeSports = new Set();
+
+// Per-sport toggle pills (multi-select). Labels/colors are best-effort; any
+// league not listed falls back to its uppercased id and a palette colour.
+const SPORT_LABELS = {{
+  mlb:"MLB", nba:"NBA", wnba:"WNBA", ncaab:"NCAAB", wncaab:"WNCAAB",
+  nfl:"NFL", ncaaf:"NCAAF", nhl:"NHL", epl:"EPL", laliga:"LaLiga",
+  seriea:"Serie A", bundesliga:"Bundesliga", ligue1:"Ligue 1", ucl:"UCL",
+  mls:"MLS", ligamx:"Liga MX", brasileirao:"Brasileirao", chile:"Chile",
+  uwcl:"UWCL"
+}};
+const SPORT_COLORS = {{
+  mlb:"#3fb950", nba:"#e3853a", wnba:"#d96bb0", ncaab:"#e3b341", wncaab:"#bc8cff",
+  nfl:"#58a6ff", ncaaf:"#79c0ff", nhl:"#39c5cf"
+}};
+const PALETTE = ["#3fb950","#58a6ff","#d29922","#bc8cff","#f85149","#39c5cf",
+                 "#e3853a","#7ee787","#ff7b72","#a5d6ff","#d96bb0","#e3b341"];
+
+function titleCase(s) {{
+  return s.split(" ").map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+}}
+function labelFor(lg) {{
+  if (SPORT_LABELS[lg]) return SPORT_LABELS[lg];
+  if (lg.indexOf("tennis_") === 0) {{
+    const p = lg.split("_");
+    return ((p[1] || "").toUpperCase() + " " + titleCase(p.slice(2).join(" "))).trim();
+  }}
+  return lg.toUpperCase();
+}}
+function colorFor(lg, i) {{ return SPORT_COLORS[lg] || PALETTE[i % PALETTE.length]; }}
+
+function buildSportTags() {{
+  const leagues = uniq("league");
+  const el = document.getElementById("sportTags");
+  el.innerHTML = leagues.map((lg, i) =>
+    `<span class="tag active" style="color:${{colorFor(lg, i)}}" `
+    + `data-sport="${{lg}}" onclick="toggleSport('${{lg}}')">${{labelFor(lg)}}</span>`
+  ).join("");
+}}
+function toggleSport(lg) {{
+  if (activeSports.has(lg)) activeSports.delete(lg); else activeSports.add(lg);
+  document.querySelectorAll(`[data-sport="${{lg}}"]`).forEach(e => {{
+    e.classList.toggle("active", activeSports.has(lg));
+    e.classList.toggle("inactive", !activeSports.has(lg));
+  }});
+  refresh();
+}}
 
 const fmt = {{
   txt: v => v == null ? "" : v,
@@ -357,11 +435,10 @@ function fillSelect(el, vals) {{
 }}
 
 function filtered() {{
-  const s = document.getElementById("fSport").value;
   const m = document.getElementById("fMarket").value;
   const ev = parseFloat(document.getElementById("fEv").value) || -Infinity;
   return DATA.picks.filter(r =>
-    (!s || r.league === s) && (!m || r.market === m) &&
+    activeSports.has(r.league) && (!m || r.market === m) &&
     ((r.estimated_edge == null ? -Infinity : r.estimated_edge) >= ev));
 }}
 
@@ -413,10 +490,76 @@ function refresh() {{
   renderTable(list);
 }}
 
+// Generic client-side sorting for the server-rendered tables (Auditoria,
+// Patrones, Historial). Numeric-aware: strips % and thousands separators.
+function cellSortVal(td) {{
+  const t = td.textContent.trim().replace("%", "").replace(/,/g, "");
+  const n = parseFloat(t);
+  return (t !== "" && !isNaN(n)) ? n : t.toLowerCase();
+}}
+function makeSortable(table) {{
+  const ths = [...table.querySelectorAll("thead th")];
+  ths.forEach((th, idx) => {{
+    th.style.cursor = "pointer";
+    th.addEventListener("click", () => {{
+      const dir = th.dataset.dir === "1" ? -1 : 1;
+      ths.forEach(o => {{ o.dataset.dir = ""; o.classList.remove("sorted"); }});
+      th.dataset.dir = dir === 1 ? "1" : "0";
+      th.classList.add("sorted");
+      const tb = table.querySelector("tbody");
+      [...tb.querySelectorAll("tr")].sort((a, b) => {{
+        const x = cellSortVal(a.cells[idx]), y = cellSortVal(b.cells[idx]);
+        if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+        return String(x).localeCompare(String(y)) * dir;
+      }}).forEach(r => tb.appendChild(r));
+    }});
+  }});
+}}
+function initSortable() {{
+  document.querySelectorAll("table.grid").forEach(t => {{
+    if (t.id !== "picksTable") makeSortable(t);   // picks has its own sorter
+  }});
+}}
+
+// Historial: filter rows by sport / market / date range (data-* on each row).
+function initHistory() {{
+  const table = document.getElementById("historyTable");
+  if (!table) return;
+  const rowsArr = [...table.querySelectorAll("tbody tr")];
+  const uniqOf = a => [...new Set(rowsArr.map(r => r.dataset[a]).filter(Boolean))].sort();
+  const sportSel = document.getElementById("hSport");
+  uniqOf("league").forEach(lg => sportSel.add(new Option(labelFor(lg), lg)));
+  const mktSel = document.getElementById("hMarket");
+  uniqOf("market").forEach(m => mktSel.add(new Option(m, m)));
+  ["hSport", "hMarket", "hFrom", "hTo"].forEach(id =>
+    document.getElementById(id).addEventListener("input", filterHistory));
+  filterHistory();
+}}
+function filterHistory() {{
+  const table = document.getElementById("historyTable");
+  const lg = document.getElementById("hSport").value;
+  const m = document.getElementById("hMarket").value;
+  const from = document.getElementById("hFrom").value;
+  const to = document.getElementById("hTo").value;
+  let shown = 0;
+  table.querySelectorAll("tbody tr").forEach(r => {{
+    const d = r.dataset;
+    const ok = (!lg || d.league === lg) && (!m || d.market === m) &&
+               (!from || d.fecha >= from) && (!to || d.fecha <= to);
+    r.style.display = ok ? "" : "none";
+    if (ok) shown++;
+  }});
+  const c = document.getElementById("hCount");
+  if (c) c.textContent = shown + " filas";
+}}
+
 function init() {{
-  fillSelect(document.getElementById("fSport"), uniq("league"));
+  initSortable();
+  initHistory();
+  activeSports = new Set(uniq("league"));   // all sports active by default
+  buildSportTags();
   fillSelect(document.getElementById("fMarket"), uniq("market"));
-  ["fSport", "fMarket", "fEv"].forEach(id =>
+  ["fMarket", "fEv"].forEach(id =>
     document.getElementById(id).addEventListener("input", refresh));
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => {{
     document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
