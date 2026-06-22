@@ -164,3 +164,9 @@ Format:
 - Reason: pedido del usuario para filtrar/ordenar como en `_archive/2/data/output/picks_report_all.html`, pero para todos los deportes. Las tablas de Auditoría/Patrones/Historial eran HTML estático; se añadió JS genérico en vez de re-renderizar server-side.
 - Alternatives: mantener el dropdown y añadir botones (rechazado: redundante, filtran el mismo campo); re-render server-side por filtro (rechazado: el reporte es un archivo estático, mejor client-side); embeber el historial como JSON y renderizar client-side como los picks (pospuesto: filtrar filas con data-* es más simple y suficiente).
 - Consequences: Picks filtra por pills + stats reactivos; tablas ordenables asc/desc (numeric-aware); Historial filtrable por 3 ejes con contador; initSortable/initHistory corren aunque no haya picks.
+
+- Date: 2026-06-22
+- Decision: Bajar `max_plausible_edge` de 0.15 a 0.075 (techo del proyecto 2) en configs/default.yaml. El default del dataclass se mantiene en 0.15 (no romper el test pinned ni cambiar el comportamiento de RiskConfig() directo).
+- Reason: validación OOS sobre odds capturadas con la penalización de EV activa: MLB (n=1174→652) ROI test +0.41%→+2.42% con profit +19→+51 y mitad de exposición; agregado +0.24%→+0.71%, exposición ~a la mitad. Marca los edges crudos sobreconfiados (>7.5%) que no se realizan. Reduce riesgo sin sacrificar ROI (en MLB lo mejora).
+- Alternatives: dejar 0.15 (rechazado: la evidencia OOS favorece 0.075); bajar también el default del dataclass (rechazado: rompería test_risk_config_has_plausibility_cap_default y acoplaría tests); bajar más agresivo (no probado).
+- Consequences: producción apuesta menos y con mitad de exposición; WNBA empeora en muestra chica (n=62, ruido); sigue ≈ break-even sobre proxy de cierre de un snapshot → control de riesgo, no rentabilidad. Reversible (una línea en YAML). Cierra el pendiente del techo 0.075.
