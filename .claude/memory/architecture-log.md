@@ -140,3 +140,11 @@ Format:
 **Cambio:** `ParkFactors` estima el entorno de carreras del parque (totales de local vs de visita del equipo local → aísla el parque), regresado/acotado/leakage-safe; BaseballAdapter lo actualiza en observe y escala AMBAS lambdas en _rates (mueve Over/Under, no el moneyline). Gated por `park_bound` (0.0 = no-op). Activado 0.10 para MLB + mlb/totals des-pausado.
 **Razón:** MLB totals era el mercado débil (OOS −17.1%, pausado). El Elo+scoring de equipo no captura el parque.
 **Validación:** OOS sobre odds capturadas (config de producción): totals −17.1%→+2.8%, MLB global +2.4%→+7.8%; held-out (≥2026-05-09) −15.9%→+3.8%/+7.0% → generaliza. 187 passed (+4). PRIMERA señal por deporte que bate al baseline (el abridor solo empataba, KI-006). Una temporada / snapshot proxy → no rentabilidad demostrada.
+
+## 2026-06-22 — Señal de rest/B2B basketball, construida y APAGADA por OOS
+
+**Tipo:** feature de modelo (señal por deporte, construida + validada + apagada por evidencia)
+**Módulos afectados:** src/sqp/models/rest.py (nuevo), src/sqp/sports/adapters.py (NormalMarginAdapter), tests/test_rest.py (nuevo)
+**Cambio:** `RestModel` ajusta el margen esperado del local por `points_per_day*(descanso_local − descanso_visita)` (acotado, leakage-safe, last-game-date por equipo); NormalMarginAdapter lo actualiza en observe y suma el ajuste a mu_margin en estimate (mueve moneyline/spread, no el total). Gated por `rest_points_per_day` (0.0 = no-op). NO activado en ninguna liga.
+**Razón:** apuntaba a WNBA spreads (OOS −11.3%, el mercado débil restante).
+**Validación:** OOS NEGATIVO — la ventana completa lucía bien (spreads −6%→+18%) pero no generaliza en held-out (rppd 1.0 empeora −38%→−48%; no-monótono) sobre muestras minúsculas (22-25 ALL, 7-10 held-out). Mismo patrón de ruido de WNBA. Queda como infra dormida (no-op) para re-validar con más cobertura OOS. 192 passed (+5). Producción byte-idéntica.

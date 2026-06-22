@@ -245,3 +245,11 @@ El usuario eligió "MLB park factors → totals" entre las señales por deporte 
 **Activado:** `ratings.yaml mlb.park_bound: 0.10` (elegido sobre 0.20 por menos sobre-corrección) + **mlb/totals DES-PAUSADO** en default.yaml (con totals pausado el factor no tenía efecto live, así que van juntos). Tests 187 passed (+4 test_park.py; test_default_config_*_mlb_totals actualizado al estado des-pausado + park activo).
 
 **Lectura:** PRIMERA señal específica por deporte que bate al baseline de forma robusta (el abridor solo empataba). Pero una sola temporada de odds capturadas, proxy de cierre de un snapshot, sin IC → no es rentabilidad demostrada. Vigilar el ROI realizado de totals en la auditoría tras unos días y re-pausar si vuelve a negativo. Próximas señales: basketball rest/B2B (WNBA, muestra chica) o portero NHL (cuando haya cobertura OOS).
+
+## 2026-06-22 — Segunda señal por deporte: rest/B2B basketball — RECHAZADA por OOS (OFF)
+
+Siguiente señal tras el park factor. Apuntaba al mercado débil que quedaba: WNBA spreads (OOS −11.3%). `src/sqp/models/rest.py::RestModel`: ajusta el margen esperado del local por `points_per_day*(descanso_local − descanso_visita)` (acotado, leakage-safe, last-game-date por equipo); enchufado en NormalMarginAdapter (NBA/WNBA/NFL), gateado por `rest_points_per_day` (default 0.0 = no-op).
+
+**Validación OOS (WNBA spreads, config de producción):** la ventana completa lucía fuerte (spreads −6%→+18% con rppd 0.5-2.0, n≈22-25) PERO **no generaliza** en el held-out (≥2026-05-29, n≈7-10): rppd=1.0 (el mejor en ALL) EMPEORA spreads −38%→−48%; relación no-monótona en el parámetro (1.5 peor que 1.0 y 2.0). Muestras minúsculas (mismo ruido de WNBA visto antes con el techo). **NO se activa** — disciplina OOS lo rechaza, igual que el abridor MLB. Código queda como infra dormida (no-op, testeada) para re-validar cuando NBA/WNBA acumulen odds. 192 passed (+5 test_rest.py). Commit `669edc2`, merge `6259cfb`.
+
+**Lección reforzada:** WNBA es demasiado chica para validar señales; HOY solo MLB tiene muestra OOS confiable. Resumen de las 2 señales por deporte: park factor MLB→totals ACTIVADO (generaliza); rest/B2B basketball OFF (no generaliza). La disciplina "activar solo lo que bate al baseline OOS" funcionó en ambos sentidos.
