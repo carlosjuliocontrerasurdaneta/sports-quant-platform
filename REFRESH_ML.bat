@@ -13,9 +13,20 @@ if not exist logs mkdir logs
 echo === SQP - REFRESH ML (%DATE% %TIME%) ===
 echo === SQP - REFRESH ML (%DATE% %TIME%) === >> logs\refresh_ml.log
 python scripts\build_features.py >> logs\refresh_ml.log 2>&1
+if errorlevel 1 goto :error
 python scripts\train_models.py --oos >> logs\refresh_ml.log 2>&1
+if errorlevel 1 goto :error
 python scripts\compare_models.py >> logs\refresh_ml.log 2>&1
+if errorlevel 1 goto :error
 python scripts\health_check.py >> logs\refresh_ml.log 2>&1
+if errorlevel 1 goto :error
 
 echo === DONE ===
 endlocal
+goto :eof
+
+:error
+echo.
+echo *** ERROR EN REFRESH ML. Revisa logs\refresh_ml.log. ***
+endlocal
+exit /b 1

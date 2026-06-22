@@ -66,17 +66,37 @@ def tennis_scores_map(predictions: pd.DataFrame, results: list[dict],
 
 
 def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
-    """Dedup against prior settled rows and append. Idempotent."""
+    """Dedup against prior settled rows and persist. Idempotent.
+
+    Reconciles columns across schema versions before writing. When the
+    BetCandidate schema gains a field (e.g. calibrated_probability), older
+    settled_*.csv files lack that column; a plain append (mode='a', no header)
+    would write the new rows in a different column order than the existing header
+    and silently misalign every value on re-read. So we take the union of the
+    prior and new columns (prior order first) and rewrite the file aligned, which
+    also self-heals any file written by a previous schema. Returns the NEWLY
+    settled rows (post-dedup)."""
     out = ROOT / "data" / "bets" / f"settled_{league}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
-    if not settled.empty and out.exists():
-        prior = pd.read_csv(out)
-        if set(DEDUP_KEY).issubset(prior.columns):
-            have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
-            keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
-            settled = settled[keep]
-    if not settled.empty:
-        settled.to_csv(out, mode="a", header=not out.exists(), index=False)
+    prior: pd.DataFrame | None = None
+    if out.exists():
+        try:
+            prior = pd.read_csv(out)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            prior = None  # empty / corrupt prior: treat as a fresh file
+    if not settled.empty and prior is not None and set(DEDUP_KEY).issubset(prior.columns):
+        have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
+        keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
+        settled = settled[keep]
+    if settled.empty:
+        return settled
+    if prior is not None:
+        cols = list(prior.columns) + [c for c in settled.columns if c not in prior.columns]
+        combined = pd.concat([prior.reindex(columns=cols), settled.reindex(columns=cols)],
+                             ignore_index=True)
+        combined.to_csv(out, index=False)
+    else:
+        settled.to_csv(out, index=False)
     return settled
 
 

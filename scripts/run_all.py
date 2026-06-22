@@ -25,7 +25,7 @@ from sqp.logging_config import get_logger
 from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
                                  leagues_within_budget, request_cost_per_league)
 from sqp.pipeline.cleanup import prune_stale_candidates
-from sqp.pipeline.daily import run_league
+from sqp.pipeline.daily import _finalize, run_league
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
 
 log = get_logger("sqp.run_all")
@@ -109,6 +109,13 @@ def main() -> int:
             run_league(lg, settings, mode=args.mode)
         except Exception as exc:
             log.error("[%s] fallo en el pipeline: %s", lg, exc)
+            # Clear this league's picks so the report never shows a PRIOR day's
+            # candidates as today's after a transient failure. _finalize archives
+            # the old files first, so any un-settled pick stays recoverable.
+            try:
+                _finalize(lg, [], [], args.mode)
+            except Exception as exc2:
+                log.error("[%s] no se pudo limpiar picks tras el fallo: %s", lg, exc2)
 
     pred_dir = (ROOT / "data" / "predictions" / ("demo" if args.mode == "demo" else ".")).resolve()
     if args.mode != "demo":

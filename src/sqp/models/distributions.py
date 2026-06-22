@@ -2,13 +2,11 @@
 
 - Normal margin/total: basketball, american football (continuous approx).
 - Poisson per-team scoring: hockey, soccer, baseball (count processes).
-- Skellam (difference of Poissons) for margins of count sports.
 
 Every function returns *estimated probabilities*.
 """
 from __future__ import annotations
-import math
-from scipy.stats import norm, poisson, skellam
+from scipy.stats import norm, poisson
 
 
 def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | None):
@@ -109,13 +107,6 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
         out["over"] = over / denom
         out["under"] = 1.0 - out["over"]
     return out
-
-
-def skellam_home_win(lam_home: float, lam_away: float) -> float:
-    """P(margin > 0) via Skellam; draws split 50/50 (2-way convenience)."""
-    p_win = 1.0 - skellam.cdf(0, lam_home, lam_away)
-    p_draw = skellam.pmf(0, lam_home, lam_away)
-    return p_win + 0.5 * p_draw
 
 
 def elo_diff_to_margin(elo_diff: float, points_per_elo: float) -> float:

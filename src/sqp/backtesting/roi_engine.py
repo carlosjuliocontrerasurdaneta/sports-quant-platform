@@ -9,6 +9,12 @@ No lookahead: ratings are built strictly walk-forward (each game estimated
 before it is observed), and only odds snapshots dated before commence are used.
 Coverage is limited to games for which historical odds were captured.
 
+This replays market-shrink + Kelly staking, but intentionally does NOT apply the
+live per-(league, market) calibrator: the pick history produced here is exactly
+what those calibrators are trained on, so calibrating within the backtest would
+be circular. Realized ROI here therefore reflects the uncalibrated (shrunk)
+probability; the live run additionally calibrates when CALIBRATION_ENABLED.
+
 Realized ROI is the field truth that calibration cannot provide; it is still a
 backtest (selection, regime change, single closing snapshot rather than true
 closing line) and never a profit guarantee.
