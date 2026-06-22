@@ -253,3 +253,16 @@ Siguiente señal tras el park factor. Apuntaba al mercado débil que quedaba: WN
 **Validación OOS (WNBA spreads, config de producción):** la ventana completa lucía fuerte (spreads −6%→+18% con rppd 0.5-2.0, n≈22-25) PERO **no generaliza** en el held-out (≥2026-05-29, n≈7-10): rppd=1.0 (el mejor en ALL) EMPEORA spreads −38%→−48%; relación no-monótona en el parámetro (1.5 peor que 1.0 y 2.0). Muestras minúsculas (mismo ruido de WNBA visto antes con el techo). **NO se activa** — disciplina OOS lo rechaza, igual que el abridor MLB. Código queda como infra dormida (no-op, testeada) para re-validar cuando NBA/WNBA acumulen odds. 192 passed (+5 test_rest.py). Commit `669edc2`, merge `6259cfb`.
 
 **Lección reforzada:** WNBA es demasiado chica para validar señales; HOY solo MLB tiene muestra OOS confiable. Resumen de las 2 señales por deporte: park factor MLB→totals ACTIVADO (generaliza); rest/B2B basketball OFF (no generaliza). La disciplina "activar solo lo que bate al baseline OOS" funcionó en ambos sentidos.
+
+## 2026-06-22 — Backfill histórico de odds: NBA/NHL OOS desbloqueado (con gasto autorizado)
+
+Para romper el cuello de botella ("solo MLB tiene OOS confiable") se usó el backfill de pago `scripts/backfill_historical_odds.py` (presupuestado, idempotente, 1 snapshot/liga/día, costo 10×mercados×regiones).
+
+**Test chico autorizado (NFL 14 días):** RESUELVE la duda de la memoria — **`/historical` SÍ funciona en el plan actual** (la memoria decía 401 en el gratuito). Costo real **30 créditos/llamada** (us, 3 mercados). PERO los 13 snapshots de NFL reciente capturaron juegos FUTUROS (commence 2026-09/10, aperturas que la API ya lista), cero solape con resultados (terminan 2026-02-08) → inútiles para OOS. Lección: `/historical` en una fecha devuelve lo que la API listaba ENTONCES; para deportes fuera de temporada eso son aperturas futuras. Esos 13 snapshots son inertes (el matching usa el último snapshot antes del commence = el de cierre forward, no la apertura de junio).
+
+**Backfill autorizado NBA+NHL ~90 días (playoffs, EN temporada con resultados):** 177 snapshots, 57.240 líneas, **5.310 créditos** gastados. Cuota restante: **2.842** (el plan tenía ~8.500 efectivos, no 20k). Verificación OOS (config de producción):
+- **NHL: 266 eventos / 260 matched / n=188 bets** — PRIMERA muestra OOS usable fuera de MLB. ROI −4.5%; mercado débil totals −10.0% (h2h −7.1%, spreads +4.6%).
+- **NBA: 240 / 228 / n=67** (marginal, ventana solo-playoffs). ROI −25.6%; spreads −45.7% (n=38).
+- El modelo actual PIERDE en ambas (régimen de playoffs, sin señal específica) → NO operar NBA/NHL; la cobertura es para VALIDAR señales.
+
+**Estado:** cuota baja (2.842). NFL OOS sigue bloqueado: necesita la ventana 2025 (Sept 2025–Feb 2026, 130-290 días atrás) y el script captura "más reciente primero" → requiere mejora `--start/--end` (sin gasto, pospuesto). Próximo natural: probar una señal de NHL (totals −10% candidato a factor de entorno tipo park, o portero) contra los 188 bets.
