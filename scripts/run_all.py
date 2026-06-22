@@ -96,6 +96,18 @@ def main() -> int:
     args = ap.parse_args()
 
     settings = Settings.load()
+    # Size today's stakes on the real running balance (initial + realized PnL +
+    # manual adjustments) when enabled. Live only; demo keeps the static initial.
+    # Settlement runs before the daily run (SETTLE 09:00 -> RUN 10:00), so the
+    # ledger already reflects yesterday's graded bets.
+    if args.mode != "demo" and settings.bankroll_dynamic:
+        from sqp.risk.bankroll import BankrollLedger
+        bal = BankrollLedger(root=ROOT, initial=settings.bankroll).current_balance()
+        log.info("Banca dinámica: inicial %.2f -> balance actual %.2f (PnL realizado + ajustes).",
+                 settings.bankroll, bal)
+        if bal <= 0:
+            log.warning("Balance de banca <= 0 (%.2f): no se dimensionará ninguna apuesta.", bal)
+        settings.bankroll = bal
     supported = _supported_leagues()
     if args.mode == "demo":
         selected = [lg for lg in DEFAULT_PRIORITY if lg in supported]

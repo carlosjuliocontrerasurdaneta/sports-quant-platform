@@ -59,6 +59,15 @@ class Settings:
     regions: str = field(default_factory=lambda: os.getenv("ODDS_API_REGIONS", "us,eu"))
     odds_format: str = field(default_factory=lambda: os.getenv("ODDS_API_ODDS_FORMAT", "decimal"))
     bankroll: float = field(default_factory=lambda: float(os.getenv("BANKROLL", "1000")))
+    # When true, the live daily run sizes stakes on the running balance from the
+    # bankroll ledger (initial + realized PnL + manual adjustments) instead of the
+    # fixed `bankroll` above. OFF by default -> staking is byte-identical to the
+    # static behavior. Only the live entrypoint (scripts/run_all.py) applies it;
+    # demo and direct run_league calls keep the static initial. See
+    # sqp.risk.bankroll.
+    bankroll_dynamic: bool = field(
+        default_factory=lambda: os.getenv("BANKROLL_DYNAMIC", "").lower()
+        in ("1", "true", "yes"))
     # Only estimate events commencing within this many days. The Odds API posts
     # next-season opener lines months early (e.g. NFL Week 1 in June); without a
     # horizon those flood the picks with games that won't play for weeks.
@@ -112,4 +121,9 @@ class Settings:
                 s.calibration_enabled = bool(cal["enabled"])
             if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
                 s.calibration_method = str(cal["method"])
+            bk = cfg.get("bankroll") or {}
+            if not os.getenv("BANKROLL") and "initial" in bk:
+                s.bankroll = float(bk["initial"])
+            if "BANKROLL_DYNAMIC" not in os.environ and "dynamic" in bk:
+                s.bankroll_dynamic = bool(bk["dynamic"])
         return s
