@@ -6,6 +6,19 @@ risk:
   max_daily_exposure_pct: 0.10
   max_plausible_edge: 0.15   # edges above this are flagged as probable miscalibration, not staked
   market_shrink: 0.5         # blend model prob toward no-vig market: p=(1-s)*model+s*market
+  # EV uncertainty penalty (ported from project 2; see sqp.markets.edge). Deflates
+  # the edge by the model-vs-market gap and folds it into the staked probability.
+  # OFF by default (coefficients absent -> 0). Recommended values to ACTIVATE only
+  # after a walk-forward OOS (VALIDATE_OOS.bat) shows it improves realized ROI:
+  #   uncertainty_penalty: 0.35
+  #   anomaly_edge_gap: 0.06
+  #   anomaly_extra_penalty: 0.02
+  #   low_book_penalty: 0.015
+  #   min_books_for_consensus: 2
+  # Caveat (2026-06-21): on the 93 settled bets so far the penalty compressed the
+  # edge distribution as intended but did NOT improve realized ROI (sample too
+  # small / selection-biased). Do not enable until OOS evidence supports it. Also
+  # consider lowering max_plausible_edge to 0.075 (project-2 ceiling) at that point.
 odds:
   regions: "us,eu"
   markets: "h2h,spreads,totals"

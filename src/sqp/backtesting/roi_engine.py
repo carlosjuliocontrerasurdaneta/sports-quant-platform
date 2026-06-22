@@ -27,8 +27,9 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.domain.models import Event, EventOdds, MarketLine
-from sqp.pipeline.daily import (_consensus_lines, _novig_probs, _pick_main_lines,
-                                _spread_novig)
+from sqp.markets.edge import adjusted_edge
+from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
+                                _pick_main_lines, _spread_novig)
 from sqp.risk.kelly import edge, kelly_fraction_stake
 from sqp.settlement.settle import settle_candidates
 from sqp.sports.registry import get_adapter
@@ -157,6 +158,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                 spread, total = _pick_main_lines(eo)
                 est = adapter.estimate(ev, spread, total)
                 cons = _consensus_lines(eo)
+                cons_n = _consensus_counts(eo)
                 # Map final score to the odds' home/away orientation.
                 if normalize_key(r["home"]) == normalize_key(eo.event.home):
                     hs, as_ = int(r["home_score"]), int(r["away_score"])
@@ -174,8 +176,17 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                     s = risk.market_shrink
                     p_used = (1.0 - s) * p_model + s * fair if (fair is not None and s > 0) else p_model
                     e = edge(p_used, price)
+                    # Same EV penalty as the live pipeline (no-op when off), so the
+                    # realized-ROI backtest replays the actual staking. Calibration
+                    # is still excluded here by design (see module docstring).
+                    adj = adjusted_edge(p_used, price, fair, cons_n.get(key),
+                                        uncertainty_penalty=risk.uncertainty_penalty,
+                                        anomaly_edge_gap=risk.anomaly_edge_gap,
+                                        anomaly_extra_penalty=risk.anomaly_extra_penalty,
+                                        low_book_penalty=risk.low_book_penalty,
+                                        min_books_for_consensus=risk.min_books_for_consensus)
                     stake, _pct = kelly_fraction_stake(
-                        p_used, price, bankroll, risk.kelly_fraction,
+                        adj.effective_probability, price, bankroll, risk.kelly_fraction,
                         risk.max_stake_pct, risk.min_edge)
                     if stake <= 0 or e > risk.max_plausible_edge:
                         continue  # below edge floor or flagged as implausible: not bet
