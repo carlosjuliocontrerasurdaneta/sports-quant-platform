@@ -100,8 +100,8 @@ Format:
 - Status: RESUELTO (2026-06-22, commits `baa5f78` + `0af8106`). `BankrollLedger` (src/sqp/risk/bankroll.py) + flag `bankroll_dynamic` + CLI `scripts/bankroll_status.py`. Balance verificado por CLI (937.28 = 1000 − 62.72 sobre 93 apuestas, consistente con la auditoría) y ACTIVADO en configs/default.yaml (`bankroll: {initial:1000, dynamic:true}`). El run live dimensiona sobre la banca corriente; demo/tests usan el inicial. Conciliación final contra el saldo real de la casa de apuestas queda al usuario (ajustes en data/bets/bankroll_adjustments.csv).
 
 - ID: KI-014
-- Severity: Baja (cobertura OOS de tenis)
-- Description: En el OOS de tenis, WTA Bad Homburg muestra 0 eventos emparejados pese a tener 6 odds capturadas y resultados WTA cargados (8503). Probable mismatch de nombres de jugadoras entre The Odds API y ESPN, o torneo aún en curso al capturar.
-- Affected files: src/sqp/backtesting/roi_engine.py (_match_result), src/sqp/sports/team_names.py (normalize_key), datos data/odds + data/historical/results_wta.csv.
-- Proposed fix: comparar nombres normalizados de las 6 odds vs los resultados WTA del rango; si es grafía, extender el normalizador/alias de jugadoras; si es timing, re-capturar tras el torneo.
-- Status: Abierto (2026-06-22). No bloquea el resto del OOS de tenis (Halle/Queen's/German Open sí emparejan). Menor.
+- Severity: Baja (cobertura OOS de tenis) — NO es defecto
+- Description: En el OOS de tenis, WTA Bad Homburg mostraba 0 eventos emparejados. INVESTIGADO (2026-06-22): NO es mismatch de nombres. Los 6 partidos están fechados 2026-06-21/22 y los resultados ESPN cargados terminan en 2026-06-21 (los de hoy aún no completados/publicados; un refresh trajo 0 filas nuevas). Las 4 jugadoras verificadas normalizan bien y existen en resultados (Eala 73, Mertens 46, Tauson 44, Shnaider 51 filas); las parejas presentes son enfrentamientos PREVIOS en otros torneos (Eala/Mertens 04-24, Li/Alexandrova 2025), correctamente descartados por la ventana de ±1 día (evita falsos positivos cross-torneo).
+- Affected files: ninguno (comportamiento esperado). Diagnóstico sobre data/odds + data/historical/results_wta.csv.
+- Proposed fix: no requiere cambio de código. Re-correr scripts/backfill_tennis_results.py tras completarse el torneo y los partidos emparejarán. Mismo caso de calendario que NFL/Wimbledon (odds de partidos aún no jugados).
+- Status: CERRADO / no-bug (2026-06-22). El matching de tenis funciona correctamente.
