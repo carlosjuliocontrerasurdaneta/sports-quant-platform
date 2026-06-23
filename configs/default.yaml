@@ -45,7 +45,7 @@ simulation:
 # out-of-sample ECE improves. The retraining target stays uncalibrated.
 calibration:
   enabled: true
-  method: isotonic   # isotonic | beta
+  method: auto   # isotonic | beta | auto (auto = per-(league,market) best, from calibration_methods.json)
 # Markets suspended from staking (still estimated; picks recorded flagged
 # "market_paused", stake 0). MLB totals was paused 2026-06-14 (realized ROI
 # negative vs positive estimated edge); UN-PAUSED 2026-06-22 after the ballpark
