@@ -50,21 +50,24 @@ def main() -> int:
     print(f"grupos: {len(results)} | entrenados: {len(trained)} | "
           f"omitidos (<{args.min_n} graduados): {len(skipped)}")
     if trained:
-        print("\nliga       mercado   n_val   ECE_antes  ECE_despues  delta    iso")
+        print("\nliga       mercado   n_val   ECE_antes  ECE_mejor  delta    metodo")
         for r in sorted(trained, key=lambda x: (x["league"], x["market"])):
-            delta = r["raw_val_ece"] - r["cal_val_ece"]
-            mark = "MANTENIDO" if r.get("iso_persisted") else "DESCARTADO"
+            best = r.get("best_method")
+            best_ece = ({"isotonic": r["cal_val_ece"], "beta": r["beta_val_ece"]}
+                        .get(best, r["raw_val_ece"]))
+            delta = r["raw_val_ece"] - best_ece
+            label = best if best else "NINGUNO (no-op)"
             print(f"{r['league']:<10} {r['market']:<8} {r['n_val']:>5}   "
-                  f"{r['raw_val_ece']:>8.4f}  {r['cal_val_ece']:>10.4f}  "
-                  f"{delta:>+7.4f}  {mark}")
+                  f"{r['raw_val_ece']:>8.4f}  {best_ece:>9.4f}  "
+                  f"{delta:>+7.4f}  {label}")
     if skipped:
         small = ", ".join(f"{r['league']}/{r['market']}({r['n']})" for r in skipped)
         print(f"\nomitidos (<{args.min_n} graduados, sin modelo): {small}")
 
-    dropped = [r for r in trained if not r.get("iso_persisted")]
+    dropped = [r for r in trained if not r.get("best_method")]
     if dropped:
         names = ", ".join(f"{r['league']}/{r['market']}" for r in dropped)
-        print(f"\nAuto-descartados (la calibracion EMPEORABA el ECE OOS, quedan "
+        print(f"\nAuto-descartados (ningun metodo mejoraba el ECE OOS, quedan "
               f"sin calibrar / no-op): {names}")
     print("\nLa calibracion produce probabilidades estimadas calibradas, no "
           "certezas ni garantia de ganancia. Actívala solo si el ECE OOS mejora.")

@@ -87,6 +87,61 @@ def test_train_keeps_improving_model_and_reports_flags(tmp_path, monkeypatch):
     assert (tmp_path / "models" / "unit_keep_calibration_iso.joblib").exists()
 
 
+def test_method_registry_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    assert cal._load_method_registry() == {}          # absent -> empty
+    cal._set_best_method("mlb_spreads", "beta")
+    cal._set_best_method("nhl_h2h", "isotonic")
+    assert cal._load_method_registry() == {"mlb_spreads": "beta",
+                                           "nhl_h2h": "isotonic"}
+    cal._set_best_method("mlb_spreads", None)          # clear -> group drops out
+    assert cal._load_method_registry() == {"nhl_h2h": "isotonic"}
+
+
+def test_train_records_best_method_and_auto_matches_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    res = cal.train_calibration(_miscalibrated(), sport="unit_auto")
+
+    best = res["best_method"]
+    assert best in ("isotonic", "beta")               # a winner was chosen
+    assert cal._load_method_registry()["unit_auto"] == best
+    # method="auto" must resolve to exactly the recorded method's model.
+    probs = np.array([0.3, 0.6, 0.9])
+    assert np.allclose(cal.apply_calibration(probs, "unit_auto", "auto"),
+                       cal.apply_calibration(probs, "unit_auto", best))
+
+
+def test_apply_auto_noop_when_unregistered(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    probs = np.array([0.2, 0.5, 0.8])
+    out = cal.apply_calibration(probs, sport="never_trained", method="auto")
+    assert np.allclose(out, probs)                     # no registry entry -> no-op
+
+
+def test_train_drops_worsening_model_clears_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    cal._set_best_method("unit_noauto", "beta")        # stale entry from a prior fit
+    # Force raw to look better than both calibrators so neither persists. raw and
+    # beta both call expected_calibration_error, so stub it statefully: 1st call
+    # (raw) low, 2nd call (beta) high; iso's ECE comes from calibration_report.
+    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0})
+    calls = {"n": 0}
+
+    def fake_ece(*a, **k):
+        calls["n"] += 1
+        return 0.0 if calls["n"] == 1 else 1.0
+
+    monkeypatch.setattr(cal, "expected_calibration_error", fake_ece)
+    res = cal.train_calibration(_miscalibrated(), sport="unit_noauto")
+    assert res["iso_persisted"] is False and res["beta_persisted"] is False
+    assert res["best_method"] is None                  # nothing helped
+    assert "unit_noauto" not in cal._load_method_registry()   # stale entry cleared
+    # "auto" therefore falls back to a no-op for this group.
+    assert cal.apply_calibration(np.array([0.5]), "unit_noauto", "auto")[0] == 0.5
+
+
 def test_train_drops_worsening_model_and_removes_stale(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     cal._load_calibrator.cache_clear()

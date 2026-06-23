@@ -14,6 +14,7 @@ into certainties.
 """
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 
 import joblib
@@ -53,6 +54,38 @@ def _persist_or_remove(model, path, keep: bool) -> bool:
         return True
     path.unlink(missing_ok=True)
     return False
+
+
+def _method_registry_path():
+    return MODELS_DIR / "calibration_methods.json"
+
+
+def _load_method_registry() -> dict:
+    """Per-(league, market) winning calibrator method (the JSON backing
+    ``method='auto'``). Returns {} when absent or unreadable, so a missing /
+    corrupt registry degrades to a no-op rather than an error."""
+    path = _method_registry_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _set_best_method(key: str, method: str | None) -> None:
+    """Record (or clear with ``None``) the best apply-time method for ``key``.
+    Self-healing like the model files: a retrain whose calibrators stop helping
+    drops the group from the registry, so ``method='auto'`` falls back to a
+    no-op for it. Read-modify-write a single JSON; training is sequential."""
+    reg = _load_method_registry()
+    if method is None:
+        reg.pop(key, None)
+    else:
+        reg[key] = method
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    _method_registry_path().write_text(
+        json.dumps(reg, indent=2, sort_keys=True), encoding="utf-8")
 
 
 class BetaCalibrator:
@@ -123,6 +156,18 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     beta_persisted = _persist_or_remove(beta, beta_path, beta_val_ece <= raw_val_ece)
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths
 
+    # Per-group best method for method="auto": among the calibrators that beat
+    # the raw OOS ECE, record the lowest-ECE one so the live pipeline picks per
+    # (league, market) instead of a single global method. None when neither
+    # helps -> the group stays a no-op under "auto".
+    ranked: list[tuple[str, float]] = []
+    if iso_persisted:
+        ranked.append(("isotonic", val_metrics["ece"]))
+    if beta_persisted:
+        ranked.append(("beta", beta_val_ece))
+    best_method = min(ranked, key=lambda r: r[1])[0] if ranked else None
+    _set_best_method(sport, best_method)
+
     log.info("[%s] Calibration fit on %d rows, val %d | raw ECE %.4f -> iso %.4f "
              "(%s) / beta %.4f (%s)", sport, len(train_df), len(val_df), raw_val_ece,
              val_metrics["ece"], "kept" if iso_persisted else "dropped",
@@ -138,6 +183,7 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
         "iso_persisted": iso_persisted,
         "beta_persisted": beta_persisted,
         "persisted": iso_persisted or beta_persisted,
+        "best_method": best_method,
     }
 
 
@@ -172,8 +218,10 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dic
             r = train_calibration(df, prob_col="probability", outcome_col="won",
                                   sport=calibration_key(str(league), str(market)))
             rec.update({"trained": True, "raw_val_ece": r["raw_val_ece"],
-                        "cal_val_ece": r["val_metrics"]["ece"], "n_val": r["n_val"],
+                        "cal_val_ece": r["val_metrics"]["ece"],
+                        "beta_val_ece": r["beta_val_ece"], "n_val": r["n_val"],
                         "iso_persisted": r["iso_persisted"],
+                        "best_method": r["best_method"],
                         "persisted": r["persisted"]})
         except ValueError as exc:
             rec["error"] = str(exc)
@@ -183,9 +231,19 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dic
 
 def apply_calibration(probs: np.ndarray, sport: str = "mlb",
                       method: str = "isotonic") -> np.ndarray:
-    """Apply a previously trained calibrator for ``sport``. If no model exists,
-    returns the input probabilities unchanged (safe no-op)."""
-    name = "iso" if method == "isotonic" else "beta"
+    """Apply a previously trained calibrator for ``sport``.
+
+    ``method='auto'`` resolves the per-(league, market) winner recorded at
+    training time (``calibration_methods.json``); an unregistered group, an
+    unknown method, or a missing model all fall back to returning the input
+    probabilities unchanged (safe no-op)."""
+    if method == "auto":
+        method = _load_method_registry().get(sport)
+        if method is None:
+            return probs
+    name = {"isotonic": "iso", "beta": "beta"}.get(method)
+    if name is None:
+        return probs
     path = _model_path(sport, name)
     if not path.exists():
         return probs
