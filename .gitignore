@@ -21,3 +21,4 @@ data/feature_store/
 data/features/
 Second-Brain/
 data/output/
+.claude/tools/
