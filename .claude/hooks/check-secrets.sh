@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # PostToolUse (Edit|Write): detecta secretos hardcodeados SOLO en el archivo editado.
 # exit 2 => Claude recibe el aviso por stderr y debe corregirlo.
+# file_path se lee del JSON de stdin con python (sin dependencia de jq).
 set -uo pipefail
 input=$(cat)
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+file=$(printf '%s' "$input" | python -c "import sys,json; print((json.load(sys.stdin).get('tool_input') or {}).get('file_path',''))" 2>/dev/null)
 [ -z "${file:-}" ] && exit 0
 [ -f "$file" ] || exit 0
 case "$file" in
