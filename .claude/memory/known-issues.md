@@ -105,3 +105,17 @@ Format:
 - Affected files: ninguno (comportamiento esperado). Diagnóstico sobre data/odds + data/historical/results_wta.csv.
 - Proposed fix: no requiere cambio de código. Re-correr scripts/backfill_tennis_results.py tras completarse el torneo y los partidos emparejarán. Mismo caso de calendario que NFL/Wimbledon (odds de partidos aún no jugados).
 - Status: CERRADO / no-bug (2026-06-22). El matching de tenis funciona correctamente.
+
+- ID: KI-015
+- Severity: Media (higiene de repo / entorno)
+- Description: Las skills de terceros vendadas `.claude/skills/markitdown-main` (163 archivos) y `.claude/skills/superpowers-main` (172) — 335 trackeados, ~70% de `.claude` — desaparecen físicamente del disco de forma intermitente (el repo vive bajo OneDrive, que probablemente las deshidrata/online-only). `git status` las muestra como borradas; un `git restore` no persiste (vuelven a desaparecer). No son código del producto SQP (incluyen Dockerfiles, JS, shell, binarios de test).
+- Affected files: `.claude/skills/markitdown-main/**`, `.claude/skills/superpowers-main/**`.
+- Proposed fix: sacarlas del repo del producto → mover a `~/.claude/skills/` (nivel usuario, fuera de OneDrive) o a un submódulo/git-ignore; documentar la decisión. NO borrar sin confirmación del usuario (las restauró explícitamente el 2026-06-23). Mientras tanto: nunca incluirlas en commits (usar `git add` por ruta específica).
+- Status: ABIERTO (2026-06-23, auditoría). Diferido A2: requiere decisión del usuario. Tag: onedrive-vendored-skills.
+
+- ID: KI-016
+- Severity: Baja (operacional)
+- Description: Entrypoints diarios paralelos: `scripts/run_daily.py` (manual, --sports explícito, sin guard/calibración/banca/reporte) vs `scripts/run_all.py` (producción, vía RUN_DIARIO_ALL.bat). Dockerfile/Makefile usan run_daily para demo. README presentaba run_daily como EL entrypoint (corregido 2026-06-23).
+- Affected files: scripts/run_daily.py, scripts/run_all.py, Dockerfile, Makefile.
+- Proposed fix: docstrings + README ya aclaran (commit fa86c0c). Pendiente opcional: decidir si run_daily se deprecia o se mantiene como herramienta manual/demo.
+- Status: MITIGADO (2026-06-23, docs). Decisión de consolidación pendiente (M1).
