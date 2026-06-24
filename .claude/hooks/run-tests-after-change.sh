@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # PostToolUse (Edit|Write): corre pytest SOLO si se editó código en src/ o tests/.
 # exit 2 => devuelve el fallo a Claude para que lo corrija.
+# file_path se lee del JSON de stdin con python (sin dependencia de jq).
+# NOTA: corre la suite completa; si crece el tiempo, considerar acotar a los
+# tests afectados o mover este hook al evento Stop.
 set -uo pipefail
 input=$(cat)
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+file=$(printf '%s' "$input" | python -c "import sys,json; print((json.load(sys.stdin).get('tool_input') or {}).get('file_path',''))" 2>/dev/null)
 [ -z "${file:-}" ] && exit 0
 case "$file" in
   *src/*.py|*tests/*.py) ;;

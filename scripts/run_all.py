@@ -59,10 +59,17 @@ def _select_live(settings: Settings, supported: dict[str, str],
     active = []
     for lg, sk in supported.items():
         try:
-            if client.is_sport_active(sk):
-                active.append(lg)
+            in_season = client.is_sport_active(sk)
         except Exception as exc:  # status check is best-effort
-            log.warning("status check failed for %s: %s", lg, exc)
+            # Mirror run_league (daily.py:396): a transient /sports failure must
+            # NOT silently drop the league for the whole run. Assume active and
+            # let run_league/_finalize decide; the budget guard still ranks it by
+            # priority. (False/None from a SUCCESSFUL check still exclude: out of
+            # season / unknown key.)
+            log.warning("status check failed for %s; assuming active: %s", lg, exc)
+            in_season = True
+        if in_season:
+            active.append(lg)
     active += _active_tennis(client)  # dynamic tennis tournaments, settled via ESPN
     cost = request_cost_per_league(MARKETS, settings.regions)
     days_left = days_left_in_month(date.today())
