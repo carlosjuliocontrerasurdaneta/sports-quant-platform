@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 from sqp.backtesting.engine import walk_forward_backtest
-from sqp.audit.report import calibration_report
+from sqp.audit.report import write_calibration_report
 from sqp.pipeline.daily import _league_meta
 from sqp.providers.synthetic import SyntheticProvider
 
@@ -30,7 +30,7 @@ def main():
             raise SystemExit("Live backtest requires --results-csv (no data is invented).")
         results = pd.read_csv(args.results_csv).to_dict("records")
     res = walk_forward_backtest(results, args.league, meta["family"], meta.get("league_params"))
-    path = calibration_report(res)
+    path = write_calibration_report(res)
     print(f"Brier={res['brier_score']:.4f}  LogLoss={res['log_loss']:.4f}  ECE={res['ece']:.4f}")
     print(f"Report: {path}")
 

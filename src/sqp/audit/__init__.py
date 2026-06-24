@@ -1,1 +1,1 @@
-from .report import calibration_report  # noqa: F401
+from .report import write_calibration_report  # noqa: F401

@@ -10,7 +10,7 @@ DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
 
 
-def calibration_report(backtest_result: dict) -> str:
+def write_calibration_report(backtest_result: dict) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     outdir = ROOT / "data" / "processed"
     outdir.mkdir(parents=True, exist_ok=True)
