@@ -22,3 +22,5 @@ data/features/
 Second-Brain/
 data/output/
 .claude/tools/
+.claude/settings.local.json
+*.backup-*
