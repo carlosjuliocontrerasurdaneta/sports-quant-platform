@@ -24,3 +24,4 @@ data/output/
 .claude/tools/
 .claude/settings.local.json
 *.backup-*
+graphify-out/
