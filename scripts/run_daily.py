@@ -1,5 +1,12 @@
 #!/usr/bin/env python
-"""Daily run: estimate probabilities + edge candidates for the given leagues.
+"""Manual / demo run: estimate probabilities + edge candidates for an EXPLICIT
+list of leagues, printed as a table.
+
+NOT the production entrypoint. Production is scripts/run_all.py (orchestrated by
+RUN_DIARIO_ALL.bat): it auto-detects in-season leagues, applies the quota budget
+guard, calibration, EV penalty and dynamic bankroll, and writes the consolidated
+report. This script does none of that -- use it for quick manual checks and the
+synthetic demo only.
 
 Examples:
   python scripts/run_daily.py --sports mlb nba nfl nhl --mode demo
