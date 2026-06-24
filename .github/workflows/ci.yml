@@ -16,7 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        # 3.13 added to narrow the gap with the dev runtime (3.14); pyproject
+        # requires >=3.10. Bump to 3.14 here once setup-python ships it stably.
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
@@ -36,3 +38,11 @@ jobs:
       - name: Pytest
         # pythonpath=["src"] is set in pyproject, so no PYTHONPATH needed.
         run: pytest -q
+
+      # Report-only for now (continue-on-error) so a new advisory surfaces in the
+      # logs without blocking unrelated PRs. Flip to blocking once triaged.
+      - name: Dependency vulnerability audit (pip-audit)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit
