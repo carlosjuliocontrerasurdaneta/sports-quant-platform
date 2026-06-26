@@ -45,13 +45,9 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     daily exposure cap, so it must still count as actionable. Filtering on
     `flags == ""` (the prior behavior) wrongly hid every scaled pick, which is
     exactly the whole league on a day the exposure cap triggers."""
-    if df.empty or "stake" not in df.columns:
-        return df
     d = df.copy()
     actionable = d[d["stake"] > 0]
-    if "estimated_edge" in actionable.columns:
-        return actionable.sort_values("estimated_edge", ascending=False)
-    return actionable
+    return actionable.sort_values("estimated_edge", ascending=False)
 
 
 def load_all_candidates(predictions_dir: Path) -> pd.DataFrame:
@@ -212,7 +208,8 @@ def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
         gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
         fecha = gd.where(gd.astype(str).str.len() >= 10, gen)
         frames.append(_normalize_history(closed, fecha=fecha, is_closed=True))
-    open_df = rank_candidates(load_all_candidates(predictions_dir))
+    cands = load_all_candidates(predictions_dir)
+    open_df = rank_candidates(cands) if not cands.empty else cands
     if not open_df.empty:
         st = open_df["start_time"] if "start_time" in open_df.columns else pd.Series("", index=open_df.index)
         frames.append(_normalize_history(open_df, fecha=st, is_closed=False))

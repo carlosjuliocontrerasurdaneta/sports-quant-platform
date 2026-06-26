@@ -138,6 +138,7 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     # each history row carries the filter keys
     assert 'data-fecha="2026-06-13"' in text
     assert 'data-league="nba"' in text
+    assert 'data-home=' in text
     # generic client-side sorting wired for the server-rendered grids
     assert "makeSortable(" in text and "initSortable()" in text
 
@@ -150,6 +151,7 @@ def test_dashboard_empty_is_safe(tmp_path):
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
     assert "Sin candidatos accionables" in text
     assert "Sin apuestas liquidadas" in text
+    assert "Sin historial de picks." in text
 
 
 def test_dashboard_writes_stable_latest_copy(tmp_path):
