@@ -45,9 +45,13 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     daily exposure cap, so it must still count as actionable. Filtering on
     `flags == ""` (the prior behavior) wrongly hid every scaled pick, which is
     exactly the whole league on a day the exposure cap triggers."""
+    if df.empty or "stake" not in df.columns:
+        return df
     d = df.copy()
     actionable = d[d["stake"] > 0]
-    return actionable.sort_values("estimated_edge", ascending=False)
+    if "estimated_edge" in actionable.columns:
+        return actionable.sort_values("estimated_edge", ascending=False)
+    return actionable
 
 
 def load_all_candidates(predictions_dir: Path) -> pd.DataFrame:

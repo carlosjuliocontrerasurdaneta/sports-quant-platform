@@ -183,28 +183,41 @@ def _emph(text: str) -> str:
 
 _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("fecha", "Fecha", True), ("league", "Deporte", True),
-    ("market", "Mercado", True), ("selection", "Seleccion", True),
-    ("line", "Linea", False), ("price_decimal", "Cuota", False),
+    ("market", "Mercado", True), ("line", "Linea", False),
+    ("home", "Home", True), ("away", "Away", True),
+    ("selection", "Seleccion", True), ("price_decimal", "Cuota", False),
     ("stake", "Stake", False), ("result", "Resultado", True),
-    ("pnl", "PnL", False), ("estimated_edge", "Edge est.", False),
-    ("estimated_probability", "Prob. est.", False),
+    ("pnl", "PnL", False),
 )
 
 
-def _history_section(bets_dir: Path) -> str:
-    """Chronological graded-bet log with client-side filters (fecha range / sport /
-    market) and sortable columns. Each row carries data-* keys for the filters."""
-    df = load_all_settled(bets_dir)
+def _history_section(predictions_dir: Path, bets_dir: Path,
+                     today: str | None = None) -> str:
+    """Unified history: closed bets + open actionable picks, with filters
+    (sport/line/home/away/date) and totals cards (picks, closed, wins, losses)
+    recomputed client-side over the visible rows. Past picks that never settled
+    are hidden (not deleted)."""
+    from datetime import date
+    from sqp.audit.report import load_history, visible_history
+    today = today or date.today().isoformat()
+    df = visible_history(load_history(predictions_dir, bets_dir), today)
     if df.empty:
-        return '<p class="empty">Sin historial de apuestas liquidadas.</p>'
-    d = df.copy()
-    d["fecha"] = d.get("settled_at", "").astype(str).str[:10]
-    d = d.sort_values("fecha", ascending=False)
-    cols = [(k, hdr, txt) for k, hdr, txt in _HISTORY_COLUMNS if k in d.columns]
+        return '<p class="empty">Sin historial de picks.</p>'
+    df = df.sort_values("fecha", ascending=False)
+    cols = [(k, hdr, txt) for k, hdr, txt in _HISTORY_COLUMNS if k in df.columns]
+    cards = (
+        '<div class="cards" id="historyCards">'
+        '<div class="card"><span class="label">Picks</span><span class="value" id="hPicks">0</span></div>'
+        '<div class="card"><span class="label">Picks cerrados</span><span class="value" id="hClosed">0</span></div>'
+        '<div class="card"><span class="label">Wins</span><span class="value pos" id="hWins">0</span></div>'
+        '<div class="card"><span class="label">Losses</span><span class="value neg" id="hLosses">0</span></div>'
+        '</div>')
     controls = (
         '<div class="filters" id="historyFilters">'
         '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
-        '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
+        '<label>Linea<select id="hLine"><option value="">(todas)</option></select></label>'
+        '<label>Home<select id="hHome"><option value="">(todos)</option></select></label>'
+        '<label>Away<select id="hAway"><option value="">(todos)</option></select></label>'
         '<label>Desde<input type="date" id="hFrom"></label>'
         '<label>Hasta<input type="date" id="hTo"></label>'
         '<label>&nbsp;<span class="gen" id="hCount"></span></label>'
@@ -212,17 +225,20 @@ def _history_section(bets_dir: Path) -> str:
     head = "".join(f'<th class="{"txt" if txt else ""}">{html.escape(hdr)}</th>'
                    for _, hdr, txt in cols)
     body = []
-    for _, row in d.iterrows():
+    for _, row in df.iterrows():
         cells = "".join(
             f'<td class="{"txt" if txt else ""}">{html.escape(_fmt_cell(row.get(k)))}</td>'
             for k, _, txt in cols)
         body.append(
             f'<tr data-fecha="{html.escape(str(row.get("fecha", "")))}" '
             f'data-league="{html.escape(str(row.get("league", "")))}" '
-            f'data-market="{html.escape(str(row.get("market", "")))}">{cells}</tr>')
+            f'data-line="{html.escape(_fmt_cell(row.get("line")))}" '
+            f'data-home="{html.escape(str(row.get("home", "")))}" '
+            f'data-away="{html.escape(str(row.get("away", "")))}" '
+            f'data-result="{html.escape(str(row.get("result", "")))}">{cells}</tr>')
     table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
              f'<tbody>{"".join(body)}</tbody></table>')
-    return controls + table
+    return cards + controls + table
 
 
 def _card(title: str, value: str, sub: str = "") -> str:
@@ -268,7 +284,7 @@ def html_dashboard(predictions_dir: Path | None = None,
         generated=html.escape(ts),
         audit=_audit_section(bets_dir),
         patterns=_patterns_section(),
-        history=_history_section(bets_dir),
+        history=_history_section(predictions_dir, bets_dir),
         disclaimer=html.escape(DISCLAIMER),
         data_json=payload,
     )
@@ -521,36 +537,45 @@ function initSortable() {{
   }});
 }}
 
-// Historial: filter rows by sport / market / date range (data-* on each row).
+// Historial: filter rows by sport / line / home / away / date range (data-* on each row).
 function initHistory() {{
   const table = document.getElementById("historyTable");
   if (!table) return;
   const rowsArr = [...table.querySelectorAll("tbody tr")];
   const uniqOf = a => [...new Set(rowsArr.map(r => r.dataset[a]).filter(Boolean))].sort();
-  const sportSel = document.getElementById("hSport");
-  uniqOf("league").forEach(lg => sportSel.add(new Option(labelFor(lg), lg)));
-  const mktSel = document.getElementById("hMarket");
-  uniqOf("market").forEach(m => mktSel.add(new Option(m, m)));
-  ["hSport", "hMarket", "hFrom", "hTo"].forEach(id =>
+  const fill = (id, vals, lbl) => {{
+    const sel = document.getElementById(id);
+    vals.forEach(v => sel.add(new Option(lbl ? lbl(v) : v, v)));
+  }};
+  fill("hSport", uniqOf("league"), labelFor);
+  fill("hLine", uniqOf("line"));
+  fill("hHome", uniqOf("home"));
+  fill("hAway", uniqOf("away"));
+  ["hSport", "hLine", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
     document.getElementById(id).addEventListener("input", filterHistory));
   filterHistory();
 }}
 function filterHistory() {{
   const table = document.getElementById("historyTable");
-  const lg = document.getElementById("hSport").value;
-  const m = document.getElementById("hMarket").value;
-  const from = document.getElementById("hFrom").value;
-  const to = document.getElementById("hTo").value;
-  let shown = 0;
+  const g = id => document.getElementById(id).value;
+  const lg = g("hSport"), ln = g("hLine"), ho = g("hHome"), aw = g("hAway"),
+        from = g("hFrom"), to = g("hTo");
+  let picks = 0, closed = 0, wins = 0, losses = 0;
   table.querySelectorAll("tbody tr").forEach(r => {{
     const d = r.dataset;
-    const ok = (!lg || d.league === lg) && (!m || d.market === m) &&
+    const ok = (!lg || d.league === lg) && (!ln || d.line === ln) &&
+               (!ho || d.home === ho) && (!aw || d.away === aw) &&
                (!from || d.fecha >= from) && (!to || d.fecha <= to);
     r.style.display = ok ? "" : "none";
-    if (ok) shown++;
+    if (!ok) return;
+    picks++;
+    if (d.result) closed++;
+    if (d.result === "win") wins++;
+    if (d.result === "loss") losses++;
   }});
-  const c = document.getElementById("hCount");
-  if (c) c.textContent = shown + " filas";
+  const set = (id, v) => {{ const e = document.getElementById(id); if (e) e.textContent = v; }};
+  set("hPicks", picks); set("hClosed", closed); set("hWins", wins); set("hLosses", losses);
+  set("hCount", picks + " filas");
 }}
 
 function init() {{

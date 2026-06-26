@@ -32,10 +32,12 @@ def _settled() -> pd.DataFrame:
         {"event_id": "e1", "league": "nba", "market": "spreads", "selection": "A",
          "line": -2.5, "price_decimal": 1.91, "stake": 10.0, "result": "win",
          "pnl": 9.1, "estimated_edge": 0.10, "estimated_probability": 0.58,
+         "game_date": "2026-06-12", "home": "TeamA", "away": "TeamB",
          "settled_at": "2026-06-12T03:00:00+00:00"},
         {"event_id": "e2", "league": "nba", "market": "h2h", "selection": "B",
          "line": None, "price_decimal": 2.1, "stake": 10.0, "result": "loss",
          "pnl": -10.0, "estimated_edge": 0.08, "estimated_probability": 0.52,
+         "game_date": "2026-06-13", "home": "TeamC", "away": "TeamD",
          "settled_at": "2026-06-13T03:00:00+00:00"},
     ])
 
@@ -129,13 +131,13 @@ def test_dashboard_audit_and_history_render(tmp_path):
 def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
-    # history filter controls
-    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hFrom"', 'id="hTo"',
-                 'id="historyTable"'):
+    # history filter controls (hMarket replaced by hLine/hHome/hAway in Task 5)
+    for ctrl in ('id="hSport"', 'id="hLine"', 'id="hHome"', 'id="hAway"',
+                 'id="hFrom"', 'id="hTo"', 'id="historyTable"'):
         assert ctrl in text
     # each history row carries the filter keys
     assert 'data-fecha="2026-06-13"' in text
-    assert 'data-league="nba"' in text and 'data-market="h2h"' in text
+    assert 'data-league="nba"' in text
     # generic client-side sorting wired for the server-rendered grids
     assert "makeSortable(" in text and "initSortable()" in text
 
