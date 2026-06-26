@@ -1,0 +1,8 @@
+# Graphify exclusions for the Sports Quant Platform.
+# Format: gitignore syntax. Merged with .gitignore (last-match-wins).
+
+# Claude Code skills/docs are not part of the sqp codebase; they pollute the
+# code knowledge graph (e.g. "Superpowers Release Notes", "Writing Skills"
+# appearing as god nodes). Exclude them so god_nodes/query_graph reflect only
+# the real architecture.
+.claude/skills/
