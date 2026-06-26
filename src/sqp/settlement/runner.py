@@ -44,7 +44,7 @@ def _event_meta_map(raw: list[dict]) -> dict[str, dict]:
         out[str(eid)] = {
             "home": s.get("home_team", "") or "",
             "away": s.get("away_team", "") or "",
-            "game_date": str(s.get("commence_time", ""))[:10],
+            "game_date": str(s.get("commence_time") or "")[:10],
         }
     return out
 

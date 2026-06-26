@@ -23,3 +23,8 @@ def test_attach_event_meta_adds_columns_by_event_id():
 def test_attach_event_meta_empty_df_is_noop():
     out = _attach_event_meta(pd.DataFrame(), {})
     assert out.empty
+
+
+def test_event_meta_map_null_commence_time_gives_empty_date():
+    raw = [{"id": "evt1", "home_team": "A", "away_team": "B", "commence_time": None}]
+    assert _event_meta_map(raw)["evt1"]["game_date"] == ""
