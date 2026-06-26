@@ -31,6 +31,38 @@ def _scores_map(raw: list[dict]) -> dict[str, tuple[int, int, str]]:
     return scores
 
 
+def _event_meta_map(raw: list[dict]) -> dict[str, dict]:
+    """event_id -> {home, away, game_date} from raw /scores entries.
+
+    game_date is the commence date (YYYY-MM-DD); empty when the API omits it.
+    """
+    out: dict[str, dict] = {}
+    for s in raw:
+        eid = s.get("id")
+        if not eid:
+            continue
+        out[str(eid)] = {
+            "home": s.get("home_team", "") or "",
+            "away": s.get("away_team", "") or "",
+            "game_date": str(s.get("commence_time", ""))[:10],
+        }
+    return out
+
+
+def _attach_event_meta(settled: pd.DataFrame, meta: dict[str, dict]) -> pd.DataFrame:
+    """Add home/away/game_date columns to settled rows, keyed by event_id.
+
+    Unmatched event_ids get empty strings (cosmetic; backfill fills them later).
+    """
+    if settled.empty:
+        return settled
+    settled = settled.copy()
+    for col in ("home", "away", "game_date"):
+        settled[col] = settled["event_id"].map(
+            lambda e: meta.get(str(e), {}).get(col, ""))
+    return settled
+
+
 def _day_diff(a: str, b: str) -> int:
     from datetime import date
     try:
@@ -143,8 +175,10 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)
     client = client or OddsAPIClient(settings.odds_api_key, settings.regions)
-    scores = _scores_map(client.fetch_scores(meta["sport_key"], days_from=days_from))
+    raw = client.fetch_scores(meta["sport_key"], days_from=days_from)
+    scores = _scores_map(raw)
     settled = settle_candidates(cands, scores)
+    settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)
 
 
