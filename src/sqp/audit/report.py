@@ -47,8 +47,6 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     exactly the whole league on a day the exposure cap triggers."""
     d = df.copy()
     actionable = d[d["stake"] > 0]
-    if "estimated_edge" not in actionable.columns:
-        return actionable
     return actionable.sort_values("estimated_edge", ascending=False)
 
 

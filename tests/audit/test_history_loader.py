@@ -20,7 +20,7 @@ def test_load_history_unions_closed_and_open(tmp_path):
                            "home": "NYY", "away": "BOS", "game_date": "2026-06-24"}])
     _write_candidates(preds,
         [{"event_id": "e2", "market": "totals", "selection": "Over", "line": 8.5,
-          "price_decimal": 2.0, "stake": 5.0}],
+          "price_decimal": 2.0, "stake": 5.0, "estimated_edge": 0.05}],
         [{"event_id": "e2", "home": "LAD", "away": "SF", "start_time": "2026-06-26T20:00:00Z"}])
     h = load_history(preds, bets)
     assert set(h["is_closed"]) == {True, False}
