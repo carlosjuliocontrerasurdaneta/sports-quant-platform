@@ -47,6 +47,8 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     exactly the whole league on a day the exposure cap triggers."""
     d = df.copy()
     actionable = d[d["stake"] > 0]
+    if "estimated_edge" not in actionable.columns:
+        return actionable
     return actionable.sort_values("estimated_edge", ascending=False)
 
 
@@ -62,7 +64,7 @@ def load_all_candidates(predictions_dir: Path) -> pd.DataFrame:
         c["league"] = league
         pf = predictions_dir / f"predictions_{league}.csv"
         if pf.exists() and pf.stat().st_size > 1:
-            p = pd.read_csv(pf, usecols=lambda x: x in ("event_id", "home", "away"))
+            p = pd.read_csv(pf, usecols=lambda x: x in ("event_id", "home", "away", "start_time"))
             c = c.merge(p, on="event_id", how="left")
         frames.append(c)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
@@ -176,3 +178,51 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
     path = bets_dir / f"audit_{ts[:8]}.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
+
+
+# --- History loader (closed + open union for dashboard) -----------------------
+
+_HISTORY_COLS = ["fecha", "league", "market", "line", "home", "away",
+                 "selection", "price_decimal", "stake", "result", "pnl", "is_closed"]
+
+
+def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool) -> pd.DataFrame:
+    """Project a settled/candidate frame onto the common history columns."""
+    out = pd.DataFrame(index=df.index)
+    out["fecha"] = fecha.astype(str).str[:10]
+    for col in ("league", "market", "home", "away", "selection", "result"):
+        out[col] = df[col].astype(str) if col in df.columns else ""
+    for col in ("line", "price_decimal", "stake", "pnl"):
+        out[col] = pd.to_numeric(df[col], errors="coerce") if col in df.columns else float("nan")
+    out["is_closed"] = is_closed
+    return out[_HISTORY_COLS]
+
+
+def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
+    """Union of closed (settled) bets and open actionable candidates, projected
+    onto a common column set. Closed rows carry result/pnl; open rows do not.
+    `fecha` is the game date (settled: game_date, fallback generated_at; open:
+    start_time)."""
+    frames = []
+    closed = load_all_settled(bets_dir)
+    if not closed.empty:
+        gd = closed["game_date"] if "game_date" in closed.columns else pd.Series("", index=closed.index)
+        gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
+        fecha = gd.where(gd.astype(str).str.len() >= 10, gen)
+        frames.append(_normalize_history(closed, fecha=fecha, is_closed=True))
+    open_df = rank_candidates(load_all_candidates(predictions_dir))
+    if not open_df.empty:
+        st = open_df["start_time"] if "start_time" in open_df.columns else pd.Series("", index=open_df.index)
+        frames.append(_normalize_history(open_df, fecha=st, is_closed=False))
+    if not frames:
+        return pd.DataFrame(columns=_HISTORY_COLS)
+    return pd.concat(frames, ignore_index=True)
+
+
+def visible_history(df: pd.DataFrame, today: str) -> pd.DataFrame:
+    """Drop open rows (not closed) whose game date is in the past. Closed rows
+    always shown; open rows shown only when fecha >= today."""
+    if df.empty:
+        return df
+    keep = df["is_closed"] | (df["fecha"] >= today)
+    return df[keep].reset_index(drop=True)
