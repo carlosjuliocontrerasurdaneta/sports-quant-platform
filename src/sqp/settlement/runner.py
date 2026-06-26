@@ -157,6 +157,10 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
         return pd.DataFrame()
     scores = tennis_scores_map(preds, results)
     settled = settle_candidates(cands, scores)
+    meta = {str(r.event_id): {"home": str(r.home), "away": str(r.away),
+                              "game_date": str(getattr(r, "start_time", ""))[:10]}
+            for r in preds.itertuples()}
+    settled = _attach_event_meta(settled, meta)
     return _persist_settled(league, settled)
 
 
