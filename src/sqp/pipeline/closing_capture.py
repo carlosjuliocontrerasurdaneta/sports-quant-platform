@@ -47,7 +47,7 @@ def leagues_with_imminent_bets(predictions_dir: Path, now: datetime,
         imminent = [str(r.event_id) for r in preds.itertuples()
                     if str(r.event_id) in bet_ids
                     and (st := _parse_utc(getattr(r, "start_time", ""))) is not None
-                    and now <= st <= horizon]
+                    and now < st <= horizon]
         if imminent:
             out[league] = imminent
     return out
