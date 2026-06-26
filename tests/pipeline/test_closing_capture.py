@@ -101,6 +101,7 @@ def test_capture_persists_only_bet_events(tmp_path, monkeypatch):
     assert store.snapshots == [("mlb", ["e1"])]      # e_other filtered out
     assert out["captured"] == {"mlb": 1}
     assert out["credits_spent"] == 12
+    assert out["leagues_considered"] == ["mlb"]
 
 
 def test_capture_respects_daily_cap(tmp_path, monkeypatch):
@@ -126,4 +127,27 @@ def test_capture_skips_when_quota_low(tmp_path, monkeypatch):
     now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
     out = capture_closing(tmp_path, settings=None, min_remaining=100, now=now,
                           client=client, odds_store=store)
-    assert client.calls == [] and out["skipped_budget"] == ["mlb"]
+    assert client.calls == []
+    assert out["skipped_budget"] == ["mlb"]
+
+
+def test_capture_best_effort_one_league_failure_isolated(tmp_path, monkeypatch):
+    monkeypatch.setattr("sqp.pipeline.closing_capture.ROOT", tmp_path)
+    _seed_mlb(tmp_path)
+    pd.DataFrame([{"event_id": "w1"}]).to_csv(tmp_path / "candidates_wnba.csv", index=False)
+    pd.DataFrame([{"event_id": "w1", "start_time": "2026-06-26T23:00:00Z"}]).to_csv(
+        tmp_path / "predictions_wnba.csv", index=False)
+
+    class _RaisingStore(_FakeStore):
+        def append_snapshot(self, league, events):
+            if league == "mlb":
+                raise RuntimeError("boom")
+            return super().append_snapshot(league, events)
+
+    client = _FakeClient([_eo("e1"), _eo("w1")])
+    store = _RaisingStore()
+    now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
+    out = capture_closing(tmp_path, settings=None, now=now, client=client, odds_store=store)
+    # mlb raised but was caught; wnba still captured; nothing propagated
+    assert "wnba" in out["captured"]
+    assert "mlb" not in out["captured"]
