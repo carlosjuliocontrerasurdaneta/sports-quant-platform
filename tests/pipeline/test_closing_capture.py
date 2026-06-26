@@ -48,3 +48,82 @@ def test_credit_counter_accumulates_and_isolates_by_day(tmp_path):
 def test_credit_counter_survives_corrupt_file(tmp_path):
     (tmp_path / ".closing_credits_20260626").write_text("not-a-number")
     assert spent_today(tmp_path, "20260626") == 0        # tolerant
+
+
+# ---------------------------------------------------------------------------
+# Task 3: capture_closing orchestrator
+# ---------------------------------------------------------------------------
+from sqp.domain.models import Event, EventOdds, MarketLine  # noqa: E402
+from sqp.pipeline.closing_capture import capture_closing  # noqa: E402
+
+
+class _FakeClient:
+    def __init__(self, events, cost=12, remaining=5000):
+        self._events = events
+        self.requests_last = cost
+        self.requests_remaining = remaining
+        self.calls = []
+
+    def fetch_odds(self, league_id, sport_key, markets="h2h,spreads,totals"):
+        self.calls.append(league_id)
+        return self._events
+
+
+class _FakeStore:
+    def __init__(self):
+        self.snapshots = []
+
+    def append_snapshot(self, league, events):
+        self.snapshots.append((league, [e.event.event_id for e in events]))
+        return len(events)
+
+
+def _eo(eid):
+    ev = Event(event_id=eid, sport_key="baseball_mlb", league="mlb",
+               home="NYY", away="BOS", start_time="2026-06-26T23:00:00Z", data_label="real")
+    return EventOdds(event=ev, lines=[MarketLine(market="h2h", bookmaker="x",
+                                                 outcome="NYY", price_decimal=1.9, point=None)])
+
+
+def _seed_mlb(pred_dir):
+    pd.DataFrame([{"event_id": "e1"}]).to_csv(pred_dir / "candidates_mlb.csv", index=False)
+    pd.DataFrame([{"event_id": "e1", "start_time": "2026-06-26T23:00:00Z"}]).to_csv(
+        pred_dir / "predictions_mlb.csv", index=False)
+
+
+def test_capture_persists_only_bet_events(tmp_path, monkeypatch):
+    monkeypatch.setattr("sqp.pipeline.closing_capture.ROOT", tmp_path)
+    _seed_mlb(tmp_path)
+    client = _FakeClient([_eo("e1"), _eo("e_other")])  # only e1 is a bet
+    store = _FakeStore()
+    now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
+    out = capture_closing(tmp_path, settings=None, now=now, client=client, odds_store=store)
+    assert store.snapshots == [("mlb", ["e1"])]      # e_other filtered out
+    assert out["captured"] == {"mlb": 1}
+    assert out["credits_spent"] == 12
+
+
+def test_capture_respects_daily_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr("sqp.pipeline.closing_capture.ROOT", tmp_path)
+    _seed_mlb(tmp_path)
+    odds_dir = tmp_path / "data" / "odds"
+    odds_dir.mkdir(parents=True, exist_ok=True)
+    (odds_dir / ".closing_credits_20260626").write_text("300")  # cap already reached
+    client = _FakeClient([_eo("e1")])
+    store = _FakeStore()
+    now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
+    out = capture_closing(tmp_path, settings=None, max_credits=300, now=now,
+                          client=client, odds_store=store)
+    assert client.calls == []                         # no fetch when capped
+    assert out["skipped_budget"] == ["mlb"]
+
+
+def test_capture_skips_when_quota_low(tmp_path, monkeypatch):
+    monkeypatch.setattr("sqp.pipeline.closing_capture.ROOT", tmp_path)
+    _seed_mlb(tmp_path)
+    client = _FakeClient([_eo("e1")], remaining=50)   # below min_remaining=100
+    store = _FakeStore()
+    now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
+    out = capture_closing(tmp_path, settings=None, min_remaining=100, now=now,
+                          client=client, odds_store=store)
+    assert client.calls == [] and out["skipped_budget"] == ["mlb"]

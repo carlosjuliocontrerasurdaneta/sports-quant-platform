@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from sqp.config import ROOT
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.closing_capture")
@@ -74,3 +75,65 @@ def add_spent(odds_dir: Path, day: str, credits: int) -> int:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(str(total))
     return total
+
+
+def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
+                    max_credits: int = 300, min_remaining: int = 100,
+                    now: datetime | None = None, client=None, odds_store=None) -> dict:
+    """Snapshot fresh closing odds for leagues with imminent bet events.
+
+    Budget-bounded: stops at `max_credits`/day (persisted across hourly runs) and
+    skips a league when the API's known `requests_remaining` is below
+    `min_remaining` (never starves the morning run). Best-effort per league.
+    """
+    from sqp.pipeline.daily import _league_meta
+    from sqp.providers.odds_api import OddsAPIClient
+    from sqp.storage.odds_store import OddsStore
+
+    now = now or datetime.now(timezone.utc)
+    day = now.strftime("%Y%m%d")
+    odds_dir = ROOT / "data" / "odds"
+    targets = leagues_with_imminent_bets(predictions_dir, now, window_min)
+    summary = {"captured": {}, "skipped_budget": [], "credits_spent": 0,
+               "leagues_considered": list(targets)}
+    if not targets:
+        return summary
+    already = spent_today(odds_dir, day)
+    if already >= max_credits:
+        summary["skipped_budget"] = list(targets)
+        log.info("closing: daily cap %d reached (%d spent); skipping %s",
+                 max_credits, already, ", ".join(targets))
+        return summary
+
+    if client is None:
+        client = OddsAPIClient(settings.odds_api_key, settings.regions, force_refresh=True)
+    if odds_store is None:
+        odds_store = OddsStore(ROOT)
+
+    spent = 0
+    for league, bet_ids in targets.items():
+        if already + spent >= max_credits:
+            summary["skipped_budget"].append(league)
+            continue
+        if client.requests_remaining is not None and client.requests_remaining < min_remaining:
+            summary["skipped_budget"].append(league)
+            log.warning("closing: requests_remaining %s < %d; skipping %s",
+                        client.requests_remaining, min_remaining, league)
+            continue
+        try:
+            sport_key = _league_meta(league)["sport_key"]
+            events = client.fetch_odds(league, sport_key)
+            spent += client.requests_last or 0
+            want = set(bet_ids)
+            keep = [eo for eo in events if str(eo.event.event_id) in want]
+            if keep:
+                n = odds_store.append_snapshot(league, keep)
+                summary["captured"][league] = n
+                log.info("closing: [%s] %d lines snapshotted for %d bet events",
+                         league, n, len(keep))
+        except Exception as exc:
+            log.warning("[%s] closing capture failed: %s", league, exc)
+    if spent:
+        add_spent(odds_dir, day, spent)
+    summary["credits_spent"] = spent
+    return summary
