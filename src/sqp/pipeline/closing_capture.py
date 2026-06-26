@@ -50,3 +50,27 @@ def leagues_with_imminent_bets(predictions_dir: Path, now: datetime,
         if imminent:
             out[league] = imminent
     return out
+
+
+def _credits_file(odds_dir: Path, day: str) -> Path:
+    return odds_dir / f".closing_credits_{day}"
+
+
+def spent_today(odds_dir: Path, day: str) -> int:
+    """Credits already spent on closing capture today (0 if absent/corrupt)."""
+    p = _credits_file(odds_dir, day)
+    if not p.exists():
+        return 0
+    try:
+        return int(p.read_text().strip() or "0")
+    except (ValueError, OSError):
+        return 0
+
+
+def add_spent(odds_dir: Path, day: str, credits: int) -> int:
+    """Add credits (negative ignored) to today's total and persist. Returns total."""
+    total = spent_today(odds_dir, day) + max(0, int(credits))
+    p = _credits_file(odds_dir, day)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(str(total))
+    return total

@@ -31,3 +31,20 @@ def test_league_without_imminent_bet_is_omitted(tmp_path):
     _seed(tmp_path, "wnba", ["w1"],
           [{"event_id": "w1", "start_time": "2026-06-27T02:00:00Z"}])  # 4h out
     assert leagues_with_imminent_bets(tmp_path, now, window_min=120) == {}
+
+
+from sqp.pipeline.closing_capture import spent_today, add_spent
+
+
+def test_credit_counter_accumulates_and_isolates_by_day(tmp_path):
+    assert spent_today(tmp_path, "20260626") == 0
+    assert add_spent(tmp_path, "20260626", 12) == 12
+    assert add_spent(tmp_path, "20260626", 24) == 36     # accumulates same day
+    assert spent_today(tmp_path, "20260626") == 36
+    assert spent_today(tmp_path, "20260627") == 0        # new day resets
+    assert add_spent(tmp_path, "20260626", -5) == 36     # negative ignored
+
+
+def test_credit_counter_survives_corrupt_file(tmp_path):
+    (tmp_path / ".closing_credits_20260626").write_text("not-a-number")
+    assert spent_today(tmp_path, "20260626") == 0        # tolerant
