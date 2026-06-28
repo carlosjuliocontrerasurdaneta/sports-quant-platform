@@ -36,15 +36,23 @@ def days_left_in_month(today: date) -> int:
 def leagues_within_budget(active: list[str], priority: tuple[str, ...], *,
                           remaining: int | None, cost_per_league: int,
                           days_left: int, safety_margin: int = 20,
-                          max_leagues_per_day: int | None = None) -> list[str]:
+                          max_leagues_per_day: int | None = None,
+                          fallback_leagues: int = 0) -> list[str]:
     """Select, in priority order, as many active leagues as the rationed budget
-    allows. `remaining` is the API's live quota; None falls back to the hard cap.
+    allows. `remaining` is the API's live quota.
+
+    When `remaining is None` (the live quota could not be read) the budget cannot
+    be rationed, so selection falls back to a fixed count: the hard cap
+    `max_leagues_per_day` if set, else `fallback_leagues`. The latter defaults to
+    0 (fail closed), but the live caller passes a small conservative number so an
+    unreadable quota does not silently produce zero picks -- callers should also
+    log when they hit this path.
     """
     cost = max(1, cost_per_league)
     ranked = ([lg for lg in priority if lg in active]
               + sorted(lg for lg in active if lg not in priority))
     if remaining is None:
-        n = max_leagues_per_day if max_leagues_per_day is not None else 0
+        n = max_leagues_per_day if max_leagues_per_day is not None else fallback_leagues
     else:
         usable = max(0, remaining - max(0, safety_margin))
         n = int((usable / max(1, days_left)) // cost)

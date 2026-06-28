@@ -46,6 +46,20 @@ def test_guard_hard_cap_and_none_remaining_fallback():
                                  cost_per_league=4, days_left=30) == []
 
 
+def test_guard_none_remaining_uses_conservative_fallback():
+    # Quota unreadable + no hard cap: instead of selecting zero leagues (no picks
+    # for the day), fall back to the top `fallback_leagues` in priority order.
+    active = ["chile", "mlb", "nba", "nhl", "wnba"]
+    sel = leagues_within_budget(active, DEFAULT_PRIORITY, remaining=None,
+                                cost_per_league=4, days_left=30, fallback_leagues=3)
+    assert sel == ["mlb", "nba", "nhl"]
+    # A hard cap still takes precedence over the fallback when both are set.
+    sel_capped = leagues_within_budget(active, DEFAULT_PRIORITY, remaining=None,
+                                       cost_per_league=4, days_left=30,
+                                       max_leagues_per_day=2, fallback_leagues=5)
+    assert sel_capped == ["mlb", "nba"]
+
+
 def test_guard_unknown_league_sorted_after_priority():
     active = ["zzz_league", "mlb"]
     sel = leagues_within_budget(active, DEFAULT_PRIORITY, remaining=10_000,

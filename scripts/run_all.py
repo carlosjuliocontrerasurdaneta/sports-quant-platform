@@ -74,11 +74,20 @@ def _select_live(settings: Settings, supported: dict[str, str],
     active += _active_tennis(client)  # dynamic tennis tournaments, settled via ESPN
     cost = request_cost_per_league(MARKETS, settings.regions)
     days_left = days_left_in_month(date.today())
+    # The Odds API exposes the live quota only via response headers. If it could
+    # not be read (None), the budget cannot be rationed; rather than silently
+    # selecting zero leagues (no picks for the whole day), fall back to a small
+    # conservative count of the top-priority leagues and say so loudly.
+    fallback_leagues = int(os.getenv("ODDS_API_FALLBACK_LEAGUES", "5"))
+    if client.requests_remaining is None and max_leagues is None:
+        log.warning("No se pudo leer la cuota de The Odds API; presupuesto no "
+                    "racionable. Fallback conservador: %d ligas prioritarias "
+                    "(ODDS_API_FALLBACK_LEAGUES).", fallback_leagues)
     selected = leagues_within_budget(
         active, DEFAULT_PRIORITY, remaining=client.requests_remaining,
         cost_per_league=cost, days_left=days_left,
         safety_margin=int(os.getenv("ODDS_API_SAFETY_MARGIN", "20")),
-        max_leagues_per_day=max_leagues)
+        max_leagues_per_day=max_leagues, fallback_leagues=fallback_leagues)
     log.info("Cuota restante: %s | costo/liga: %d creditos | dias restantes del mes: %d",
              client.requests_remaining, cost, days_left)
     log.info("Ligas activas: %d [%s]", len(active), ", ".join(sorted(active)))
