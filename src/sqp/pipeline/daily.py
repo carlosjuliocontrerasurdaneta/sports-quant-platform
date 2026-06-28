@@ -281,6 +281,54 @@ def _apply_daily_exposure_cap(candidates: list[BetCandidate], bankroll: float,
     return factor
 
 
+def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -> float:
+    """Cap the WHOLE day's staked exposure across every league at
+    ``bankroll * cap_pct``, rewriting the per-league ``candidates_*.csv`` in place.
+
+    ``_apply_daily_exposure_cap`` bounds a SINGLE league's exposure inside
+    run_league; with many leagues the day's total could still reach N x that
+    fraction. This is the only place the cross-league limit is enforced, so it
+    runs once in the orchestrator after all leagues have been written (and after
+    out-of-season files are pruned). Scaling is proportional: every positive
+    stake (and its kelly pct) is multiplied by the same factor and flagged
+    'global_exposure_scaled'. Zero-stake rows (paused / implausible edge) are
+    untouched and excluded from the total. Returns the applied factor (1.0 when
+    no cap was needed)."""
+    if cap_pct <= 0 or bankroll <= 0:
+        return 1.0
+    frames: dict[Path, pd.DataFrame] = {}
+    total = 0.0
+    for f in sorted(pred_dir.glob("candidates_*.csv")):
+        try:
+            df = pd.read_csv(f)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            continue
+        if df.empty or "stake" not in df.columns:
+            continue
+        frames[f] = df
+        total += float(df.loc[df["stake"] > 0, "stake"].sum())
+    cap = bankroll * cap_pct
+    if total <= cap or total <= 0:
+        return 1.0
+    factor = cap / total
+    for f, df in frames.items():
+        mask = df["stake"] > 0
+        if not mask.any():
+            continue
+        df.loc[mask, "stake"] = (df.loc[mask, "stake"] * factor).round(2)
+        if "kelly_stake_pct" in df.columns:
+            df.loc[mask, "kelly_stake_pct"] = (df.loc[mask, "kelly_stake_pct"] * factor).round(4)
+        # An all-empty flags column round-trips through CSV as float64 NaN; coerce
+        # to string first or the masked string assignment raises on modern pandas.
+        df["flags"] = (df["flags"].fillna("").astype(str)
+                       if "flags" in df.columns else "")
+        prior = df.loc[mask, "flags"]
+        df.loc[mask, "flags"] = [f"{x};global_exposure_scaled" if x else "global_exposure_scaled"
+                                 for x in prior]
+        df.to_csv(f, index=False)
+    return factor
+
+
 def _archive_existing(path: Path) -> None:
     """Copy an existing predictions/candidates CSV to an `archive/` subfolder,
     keyed by the date in its `generated_at` column, before it is overwritten.

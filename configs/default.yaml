@@ -3,7 +3,11 @@ risk:
   kelly_fraction: 0.25
   min_edge: 0.02
   max_stake_pct: 0.02
-  max_daily_exposure_pct: 0.10
+  max_daily_exposure_pct: 0.10   # per-league cap, applied inside each run_league
+  # Global cross-league cap: the WHOLE day's staked exposure across every league
+  # is held <= bankroll * this, enforced once after all leagues run. Without it the
+  # per-league cap above could compound to N x 10% on a multi-league day. 0 = off.
+  max_total_exposure_pct: 0.10
   # Edges above this are flagged as probable miscalibration, not staked. Lowered
   # 0.15 -> 0.075 (project-2 ceiling) on 2026-06-22 OOS evidence: on captured odds
   # MLB test ROI +0.41% -> +2.42% (profit +19 -> +51) at half the staked exposure;

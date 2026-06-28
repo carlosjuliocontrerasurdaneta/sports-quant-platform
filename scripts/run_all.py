@@ -25,7 +25,8 @@ from sqp.logging_config import get_logger
 from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
                                  leagues_within_budget, request_cost_per_league)
 from sqp.pipeline.cleanup import prune_stale_candidates
-from sqp.pipeline.daily import _finalize, run_league
+from sqp.pipeline.daily import (_finalize, apply_global_exposure_cap,
+                                run_league)
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
 
 log = get_logger("sqp.run_all")
@@ -142,6 +143,17 @@ def main() -> int:
         # bets are already settled) so the report below -- markdown AND HTML --
         # never shows stale candidates.
         prune_stale_candidates(pred_dir, ROOT / "data" / "bets", active)
+
+    # Cross-league exposure cap: the per-league cap inside run_league bounds each
+    # league alone, so a multi-league day could compound to N x that fraction.
+    # Enforce the whole day's total here, after every league is written and stale
+    # files pruned. Applies in both modes (demo sizes on the static bankroll).
+    factor = apply_global_exposure_cap(pred_dir, settings.bankroll,
+                                       settings.risk.max_total_exposure_pct)
+    if factor < 1.0:
+        log.warning("Exposición global del día excedió %.0f%% del bankroll; stakes de "
+                    "todas las ligas escalados por %.3f para respetar el cap global.",
+                    settings.risk.max_total_exposure_pct * 100, factor)
 
     if not args.no_report:
         path = consolidated_report(pred_dir)

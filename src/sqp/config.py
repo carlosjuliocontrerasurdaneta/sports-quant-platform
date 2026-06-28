@@ -26,6 +26,12 @@ class RiskConfig:
     min_edge: float = 0.02
     max_stake_pct: float = 0.02
     max_daily_exposure_pct: float = 0.10
+    # Global (cross-league) daily exposure cap. `max_daily_exposure_pct` is applied
+    # PER LEAGUE inside run_league, so a multi-league day could commit up to
+    # N x that fraction. This caps the whole day's staked exposure across every
+    # league at `bankroll * max_total_exposure_pct`, enforced once after all
+    # leagues run (see daily.apply_global_exposure_cap / run_all). 0 disables it.
+    max_total_exposure_pct: float = 0.10
     # Edges above this are almost certainly model miscalibration, not market
     # value: such selections are flagged and not staked (see audit 2026-06).
     max_plausible_edge: float = 0.15
@@ -102,6 +108,8 @@ class Settings:
                 min_edge=float(os.getenv("MIN_EDGE", r.get("min_edge", 0.02))),
                 max_stake_pct=float(os.getenv("MAX_STAKE_PCT", r.get("max_stake_pct", 0.02))),
                 max_daily_exposure_pct=float(r.get("max_daily_exposure_pct", 0.10)),
+                max_total_exposure_pct=float(os.getenv("MAX_TOTAL_EXPOSURE_PCT",
+                                             r.get("max_total_exposure_pct", 0.10))),
                 max_plausible_edge=float(os.getenv("MAX_PLAUSIBLE_EDGE",
                                                    r.get("max_plausible_edge", 0.15))),
                 market_shrink=float(os.getenv("MARKET_SHRINK",
