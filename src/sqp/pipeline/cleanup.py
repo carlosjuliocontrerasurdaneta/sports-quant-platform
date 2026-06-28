@@ -14,6 +14,7 @@ also removes the matching ``predictions_<league>.csv``.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -78,3 +79,63 @@ def prune_stale_candidates(predictions_dir: Path, bets_dir: Path,
         log.info("Candidatos obsoletos podados (fuera de temporada y liquidados): %s",
                  ", ".join(pruned))
     return sorted(pruned)
+
+
+def unsettled_completed_picks(predictions_dir: Path, bets_dir: Path,
+                              leagues: Iterable[str], *,
+                              now: str | None = None) -> dict[str, int]:
+    """Per-league count of staked, real picks whose game has ALREADY commenced but
+    that are not yet present in ``settled_<league>.csv``.
+
+    These are the picks the daily run would make ungradeable by overwriting
+    ``candidates_<league>.csv``: the settlement dedup key includes ``generated_at``,
+    so once the file is regenerated the old, commenced-but-unsettled pick can never
+    be matched to a final score (the M2 loss window). Future-game picks are
+    excluded -- refreshing them is the normal daily behavior, not a loss.
+
+    Restricted to ``leagues`` (the ones about to be overwritten). Returns only
+    leagues with a positive count. Errs on the safe side: when a league's start
+    times or settlement state cannot be read, that league is skipped (not blocked),
+    since `_archive_existing` still keeps an overwritten file recoverable.
+
+    Start times are not on the candidates rows (BetCandidate has no start_time), so
+    they are joined from ``predictions_<league>.csv`` by event_id.
+    """
+    now = now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    at_risk: dict[str, int] = {}
+    for league in leagues:
+        cf = predictions_dir / f"candidates_{league}.csv"
+        pf = predictions_dir / f"predictions_{league}.csv"
+        if not cf.exists() or not pf.exists() or pf.stat().st_size <= 1:
+            continue
+        try:
+            cands = pd.read_csv(cf)
+            preds = pd.read_csv(pf, usecols=lambda c: c in ("event_id", "start_time"))
+        except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+            continue
+        if cands.empty or "stake" not in cands.columns or "start_time" not in preds.columns:
+            continue
+        staked = cands[cands["stake"] > 0]
+        if "data_label" in staked.columns:
+            staked = staked[staked["data_label"].astype(str) == "real"]
+        if staked.empty:
+            continue
+        merged = staked.merge(preds, on="event_id", how="left")
+        st = merged["start_time"].astype(str)
+        commenced = merged[(st != "nan") & (st != "") & (st <= now)]
+        if commenced.empty:
+            continue
+        n = len(commenced)
+        settled_path = bets_dir / f"settled_{league}.csv"
+        if settled_path.exists() and set(DEDUP_KEY).issubset(commenced.columns):
+            try:
+                settled = pd.read_csv(settled_path)
+            except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+                settled = None
+            if settled is not None and set(DEDUP_KEY).issubset(settled.columns):
+                have = {tuple(map(str, r)) for r in settled[DEDUP_KEY].values.tolist()}
+                n = sum(tuple(map(str, r)) not in have
+                        for r in commenced[DEDUP_KEY].values.tolist())
+        if n > 0:
+            at_risk[league] = int(n)
+    return at_risk

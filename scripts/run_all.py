@@ -24,7 +24,8 @@ from sqp.config import CONFIG_DIR, ROOT, Settings, load_yaml
 from sqp.logging_config import get_logger
 from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
                                  leagues_within_budget, request_cost_per_league)
-from sqp.pipeline.cleanup import prune_stale_candidates
+from sqp.pipeline.cleanup import (prune_stale_candidates,
+                                  unsettled_completed_picks)
 from sqp.pipeline.daily import (_finalize, apply_global_exposure_cap,
                                 run_league)
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
@@ -132,6 +133,25 @@ def main() -> int:
         log.info("DEMO: %d ligas soportadas con datos sinteticos.", len(selected))
     else:
         selected, active = _select_live(settings, supported, args.max_leagues)
+
+    # M2 guard: the daily run overwrites candidates_<league>.csv, and the
+    # settlement dedup key includes generated_at, so a commenced-but-unsettled
+    # pick becomes ungradeable once overwritten. Skip (do not overwrite) any
+    # league that still holds such picks and say so loudly, so it stays settleable
+    # by the next SETTLE_ALL. Canonical flow settles first (DIARIO_COMPLETO.bat),
+    # so this is normally a no-op. SQP_ALLOW_UNSETTLED_OVERWRITE=1 forces through
+    # (archive/ keeps overwritten files recoverable either way).
+    if (args.mode != "demo"
+            and os.getenv("SQP_ALLOW_UNSETTLED_OVERWRITE", "").lower()
+            not in ("1", "true", "yes")):
+        at_risk = unsettled_completed_picks(
+            ROOT / "data" / "predictions", ROOT / "data" / "bets", selected)
+        for lg, n in sorted(at_risk.items()):
+            log.error("[%s] %d picks ya comenzados sin liquidar: se OMITE hoy para no "
+                      "volverlos no graduables. Ejecuta SETTLE_ALL primero "
+                      "(o SQP_ALLOW_UNSETTLED_OVERWRITE=1 para forzar).", lg, n)
+        if at_risk:
+            selected = [lg for lg in selected if lg not in at_risk]
 
     for lg in selected:
         try:
