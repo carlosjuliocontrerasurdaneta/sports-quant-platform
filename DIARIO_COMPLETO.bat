@@ -24,12 +24,15 @@ echo [2/2] Ejecutando run diario multi-liga...
 call "%~dp0RUN_DIARIO_ALL.bat"
 if errorlevel 1 goto :error_run
 
-REM Abrir el dashboard solo en sesion interactiva (SESSIONNAME definido). Bajo el
-REM Programador de tareas se omite: abrir el navegador puede terminar el proceso
-REM (0xC000013A) y no hay escritorio. El report_latest.html se escribe siempre.
-if defined SESSIONNAME start "" "%~dp0data\predictions\report_latest.html"
-
 echo === DIARIO COMPLETO: OK ===
+
+REM Flujo terminado: abre el dashboard de inmediato (SIEMPRE). Va al final, ya
+REM escritos picks + reporte + report_latest.html, para que cualquier problema al
+REM lanzar el navegador no afecte el trabajo hecho. AVISO: bajo el Programador de
+REM tareas (sin escritorio) abrir el navegador puede terminar el proceso con
+REM 0xC000013A; el trabajo ya quedo completo de todos modos.
+start "" "%~dp0data\predictions\report_latest.html"
+
 endlocal
 goto :eof
 
