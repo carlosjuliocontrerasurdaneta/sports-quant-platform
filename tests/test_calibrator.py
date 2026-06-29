@@ -28,6 +28,14 @@ def test_beta_calibrator_bounds():
     assert np.all(out >= 0.01) and np.all(out <= 0.99)
 
 
+def test_is_monotone_increasing_detects_non_monotone():
+    # An increasing calibrator passes the guard.
+    assert cal._is_monotone_increasing(lambda x: np.asarray(x, dtype=float)) is True
+    # A U-shaped map (decreasing then increasing) inverts rank order and is rejected,
+    # even though it is a perfectly valid probability in [0, 1].
+    assert cal._is_monotone_increasing(lambda x: (np.asarray(x, dtype=float) - 0.5) ** 2) is False
+
+
 def test_apply_without_model_is_noop():
     probs = np.array([0.2, 0.5, 0.8])
     out = cal.apply_calibration(probs, sport="no_such_sport_xyz")
@@ -85,6 +93,46 @@ def test_train_keeps_improving_model_and_reports_flags(tmp_path, monkeypatch):
     assert res["iso_persisted"] is True and res["persisted"] is True
     assert "beta_val_ece" in res
     assert (tmp_path / "models" / "unit_keep_calibration_iso.joblib").exists()
+
+
+class _UShapedBeta:
+    """A calibrator whose predict() is U-shaped (decreasing then increasing) -- it
+    inverts rank order at the low end, exactly the mlb_spreads degeneracy."""
+
+    def fit(self, probs, outcomes):
+        return self
+
+    def predict(self, probs):
+        probs = np.asarray(probs, dtype=float)
+        return np.clip((probs - 0.5) ** 2 + 0.4, 0.01, 0.99)
+
+
+def test_train_drops_non_monotone_calibrator_despite_good_ece(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    # Make the isotonic OOS ECE worse than raw so iso is dropped; only beta is a
+    # candidate to persist.
+    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0})
+    # Raw ECE high, beta ECE low -> beta BEATS raw on ECE, so without the
+    # monotonicity guard it WOULD persist. Stub statefully: 1st call raw, 2nd beta.
+    calls = {"n": 0}
+
+    def fake_ece(*a, **k):
+        calls["n"] += 1
+        return 0.5 if calls["n"] == 1 else 0.0
+
+    monkeypatch.setattr(cal, "expected_calibration_error", fake_ece)
+    # Force the beta calibrator to be non-monotone (U-shaped).
+    monkeypatch.setattr(cal, "BetaCalibrator", _UShapedBeta)
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_ushape")
+
+    # Beats raw on ECE but is rejected purely for non-monotonicity.
+    assert res["beta_persisted"] is False
+    assert res["best_method"] is None
+    assert not (tmp_path / "models" / "unit_ushape_calibration_beta.joblib").exists()
+    # live application for this market is therefore a safe no-op
+    assert cal.apply_calibration(np.array([0.3]), sport="unit_ushape", method="auto")[0] == 0.3
 
 
 def test_method_registry_roundtrip(tmp_path, monkeypatch):

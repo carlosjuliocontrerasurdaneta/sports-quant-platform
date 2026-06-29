@@ -44,6 +44,18 @@ def _load_calibrator(path_str: str):
     return joblib.load(path_str)
 
 
+def _is_monotone_increasing(predict, lo: float = 0.01, hi: float = 0.99,
+                            n: int = 99, tol: float = 1e-6) -> bool:
+    """True if ``predict`` (a calibrator's ``predict`` method) is non-decreasing
+    over ``[lo, hi]``. A calibrator that inverts rank order -- e.g. a degenerate
+    beta fit that maps LOW estimated probabilities UP -- must be rejected
+    regardless of its aggregate ECE, because ECE is a binned average that does
+    NOT penalize non-monotonicity. ``predict`` is called once on the whole grid."""
+    grid = np.linspace(lo, hi, n)
+    vals = np.asarray(predict(grid), dtype=float)
+    return bool(np.all(np.diff(vals) >= -tol))
+
+
 def _persist_or_remove(model, path, keep: bool) -> bool:
     """Persist ``model`` to ``path`` when ``keep`` is True; otherwise remove any
     stale model already at ``path``. Returns whether a model is present at
@@ -152,8 +164,17 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     # gated independently because the apply-time method (iso/beta) is
     # configurable. Without this, every retrain re-persisted worsening models
     # (e.g. low-sample markets), silently degrading the live picks.
-    iso_persisted = _persist_or_remove(iso, iso_path, val_metrics["ece"] <= raw_val_ece)
-    beta_persisted = _persist_or_remove(beta, beta_path, beta_val_ece <= raw_val_ece)
+    # Gate on TWO conditions: (1) the calibrator must not worsen OOS ECE, and
+    # (2) it must be monotone non-decreasing. A non-monotone fit (a degenerate
+    # beta that maps low probabilities UP) can have an acceptable aggregate ECE
+    # while inverting rank order -- which manufactured phantom edges on mlb
+    # spreads -- so monotonicity is a hard, ECE-independent requirement.
+    iso_persisted = _persist_or_remove(
+        iso, iso_path,
+        val_metrics["ece"] <= raw_val_ece and _is_monotone_increasing(iso.predict))
+    beta_persisted = _persist_or_remove(
+        beta, beta_path,
+        beta_val_ece <= raw_val_ece and _is_monotone_increasing(beta.predict))
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths
 
     # Per-group best method for method="auto": among the calibrators that beat
