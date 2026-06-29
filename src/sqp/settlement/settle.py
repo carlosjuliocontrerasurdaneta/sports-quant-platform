@@ -8,16 +8,23 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import pandas as pd
 
+from sqp.sports.team_names import normalize_key
+
 
 def _grade(row: pd.Series, hs: int, as_: int, home: str) -> str:
     m, sel, line = row["market"], row["selection"], row["line"]
     margin, total = hs - as_, hs + as_
+    # Compare side identity (selection vs home) by normalized key, not raw string:
+    # the winner match upstream already normalizes, so a selection spelled
+    # differently than `home` (accents, casing) must not silently misgrade a
+    # home-side bet (2026-06-28 WTA Wimbledon review).
+    sel_is_home = normalize_key(sel) == normalize_key(home)
     if m == "h2h":
         if margin == 0 and sel == "Draw": return "win"
         if margin == 0: return "loss"
-        return "win" if (sel == home) == (margin > 0) and sel != "Draw" else "loss"
+        return "win" if sel_is_home == (margin > 0) and sel != "Draw" else "loss"
     if m == "spreads":
-        adj = margin + line if sel == home else -margin + line
+        adj = margin + line if sel_is_home else -margin + line
         return "win" if adj > 0 else ("push" if adj == 0 else "loss")
     if m == "totals":
         if total == line: return "push"
