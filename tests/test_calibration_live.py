@@ -75,12 +75,12 @@ def _history(n_h2h: int, n_totals_small: int = 5) -> pd.DataFrame:
 def test_train_market_calibrators_groups_skips_and_persists(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     cal._load_calibrator.cache_clear()
-    res = train_market_calibrators(_history(n_h2h=120), min_n=40)
+    res = train_market_calibrators(_history(n_h2h=300), min_n=40)
     by_market = {(r["league"], r["market"]): r for r in res}
 
     h2h = by_market[("mlb", "h2h")]
     assert h2h["trained"] is True
-    assert h2h["n"] == 120                       # push excluded from the graded count
+    assert h2h["n"] == 300                       # push excluded from the graded count
     assert "raw_val_ece" in h2h and "cal_val_ece" in h2h
     assert (tmp_path / "models" / "mlb_h2h_calibration_iso.joblib").exists()
 

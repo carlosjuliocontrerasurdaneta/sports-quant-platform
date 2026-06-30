@@ -135,6 +135,38 @@ def test_train_drops_non_monotone_calibrator_despite_good_ece(tmp_path, monkeypa
     assert cal.apply_calibration(np.array([0.3]), sport="unit_ushape", method="auto")[0] == 0.3
 
 
+def test_train_drops_calibrator_that_passes_ece_but_worsens_brier(tmp_path, monkeypatch):
+    """A monotone calibrator can pass the binned-ECE gate yet be overconfident in
+    a way a proper scoring rule exposes: pushing favorites toward 0.9 inflates the
+    out-of-sample Brier score even when each ECE bin's average looks fine. That is
+    exactly the mlb_spreads regression -- a monotone-but-overfit isotonic step that
+    manufactured phantom edges. The gate must reject it on OOS Brier."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    # iso PASSES the ECE gate (cal ECE 0.0 <= raw ECE 0.5) but its Brier is worse.
+    monkeypatch.setattr(cal, "calibration_report",
+                        lambda probs, outcomes: {"ece": 0.0, "brier_score": 1.0})
+    monkeypatch.setattr(cal, "expected_calibration_error", lambda *a, **k: 0.5)
+    # brier_score: 1st call = raw (low 0.1), 2nd = beta (high 1.0) -> raw beats both.
+    brier_calls = {"n": 0}
+
+    def fake_brier(*a, **k):
+        brier_calls["n"] += 1
+        return 0.1 if brier_calls["n"] == 1 else 1.0
+
+    # raising=False: the production code does not reference brier_score yet (RED).
+    monkeypatch.setattr(cal, "brier_score", fake_brier, raising=False)
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_brier")
+
+    # Passes ECE + is monotone, but worsens OOS Brier -> dropped.
+    assert res["iso_persisted"] is False
+    assert res["best_method"] is None
+    assert not (tmp_path / "models" / "unit_brier_calibration_iso.joblib").exists()
+    # live application for this market is therefore a safe no-op
+    assert cal.apply_calibration(np.array([0.7]), sport="unit_brier", method="auto")[0] == 0.7
+
+
 def test_method_registry_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     assert cal._load_method_registry() == {}          # absent -> empty

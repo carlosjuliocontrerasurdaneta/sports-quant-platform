@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
-from sqp.calibration.metrics import (calibration_report,
+from sqp.calibration.metrics import (brier_score, calibration_report,
                                      expected_calibration_error)
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
@@ -151,10 +151,12 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     beta = BetaCalibrator().fit(train_probs, train_outcomes)
 
     raw_val_ece = float(expected_calibration_error(val_probs, val_outcomes))
+    raw_val_brier = float(brier_score(val_probs, val_outcomes))
     iso_val_probs = np.clip(iso.predict(val_probs), 0.01, 0.99)
     val_metrics = calibration_report(iso_val_probs, val_outcomes)
     beta_val_probs = np.clip(beta.predict(val_probs), 0.01, 0.99)
     beta_val_ece = float(expected_calibration_error(beta_val_probs, val_outcomes))
+    beta_val_brier = float(brier_score(beta_val_probs, val_outcomes))
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     iso_path, beta_path = _model_path(sport, "iso"), _model_path(sport, "beta")
@@ -164,17 +166,24 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     # gated independently because the apply-time method (iso/beta) is
     # configurable. Without this, every retrain re-persisted worsening models
     # (e.g. low-sample markets), silently degrading the live picks.
-    # Gate on TWO conditions: (1) the calibrator must not worsen OOS ECE, and
-    # (2) it must be monotone non-decreasing. A non-monotone fit (a degenerate
-    # beta that maps low probabilities UP) can have an acceptable aggregate ECE
-    # while inverting rank order -- which manufactured phantom edges on mlb
-    # spreads -- so monotonicity is a hard, ECE-independent requirement.
+    # Gate on THREE conditions: the calibrator must not worsen (1) OOS ECE nor
+    # (2) the OOS Brier score, and (3) it must be monotone non-decreasing. ECE is
+    # a binned average that tolerates a confident-but-wrong fit -- a monotone yet
+    # overfit isotonic step that pushed favorites toward 0.9 passed the ECE gate
+    # while manufacturing phantom edges on mlb spreads. The Brier score is a
+    # proper scoring rule that penalizes that overconfidence per sample, so it is
+    # an ECE-independent requirement, as is monotonicity (which catches a
+    # degenerate beta that maps low probabilities UP, inverting rank order).
     iso_persisted = _persist_or_remove(
         iso, iso_path,
-        val_metrics["ece"] <= raw_val_ece and _is_monotone_increasing(iso.predict))
+        val_metrics["ece"] <= raw_val_ece
+        and val_metrics["brier_score"] <= raw_val_brier
+        and _is_monotone_increasing(iso.predict))
     beta_persisted = _persist_or_remove(
         beta, beta_path,
-        beta_val_ece <= raw_val_ece and _is_monotone_increasing(beta.predict))
+        beta_val_ece <= raw_val_ece
+        and beta_val_brier <= raw_val_brier
+        and _is_monotone_increasing(beta.predict))
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths
 
     # Per-group best method for method="auto": among the calibrators that beat
@@ -199,7 +208,9 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
         "n_train": len(train_df),
         "n_val": len(val_df),
         "raw_val_ece": raw_val_ece,
+        "raw_val_brier": raw_val_brier,
         "beta_val_ece": beta_val_ece,
+        "beta_val_brier": beta_val_brier,
         "val_metrics": val_metrics,
         "iso_persisted": iso_persisted,
         "beta_persisted": beta_persisted,
