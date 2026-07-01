@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.html_report import html_dashboard, open_in_browser
 from sqp.audit.patterns import build_pick_history
 from sqp.audit.report import consolidated_report, settlement_audit_report
-from sqp.calibration.calibrator import train_market_calibrators
 from sqp.config import CONFIG_DIR, ROOT, Settings, load_yaml
 from sqp.logging_config import get_logger
 from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
@@ -199,18 +198,20 @@ def main() -> int:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))
             # Retrain per-(league, market) calibrators as CANDIDATES for NEXT runs.
-            # Today's picks were already generated above with the prior LIVE models,
-            # so this can never leak the current day into its own calibrator. The
-            # retrain writes to STAGING only -- it never promotes a model into
-            # production in the same cycle (that is a deliberate, separate step:
-            # scripts/promote_calibration.py), so a degenerate daily fit cannot
+            # Trains on the SETTLED live bets (opening-anchored), NOT the
+            # closing-anchored backtest above: the pipeline serves opening-anchored
+            # probabilities, so only settled outcomes make live overconfidence
+            # learnable. Today's picks were already generated with the prior LIVE
+            # models, so this cannot leak the current day into its own calibrator.
+            # STAGING only -- promotion is a deliberate, separate step
+            # (scripts/promote_calibration.py), so a degenerate daily fit cannot
             # auto-install itself. Only when enabled.
-            if settings.calibration_enabled and not hist.empty:
-                cal = train_market_calibrators(hist)  # staging=True by default
+            cal = stage_calibrators_from_settled(settings)
+            if cal:
                 n_ok = sum(1 for r in cal if r.get("trained"))
-                log.info("Calibradores reentrenados a STAGING: %d de %d grupos "
-                         "(sin promover; usa scripts/promote_calibration.py para "
-                         "revisar y promover)", n_ok, len(cal))
+                log.info("Calibradores reentrenados a STAGING desde settled: %d de "
+                         "%d grupos (sin promover; usa scripts/promote_calibration.py "
+                         "para revisar y promover)", n_ok, len(cal))
         except Exception as exc:
             log.warning("No se pudo construir el historial / recalibrar: %s", exc)
         if not args.no_html:

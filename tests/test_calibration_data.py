@@ -94,3 +94,39 @@ def test_overconfident_settled_feeds_trainable_history(tmp_path, monkeypatch):
     # Staged, NOT live: nothing was promoted into the live registry.
     assert (tmp_path / "models" / "staging").exists()
     assert cal._load_method_registry(staging=False) == {}
+
+
+def test_stage_helper_disabled_returns_empty():
+    from types import SimpleNamespace
+    from sqp.calibration.data import stage_calibrators_from_settled
+    assert stage_calibrators_from_settled(SimpleNamespace(calibration_enabled=False)) == []
+
+
+def test_stage_helper_empty_settled_returns_empty(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from sqp.calibration import data as cdata
+    monkeypatch.setattr(cdata, "ROOT", tmp_path)  # empty data/bets
+    out = cdata.stage_calibrators_from_settled(SimpleNamespace(calibration_enabled=True))
+    assert out == []
+
+
+def test_stage_helper_trains_from_settled(tmp_path, monkeypatch):
+    import numpy as np
+    from types import SimpleNamespace
+    from sqp.calibration import data as cdata
+    from sqp.calibration import calibrator as cal
+
+    monkeypatch.setattr(cdata, "ROOT", tmp_path)
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    rng = np.random.default_rng(1)
+    wins = rng.random(200) < 0.40
+    rows = [{"market": "h2h", "estimated_probability": 0.70,
+             "result": "win" if w else "loss",
+             "game_date": f"2026-05-{1 + i % 28:02d}", "generated_at": ""}
+            for i, w in enumerate(wins)]
+    _write_settled(tmp_path / "data" / "bets", "mlb", rows)
+
+    out = cdata.stage_calibrators_from_settled(SimpleNamespace(calibration_enabled=True))
+    mlb = next(r for r in out if r["league"] == "mlb" and r["market"] == "h2h")
+    assert mlb["trained"] is True
+    assert cal._load_method_registry(staging=False) == {}  # staged, not live

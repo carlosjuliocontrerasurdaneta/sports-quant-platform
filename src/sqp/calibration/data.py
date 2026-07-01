@@ -53,3 +53,22 @@ def load_settled_training_history(bets_dir: Path | None = None) -> pd.DataFrame:
     out["result"] = settled["result"].astype(str) if "result" in settled else ""
     out = out.dropna(subset=["estimated_probability"]).reset_index(drop=True)
     return out[TRAINING_COLS]
+
+
+def stage_calibrators_from_settled(settings) -> list[dict]:
+    """Stage per-(league, market) calibrator CANDIDATES from the settled live bets.
+
+    Trains on the opening-anchored settled outcomes (see
+    ``load_settled_training_history``) into STAGING only -- promotion into the
+    live registry stays a deliberate, separate step (scripts/promote_calibration).
+    Returns ``train_market_calibrators``' per-group summaries, or ``[]`` when
+    calibration is disabled or there are no settled bets yet.
+    """
+    from sqp.calibration.calibrator import train_market_calibrators
+
+    if not getattr(settings, "calibration_enabled", False):
+        return []
+    hist = load_settled_training_history()
+    if hist.empty:
+        return []
+    return train_market_calibrators(hist)  # staging=True by default
