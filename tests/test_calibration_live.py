@@ -82,11 +82,15 @@ def test_train_market_calibrators_groups_skips_and_persists(tmp_path, monkeypatc
     assert h2h["trained"] is True
     assert h2h["n"] == 300                       # push excluded from the graded count
     assert "raw_val_ece" in h2h and "cal_val_ece" in h2h
-    assert (tmp_path / "models" / "mlb_h2h_calibration_iso.joblib").exists()
+    # The retrain STAGES the candidate; it does NOT go live in the same cycle.
+    assert (tmp_path / "models" / "staging" / "mlb_h2h_calibration_iso.joblib").exists()
+    assert not (tmp_path / "models" / "mlb_h2h_calibration_iso.joblib").exists()
+    assert "mlb_h2h" not in cal._load_method_registry()          # live untouched
+    assert cal.calibrate_probability(0.85, "mlb", "h2h", method="auto") == 0.85
 
     totals = by_market[("mlb", "totals")]
     assert totals["trained"] is False            # 5 graded < min_n
-    assert not (tmp_path / "models" / "mlb_totals_calibration_iso.joblib").exists()
+    assert not (tmp_path / "models" / "staging" / "mlb_totals_calibration_iso.joblib").exists()
 
 
 def test_train_market_calibrators_empty_history_is_safe():

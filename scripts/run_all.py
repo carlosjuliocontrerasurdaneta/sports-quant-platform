@@ -198,13 +198,19 @@ def main() -> int:
         try:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))
-            # Refresh per-(league, market) calibrators for NEXT runs. Today's picks
-            # were already generated above with the prior models, so this can never
-            # leak the current day into its own calibrator. Only when enabled.
+            # Retrain per-(league, market) calibrators as CANDIDATES for NEXT runs.
+            # Today's picks were already generated above with the prior LIVE models,
+            # so this can never leak the current day into its own calibrator. The
+            # retrain writes to STAGING only -- it never promotes a model into
+            # production in the same cycle (that is a deliberate, separate step:
+            # scripts/promote_calibration.py), so a degenerate daily fit cannot
+            # auto-install itself. Only when enabled.
             if settings.calibration_enabled and not hist.empty:
-                cal = train_market_calibrators(hist)
+                cal = train_market_calibrators(hist)  # staging=True by default
                 n_ok = sum(1 for r in cal if r.get("trained"))
-                log.info("Calibradores reentrenados: %d (de %d grupos)", n_ok, len(cal))
+                log.info("Calibradores reentrenados a STAGING: %d de %d grupos "
+                         "(sin promover; usa scripts/promote_calibration.py para "
+                         "revisar y promover)", n_ok, len(cal))
         except Exception as exc:
             log.warning("No se pudo construir el historial / recalibrar: %s", exc)
         if not args.no_html:

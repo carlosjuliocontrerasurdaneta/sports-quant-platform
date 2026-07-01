@@ -15,6 +15,7 @@ into certainties.
 from __future__ import annotations
 
 import json
+import shutil
 from functools import lru_cache
 
 import joblib
@@ -32,8 +33,17 @@ log = get_logger(__name__)
 MODELS_DIR = ROOT / "data" / "models"
 
 
-def _model_path(sport: str, name: str):
-    return MODELS_DIR / f"{sport}_calibration_{name}.joblib"
+def _staging_dir():
+    """Where a retrain writes CANDIDATE calibrators. Kept separate from the live
+    ``MODELS_DIR`` so a daily retrain can never overwrite a production model or
+    promote itself: candidates land here and only an explicit promotion copies
+    them up. Derived from ``MODELS_DIR`` so a monkeypatched dir still nests."""
+    return MODELS_DIR / "staging"
+
+
+def _model_path(sport: str, name: str, *, staging: bool = False):
+    base = _staging_dir() if staging else MODELS_DIR
+    return base / f"{sport}_calibration_{name}.joblib"
 
 
 @lru_cache(maxsize=128)
@@ -68,15 +78,18 @@ def _persist_or_remove(model, path, keep: bool) -> bool:
     return False
 
 
-def _method_registry_path():
-    return MODELS_DIR / "calibration_methods.json"
+def _method_registry_path(*, staging: bool = False):
+    base = _staging_dir() if staging else MODELS_DIR
+    return base / "calibration_methods.json"
 
 
-def _load_method_registry() -> dict:
-    """Per-(league, market) winning calibrator method (the JSON backing
-    ``method='auto'``). Returns {} when absent or unreadable, so a missing /
-    corrupt registry degrades to a no-op rather than an error."""
-    path = _method_registry_path()
+def _load_method_registry(*, staging: bool = False) -> dict:
+    """Per-(league, market) winning calibrator method. The LIVE registry
+    (``staging=False``) backs ``method='auto'`` -- what the pipeline applies --
+    while the STAGING registry holds the last retrain's candidates awaiting
+    promotion. Returns {} when absent or unreadable, so a missing / corrupt
+    registry degrades to a no-op rather than an error."""
+    path = _method_registry_path(staging=staging)
     if not path.exists():
         return {}
     try:
@@ -85,19 +98,20 @@ def _load_method_registry() -> dict:
         return {}
 
 
-def _set_best_method(key: str, method: str | None) -> None:
-    """Record (or clear with ``None``) the best apply-time method for ``key``.
-    Self-healing like the model files: a retrain whose calibrators stop helping
-    drops the group from the registry, so ``method='auto'`` falls back to a
-    no-op for it. Read-modify-write a single JSON; training is sequential."""
-    reg = _load_method_registry()
+def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> None:
+    """Record (or clear with ``None``) the best apply-time method for ``key`` in
+    the live registry, or the staging registry when ``staging=True``. Self-healing
+    like the model files: a retrain whose calibrators stop helping drops the group
+    from the registry, so ``method='auto'`` falls back to a no-op for it.
+    Read-modify-write a single JSON; training is sequential."""
+    reg = _load_method_registry(staging=staging)
     if method is None:
         reg.pop(key, None)
     else:
         reg[key] = method
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    _method_registry_path().write_text(
-        json.dumps(reg, indent=2, sort_keys=True), encoding="utf-8")
+    path = _method_registry_path(staging=staging)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(reg, indent=2, sort_keys=True), encoding="utf-8")
 
 
 class BetaCalibrator:
@@ -130,9 +144,15 @@ class BetaCalibrator:
 
 def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
                       outcome_col: str = "home_win", sport: str = "mlb",
-                      val_fraction: float = 0.20) -> dict:
+                      val_fraction: float = 0.20, staging: bool = False) -> dict:
     """Fit isotonic + beta calibrators on the earlier games and validate on the
-    most recent ``val_fraction``. Persists both models and returns OOS metrics."""
+    most recent ``val_fraction``. Persists both models and returns OOS metrics.
+
+    With ``staging=True`` the candidate model + method are written to the staging
+    area instead of the live one, so a retrain produces candidates that the
+    pipeline does NOT apply until an explicit ``promote_calibrators`` call. This
+    is what stops a daily retrain from promoting a (possibly degenerate) model
+    into production in the same cycle."""
     df2 = df.dropna(subset=[prob_col, outcome_col]).reset_index(drop=True)
     if len(df2) < 40:
         raise ValueError(f"Not enough data to calibrate: {len(df2)} rows (need >=40)")
@@ -158,8 +178,9 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     beta_val_ece = float(expected_calibration_error(beta_val_probs, val_outcomes))
     beta_val_brier = float(brier_score(beta_val_probs, val_outcomes))
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    iso_path, beta_path = _model_path(sport, "iso"), _model_path(sport, "beta")
+    iso_path = _model_path(sport, "iso", staging=staging)
+    beta_path = _model_path(sport, "beta", staging=staging)
+    iso_path.parent.mkdir(parents=True, exist_ok=True)
     # Self-healing gate: persist a calibrator only when it does NOT worsen the
     # out-of-sample ECE; otherwise drop it (and clean any stale prior model at
     # that path) so live application falls back to a safe no-op. Each model is
@@ -196,7 +217,7 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     if beta_persisted:
         ranked.append(("beta", beta_val_ece))
     best_method = min(ranked, key=lambda r: r[1])[0] if ranked else None
-    _set_best_method(sport, best_method)
+    _set_best_method(sport, best_method, staging=staging)
 
     log.info("[%s] Calibration fit on %d rows, val %d | raw ECE %.4f -> iso %.4f "
              "(%s) / beta %.4f (%s)", sport, len(train_df), len(val_df), raw_val_ece,
@@ -219,7 +240,8 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     }
 
 
-def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dict]:
+def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
+                             staging: bool = True) -> list[dict]:
     """Train one calibrator per (league, market) from a consolidated pick history
     (columns: league, market, date, estimated_probability, result).
 
@@ -230,6 +252,10 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dic
     ``min_n`` graded bets are skipped (recorded ``trained=False``) -- and since
     the live application is a no-op without a model, an untrained market simply
     stays uncalibrated. Returns one summary dict per group.
+
+    Candidates are written to STAGING by default: the daily retrain must not
+    promote a calibrator into production in the same cycle. Call
+    ``promote_calibrators`` as an explicit, separate step to make candidates live.
     """
     out: list[dict] = []
     if hist is None or hist.empty:
@@ -248,7 +274,8 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dic
             continue
         try:
             r = train_calibration(df, prob_col="probability", outcome_col="won",
-                                  sport=calibration_key(str(league), str(market)))
+                                  sport=calibration_key(str(league), str(market)),
+                                  staging=staging)
             rec.update({"trained": True, "raw_val_ece": r["raw_val_ece"],
                         "cal_val_ece": r["val_metrics"]["ece"],
                         "beta_val_ece": r["beta_val_ece"], "n_val": r["n_val"],
@@ -259,6 +286,41 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40) -> list[dic
             rec["error"] = str(exc)
         out.append(rec)
     return out
+
+
+def promote_calibrators(keys: list[str] | None = None) -> list[str]:
+    """Promote staged candidate calibrators into the LIVE registry the pipeline
+    applies. This is the deliberate step that ``train_market_calibrators`` does
+    NOT perform: training only writes to staging, so a daily retrain can never
+    push a (possibly degenerate) model into production on its own -- promotion is
+    an explicit, reviewable act.
+
+    For each promoted key the staged model file(s) are copied to their live path
+    and the live registry is pointed at the staged method. A full promotion
+    (``keys=None``) also DEMOTES any live market the latest retrain no longer
+    recommends (absent from staging), so promotion faithfully adopts the current
+    retrain and self-healing is preserved. Returns the keys promoted.
+    """
+    staged = _load_method_registry(staging=True)
+    targets = staged if keys is None else {k: v for k, v in staged.items() if k in keys}
+    promoted: list[str] = []
+    for key, method in targets.items():
+        for name in ("iso", "beta"):
+            src = _model_path(key, name, staging=True)
+            if src.exists():
+                dst = _model_path(key, name)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(str(src), str(dst))
+        _set_best_method(key, method)
+        promoted.append(key)
+    if keys is None:  # full sync: demote live markets no longer recommended
+        for key in list(_load_method_registry()):
+            if key not in staged:
+                _set_best_method(key, None)
+                for name in ("iso", "beta"):
+                    _model_path(key, name).unlink(missing_ok=True)
+    _load_calibrator.cache_clear()
+    return promoted
 
 
 def apply_calibration(probs: np.ndarray, sport: str = "mlb",

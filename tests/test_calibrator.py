@@ -167,6 +167,42 @@ def test_train_drops_calibrator_that_passes_ece_but_worsens_brier(tmp_path, monk
     assert cal.apply_calibration(np.array([0.7]), sport="unit_brier", method="auto")[0] == 0.7
 
 
+def test_train_to_staging_does_not_promote_to_live(tmp_path, monkeypatch):
+    """A retrain must never make a calibrator live in the same cycle. Training
+    with staging=True writes the candidate model + a STAGING registry, but leaves
+    the LIVE registry untouched, so the pipeline (apply method='auto') stays a
+    no-op until an explicit promotion. This is the architectural guard against a
+    degenerate daily-retrained calibrator auto-installing itself into production."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_stage", staging=True)
+    assert res["persisted"] is True  # a good candidate was produced
+
+    # LIVE registry untouched -> pipeline still a no-op for this market.
+    assert "unit_stage" not in cal._load_method_registry()
+    assert cal.apply_calibration(np.array([0.85]), "unit_stage", method="auto")[0] == 0.85
+    # ...but the candidate is staged, ready to promote.
+    assert "unit_stage" in cal._load_method_registry(staging=True)
+
+
+def test_promote_calibrators_moves_staging_to_live(tmp_path, monkeypatch):
+    """The explicit, separate promotion step copies a staged candidate into the
+    live registry (and its model file), after which the pipeline applies it."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    cal.train_calibration(_miscalibrated(), sport="unit_promote", staging=True)
+
+    promoted = cal.promote_calibrators()
+
+    assert "unit_promote" in promoted
+    assert "unit_promote" in cal._load_method_registry()          # now live
+    # the live model file exists and the pipeline now transforms inputs
+    assert cal._model_path("unit_promote", "iso").exists()
+    out = cal.apply_calibration(np.array([0.85]), "unit_promote", method="auto")[0]
+    assert out != 0.85 and 0.01 <= out <= 0.99
+
+
 def test_method_registry_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     assert cal._load_method_registry() == {}          # absent -> empty
