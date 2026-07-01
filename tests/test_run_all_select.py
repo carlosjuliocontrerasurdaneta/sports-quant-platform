@@ -52,6 +52,16 @@ def test_select_live_assumes_active_on_status_check_error(monkeypatch):
     assert "mlb" in selected         # priority #1 -> selected within budget
 
 
+def test_run_all_wires_calibration_staging():
+    """Regression 2026-07-01: run_all.main() llama stage_calibrators_from_settled
+    dentro de un try/except Exception; sin el import, el NameError se degradaba a
+    WARNING y el retrain diario a staging nunca corria en produccion. El nombre
+    debe estar cableado en el modulo, no resolverse recien en runtime."""
+    from sqp.calibration.data import stage_calibrators_from_settled
+    assert getattr(run_all, "stage_calibrators_from_settled", None) \
+        is stage_calibrators_from_settled
+
+
 def test_select_live_excludes_inactive_and_unknown(monkeypatch):
     class _Client(_FakeClient):
         def is_sport_active(self, sport_key):

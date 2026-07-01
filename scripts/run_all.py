@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.html_report import html_dashboard, open_in_browser
 from sqp.audit.patterns import build_pick_history
 from sqp.audit.report import consolidated_report, settlement_audit_report
+from sqp.calibration.data import stage_calibrators_from_settled
 from sqp.config import CONFIG_DIR, ROOT, Settings, load_yaml
 from sqp.logging_config import get_logger
 from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
