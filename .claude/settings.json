@@ -1,4 +1,5 @@
 {
+  "model": "claude-fable-5",
   "permissions": {
     "deny": [
       "Read(./data/odds/**)",
@@ -12,7 +13,17 @@
       "Read(./exports/**)",
       "Read(./logs/**)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.*)",
+      "Write(./data/**)",
+      "Edit(./data/**)",
+      "Write(./historical/**)",
+      "Edit(./historical/**)",
+      "Write(./logs/**)",
+      "Edit(./logs/**)",
+      "Write(./exports/**)",
+      "Edit(./exports/**)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)"
     ]
   },
   "hooks": {

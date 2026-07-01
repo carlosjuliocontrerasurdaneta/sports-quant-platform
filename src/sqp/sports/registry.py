@@ -3,6 +3,11 @@
 Family defaults below; leagues override. margin_sigma values are standard
 published magnitudes for each sport and MUST be re-estimated from your own
 historical data during calibration (run_calibration_report).
+
+Per-league param precedence (later wins): FAMILY_PARAMS -> LEAGUE_OVERRIDES ->
+league_params (ratings.yaml / soccer.yaml) -> adapter __init__ code default.
+This chain is independent of env vars and default.yaml (those feed Settings,
+not league_params). Full map: docs/CONFIG-PRECEDENCE.md.
 """
 from __future__ import annotations
 from .adapters import (BasketballAdapter, FootballAdapter, BaseballAdapter,

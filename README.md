@@ -50,6 +50,9 @@ src/sqp/
 Distinción estricta en todas las salidas: probabilidad estimada ≠ probabilidad
 implícita del mercado (sin vig) ≠ edge estimado ≠ ROI esperado ≠ ROI realizado.
 
+**Precedencia de configuración** (qué fuente gana entre env / `default.yaml` /
+YAML por liga / defaults de código): ver [`docs/CONFIG-PRECEDENCE.md`](docs/CONFIG-PRECEDENCE.md).
+
 ## Instalación
 
 ```bash

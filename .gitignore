@@ -23,5 +23,11 @@ Second-Brain/
 data/output/
 .claude/tools/
 .claude/settings.local.json
+# Lock efimero del scheduler de Claude Code (se recrea en cada sesion)
+.claude/scheduled_tasks.lock
 *.backup-*
 graphify-out/
+
+# Obsidian (config local de la boveda; no versionar)
+.obsidian/
+Obsidian/
