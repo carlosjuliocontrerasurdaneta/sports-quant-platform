@@ -32,8 +32,10 @@ jobs:
       - name: Install (editable + dev extras)
         run: pip install -e ".[dev]"
 
+      # scripts/ included: an undefined name there (F821) silently killed the
+      # daily calibration staging on 2026-07-01 -- entrypoints must be linted.
       - name: Ruff (lint)
-        run: ruff check src tests
+        run: ruff check src scripts tests
 
       - name: Pytest
         # pythonpath=["src"] is set in pyproject, so no PYTHONPATH needed.

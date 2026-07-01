@@ -5,4 +5,4 @@ test:
 demo:
 	python scripts/run_daily.py --sports mlb nba nfl nhl --mode demo
 lint:
-	ruff check src tests
+	ruff check src scripts tests
