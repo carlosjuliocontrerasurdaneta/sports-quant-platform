@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.patterns import build_pick_history, load_pick_history
 from sqp.calibration.calibrator import MODELS_DIR, train_market_calibrators
+from sqp.calibration.data import load_settled_training_history
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.train_calibration")
@@ -34,12 +35,22 @@ def main() -> int:
                     help="Minimum graded bets per (league, market) to calibrate")
     ap.add_argument("--rebuild", action="store_true",
                     help="Rebuild pick_history.csv from the backtest first")
+    ap.add_argument("--source", choices=["settled", "backtest"], default="settled",
+                    help="Datos de entrenamiento: 'settled' (apuestas liquidadas "
+                         "en vivo, ancladas a la apertura -- corrige el desajuste "
+                         "train/serve) o 'backtest' (historial anclado al cierre).")
     args = ap.parse_args()
 
-    hist = build_pick_history(write=True) if args.rebuild else load_pick_history()
+    if args.source == "settled":
+        hist = load_settled_training_history()
+        empty_msg = ("no hay apuestas liquidadas (data/bets/settled_*.csv): corre "
+                     "SETTLE_ALL.bat antes de calibrar sobre settled.")
+    else:
+        hist = build_pick_history(write=True) if args.rebuild else load_pick_history()
+        empty_msg = ("pick_history vacio: corre scripts/build_pick_history.py "
+                     "(o usa --rebuild) antes de calibrar.")
     if hist.empty:
-        log.warning("pick_history vacio: corre scripts/build_pick_history.py "
-                    "(o usa --rebuild) antes de calibrar.")
+        log.warning(empty_msg)
         return 1
 
     results = train_market_calibrators(hist, min_n=args.min_n)
