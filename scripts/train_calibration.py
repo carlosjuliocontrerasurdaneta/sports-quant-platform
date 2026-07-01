@@ -17,9 +17,12 @@ Use --source backtest to train from data/processed/pick_history.csv instead
 pass --rebuild). Note: the backtest source anchors to closing lines, so the
 trained calibrator will not correct the opening-line overconfidence seen live.
 
-Calibration is OFF in the live pipeline until you set calibration.enabled: true
-(configs/default.yaml) or CALIBRATION_ENABLED=1. These calibrators produce
-calibrated ESTIMATED probabilities -- not certainties, not a profit guarantee.
+Training NEVER touches the live registry: candidates land in staging and the
+pipeline keeps applying whatever was last PROMOTED (scripts/promote_calibration.py,
+a deliberate human step). With calibration.enabled: true and an empty live
+registry (the current state), live application is a safe no-op. These calibrators
+produce calibrated ESTIMATED probabilities -- not certainties, not a profit
+guarantee.
 """
 from __future__ import annotations
 
@@ -49,6 +52,9 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.source == "settled":
+        if args.rebuild:
+            log.warning("--rebuild solo aplica con --source backtest (reconstruye "
+                        "pick_history); con 'settled' se IGNORA.")
         hist = load_settled_training_history()
         empty_msg = ("no hay apuestas liquidadas (data/bets/settled_*.csv): corre "
                      "SETTLE_ALL.bat antes de calibrar sobre settled.")
