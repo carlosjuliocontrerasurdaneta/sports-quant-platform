@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import pandas as pd
-from sqp.pipeline.closing_capture import leagues_with_imminent_bets, _parse_utc
+from sqp.pipeline.closing_capture import (leagues_with_imminent_bets, _parse_utc,
+                                          spent_today, add_spent)
 
 
 def _seed(pred_dir, league, cand_ids, pred_rows):
@@ -33,7 +34,6 @@ def test_league_without_imminent_bet_is_omitted(tmp_path):
     assert leagues_with_imminent_bets(tmp_path, now, window_min=120) == {}
 
 
-from sqp.pipeline.closing_capture import spent_today, add_spent
 
 
 def test_credit_counter_accumulates_and_isolates_by_day(tmp_path):

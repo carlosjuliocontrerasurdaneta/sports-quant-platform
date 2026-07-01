@@ -4,7 +4,8 @@
 Demo: python scripts/run_backtest.py --league nba --mode demo
 Live: provide --results-csv with columns date,home,away,home_score,away_score
 """
-import argparse, sys
+import argparse
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd

@@ -4,7 +4,11 @@ A settled_*.csv written by an older BetCandidate schema (before
 calibrated_probability existed) must not misalign when newer rows -- which carry
 the extra column -- are persisted. The old failure was a blind mode='a' append
 that wrote the new column order under the old header (audit 2026-06, I-1)."""
+
+from pathlib import Path
+
 import pandas as pd
+import pytest
 
 import sqp.settlement.runner as runner
 
@@ -47,6 +51,32 @@ def test_persist_reconciles_added_column_without_misalignment(tmp_path, monkeypa
     assert pd.isna(r1["calibrated_probability"])      # absent in the old schema
     # New row keeps its calibrated probability and grade.
     assert r2["result"] == "loss" and float(r2["calibrated_probability"]) == 0.50
+
+
+def test_persist_write_failure_leaves_prior_file_intact(tmp_path, monkeypatch):
+    """Crash-safety: settled_*.csv es fuente unica de la auditoria de ROI, el
+    ledger de banca y el entrenamiento de calibradores. Un fallo a mitad de
+    escritura no debe truncar el archivo previo: se escribe a un temporal y se
+    reemplaza atomicamente (os.replace)."""
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    row = {"event_id": "e1", "market": "h2h", "selection": "A",
+           "price_decimal": 1.9, "stake": 10.0,
+           "generated_at": "2026-06-01T00:00:00+00:00", "result": "win",
+           "pnl": 9.0, "settled_at": "2026-06-01T03:00:00+00:00"}
+    _persist(tmp_path, pd.DataFrame([row]))          # seed the prior file
+    out = tmp_path / "data" / "bets" / "settled_nfl.csv"
+    original = out.read_text(encoding="utf-8")
+
+    def exploding_to_csv(self, path_or_buf, *args, **kwargs):
+        Path(path_or_buf).write_text("PARTIAL", encoding="utf-8")
+        raise OSError("disk full mid-write")
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", exploding_to_csv)
+    with pytest.raises(OSError):
+        runner._persist_settled("nfl", pd.DataFrame([{**row, "event_id": "e2"}]))
+
+    assert out.read_text(encoding="utf-8") == original   # prior file untouched
+    assert not list(out.parent.glob("*.tmp"))            # no stray temp files
 
 
 def test_persist_is_idempotent_on_repeat(tmp_path, monkeypatch):

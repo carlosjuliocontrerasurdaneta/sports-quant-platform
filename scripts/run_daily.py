@@ -12,7 +12,8 @@ Examples:
   python scripts/run_daily.py --sports mlb nba nfl nhl --mode demo
   python scripts/run_daily.py --sports nba wnba epl --mode live
 """
-import argparse, sys
+import argparse
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.config import Settings

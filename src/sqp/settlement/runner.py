@@ -5,6 +5,10 @@ league with pending candidates). Append-only and idempotent: a candidate already
 settled in a prior run is never graded twice.
 """
 from __future__ import annotations
+
+import os
+from pathlib import Path
+
 import pandas as pd
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
@@ -126,10 +130,25 @@ def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
         cols = list(prior.columns) + [c for c in settled.columns if c not in prior.columns]
         combined = pd.concat([prior.reindex(columns=cols), settled.reindex(columns=cols)],
                              ignore_index=True)
-        combined.to_csv(out, index=False)
+        _atomic_write_csv(combined, out)
     else:
-        settled.to_csv(out, index=False)
+        _atomic_write_csv(settled, out)
     return settled
+
+
+def _atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
+    """Write ``df`` to ``out`` via a sibling temp file + ``os.replace``.
+
+    settled_*.csv is the single source feeding the ROI audit, the bankroll
+    ledger (which sizes live stakes) and calibrator training; a crash mid-write
+    must never leave it truncated. ``os.replace`` is atomic on the same volume,
+    so readers only ever see the old file or the complete new one."""
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    try:
+        df.to_csv(tmp, index=False)
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
