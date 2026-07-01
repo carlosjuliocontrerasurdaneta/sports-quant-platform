@@ -58,6 +58,9 @@ def test_date_tracks_game_date_not_row_order(tmp_path):
     out = load_settled_training_history(tmp_path)
     assert out.loc[0, "date"] == "2026-06-25"
     assert out.loc[1, "date"] == "2026-06-10"
+    # Guard against a future accidental sort: order must be preserved as written,
+    # not sorted by date (the temporal sort belongs downstream, not here).
+    assert out.loc[0, "date"] > out.loc[1, "date"]
 
 
 def test_empty_or_missing_dir_is_empty_frame(tmp_path):
