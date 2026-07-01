@@ -1,14 +1,21 @@
 #!/usr/bin/env python
-"""Train per-(league, market) probability calibrators from the pick history.
+"""Train per-(league, market) probability calibrators from settled live bets.
 
-Reads data/processed/pick_history.csv (built by scripts/build_pick_history.py),
-and for every (league, market) with enough graded bets fits an isotonic + beta
+By default reads data/bets/settled_*.csv (opening-anchored live probabilities
+built by SETTLE_ALL.bat), projects them onto the calibration schema, and for
+every (league, market) with enough graded bets fits an isotonic + beta
 calibrator with a TEMPORAL split (earlier games train, most recent validate),
-persisting them under data/models/. Prints the out-of-sample ECE before vs after
-so you can see where calibration actually helps before enabling it.
+staging candidates under data/models/staging/. Prints the out-of-sample ECE
+before vs after so you can see where calibration actually helps before
+promoting a candidate into the live registry.
 
   python scripts/train_calibration.py
   python scripts/train_calibration.py --min-n 60
+
+Use --source backtest to train from data/processed/pick_history.csv instead
+(closing-anchored backtest replay; run scripts/build_pick_history.py first or
+pass --rebuild). Note: the backtest source anchors to closing lines, so the
+trained calibrator will not correct the opening-line overconfidence seen live.
 
 Calibration is OFF in the live pipeline until you set calibration.enabled: true
 (configs/default.yaml) or CALIBRATION_ENABLED=1. These calibrators produce

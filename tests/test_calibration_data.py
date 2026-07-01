@@ -34,6 +34,18 @@ def test_date_falls_back_to_generated_at(tmp_path):
     assert out.loc[0, "date"] == "2026-06-22"
 
 
+def test_drops_rows_without_any_date(tmp_path):
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "estimated_probability": 0.55, "result": "win",
+         "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
+        {"market": "h2h", "estimated_probability": 0.61, "result": "loss",
+         "game_date": "", "generated_at": ""},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert len(out) == 1
+    assert out.loc[0, "date"] == "2026-06-20"
+
+
 def test_drops_rows_without_estimated_probability(tmp_path):
     _write_settled(tmp_path, "mlb", [
         {"market": "h2h", "estimated_probability": 0.55, "result": "win",

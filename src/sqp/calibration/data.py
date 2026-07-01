@@ -27,8 +27,11 @@ def load_settled_training_history(bets_dir: Path | None = None) -> pd.DataFrame:
     ``generated_at``) truncated to YYYY-MM-DD, so the temporal split in
     ``train_calibration`` orders by when the game happened -- never by row order,
     which could otherwise place a validation game before its training games and
-    leak. Rows without an ``estimated_probability`` are dropped (nothing to
-    calibrate); push/void rows are kept and filtered downstream by
+    leak. Rows with no usable date (both ``game_date`` and ``generated_at``
+    empty or missing) are dropped -- valid settled bets always carry a timestamp,
+    and an empty date would sort before all real ISO dates, undermining the
+    leakage guard. Rows without an ``estimated_probability`` are also dropped
+    (nothing to calibrate); push/void rows are kept and filtered downstream by
     ``train_market_calibrators``. Returns an empty frame with ``TRAINING_COLS``
     when there are no settled bets.
     """
@@ -51,7 +54,8 @@ def load_settled_training_history(bets_dir: Path | None = None) -> pd.DataFrame:
     else:
         out["estimated_probability"] = pd.Series(float("nan"), index=settled.index)
     out["result"] = settled["result"].astype(str) if "result" in settled else ""
-    out = out.dropna(subset=["estimated_probability"]).reset_index(drop=True)
+    out["date"] = out["date"].where(out["date"].str.len() >= 10, other=pd.NA)
+    out = out.dropna(subset=["estimated_probability", "date"]).reset_index(drop=True)
     return out[TRAINING_COLS]
 
 
