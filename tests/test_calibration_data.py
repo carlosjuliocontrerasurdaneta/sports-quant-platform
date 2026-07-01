@@ -129,4 +129,5 @@ def test_stage_helper_trains_from_settled(tmp_path, monkeypatch):
     out = cdata.stage_calibrators_from_settled(SimpleNamespace(calibration_enabled=True))
     mlb = next(r for r in out if r["league"] == "mlb" and r["market"] == "h2h")
     assert mlb["trained"] is True
+    assert (tmp_path / "models" / "staging").exists()  # candidate was staged
     assert cal._load_method_registry(staging=False) == {}  # staged, not live
