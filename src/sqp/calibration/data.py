@@ -1,0 +1,55 @@
+"""Training-data source for probability calibration.
+
+The calibrator must learn from the probabilities the pipeline ACTUALLY served
+(opening-anchored, from data/bets/settled_*.csv), not from the closing-anchored
+backtest replay (build_pick_history). Training on the backtest makes the live
+overconfidence unlearnable, because live probabilities are anchored to the
+opening line while the backtest is anchored to the close. This projects the
+settled bets onto the schema train_market_calibrators expects.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from sqp.audit.report import load_all_settled
+from sqp.config import ROOT
+
+TRAINING_COLS = ["league", "market", "date", "estimated_probability", "result"]
+
+
+def load_settled_training_history(bets_dir: Path | None = None) -> pd.DataFrame:
+    """Project settled live bets onto the calibration-training schema
+    (league, market, date, estimated_probability, result).
+
+    ``date`` is the real game date (``game_date``, falling back to
+    ``generated_at``) truncated to YYYY-MM-DD, so the temporal split in
+    ``train_calibration`` orders by when the game happened -- never by row order,
+    which could otherwise place a validation game before its training games and
+    leak. Rows without an ``estimated_probability`` are dropped (nothing to
+    calibrate); push/void rows are kept and filtered downstream by
+    ``train_market_calibrators``. Returns an empty frame with ``TRAINING_COLS``
+    when there are no settled bets.
+    """
+    bets_dir = bets_dir or (ROOT / "data" / "bets")
+    settled = load_all_settled(bets_dir)
+    if settled.empty:
+        return pd.DataFrame(columns=TRAINING_COLS)
+
+    out = pd.DataFrame(index=settled.index)
+    out["league"] = settled["league"].astype(str) if "league" in settled else ""
+    out["market"] = settled["market"].astype(str) if "market" in settled else ""
+    gd = (settled["game_date"].astype(str) if "game_date" in settled
+          else pd.Series("", index=settled.index))
+    gen = (settled["generated_at"].astype(str) if "generated_at" in settled
+           else pd.Series("", index=settled.index))
+    out["date"] = gd.where(gd.str.len() >= 10, gen).str[:10]
+    if "estimated_probability" in settled:
+        out["estimated_probability"] = pd.to_numeric(
+            settled["estimated_probability"], errors="coerce")
+    else:
+        out["estimated_probability"] = pd.Series(float("nan"), index=settled.index)
+    out["result"] = settled["result"].astype(str) if "result" in settled else ""
+    out = out.dropna(subset=["estimated_probability"]).reset_index(drop=True)
+    return out[TRAINING_COLS]
