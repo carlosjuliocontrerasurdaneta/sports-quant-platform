@@ -253,9 +253,15 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
 
 
 def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
-                             staging: bool = True) -> list[dict]:
+                             staging: bool = True,
+                             prob_col: str = "estimated_probability") -> list[dict]:
     """Train one calibrator per (league, market) from a consolidated pick history
-    (columns: league, market, date, estimated_probability, result).
+    (columns: league, market, date, ``prob_col``, result).
+
+    ``prob_col`` names the probability being calibrated: the settled source
+    passes ``model_probability`` (pure pre-blend model prob -- the serving
+    target since research 2026-07-02), while the legacy backtest source keeps
+    ``estimated_probability`` (blended).
 
     Both isotonic and beta models are fitted and persisted per group (the
     apply-time method picks which one); the outcome is whether the selection won
@@ -277,7 +283,7 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     for (league, market), g in graded.groupby(["league", "market"]):
         if "date" in g.columns:
             g = g.sort_values("date")
-        df = pd.DataFrame({"probability": g["estimated_probability"].to_numpy(dtype=float),
+        df = pd.DataFrame({"probability": g[prob_col].to_numpy(dtype=float),
                            "won": g["won"].to_numpy(dtype=float)}).dropna()
         rec = {"league": str(league), "market": str(market), "n": int(len(df)),
                "trained": False}

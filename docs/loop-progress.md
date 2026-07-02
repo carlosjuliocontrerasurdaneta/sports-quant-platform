@@ -36,6 +36,14 @@ validación deja de ser ruido y el Brier decidirá con evidencia.
   gate. Doc: docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md. Decisión de adoptar el
   cambio de serving = humana, pendiente.
 
+- 2026-07-02 pmodel-serving: IMPLEMENTADO el cambio de serving aprobado por Carlos (deriva del
+  research): el retrain entrena sobre `model_probability` (requisito duro; `prob_col` explícito
+  en el trainer) y `daily._decision_probability` calibra p_model ANTES del shrink
+  (`p_decision = (1-s)·cal(p_model) + s·fair`); `p_used` almacenada sigue cruda. Con registro
+  live vacío el serving es byte-idéntico (test). TDD, suite 276 verde. Staging refrescado con
+  fits p_model: mlb_spreads AHORA PASA el gate completo (ECE 0.1698→0.0446 + Brier + monotonía)
+  — primer candidato legítimo de ese mercado; promoción sigue siendo humana.
+
 ## Bloqueos / notas
 - Backlog ítem 2 (edge cases de data.py): pendiente, siguiente iteración natural.
 - La mayoría de grupos están bloqueados por acumulación de datos (min_n) — se destraban solos

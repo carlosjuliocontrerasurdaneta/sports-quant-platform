@@ -9,9 +9,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 import pandas as pd
+from sqp.calibration.calibrator import calibrate_probability
 from sqp.config import Settings, ROOT, CONFIG_DIR, load_yaml
 from sqp.domain.models import EventOdds, BetCandidate
-from sqp.calibration.calibrator import calibrate_probability
 from sqp.markets.vig import remove_vig_power
 from sqp.markets.edge import adjusted_edge
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
@@ -281,6 +281,32 @@ def _apply_daily_exposure_cap(candidates: list[BetCandidate], bankroll: float,
     return factor
 
 
+def _decision_probability(p_model: float, fair: float | None, shrink: float,
+                          league: str, market: str, settings) -> tuple[float, float]:
+    """(p_used_raw, p_decision) para un candidato.
+
+    La calibración se aplica a la probabilidad PURA del modelo ANTES del shrink
+    al mercado: ``p_decision = (1-s)*cal(p_model) + s*fair``. Calibrar la mezcla
+    obligaba al calibrador a corregir el modelo a través de un canal diluido al
+    50% por el no-vig (ya bien calibrado); sobre settled, el reblend dominó a
+    ``cal(p_used)`` en ECE y Brier OOS en todos los cortes temporales
+    (docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md). El retrain
+    entrena sobre ``model_probability`` (la misma columna cruda que se almacena),
+    así que train y serve calibran el mismo objetivo y no puede haber loop
+    calibrar-sobre-calibrado: ``p_used`` almacenada sigue siendo la mezcla CRUDA.
+    Sin calibrador para (liga, mercado) -> no-op y ``p_decision == p_used``."""
+    p_cal = p_model
+    if settings.calibration_enabled:
+        p_cal = calibrate_probability(p_model, league, market,
+                                      settings.calibration_method)
+    if fair is not None and shrink > 0:
+        p_used = (1.0 - shrink) * p_model + shrink * fair
+        p_decision = (1.0 - shrink) * p_cal + shrink * fair
+    else:
+        p_used, p_decision = p_model, p_cal
+    return p_used, p_decision
+
+
 def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -> float:
     """Cap the WHOLE day's staked exposure across every league at
     ``bankroll * cap_pct``, rewriting the per-league ``candidates_*.csv`` in place.
@@ -538,18 +564,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 fair = _spread_novig(cons, eo.event.home, eo.event.away, spread).get(key[1])
             else:
                 fair = _novig_probs(cons, key[0], key[2]).get(key[1])
-            # Shrink the (overconfident, unproven) model probability toward the
-            # no-vig market before staking. No market anchor -> pure model.
-            s = settings.risk.market_shrink
-            p_used = (1.0 - s) * p_model + s * fair if (fair is not None and s > 0) else p_model
-            # Calibration is applied to derive the decision probability only; the
-            # uncalibrated p_used is what we store and retrain on, so enabling the
-            # flag cannot create a calibrate-on-calibrated feedback loop. No model
-            # for this (league, market) -> calibrate_probability is a no-op.
-            p_decision = p_used
-            if settings.calibration_enabled:
-                p_decision = calibrate_probability(p_used, league, key[0],
-                                                   settings.calibration_method)
+            p_used, p_decision = _decision_probability(
+                p_model, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)
             # Deflate the EV by the model-vs-market disagreement (and thin markets)
             # and stake on the resulting effective probability, so an overconfident
