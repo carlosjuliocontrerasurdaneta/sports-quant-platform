@@ -43,7 +43,18 @@
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-tests-after-change.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/mark-tests-pending.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-tests-on-stop.sh\"",
             "timeout": 300
           }
         ]

@@ -11,6 +11,7 @@ set PYTHONPATH=src
 if not exist logs mkdir logs
 
 echo === SQP - REFRESH ML (%DATE% %TIME%) ===
+call scripts\rotate_log.cmd logs\refresh_ml.log
 echo === SQP - REFRESH ML (%DATE% %TIME%) === >> logs\refresh_ml.log
 python scripts\build_features.py >> logs\refresh_ml.log 2>&1
 if errorlevel 1 goto :error

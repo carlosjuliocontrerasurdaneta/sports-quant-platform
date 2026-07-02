@@ -111,7 +111,7 @@ Format:
 - Description: Las skills de terceros vendadas `.claude/skills/markitdown-main` (163 archivos) y `.claude/skills/superpowers-main` (172) — 335 trackeados, ~70% de `.claude` — desaparecen físicamente del disco de forma intermitente (el repo vive bajo OneDrive, que probablemente las deshidrata/online-only). `git status` las muestra como borradas; un `git restore` no persiste (vuelven a desaparecer). No son código del producto SQP (incluyen Dockerfiles, JS, shell, binarios de test).
 - Affected files: `.claude/skills/markitdown-main/**`, `.claude/skills/superpowers-main/**`.
 - Proposed fix: sacarlas del repo del producto → mover a `~/.claude/skills/` (nivel usuario, fuera de OneDrive) o a un submódulo/git-ignore; documentar la decisión. NO borrar sin confirmación del usuario (las restauró explícitamente el 2026-06-23). Mientras tanto: nunca incluirlas en commits (usar `git add` por ruta específica).
-- Status: ABIERTO (2026-06-23, auditoría). Diferido A2: requiere decisión del usuario. Tag: onedrive-vendored-skills.
+- Status: RESUELTO (2026-07-02, plan de remediación de auditoría). markitdown-main ya había sido eliminada por completo (limpieza de la migración a C:\dev); superpowers-main quedó DES-TRACKEADA de git (git rm --cached, 172 archivos) + entrada en .gitignore, pero PERMANECE EN DISCO porque el plugin superpowers se carga desde .claude/skills/superpowers-main (NO borrar el directorio). Restaurable desde el historial git (último commit trackeado en main f328de4) o desde upstream. El síntoma OneDrive desapareció con la migración a C:\dev.
 
 - ID: KI-016
 - Severity: Baja (operacional)
@@ -119,3 +119,17 @@ Format:
 - Affected files: scripts/run_daily.py, scripts/run_all.py, Dockerfile, Makefile.
 - Proposed fix: docstrings + README ya aclaran (commit fa86c0c). Pendiente opcional: decidir si run_daily se deprecia o se mantiene como herramienta manual/demo.
 - Status: MITIGADO (2026-06-23, docs). Decisión de consolidación pendiente (M1).
+
+- ID: KI-017
+- Severity: Media (cobertura de tests)
+- Description: La liquidación de tenis (`_settle_tennis`: recuperación de jugadores/fecha desde predictions_<liga>.csv + matching por nombre normalizado + fecha ±1 día) no tiene test end-to-end; solo hay tests unitarios de las piezas. Una regresión en el flujo completo (candidates→predictions→ESPN→grade) pasaría silenciosa. Detectado como fast-follow del feature dashboard-history (2026-06-26) y formalizado por la auditoría 2026-07-02.
+- Affected files: src/sqp/settlement/runner.py (_settle_tennis), tests/ (falta tests/settlement/test_settle_tennis_e2e.py).
+- Proposed fix: test e2e con fixtures: candidates+predictions de tenis sintéticos + provider ESPN mockeado, verificando grade/PnL/persistencia.
+- Status: ABIERTO (2026-07-02).
+
+- ID: KI-018
+- Severity: Baja (UI del reporte)
+- Description: En el dashboard HTML, la columna "Línea" muestra/filtra "nan" para mercados sin punto (h2h). Fast-follow del feature dashboard-history (2026-06-26), formalizado por la auditoría 2026-07-02.
+- Affected files: src/sqp/audit/html_report.py.
+- Proposed fix: renderizar vacío o "—" cuando point es NaN y excluir "nan" de las opciones del filtro.
+- Status: ABIERTO (2026-07-02).
