@@ -38,3 +38,5 @@ graphify-out/
 # Obsidian (config local de la boveda; no versionar)
 .obsidian/
 Obsidian/
+# Centinela del hook de tests (mark-tests-pending -> run-tests-on-stop)
+.claude/.tests-pending
