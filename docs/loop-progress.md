@@ -30,11 +30,13 @@ Lectura: ningún candidato merece promoción hoy. El registro live sigue `{}` (c
 mlb/spreads es el grupo a vigilar: con ~2 semanas más de settled (≥150 graded) el split de
 validación deja de ser ruido y el Brier decidirá con evidencia.
 
-## Bloqueos / notas
+- 2026-07-02 research-pmodel: COMPLETADO el ítem 1 del backlog (investigación, sin cambios de
+  serving). Hallazgo: reblend `0.5·cal(p_model)+0.5·fair` domina a `cal(p_used)` en ECE Y Brier
+  en los 4 cortes temporales de mlb/spreads (n=96) y es la única variante que habría pasado el
+  gate. Doc: docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md. Decisión de adoptar el
+  cambio de serving = humana, pendiente.
 
-- Backlog ítem 1 (calibrar p_model puro vs blended): NO iniciado. Es la investigación de mayor
-  calado; requiere sesión/iteraciones dedicadas. Insumo clave: la probabilidad del modelo es
-  independiente de odds ⇒ inmune al desanclaje apertura/cierre que rompía el entrenamiento.
+## Bloqueos / notas
 - Backlog ítem 2 (edge cases de data.py): pendiente, siguiente iteración natural.
 - La mayoría de grupos están bloqueados por acumulación de datos (min_n) — se destraban solos
   con los settled diarios ahora que el staging automático corre (fix C1, main 2714ea6).
