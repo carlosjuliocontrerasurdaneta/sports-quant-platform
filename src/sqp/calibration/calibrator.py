@@ -78,6 +78,14 @@ def _persist_or_remove(model, path, keep: bool) -> bool:
     return False
 
 
+def _gate_label(persisted: bool, gate: dict) -> str:
+    """'kept', or 'dropped: <failed conditions>' -- e.g. 'dropped: brier'."""
+    if persisted:
+        return "kept"
+    failed = [k.removesuffix("_ok") for k, v in gate.items() if not v]
+    return "dropped: " + ",".join(failed) if failed else "dropped"
+
+
 def _method_registry_path(*, staging: bool = False):
     base = _staging_dir() if staging else MODELS_DIR
     return base / "calibration_methods.json"
@@ -195,16 +203,18 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     # proper scoring rule that penalizes that overconfidence per sample, so it is
     # an ECE-independent requirement, as is monotonicity (which catches a
     # degenerate beta that maps low probabilities UP, inverting rank order).
-    iso_persisted = _persist_or_remove(
-        iso, iso_path,
-        val_metrics["ece"] <= raw_val_ece
-        and val_metrics["brier_score"] <= raw_val_brier
-        and _is_monotone_increasing(iso.predict))
-    beta_persisted = _persist_or_remove(
-        beta, beta_path,
-        beta_val_ece <= raw_val_ece
-        and beta_val_brier <= raw_val_brier
-        and _is_monotone_increasing(beta.predict))
+    # Verdicts are recorded per condition (not just the conjunction) so the CLI
+    # and the daily-run log can say WHY a candidate was dropped -- on 2026-07-02
+    # an mlb_spreads fit that improved OOS ECE was dropped and the log gave no
+    # reason (it was the Brier), forcing a manual re-fit to diagnose.
+    iso_gate = {"ece_ok": bool(val_metrics["ece"] <= raw_val_ece),
+                "brier_ok": bool(val_metrics["brier_score"] <= raw_val_brier),
+                "monotone_ok": _is_monotone_increasing(iso.predict)}
+    beta_gate = {"ece_ok": bool(beta_val_ece <= raw_val_ece),
+                 "brier_ok": bool(beta_val_brier <= raw_val_brier),
+                 "monotone_ok": _is_monotone_increasing(beta.predict)}
+    iso_persisted = _persist_or_remove(iso, iso_path, all(iso_gate.values()))
+    beta_persisted = _persist_or_remove(beta, beta_path, all(beta_gate.values()))
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths
 
     # Per-group best method for method="auto": among the calibrators that beat
@@ -221,8 +231,8 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
 
     log.info("[%s] Calibration fit on %d rows, val %d | raw ECE %.4f -> iso %.4f "
              "(%s) / beta %.4f (%s)", sport, len(train_df), len(val_df), raw_val_ece,
-             val_metrics["ece"], "kept" if iso_persisted else "dropped",
-             beta_val_ece, "kept" if beta_persisted else "dropped")
+             val_metrics["ece"], _gate_label(iso_persisted, iso_gate),
+             beta_val_ece, _gate_label(beta_persisted, beta_gate))
     return {
         "iso_path": str(iso_path),
         "beta_path": str(beta_path),
@@ -235,6 +245,8 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
         "val_metrics": val_metrics,
         "iso_persisted": iso_persisted,
         "beta_persisted": beta_persisted,
+        "iso_gate": iso_gate,
+        "beta_gate": beta_gate,
         "persisted": iso_persisted or beta_persisted,
         "best_method": best_method,
     }
@@ -279,7 +291,9 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
             rec.update({"trained": True, "raw_val_ece": r["raw_val_ece"],
                         "cal_val_ece": r["val_metrics"]["ece"],
                         "beta_val_ece": r["beta_val_ece"], "n_val": r["n_val"],
+                        "raw_val_brier": r["raw_val_brier"],
                         "iso_persisted": r["iso_persisted"],
+                        "iso_gate": r["iso_gate"], "beta_gate": r["beta_gate"],
                         "best_method": r["best_method"],
                         "persisted": r["persisted"]})
         except ValueError as exc:

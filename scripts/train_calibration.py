@@ -32,7 +32,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.patterns import build_pick_history, load_pick_history
-from sqp.calibration.calibrator import MODELS_DIR, train_market_calibrators
+from sqp.calibration.calibrator import (MODELS_DIR, _gate_label,
+                                        train_market_calibrators)
 from sqp.calibration.data import load_settled_training_history
 from sqp.logging_config import get_logger
 
@@ -90,9 +91,12 @@ def main() -> int:
 
     dropped = [r for r in trained if not r.get("best_method")]
     if dropped:
-        names = ", ".join(f"{r['league']}/{r['market']}" for r in dropped)
-        print(f"\nAuto-descartados (ningun metodo mejoraba el ECE OOS, quedan "
-              f"sin calibrar / no-op): {names}")
+        print("\nAuto-descartados (fallo alguna condicion del gate OOS; quedan "
+              "sin calibrar / no-op):")
+        for r in sorted(dropped, key=lambda x: (x["league"], x["market"])):
+            print(f"  {r['league']}/{r['market']}: "
+                  f"iso {_gate_label(False, r['iso_gate'])} | "
+                  f"beta {_gate_label(False, r['beta_gate'])}")
     print("\nLa calibracion produce probabilidades estimadas calibradas, no "
           "certezas ni garantia de ganancia. Actívala solo si el ECE OOS mejora.")
     return 0

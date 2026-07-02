@@ -1,4 +1,4 @@
-"""Tests for the ported probability calibrator. SYNTHETIC data only."""
+﻿"""Tests for the ported probability calibrator. SYNTHETIC data only."""
 from __future__ import annotations
 
 import numpy as np
@@ -112,7 +112,7 @@ def test_train_drops_non_monotone_calibrator_despite_good_ece(tmp_path, monkeypa
     cal._load_calibrator.cache_clear()
     # Make the isotonic OOS ECE worse than raw so iso is dropped; only beta is a
     # candidate to persist.
-    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0})
+    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0, "brier_score": 1.0})
     # Raw ECE high, beta ECE low -> beta BEATS raw on ECE, so without the
     # monotonicity guard it WOULD persist. Stub statefully: 1st call raw, 2nd beta.
     calls = {"n": 0}
@@ -133,6 +133,45 @@ def test_train_drops_non_monotone_calibrator_despite_good_ece(tmp_path, monkeypa
     assert not (tmp_path / "models" / "unit_ushape_calibration_beta.joblib").exists()
     # live application for this market is therefore a safe no-op
     assert cal.apply_calibration(np.array([0.3]), sport="unit_ushape", method="auto")[0] == 0.3
+
+
+def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):
+    """Observabilidad del gate: el resultado debe decir CUAL condicion paso/fallo
+    (ECE / Brier / monotonia) por modelo. El 2026-07-02 un mlb_spreads que
+    MEJORABA el ECE OOS fue descartado y el log solo decia '(dropped)': hubo que
+    reproducir el fit a mano para descubrir que fue el Brier. La persistencia
+    debe ser exactamente la conjuncion de los tres veredictos."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    res = cal.train_calibration(_miscalibrated(), sport="unit_gates")
+    for key in ("iso_gate", "beta_gate"):
+        assert set(res[key]) == {"ece_ok", "brier_ok", "monotone_ok"}
+        for v in res[key].values():
+            assert isinstance(v, bool)
+    assert res["iso_persisted"] == all(res["iso_gate"].values())
+    assert res["beta_persisted"] == all(res["beta_gate"].values())
+
+
+def test_train_gate_verdicts_flag_brier_failure(tmp_path, monkeypatch):
+    """Cuando el drop es por Brier (pasa ECE, es monotono), el veredicto debe
+    senalar brier_ok=False y los otros dos True."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    monkeypatch.setattr(cal, "calibration_report",
+                        lambda probs, outcomes: {"ece": 0.0, "brier_score": 1.0})
+    monkeypatch.setattr(cal, "expected_calibration_error", lambda *a, **k: 0.5)
+    brier_calls = {"n": 0}
+
+    def fake_brier(*a, **k):
+        brier_calls["n"] += 1
+        return 0.1 if brier_calls["n"] == 1 else 1.0
+
+    monkeypatch.setattr(cal, "brier_score", fake_brier)
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_gate_brier")
+
+    assert res["iso_gate"] == {"ece_ok": True, "brier_ok": False, "monotone_ok": True}
+    assert res["iso_persisted"] is False
 
 
 def test_train_drops_calibrator_that_passes_ece_but_worsens_brier(tmp_path, monkeypatch):
@@ -242,7 +281,7 @@ def test_train_drops_worsening_model_clears_registry(tmp_path, monkeypatch):
     # Force raw to look better than both calibrators so neither persists. raw and
     # beta both call expected_calibration_error, so stub it statefully: 1st call
     # (raw) low, 2nd call (beta) high; iso's ECE comes from calibration_report.
-    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0})
+    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0, "brier_score": 1.0})
     calls = {"n": 0}
 
     def fake_ece(*a, **k):
@@ -266,7 +305,7 @@ def test_train_drops_worsening_model_and_removes_stale(tmp_path, monkeypatch):
     iso_path.write_bytes(b"stale")  # a previously-persisted model now on disk
 
     # Force the isotonic OOS ECE to look worse than raw so the gate must drop it.
-    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0})
+    monkeypatch.setattr(cal, "calibration_report", lambda probs, outcomes: {"ece": 1.0, "brier_score": 1.0})
     res = cal.train_calibration(_miscalibrated(), sport="unit_drop")
 
     assert res["iso_persisted"] is False        # worsening model not kept
