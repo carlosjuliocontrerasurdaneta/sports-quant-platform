@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """Train per-(league, market) probability calibrators from settled live bets.
 
-By default reads data/bets/settled_*.csv (opening-anchored live probabilities
-built by SETTLE_ALL.bat), projects them onto the calibration schema, and for
-every (league, market) with enough graded bets fits an isotonic + beta
-calibrator with a TEMPORAL split (earlier games train, most recent validate),
-staging candidates under data/models/staging/. Prints the out-of-sample ECE
+By default reads data/bets/settled_*.csv (opening-anchored live outcomes built
+by SETTLE_ALL.bat) and calibrates the PURE model probability
+(model_probability, pre market-blend -- the target daily.py serves since
+research 2026-07-02); for every (league, market) with enough graded bets it
+fits an isotonic + beta calibrator with a TEMPORAL split (earlier games train,
+most recent validate), staging candidates under data/models/staging/. Prints the out-of-sample ECE
 before vs after so you can see where calibration actually helps before
 promoting a candidate into the live registry.
 
@@ -67,7 +68,10 @@ def main() -> int:
         log.warning(empty_msg)
         return 1
 
-    results = train_market_calibrators(hist, min_n=args.min_n)
+    # settled calibra p_model PURO (pre-blend, el objetivo que sirve daily.py);
+    # backtest conserva la semantica legacy sobre la mezcla estimated_probability.
+    prob_col = "model_probability" if args.source == "settled" else "estimated_probability"
+    results = train_market_calibrators(hist, min_n=args.min_n, prob_col=prob_col)
     trained = [r for r in results if r.get("trained")]
     skipped = [r for r in results if not r.get("trained")]
 
