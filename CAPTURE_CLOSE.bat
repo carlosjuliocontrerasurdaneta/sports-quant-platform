@@ -9,6 +9,7 @@ set ODDS_API_REGIONS=us,eu,uk,au
 
 if not exist logs mkdir logs
 
+call scripts\rotate_log.cmd logs\capture_close.log
 echo === SQP - CAPTURA CIERRE (%DATE% %TIME%) === >> logs\capture_close.log
 python scripts\capture_closing_odds.py >> logs\capture_close.log 2>&1
 if errorlevel 1 goto :error

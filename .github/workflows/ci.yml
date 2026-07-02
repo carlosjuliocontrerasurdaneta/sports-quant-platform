@@ -42,7 +42,16 @@ jobs:
 
       - name: Pytest
         # pythonpath=["src"] is set in pyproject, so no PYTHONPATH needed.
+        if: matrix.python-version != '3.12'
         run: pytest -q
+
+      # Informational coverage on one matrix leg only (3.12): prints the
+      # per-module table in the log without failing the build (no threshold).
+      - name: Pytest (+ coverage report, informational)
+        if: matrix.python-version == '3.12'
+        run: |
+          pip install pytest-cov
+          pytest -q --cov=sqp --cov-report=term
 
       # BLOCKING since 2026-07-02: the lockfile was audited clean after bumping
       # idna (PYSEC-2026-215) and urllib3 (PYSEC-2026-141/142). Audits the pinned
@@ -53,3 +62,20 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r requirements.lock
+
+  # Production runs on Windows (Task Scheduler + BATs); one Windows leg catches
+  # path/locale/os.replace regressions that ubuntu can't. Single Python version
+  # to keep minutes bounded (Windows runners cost 2x).
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install (editable + dev extras, pinned)
+        run: pip install -e ".[dev]" -c requirements.lock
+      - name: Pytest
+        run: pytest -q
