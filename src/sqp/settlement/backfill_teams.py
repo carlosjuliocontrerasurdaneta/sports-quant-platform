@@ -44,5 +44,8 @@ def backfill_settled_file(settled_path: Path, meta: dict[str, dict]) -> tuple[in
             m["home"], m["away"], m["game_date"])
         filled += 1
     if filled:
-        df.to_csv(settled_path, index=False)
+        # Same crash-safety as _persist_settled: settled_*.csv feeds the ROI
+        # audit, the bankroll ledger and calibrator training.
+        from sqp.settlement.runner import _atomic_write_csv
+        _atomic_write_csv(df, settled_path)
     return filled, unresolved
