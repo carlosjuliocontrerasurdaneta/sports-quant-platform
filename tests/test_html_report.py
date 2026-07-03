@@ -131,13 +131,15 @@ def test_dashboard_audit_and_history_render(tmp_path):
 def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
-    # history filter controls (hMarket replaced by hLine/hHome/hAway in Task 5)
-    for ctrl in ('id="hSport"', 'id="hLine"', 'id="hHome"', 'id="hAway"',
+    # history filter controls (hLine replaced back by hMarket, 2026-07-03)
+    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hHome"', 'id="hAway"',
                  'id="hFrom"', 'id="hTo"', 'id="historyTable"'):
         assert ctrl in text
+    assert 'id="hLine"' not in text
     # each history row carries the filter keys
     assert 'data-fecha="2026-06-13"' in text
     assert 'data-league="nba"' in text
+    assert 'data-market=' in text
     assert 'data-home=' in text
     # generic client-side sorting wired for the server-rendered grids
     assert "makeSortable(" in text and "initSortable()" in text

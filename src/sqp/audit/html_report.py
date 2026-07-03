@@ -194,7 +194,7 @@ _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
 def _history_section(predictions_dir: Path, bets_dir: Path,
                      today: str | None = None) -> str:
     """Unified history: closed bets + open actionable picks, with filters
-    (sport/line/home/away/date) and totals cards (picks, closed, wins, losses)
+    (sport/market/home/away/date) and totals cards (picks, closed, wins, losses)
     recomputed client-side over the visible rows. Past picks that never settled
     are hidden (not deleted)."""
     from datetime import date
@@ -215,7 +215,7 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
     controls = (
         '<div class="filters" id="historyFilters">'
         '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
-        '<label>Linea<select id="hLine"><option value="">(todas)</option></select></label>'
+        '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
         '<label>Home<select id="hHome"><option value="">(todos)</option></select></label>'
         '<label>Away<select id="hAway"><option value="">(todos)</option></select></label>'
         '<label>Desde<input type="date" id="hFrom"></label>'
@@ -232,7 +232,7 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
         body.append(
             f'<tr data-fecha="{html.escape(str(row.get("fecha", "")))}" '
             f'data-league="{html.escape(str(row.get("league", "")))}" '
-            f'data-line="{html.escape(_fmt_cell(row.get("line")))}" '
+            f'data-market="{html.escape(str(row.get("market", "")))}" '
             f'data-home="{html.escape(str(row.get("home", "")))}" '
             f'data-away="{html.escape(str(row.get("away", "")))}" '
             f'data-result="{html.escape(str(row.get("result", "")))}">{cells}</tr>')
@@ -402,15 +402,8 @@ const SPORT_COLORS = {{
 const PALETTE = ["#3fb950","#58a6ff","#d29922","#bc8cff","#f85149","#39c5cf",
                  "#e3853a","#7ee787","#ff7b72","#a5d6ff","#d96bb0","#e3b341"];
 
-function titleCase(s) {{
-  return s.split(" ").map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
-}}
 function labelFor(lg) {{
   if (SPORT_LABELS[lg]) return SPORT_LABELS[lg];
-  if (lg.indexOf("tennis_") === 0) {{
-    const p = lg.split("_");
-    return ((p[1] || "").toUpperCase() + " " + titleCase(p.slice(2).join(" "))).trim();
-  }}
   return lg.toUpperCase();
 }}
 function colorFor(lg, i) {{ return SPORT_COLORS[lg] || PALETTE[i % PALETTE.length]; }}
@@ -537,7 +530,7 @@ function initSortable() {{
   }});
 }}
 
-// Historial: filter rows by sport / line / home / away / date range (data-* on each row).
+// Historial: filter rows by sport / market / home / away / date range (data-* on each row).
 function initHistory() {{
   const table = document.getElementById("historyTable");
   if (!table) return;
@@ -548,22 +541,22 @@ function initHistory() {{
     vals.forEach(v => sel.add(new Option(lbl ? lbl(v) : v, v)));
   }};
   fill("hSport", uniqOf("league"), labelFor);
-  fill("hLine", uniqOf("line"));
+  fill("hMarket", uniqOf("market"));
   fill("hHome", uniqOf("home"));
   fill("hAway", uniqOf("away"));
-  ["hSport", "hLine", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
+  ["hSport", "hMarket", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
     document.getElementById(id).addEventListener("input", filterHistory));
   filterHistory();
 }}
 function filterHistory() {{
   const table = document.getElementById("historyTable");
   const g = id => document.getElementById(id).value;
-  const lg = g("hSport"), ln = g("hLine"), ho = g("hHome"), aw = g("hAway"),
+  const lg = g("hSport"), mk = g("hMarket"), ho = g("hHome"), aw = g("hAway"),
         from = g("hFrom"), to = g("hTo");
   let picks = 0, closed = 0, wins = 0, losses = 0;
   table.querySelectorAll("tbody tr").forEach(r => {{
     const d = r.dataset;
-    const ok = (!lg || d.league === lg) && (!ln || d.line === ln) &&
+    const ok = (!lg || d.league === lg) && (!mk || d.market === mk) &&
                (!ho || d.home === ho) && (!aw || d.away === aw) &&
                (!from || d.fecha >= from) && (!to || d.fecha <= to);
     r.style.display = ok ? "" : "none";
