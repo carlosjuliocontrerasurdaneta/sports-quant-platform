@@ -11,7 +11,7 @@ not league_params). Full map: docs/CONFIG-PRECEDENCE.md.
 """
 from __future__ import annotations
 from .adapters import (BasketballAdapter, FootballAdapter, BaseballAdapter,
-                       HockeyAdapter, SoccerAdapter, TennisAdapter)
+                       HockeyAdapter, SoccerAdapter)
 
 FAMILY_PARAMS: dict[str, dict] = {
     "basketball": {"points_per_elo": 0.028, "margin_sigma": 12.0,
@@ -27,7 +27,6 @@ FAMILY_PARAMS: dict[str, dict] = {
     "soccer":     {"avg_total": 2.7, "tilt_scale": 1.0, "max_score": 10,
                    "home_scoring_bonus": 0.15, "elo_k": 18, "elo_home_adv": 48,
                    "dc_rho": 0.0},  # Dixon-Coles: tune per league (scripts/tune_ratings.py)
-    "tennis":     {"elo_k": 24, "elo_home_adv": 0},
 }
 
 LEAGUE_OVERRIDES: dict[str, dict] = {
@@ -40,7 +39,7 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
 _FAMILY_ADAPTER = {
     "basketball": BasketballAdapter, "football": FootballAdapter,
     "baseball": BaseballAdapter, "hockey": HockeyAdapter,
-    "soccer": SoccerAdapter, "tennis": TennisAdapter,
+    "soccer": SoccerAdapter,
 }
 
 

@@ -18,7 +18,6 @@ por familia de deporte.
 | Baseball | MLB | Poisson por equipo (carreras) |
 | Hockey | NHL | Poisson por equipo (goles), empates→OT 50/50 |
 | Soccer | 12 ligas preconfiguradas (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, Liga MX, MLS, Brasileirão, Chile, Frauen-Bundesliga, UWCL) + extensible por YAML | Poisson por equipo, 3 vías (1X2), ajuste Dixon-Coles |
-| Tennis | ATP/WTA cuadros principales | Elo jugador-vs-jugador; solo ganador del partido por ahora |
 
 - **Agregar una liga de fútbol** = una entrada en `configs/leagues/soccer.yaml`.
 - **Agregar un deporte** = implementar un `SportAdapter` (el núcleo no cambia).
@@ -31,7 +30,7 @@ src/sqp/
 ├── config.py            # entorno + YAML, sin secretos hardcodeados
 ├── domain/              # Event, MarketLine, EstimatedProbabilities, BetCandidate
 ├── providers/           # odds_api (The Odds API), mlb_statsapi (API pública MLB),
-│                        #   espn_results / espn_tennis (resultados, no oficial),
+│                        #   espn_results (resultados, no oficial),
 │                        #   base (interfaces; vendors no configurados fallan explícito),
 │                        #   synthetic (modo demo, etiquetado demo_synthetic)
 ├── markets/             # conversión de cuotas, remoción de vig (proporcional y power), edge
@@ -102,7 +101,7 @@ python scripts/run_daily.py --sports mlb nba nfl nhl epl --mode demo
 python scripts/run_daily.py --sports nba wnba ligamx --mode live
 python scripts/run_backtest.py --league nba --mode demo     # backtest de calibración
 python scripts/settle_all.py --days-from 2                  # liquidación multi-liga
-python scripts/list_sports.py                               # cobertura activa (incl. tenis)
+python scripts/list_sports.py                               # cobertura activa
 ```
 
 Salidas: `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`
@@ -119,7 +118,7 @@ alimenta la salida. Mantener o integrar es una decisión abierta.
 ## Skills especializadas
 
 `.claude/skills/` contiene una skill por familia (quant-baseball-mlb, quant-basketball,
-quant-american-football, quant-hockey-nhl, quant-soccer, quant-tennis) con las métricas,
+quant-american-football, quant-hockey-nhl, quant-soccer) con las métricas,
 ajustes y riesgos específicos que guían la evolución de cada adaptador.
 
 ## Limitaciones (honestas)
@@ -133,9 +132,7 @@ ajustes y riesgos específicos que guían la evolución de cada adaptador.
    primera señal por deporte validada OOS; el abridor MLB fue rechazado por evidencia.
 3. σ y parámetros por liga (`configs/leagues/ratings.yaml`) son tuneados walk-forward;
    re-validar OOS antes de operar (algunos en frontera de grilla).
-4. Tenis: The Odds API no entrega scores → settlement vía ESPN (no oficial); solo
-   auditabilidad, no habilita operar.
-5. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
-6. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
+4. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
+5. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
    key numbers con cautela.
 ```

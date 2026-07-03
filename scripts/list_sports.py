@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""List active sport keys from The Odds API (verifies live coverage,
-including currently active tennis tournaments)."""
+"""List active sport keys from The Odds API (verifies live coverage)."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))

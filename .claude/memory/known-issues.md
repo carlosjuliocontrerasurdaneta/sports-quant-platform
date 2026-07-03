@@ -76,7 +76,7 @@ Format:
 - Description: El tenis no se podia auditar: The Odds API no entrega scores de tenis, y ademas el tenis no estaba cableado en la generacion (TennisAdapter existia pero _league_meta/_supported_leagues lo excluian). Sin generacion ni resultados, no habia nada que liquidar.
 - Affected files: src/sqp/providers/espn_tennis.py (nuevo), src/sqp/pipeline/daily.py, src/sqp/settlement/runner.py, scripts/run_all.py.
 - Proposed fix: vertical completa con resultados ESPN (atp/wta) y liquidacion por nombre+fecha.
-- Status: Resuelto (2026-06-16). Generacion por clave de torneo (Elo de jugador tour-wide desde ESPN, singles + moneyline), proveedor ESPN tenis (parser torneo->groupings->partidos), liquidacion por nombre normalizado + fecha reutilizando settle_candidates, descubrimiento de torneos activos via /sports. Verificado en vivo (ATP Halle 12 eventos/8 candidatos). 4 tests nuevos. CAVEAT: cierra AUDITABILIDAD, no habilita operar (sin cierre real/OOS); ESPN es endpoint no oficial.
+- Status: Resuelto (2026-06-16). Generacion por clave de torneo (Elo de jugador tour-wide desde ESPN, singles + moneyline), proveedor ESPN tenis (parser torneo->groupings->partidos), liquidacion por nombre normalizado + fecha reutilizando settle_candidates, descubrimiento de torneos activos via /sports. Verificado en vivo (ATP Halle 12 eventos/8 candidatos). 4 tests nuevos. CAVEAT: cierra AUDITABILIDAD, no habilita operar (sin cierre real/OOS); ESPN es endpoint no oficial. OBSOLETO (2026-07-03): la vertical de tenis fue ELIMINADA COMPLETA del proyecto por orden del usuario (código, config, tests y datos), tras evidencia de 96 apuestas liquidadas con ~20% de acierto vs 35-39% estimado y ROI −44%..−100%. El PnL de tenis (−31.39) se preservó en el balance vía ajuste manual en bankroll_adjustments.csv. Restaurable solo desde historial git.
 
 - ID: KI-011
 - Severity: Media (integridad de datos / auditabilidad)
@@ -104,7 +104,7 @@ Format:
 - Description: En el OOS de tenis, WTA Bad Homburg mostraba 0 eventos emparejados. INVESTIGADO (2026-06-22): NO es mismatch de nombres. Los 6 partidos están fechados 2026-06-21/22 y los resultados ESPN cargados terminan en 2026-06-21 (los de hoy aún no completados/publicados; un refresh trajo 0 filas nuevas). Las 4 jugadoras verificadas normalizan bien y existen en resultados (Eala 73, Mertens 46, Tauson 44, Shnaider 51 filas); las parejas presentes son enfrentamientos PREVIOS en otros torneos (Eala/Mertens 04-24, Li/Alexandrova 2025), correctamente descartados por la ventana de ±1 día (evita falsos positivos cross-torneo).
 - Affected files: ninguno (comportamiento esperado). Diagnóstico sobre data/odds + data/historical/results_wta.csv.
 - Proposed fix: no requiere cambio de código. Re-correr scripts/backfill_tennis_results.py tras completarse el torneo y los partidos emparejarán. Mismo caso de calendario que NFL/Wimbledon (odds de partidos aún no jugados).
-- Status: CERRADO / no-bug (2026-06-22). El matching de tenis funciona correctamente.
+- Status: CERRADO / no-bug (2026-06-22). El matching de tenis funciona correctamente. OBSOLETO (2026-07-03): vertical de tenis eliminada del proyecto (ver KI-010).
 
 - ID: KI-015
 - Severity: Media (higiene de repo / entorno)
@@ -125,7 +125,7 @@ Format:
 - Description: La liquidación de tenis (`_settle_tennis`: recuperación de jugadores/fecha desde predictions_<liga>.csv + matching por nombre normalizado + fecha ±1 día) no tiene test end-to-end; solo hay tests unitarios de las piezas. Una regresión en el flujo completo (candidates→predictions→ESPN→grade) pasaría silenciosa. Detectado como fast-follow del feature dashboard-history (2026-06-26) y formalizado por la auditoría 2026-07-02.
 - Affected files: src/sqp/settlement/runner.py (_settle_tennis), tests/ (falta tests/settlement/test_settle_tennis_e2e.py).
 - Proposed fix: test e2e con fixtures: candidates+predictions de tenis sintéticos + provider ESPN mockeado, verificando grade/PnL/persistencia.
-- Status: ABIERTO (2026-07-02).
+- Status: CERRADO sin acción (2026-07-03): la vertical de tenis (incluido _settle_tennis) fue eliminada del proyecto; el test e2e ya no tiene objeto (ver KI-010).
 
 - ID: KI-018
 - Severity: Baja (UI del reporte)

@@ -40,12 +40,6 @@ DISCLAIMER = ("This output contains estimated probabilities only. It does not "
 def _league_meta(league: str) -> dict:
     if league in SPORT_KEYS:
         meta = dict(SPORT_KEYS[league])
-    elif league.startswith("tennis_") or league in ("atp", "wta"):
-        # Tennis tournaments are per-tournament Odds API keys; the league id IS
-        # the sport key. No scores in The Odds API -> settled via ESPN by player
-        # name + date (see settlement.runner). Player Elo is tour-wide.
-        meta = {"sport_key": league, "family": "tennis", "three_way": False,
-                "has_scores": False}
     else:
         soccer_cfg = load_yaml(CONFIG_DIR / "leagues" / "soccer.yaml").get("leagues", {})
         if league not in soccer_cfg:
@@ -350,20 +344,6 @@ def _fetch_recent_scores(client, sport_key: str, league: str) -> list[dict]:
     return recent
 
 
-def _tennis_results(league: str, provider=None) -> list[dict]:
-    """Tour-wide player results from ESPN (atp/wta) to fit player Elo. Best-effort:
-    on any failure return empty so the run degrades to low-sample warnings rather
-    than crashing. `provider` is injectable for testing."""
-    if provider is None:
-        from sqp.providers.espn_tennis import ESPNTennisResultsProvider
-        provider = ESPNTennisResultsProvider()
-    try:
-        return provider.fetch_results(league)
-    except Exception as exc:
-        log.warning("[%s] could not fetch tennis results: %s", league, exc)
-        return []
-
-
 def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.DataFrame:
     mode = mode or settings.mode
     meta = _league_meta(league)
@@ -394,22 +374,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                       "Check configs/leagues/ for a typo; skipping fetch.",
                       league, meta["sport_key"])
             return _finalize(league, [], [], mode)
-        if family == "tennis":
-            # Player Elo is tour-wide; fit from ESPN (atp/wta), not a per-league store.
-            results = _tennis_results(league)
-            history, recent = results, []
-        else:
-            history = ResultsStore(ROOT).load(league)
-            recent = (_fetch_recent_scores(client, meta["sport_key"], league)
-                      if meta.get("has_scores", False) else [])
-            results = _merge_results(history, recent, adapter.normalize)
-            if family == "baseball" and results:
-                attached = StartersStore(ROOT).attach(league, results)
-                fip_attached = StarterFIPStore(ROOT).attach(league, results)
-                log.info("[%s] starters attached to %d/%d results (names), %d with "
-                         "per-start FIP (v2). Refresh: scripts/backfill_starters.py, "
-                         "scripts/backfill_starter_fip.py.",
-                         league, attached, len(results), fip_attached)
+        history = ResultsStore(ROOT).load(league)
+        recent = (_fetch_recent_scores(client, meta["sport_key"], league)
+                  if meta.get("has_scores", False) else [])
+        results = _merge_results(history, recent, adapter.normalize)
+        if family == "baseball" and results:
+            attached = StartersStore(ROOT).attach(league, results)
+            fip_attached = StarterFIPStore(ROOT).attach(league, results)
+            log.info("[%s] starters attached to %d/%d results (names), %d with "
+                     "per-start FIP (v2). Refresh: scripts/backfill_starters.py, "
+                     "scripts/backfill_starter_fip.py.",
+                     league, attached, len(results), fip_attached)
         if results:
             adapter.fit_results(results)
         if len(results) < MIN_RESULTS_FOR_RATINGS:
@@ -419,8 +394,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         else:
             log.info("[%s] Ratings built from %d results (%d stored + %d recent).",
                      league, len(results), len(history), len(recent))
-        markets = "h2h" if family == "tennis" else "h2h,spreads,totals"
-        events = client.fetch_odds(league, meta["sport_key"], markets)
+        events = client.fetch_odds(league, meta["sport_key"], "h2h,spreads,totals")
         n_fetched = len(events)
         events = _within_horizon(events, settings.event_horizon_days)
         if len(events) < n_fetched:

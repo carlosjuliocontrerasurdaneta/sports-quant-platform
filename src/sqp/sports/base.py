@@ -1,9 +1,7 @@
-"""SportAdapter: the extension point. Two modeling families:
+"""SportAdapter: the extension point.
 
-- TeamSportAdapter: head-to-head between TEAMS (basketball, football,
-  baseball, hockey, soccer). Strength = Elo; scoring distribution per family.
-- HeadToHeadAdapter: individuals (tennis). Same Elo machinery keyed by player
-  and surface.
+TeamSportAdapter: head-to-head between TEAMS (basketball, football,
+baseball, hockey, soccer). Strength = Elo; scoring distribution per family.
 
 Adding a sport = implementing an adapter. The core pipeline never changes.
 """
