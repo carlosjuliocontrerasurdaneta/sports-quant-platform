@@ -16,6 +16,10 @@ call scripts\rotate_log.cmd logs\backfill.log
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) === >> logs\backfill.log
 python scripts\backfill_results.py --days 14 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill.log 2>&1
 if errorlevel 1 goto :error
+REM Tenis: store por tour (results_atp/wta), no por torneo; sin esto los Elo de
+REM tenis corren con forma vieja (causa #1 de la sobreconfianza del 2026-07-04).
+python scripts\backfill_tennis_results.py --tours atp wta --days 14 >> logs\backfill.log 2>&1
+if errorlevel 1 goto :error
 
 echo === DONE ===
 endlocal
