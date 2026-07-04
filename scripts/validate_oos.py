@@ -40,6 +40,7 @@ from sqp.backtesting.tuning import tune_dc_rho, tune_home_advantage
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
+from sqp.providers.espn_tennis import tour_from_league
 from sqp.sports.registry import FAMILY_PARAMS
 from sqp.storage.results_store import ResultsStore
 from sqp.storage.starters import StartersStore
@@ -134,9 +135,15 @@ def main() -> int:
             continue
         meta = _league_meta(league)
         family, three_way = meta["family"], meta.get("three_way", False)
-        results = ResultsStore(ROOT).load(league)
-        if family == "baseball":
-            StartersStore(ROOT).attach(league, results)
+        if family == "tennis":
+            # Player Elo is tour-wide: score the tournament odds against the whole
+            # tour's results (backfill_tennis_results.py), matched order-insensitively.
+            tour = tour_from_league(league)
+            results = ResultsStore(ROOT).load(tour) if tour else []
+        else:
+            results = ResultsStore(ROOT).load(league)
+            if family == "baseball":
+                StartersStore(ROOT).attach(league, results)
 
         cutoff = _cutoff(results, args.test_frac, args.test_start)
         train = [r for r in results if str(r.get("date", ""))[:10] < cutoff]
@@ -147,6 +154,16 @@ def main() -> int:
         if len(train) <= args.warmup + 50:
             log.warning("[%s] train period too small (%d games) for reliable tuning; "
                         "results indicative only.", league, len(train))
+
+        if family == "tennis":
+            # Tennis Elo is tour-wide and neutral: no tilt / home-adv / dc_rho to
+            # freeze. Score the captured tournament odds under the configured params.
+            if not results:
+                log.warning("[%s] no tour results stored; run backfill_tennis_results.py.",
+                            league)
+            _run("tennis (tour-wide player Elo)", results, odds, league, family,
+                 meta.get("league_params"), settings, args.warmup, cutoff)
+            continue
 
         frozen = _freeze_on_train(train, league, family, three_way, args.warmup, args.holdout_splits)
         print(f"FROZEN params (selected on train only): {frozen}")

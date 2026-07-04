@@ -41,6 +41,20 @@ def _supported_leagues() -> dict[str, str]:
     return leagues
 
 
+def _active_tennis(client: OddsAPIClient) -> list[str]:
+    """Active tennis tournament keys (league id == sport key). Tennis tournaments
+    are dynamic, so they are discovered from /sports (free) rather than listed
+    statically. has_scores is False; they settle via ESPN (settlement.runner)."""
+    try:
+        sports = client.list_sports(all_sports=True)
+    except Exception as exc:
+        log.warning("no se pudo listar torneos de tenis: %s", exc)
+        return []
+    return sorted(s["key"] for s in sports
+                  if s.get("active") and (str(s.get("group", "")).lower() == "tennis"
+                                          or str(s.get("key", "")).startswith("tennis_")))
+
+
 def _select_live(settings: Settings, supported: dict[str, str],
                  max_leagues: int | None) -> tuple[list[str], list[str]]:
     client = OddsAPIClient(settings.odds_api_key, settings.regions, settings.odds_format)
@@ -58,6 +72,7 @@ def _select_live(settings: Settings, supported: dict[str, str],
             in_season = True
         if in_season:
             active.append(lg)
+    active += _active_tennis(client)  # dynamic tennis tournaments, settled via ESPN
     cost = request_cost_per_league(MARKETS, settings.regions)
     days_left = days_left_in_month(date.today())
     # The Odds API exposes the live quota only via response headers. If it could

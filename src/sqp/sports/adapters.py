@@ -196,3 +196,18 @@ class SoccerAdapter(PoissonAdapter):
     family = "soccer"
     three_way = True
 
+class TennisAdapter(SportAdapter):
+    """Tennis (ATP/WTA main tour). Player-vs-player Elo, surface-aware.
+
+    Markets: match winner now; game handicap / total games require a
+    game-level model (phase 3 extension). The Odds API tennis keys carry no
+    scores: settlement needs a secondary results source.
+    """
+    family = "tennis"
+
+    def estimate(self, event, spread_line, total_line) -> EstimatedProbabilities:
+        p = self.elo.expected_home_win(event.home, event.away, neutral=True)
+        return EstimatedProbabilities(
+            home_win_estimated_probability=p,
+            away_win_estimated_probability=1 - p,
+            spread_line=spread_line, total_line=total_line)

@@ -30,15 +30,15 @@ def test_event_meta_map_null_commence_time_gives_empty_date():
     assert _event_meta_map(raw)["evt1"]["game_date"] == ""
 
 
-def test_meta_from_predictions_frame(monkeypatch, tmp_path):
+def test_tennis_meta_from_predictions(monkeypatch, tmp_path):
     import pandas as pd
     from sqp.settlement import runner
-    preds = pd.DataFrame([{"event_id": "t1", "home": "Rays", "away": "Red Sox",
+    preds = pd.DataFrame([{"event_id": "t1", "home": "Alcaraz", "away": "Sinner",
                            "start_time": "2026-06-25T12:00:00Z"}])
     meta = {str(r.event_id): {"home": str(r.home), "away": str(r.away),
                               "game_date": str(getattr(r, "start_time", ""))[:10]}
             for r in preds.itertuples()}
     settled = pd.DataFrame([{"event_id": "t1", "market": "h2h", "result": "win"}])
     out = runner._attach_event_meta(settled, meta)
-    assert out.loc[0, "home"] == "Rays" and out.loc[0, "away"] == "Red Sox"
+    assert out.loc[0, "home"] == "Alcaraz" and out.loc[0, "away"] == "Sinner"
     assert out.loc[0, "game_date"] == "2026-06-25"

@@ -1,6 +1,7 @@
 """Settlement: grade bet candidates against final scores, compute realized ROI.
 
-Sources: The Odds API /scores for leagues with has_scores=True.
+Sources: The Odds API /scores for leagues with has_scores=True. Tennis has no
+scores in this API -> requires a secondary results provider (explicit gap).
 Audit trail: settled rows are appended, never overwritten.
 """
 from __future__ import annotations

@@ -1,9 +1,10 @@
 """_grade must compare selection vs home by normalized identity, not raw string.
 
-When a selection was written in a different spelling than the home name
-(accents, casing), a HOME-side bet whose side actually won was silently graded
-`loss` -- an asymmetric failure (home bets break, away bets don't) spotted in
-the 2026-06-28 settlement review."""
+The settlement winner match (tennis_scores_map) already keys on normalize_key,
+but _grade compared `selection == home` raw. When a selection was written in a
+different spelling than the home name (accents, casing), a HOME-side bet whose
+player actually won was silently graded `loss` -- the asymmetric failure spotted
+in the 2026-06-28 WTA Wimbledon review (home bets break, away bets don't)."""
 import pandas as pd
 
 from sqp.settlement.settle import _grade

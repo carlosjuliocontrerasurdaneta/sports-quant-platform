@@ -2,7 +2,8 @@
 
 - API key from env only (never hardcoded).
 - Featured markets: h2h, spreads, totals.
-- Soccer h2h is 3-way (1X2).
+- Soccer h2h is 3-way (1X2). Tennis sport keys are per-tournament and carry
+  NO scores in this API: tennis settlement requires a secondary results source.
 - /scores endpoint feeds ratings and settlement for leagues marked has_scores.
 """
 from __future__ import annotations
@@ -33,6 +34,7 @@ SPORT_KEYS: dict[str, dict] = {
     "ncaaf":  {"sport_key": "americanfootball_ncaaf","family": "football",   "three_way": False, "has_scores": True},
     "nhl":    {"sport_key": "icehockey_nhl",         "family": "hockey",     "three_way": False, "has_scores": True},
     # soccer leagues are loaded dynamically from configs/leagues/soccer.yaml (family=soccer, three_way=True)
+    # tennis tournaments are discovered dynamically via /sports (family=tennis, has_scores=False)
 }
 
 
