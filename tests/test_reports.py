@@ -29,16 +29,24 @@ def _candidates() -> pd.DataFrame:
          "implied_probability_novig": 0.51, "estimated_edge": 0.09,
          "kelly_stake_pct": 0.006, "stake": 6.0, "data_label": "real",
          "flags": "daily_exposure_scaled"},
+        # Shadow-mode pick: stake forced to 0 but it IS the day's pick and must
+        # stay visible in reports (regression: the stake>0 filter blanked the
+        # whole dashboard on 2026-07-04, the first shadow day).
+        {"event_id": "e4", "market": "h2h", "selection": "Shadow", "line": None,
+         "price_decimal": 2.1, "estimated_probability": 0.52,
+         "implied_probability_novig": 0.48, "estimated_edge": 0.04,
+         "kelly_stake_pct": 0.0, "stake": 0.0, "data_label": "real",
+         "flags": "shadow_mode"},
     ])
 
 
 def test_rank_candidates_keeps_scaled_excludes_zero_stake():
     ranked = rank_candidates(_candidates())
-    # Both unflagged picks AND the daily_exposure_scaled pick are actionable;
-    # only the zero-stake (edge_exceeds_max_plausible) row is dropped.
-    assert set(ranked["selection"]) == {"A", "Over", "Scaled"}
-    assert (ranked["stake"] > 0).all()
+    # Unflagged picks, the daily_exposure_scaled pick AND shadow picks are all
+    # visible; only the blocking zero-stake flags are dropped.
+    assert set(ranked["selection"]) == {"A", "Over", "Scaled", "Shadow"}
     assert "daily_exposure_scaled" in set(ranked["flags"])  # scaled bet retained
+    assert "shadow_mode" in set(ranked["flags"])            # shadow pick visible
     # the zero-stake flagged 0.75-edge row is gone
     assert 0.75 not in set(ranked["estimated_edge"])
 

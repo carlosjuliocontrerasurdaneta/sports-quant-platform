@@ -36,18 +36,21 @@ def write_calibration_report(backtest_result: dict) -> str:
 # --- Consolidated picks report ------------------------------------------------
 
 def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
-    """Actionable picks (stake>0) ranked by estimated edge.
+    """Visible picks (staked or shadow) ranked by estimated edge.
 
-    Actionability is defined by the stake alone: the blocking flags
-    (`market_paused`, `edge_exceeds_max_plausible`) already force stake=0, so a
-    stake>0 row is always a real bet. `daily_exposure_scaled` is NOT a blocking
-    flag -- it marks a bet whose stake was proportionally reduced to respect the
-    daily exposure cap, so it must still count as actionable. Filtering on
-    `flags == ""` (the prior behavior) wrongly hid every scaled pick, which is
-    exactly the whole league on a day the exposure cap triggers."""
+    The blocking flags (`market_paused`, `edge_exceeds_max_plausible`) force
+    stake=0 AND hide the row, so a stake>0 row is always a real bet.
+    `daily_exposure_scaled` is NOT a blocking flag -- it marks a bet whose stake
+    was proportionally reduced to respect the daily exposure cap, so it must
+    still count as actionable. Filtering on `flags == ""` (the prior behavior)
+    wrongly hid every scaled pick, which is exactly the whole league on a day
+    the exposure cap triggers. A `shadow_mode` row also stays visible: it IS
+    the day's pick, only its stake is forced to 0 while evidence accrues (the
+    stake>0-only filter blanked the whole dashboard on the first shadow day)."""
     d = df.copy()
-    actionable = d[d["stake"] > 0]
-    return actionable.sort_values("estimated_edge", ascending=False)
+    flags = d["flags"].fillna("") if "flags" in d.columns else pd.Series("", index=d.index)
+    visible = d[(d["stake"] > 0) | (flags == "shadow_mode")]
+    return visible.sort_values("estimated_edge", ascending=False)
 
 
 def load_all_candidates(predictions_dir: Path) -> pd.DataFrame:
@@ -80,9 +83,10 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
         lines += ["(sin candidatos generados)", "", f"> {DISCLAIMER}"]
     else:
         df["flags"] = df["flags"].fillna("") if "flags" in df.columns else ""
-        # Actionable = stake>0 (see rank_candidates): blocking flags already zero
-        # the stake, while daily_exposure_scaled keeps a positive, real stake.
-        summary = (df.assign(actionable=df["stake"] > 0)
+        # Visible = stake>0 or shadow (see rank_candidates): blocking flags zero
+        # the stake AND hide the row; shadow zeroes the stake but stays visible.
+        visible_mask = (df["stake"] > 0) | (df["flags"] == "shadow_mode")
+        summary = (df.assign(actionable=visible_mask)
                    .groupby("league")
                    .agg(candidatos=("selection", "size"),
                         accionables=("actionable", "sum"),
@@ -104,7 +108,7 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
             "",
             f"Total accionables: {len(rank_candidates(df))} | "
             f"no accionables (pausados / edge implausible, no apostados): "
-            f"{int((df['stake'] <= 0).sum())}",
+            f"{int((~visible_mask).sum())}",
             "", f"> {DISCLAIMER}",
         ]
     outdir = predictions_dir
