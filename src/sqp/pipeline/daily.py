@@ -413,6 +413,19 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
     return df
 
 
+def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool) -> str | None:
+    """Reason a selected candidate must be recorded with stake 0, or None to
+    stake it. Pausing wins over the plausibility cap; shadow mode (global,
+    stake-0 evidence gathering) zeroes whatever remains."""
+    if paused:
+        return "market_paused"
+    if suspect:
+        return "edge_exceeds_max_plausible"
+    if shadow:
+        return "shadow_mode"
+    return None
+
+
 def _fetch_recent_scores(client, sport_key: str, league: str) -> list[dict]:
     """Recent completed games from The Odds API /scores (has_scores leagues).
     Best-effort: returns [] on failure (logged). Rows whose score names do not
@@ -594,12 +607,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             if stake <= 0 and not suspect:
                 continue
             # A paused market is suspended from staking but kept in the audit trail
-            # (stake 0, flagged). Pausing takes precedence over the plausibility cap.
-            flag = ""
-            if paused:
-                stake, pct, flag = 0.0, 0.0, "market_paused"
-            elif suspect:
-                stake, pct, flag = 0.0, 0.0, "edge_exceeds_max_plausible"
+            # (stake 0, flagged). Pausing takes precedence over the plausibility cap;
+            # shadow mode zeroes whatever remains.
+            flag = _zero_stake_flag(paused, suspect, settings.shadow_mode) or ""
+            if flag:
+                stake, pct = 0.0, 0.0
             candidates.append(BetCandidate(
                 event_id=eo.event.event_id, league=league, market=key[0],
                 selection=key[1], line=key[2], price_decimal=price,

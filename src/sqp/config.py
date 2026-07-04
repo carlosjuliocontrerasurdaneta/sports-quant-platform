@@ -79,6 +79,15 @@ class Settings:
     # horizon those flood the picks with games that won't play for weeks.
     event_horizon_days: int = field(default_factory=lambda: int(os.getenv("MAX_EVENT_HORIZON_DAYS", "7")))
     risk: RiskConfig = field(default_factory=RiskConfig)
+    # Shadow mode: the pipeline selects picks exactly as in real mode (selection
+    # still requires a would-be-staked candidate) but records every pick with
+    # stake 0, flagged "shadow_mode". Evidence (settlement, CLV vs closing,
+    # calibration training) keeps accruing without risking capital. Unlike
+    # paused_markets this is global, so it also covers leagues discovered
+    # dynamically. Env var SHADOW_MODE (when set) wins over the yaml key.
+    shadow_mode: bool = field(
+        default_factory=lambda: os.getenv("SHADOW_MODE", "").lower()
+        in ("1", "true", "yes"))
     # league_id -> markets paused from staking (e.g. {"mlb": ["totals"]}). A paused
     # market is still estimated, but candidates are recorded flagged "market_paused"
     # with stake 0 instead of being bet. Used to suspend a market whose realized ROI
@@ -124,6 +133,8 @@ class Settings:
             )
             s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                                 for lg, mk in (cfg.get("paused_markets") or {}).items()}
+            if "SHADOW_MODE" not in os.environ and "shadow_mode" in cfg:
+                s.shadow_mode = bool(cfg["shadow_mode"])
             cal = cfg.get("calibration") or {}
             # env var (if set) wins over yaml; otherwise yaml, else the dataclass default
             if "CALIBRATION_ENABLED" not in os.environ and "enabled" in cal:

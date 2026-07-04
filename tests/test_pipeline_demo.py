@@ -66,6 +66,47 @@ def test_paused_market_produces_no_actionable_candidates():
         assert ((tot["stake"] <= 0) & (flags == "market_paused")).all()
 
 
+def test_zero_stake_flag_precedence():
+    # Pausing wins over the plausibility cap; shadow mode zeroes whatever remains.
+    from sqp.pipeline.daily import _zero_stake_flag
+    assert _zero_stake_flag(paused=False, suspect=False, shadow=False) is None
+    assert _zero_stake_flag(paused=False, suspect=False, shadow=True) == "shadow_mode"
+    assert _zero_stake_flag(paused=True, suspect=True, shadow=True) == "market_paused"
+    assert _zero_stake_flag(paused=False, suspect=True, shadow=True) == "edge_exceeds_max_plausible"
+
+
+def test_shadow_mode_settings_plumbing(monkeypatch):
+    # Dataclass default is OFF; the SHADOW_MODE env var (when set) wins over yaml.
+    monkeypatch.delenv("SHADOW_MODE", raising=False)
+    assert Settings().shadow_mode is False
+    monkeypatch.setenv("SHADOW_MODE", "1")
+    assert Settings().shadow_mode is True
+    assert Settings.load().shadow_mode is True
+    monkeypatch.setenv("SHADOW_MODE", "0")
+    assert Settings.load().shadow_mode is False
+
+
+def test_shadow_mode_records_picks_with_zero_stake():
+    # Shadow mode (2026-07-04): the pipeline selects picks exactly as in real
+    # mode (selection still requires a would-be-staked candidate) but forces
+    # stake 0, so CLV / calibration evidence accrues without risking capital.
+    from sqp.config import ROOT
+    settings = Settings.load()
+    settings.shadow_mode = True
+    run_league("mlb", settings, mode="demo")
+    f = ROOT / "data" / "predictions" / "demo" / "candidates_mlb.csv"
+    if not f.exists():
+        return  # no candidates at all -> rule holds vacuously
+    c = pd.read_csv(f)
+    assert (c["stake"] <= 0).all()
+    assert (c["kelly_stake_pct"] <= 0).all()
+    flags = c["flags"].fillna("")
+    # every row carries its zero-stake reason; more specific flags win
+    assert flags.isin(["shadow_mode", "market_paused",
+                       "edge_exceeds_max_plausible"]).all()
+    assert (flags == "shadow_mode").any()
+
+
 def test_archive_existing_preserves_prior_picks(tmp_path: Path):
     # A candidates file is archived (keyed by its generated_at date) before being
     # overwritten, so an out-of-order RUN-before-SETTLE cannot destroy un-settled

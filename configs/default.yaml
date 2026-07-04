@@ -56,3 +56,12 @@ calibration:
 # run-environment factor (ratings.yaml mlb.park_bound 0.10) fixed totals OOS
 # (-17.1% -> +2.8% ROI). Re-pause if realized totals ROI turns negative again.
 paused_markets: {}
+# Shadow mode (ENABLED 2026-07-04): picks are selected exactly as in real mode
+# but recorded with stake 0, flagged "shadow_mode". Rationale: realized ROI
+# -15.3% over 390 settled bets and adversely-selected CLV mean no market has a
+# demonstrated edge; shadow keeps settlement/CLV/calibration evidence accruing
+# at zero capital risk. Exit rule agreed with the user: revisit after ~100 new
+# picks — promote a market to minimal real stakes only if its median CLV is
+# positive AND a calibrator passes the OOS Brier gate; otherwise stay shadow.
+# Env var SHADOW_MODE (when set) wins over this key.
+shadow_mode: true
