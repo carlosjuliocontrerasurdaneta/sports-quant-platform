@@ -9,6 +9,10 @@ from types import SimpleNamespace
 import pytest
 
 import sqp.pipeline.daily as daily
+# _decision_probability vive en pipeline.probabilities (extraído de daily en la
+# auditoría 2026-07-02); daily lo re-importa, pero el monkeypatch debe apuntar
+# al módulo donde la función RESUELVE calibrate_probability.
+import sqp.pipeline.probabilities as probabilities
 
 _ON = SimpleNamespace(calibration_enabled=True, calibration_method="auto")
 _OFF = SimpleNamespace(calibration_enabled=False, calibration_method="auto")
@@ -37,7 +41,7 @@ def test_calibration_applies_to_pure_model_before_blend(monkeypatch):
         seen["p"] = p
         return 0.55  # deflacta el modelo sobreconfiado 0.70 -> 0.55
 
-    monkeypatch.setattr(daily, "calibrate_probability", fake_cal)
+    monkeypatch.setattr(probabilities, "calibrate_probability", fake_cal)
     p_used, p_decision = daily._decision_probability(
         0.70, fair=0.50, shrink=0.5, league="mlb", market="spreads", settings=_ON)
     assert seen["p"] == pytest.approx(0.70)     # calibró p_model PURO, no la mezcla
@@ -46,7 +50,7 @@ def test_calibration_applies_to_pure_model_before_blend(monkeypatch):
 
 
 def test_no_market_anchor_uses_calibrated_model(monkeypatch):
-    monkeypatch.setattr(daily, "calibrate_probability",
+    monkeypatch.setattr(probabilities, "calibrate_probability",
                         lambda p, league, market, method: 0.55)
     p_used, p_decision = daily._decision_probability(
         0.70, fair=None, shrink=0.5, league="mlb", market="h2h", settings=_ON)

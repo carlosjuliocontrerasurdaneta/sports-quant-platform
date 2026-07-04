@@ -9,11 +9,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 import pandas as pd
-from sqp.calibration.calibrator import calibrate_probability
 from sqp.config import Settings, ROOT, CONFIG_DIR, load_yaml
 from sqp.domain.models import EventOdds, BetCandidate
-from sqp.markets.vig import remove_vig_power
 from sqp.markets.edge import adjusted_edge
+# Helpers de probabilidad extraídos a pipeline.probabilities (auditoría
+# 2026-07-02, M2); se re-importan aquí para conservar la API histórica de
+# daily (scripts/clv_analysis.py y tests importan varios de estos nombres).
+from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
+                                        _novig_probs, _spread_novig,
+                                        _pick_main_lines, _decision_probability)
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.kelly import kelly_fraction_stake, edge
@@ -36,12 +40,6 @@ DISCLAIMER = ("This output contains estimated probabilities only. It does not "
 def _league_meta(league: str) -> dict:
     if league in SPORT_KEYS:
         meta = dict(SPORT_KEYS[league])
-    elif league.startswith("tennis_") or league in ("atp", "wta"):
-        # Tennis tournaments are per-tournament Odds API keys; the league id IS
-        # the sport key. No scores in The Odds API -> settled via ESPN by player
-        # name + date (see settlement.runner). Player Elo is tour-wide.
-        meta = {"sport_key": league, "family": "tennis", "three_way": False,
-                "has_scores": False}
     else:
         soccer_cfg = load_yaml(CONFIG_DIR / "leagues" / "soccer.yaml").get("leagues", {})
         if league not in soccer_cfg:
@@ -56,70 +54,6 @@ def _league_meta(league: str) -> dict:
     if params:
         meta["league_params"] = params
     return meta
-
-
-def _consensus_lines(eo: EventOdds) -> dict:
-    """Median price per (market, outcome, point) across books; plus the de-vig
-    no-vig probability per market used as the fair benchmark."""
-    groups: dict[tuple, list[float]] = defaultdict(list)
-    for ln in eo.lines:
-        groups[(ln.market, ln.outcome, ln.point)].append(ln.price_decimal)
-    cons = {k: sorted(v)[len(v) // 2] for k, v in groups.items()}
-    return cons
-
-
-def _consensus_counts(eo: EventOdds) -> dict:
-    """How many bookmakers quoted each (market, outcome, point). Feeds the
-    thin-market term of the edge penalty (a one-book line is less reliable)."""
-    counts: dict[tuple, int] = defaultdict(int)
-    for ln in eo.lines:
-        counts[(ln.market, ln.outcome, ln.point)] += 1
-    return dict(counts)
-
-
-def _novig_probs(cons: dict, market: str, point=None) -> dict:
-    """No-vig fair probabilities for h2h and totals. h2h pairs every outcome
-    (2-way, or 1X2 for soccer); totals share a single point (Over/Under at the
-    same line). Spreads need the home/away team identities, so use _spread_novig.
-    """
-    if market == "h2h":
-        keys = [k for k in cons if k[0] == "h2h"]
-    else:
-        keys = [k for k in cons if k[0] == market and k[2] == point]
-    if not keys:
-        return {}
-    implied = [1.0 / cons[k] for k in keys]
-    fair = remove_vig_power(implied)
-    return {k[1]: p for k, p in zip(keys, fair)}
-
-
-def _spread_novig(cons: dict, home: str, away: str, spread: float | None) -> dict:
-    """No-vig fair probabilities for the MAIN spread line only: home at `spread`
-    paired with away at `-spread`. Books also quote alternate runlines (MLB lists
-    both teams at +-1.5), so matching by absolute point would mix 4 outcomes and
-    corrupt the de-vig; this pairs exactly the two complementary main-line sides.
-    """
-    if spread is None:
-        return {}
-    pair = [("spreads", home, spread), ("spreads", away, -spread)]
-    present = [k for k in pair if k in cons]
-    if len(present) < 2:
-        return {}
-    fair = remove_vig_power([1.0 / cons[k] for k in present])
-    return {k[1]: p for k, p in zip(present, fair)}
-
-
-def _pick_main_lines(eo: EventOdds) -> tuple[float | None, float | None]:
-    """Main spread (home point) and total line = most-quoted point."""
-    spread_counts, total_counts = defaultdict(int), defaultdict(int)
-    for ln in eo.lines:
-        if ln.market == "spreads" and ln.outcome == eo.event.home and ln.point is not None:
-            spread_counts[ln.point] += 1
-        if ln.market == "totals" and ln.point is not None:
-            total_counts[ln.point] += 1
-    spread = max(spread_counts, key=spread_counts.get) if spread_counts else None
-    total = max(total_counts, key=total_counts.get) if total_counts else None
-    return spread, total
 
 
 def _merge_results(history: list[dict], recent: list[dict],
@@ -281,32 +215,6 @@ def _apply_daily_exposure_cap(candidates: list[BetCandidate], bankroll: float,
     return factor
 
 
-def _decision_probability(p_model: float, fair: float | None, shrink: float,
-                          league: str, market: str, settings) -> tuple[float, float]:
-    """(p_used_raw, p_decision) para un candidato.
-
-    La calibración se aplica a la probabilidad PURA del modelo ANTES del shrink
-    al mercado: ``p_decision = (1-s)*cal(p_model) + s*fair``. Calibrar la mezcla
-    obligaba al calibrador a corregir el modelo a través de un canal diluido al
-    50% por el no-vig (ya bien calibrado); sobre settled, el reblend dominó a
-    ``cal(p_used)`` en ECE y Brier OOS en todos los cortes temporales
-    (docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md). El retrain
-    entrena sobre ``model_probability`` (la misma columna cruda que se almacena),
-    así que train y serve calibran el mismo objetivo y no puede haber loop
-    calibrar-sobre-calibrado: ``p_used`` almacenada sigue siendo la mezcla CRUDA.
-    Sin calibrador para (liga, mercado) -> no-op y ``p_decision == p_used``."""
-    p_cal = p_model
-    if settings.calibration_enabled:
-        p_cal = calibrate_probability(p_model, league, market,
-                                      settings.calibration_method)
-    if fair is not None and shrink > 0:
-        p_used = (1.0 - shrink) * p_model + shrink * fair
-        p_decision = (1.0 - shrink) * p_cal + shrink * fair
-    else:
-        p_used, p_decision = p_model, p_cal
-    return p_used, p_decision
-
-
 def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -> float:
     """Cap the WHOLE day's staked exposure across every league at
     ``bankroll * cap_pct``, rewriting the per-league ``candidates_*.csv`` in place.
@@ -449,20 +357,6 @@ def _fetch_recent_scores(client, sport_key: str, league: str) -> list[dict]:
     return recent
 
 
-def _tennis_results(league: str, provider=None) -> list[dict]:
-    """Tour-wide player results from ESPN (atp/wta) to fit player Elo. Best-effort:
-    on any failure return empty so the run degrades to low-sample warnings rather
-    than crashing. `provider` is injectable for testing."""
-    if provider is None:
-        from sqp.providers.espn_tennis import ESPNTennisResultsProvider
-        provider = ESPNTennisResultsProvider()
-    try:
-        return provider.fetch_results(league)
-    except Exception as exc:
-        log.warning("[%s] could not fetch tennis results: %s", league, exc)
-        return []
-
-
 def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.DataFrame:
     mode = mode or settings.mode
     meta = _league_meta(league)
@@ -493,22 +387,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                       "Check configs/leagues/ for a typo; skipping fetch.",
                       league, meta["sport_key"])
             return _finalize(league, [], [], mode)
-        if family == "tennis":
-            # Player Elo is tour-wide; fit from ESPN (atp/wta), not a per-league store.
-            results = _tennis_results(league)
-            history, recent = results, []
-        else:
-            history = ResultsStore(ROOT).load(league)
-            recent = (_fetch_recent_scores(client, meta["sport_key"], league)
-                      if meta.get("has_scores", False) else [])
-            results = _merge_results(history, recent, adapter.normalize)
-            if family == "baseball" and results:
-                attached = StartersStore(ROOT).attach(league, results)
-                fip_attached = StarterFIPStore(ROOT).attach(league, results)
-                log.info("[%s] starters attached to %d/%d results (names), %d with "
-                         "per-start FIP (v2). Refresh: scripts/backfill_starters.py, "
-                         "scripts/backfill_starter_fip.py.",
-                         league, attached, len(results), fip_attached)
+        history = ResultsStore(ROOT).load(league)
+        recent = (_fetch_recent_scores(client, meta["sport_key"], league)
+                  if meta.get("has_scores", False) else [])
+        results = _merge_results(history, recent, adapter.normalize)
+        if family == "baseball" and results:
+            attached = StartersStore(ROOT).attach(league, results)
+            fip_attached = StarterFIPStore(ROOT).attach(league, results)
+            log.info("[%s] starters attached to %d/%d results (names), %d with "
+                     "per-start FIP (v2). Refresh: scripts/backfill_starters.py, "
+                     "scripts/backfill_starter_fip.py.",
+                     league, attached, len(results), fip_attached)
         if results:
             adapter.fit_results(results)
         if len(results) < MIN_RESULTS_FOR_RATINGS:
@@ -518,8 +407,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         else:
             log.info("[%s] Ratings built from %d results (%d stored + %d recent).",
                      league, len(results), len(history), len(recent))
-        markets = "h2h" if family == "tennis" else "h2h,spreads,totals"
-        events = client.fetch_odds(league, meta["sport_key"], markets)
+        events = client.fetch_odds(league, meta["sport_key"], "h2h,spreads,totals")
         n_fetched = len(events)
         events = _within_horizon(events, settings.event_horizon_days)
         if len(events) < n_fetched:

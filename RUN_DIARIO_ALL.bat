@@ -16,6 +16,7 @@ set ODDS_API_REGIONS=us,eu,uk,au
 
 if not exist logs mkdir logs
 
+call scripts\rotate_log.cmd logs\run_diario.log
 echo === SQP - RUN DIARIO MULTI-LIGA (%DATE% %TIME%) ===
 echo === SQP - RUN DIARIO MULTI-LIGA (%DATE% %TIME%) === >> logs\run_diario.log
 REM --open-dashboard se omite a proposito: bajo el Programador de tareas la

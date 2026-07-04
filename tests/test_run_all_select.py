@@ -24,15 +24,12 @@ _SETTINGS = SimpleNamespace(odds_api_key="k", regions="us", odds_format="decimal
 
 
 class _FakeClient:
-    """Plenty of quota; no dynamic tennis tournaments. Subclasses override
-    is_sport_active to drive the scenario under test."""
+    """Plenty of quota. Subclasses override is_sport_active to drive the
+    scenario under test."""
     requests_remaining = 1_000_000
 
     def __init__(self, *args, **kwargs):
         pass
-
-    def list_sports(self, all_sports=True):
-        return []
 
 
 def test_select_live_assumes_active_on_status_check_error(monkeypatch):

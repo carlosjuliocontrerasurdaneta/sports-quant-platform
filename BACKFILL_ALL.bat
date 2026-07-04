@@ -12,6 +12,7 @@ set PYTHONPATH=src
 if not exist logs mkdir logs
 
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) ===
+call scripts\rotate_log.cmd logs\backfill.log
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) === >> logs\backfill.log
 python scripts\backfill_results.py --days 14 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill.log 2>&1
 if errorlevel 1 goto :error

@@ -12,6 +12,7 @@ set PYTHONPATH=src
 if not exist logs mkdir logs
 
 echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) ===
+call scripts\rotate_log.cmd logs\validate_oos.log
 echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) === >> logs\validate_oos.log
 python scripts\validate_oos.py >> logs\validate_oos.log 2>&1
 if errorlevel 1 goto :error

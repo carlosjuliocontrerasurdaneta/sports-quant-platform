@@ -116,36 +116,3 @@ def test_bet_from_date_restricts_evaluation_window():
     after_all = realized_roi_backtest(results, odds, "test", "baseball", None, risk,
                                       1000.0, warmup=0, bet_from_date="2026-07-01")
     assert after_all["n_events_matched"] == 0
-
-
-def _tennis_eo(eid, p1, p2, day, price1=1.5, price2=2.5):
-    return EventOdds(
-        event=Event(event_id=eid, sport_key="bt", league="tennis_atp_x", home=p1,
-                    away=p2, start_time=f"{day}T13:00:00Z", data_label="real"),
-        lines=[MarketLine("h2h", "dk", p1, price1, None),
-               MarketLine("h2h", "dk", p2, price2, None)])
-
-
-def test_match_result_order_insensitive_for_tennis():
-    eo = _tennis_eo("e1", "Carlos Alcaraz", "Jannik Sinner", "2026-06-20")
-    # The result stores the winner first, so the players are reversed vs the odds.
-    r = {"home": "Jannik Sinner", "away": "Carlos Alcaraz", "date": "2026-06-20"}
-    # Ordered matching (team sports) does NOT find the reversed pair...
-    idx_ord = _match_index({"e1": eo}, order_insensitive=False)
-    assert _match_result(r, idx_ord, set(), order_insensitive=False) is None
-    # ...order-insensitive (tennis) does.
-    idx_ci = _match_index({"e1": eo}, order_insensitive=True)
-    assert _match_result(r, idx_ci, set(), order_insensitive=True) is eo
-
-
-def test_tennis_backtest_matches_reversed_players():
-    # The odds list Alcaraz (home) vs Sinner (away); the tour result has Sinner as
-    # winner (stored first). The backtest must still match the game order-insensitively.
-    odds = {"e1": _tennis_eo("e1", "Carlos Alcaraz", "Jannik Sinner", "2026-06-20",
-                             price1=1.5, price2=2.5)}
-    results = [{"date": "2026-06-20", "home": "Jannik Sinner", "away": "Carlos Alcaraz",
-                "home_score": 1, "away_score": 0, "neutral": True, "game_id": "g1"}]
-    out = realized_roi_backtest(results, odds, "tennis_atp_x", "tennis", None,
-                                RiskConfig(), 1000.0, warmup=0)
-    assert out["n_events_matched"] == 1          # reversed players still matched
-    assert isinstance(out["n_bets"], int)

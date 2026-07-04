@@ -20,6 +20,7 @@ cd /d %~dp0
 set PYTHONPATH=src
 if not exist logs mkdir logs
 
+call scripts\rotate_log.cmd logs\calibration_review.log
 echo === REVISION CALIBRACION MLB h2h (%DATE% %TIME%) === >> logs\calibration_review.log
 python scripts\train_calibration.py >> logs\calibration_review.log 2>&1
 if errorlevel 1 goto :error

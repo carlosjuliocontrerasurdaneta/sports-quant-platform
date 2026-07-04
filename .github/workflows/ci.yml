@@ -29,8 +29,11 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install (editable + dev extras)
-        run: pip install -e ".[dev]"
+      - name: Install (editable + dev extras, versions pinned by lockfile)
+        # requirements.lock is a pip constraints file: it pins the resolved
+        # versions for reproducible builds without widening what gets installed.
+        # pyproject.toml keeps the compatibility floors.
+        run: pip install -e ".[dev]" -c requirements.lock
 
       # scripts/ included: an undefined name there (F821) silently killed the
       # daily calibration staging on 2026-07-01 -- entrypoints must be linted.
@@ -39,12 +42,40 @@ jobs:
 
       - name: Pytest
         # pythonpath=["src"] is set in pyproject, so no PYTHONPATH needed.
+        if: matrix.python-version != '3.12'
         run: pytest -q
 
-      # Report-only for now (continue-on-error) so a new advisory surfaces in the
-      # logs without blocking unrelated PRs. Flip to blocking once triaged.
+      # Informational coverage on one matrix leg only (3.12): prints the
+      # per-module table in the log without failing the build (no threshold).
+      - name: Pytest (+ coverage report, informational)
+        if: matrix.python-version == '3.12'
+        run: |
+          pip install pytest-cov
+          pytest -q --cov=sqp --cov-report=term
+
+      # BLOCKING since 2026-07-02: the lockfile was audited clean after bumping
+      # idna (PYSEC-2026-215) and urllib3 (PYSEC-2026-141/142). Audits the pinned
+      # set in requirements.lock so results are deterministic. If a new advisory
+      # blocks an unrelated PR, bump the pinned package in requirements.lock
+      # (keeping pyproject floors satisfied) in that same PR.
       - name: Dependency vulnerability audit (pip-audit)
-        continue-on-error: true
         run: |
           pip install pip-audit
-          pip-audit
+          pip-audit -r requirements.lock
+
+  # Production runs on Windows (Task Scheduler + BATs); one Windows leg catches
+  # path/locale/os.replace regressions that ubuntu can't. Single Python version
+  # to keep minutes bounded (Windows runners cost 2x).
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install (editable + dev extras, pinned)
+        run: pip install -e ".[dev]" -c requirements.lock
+      - name: Pytest
+        run: pytest -q
