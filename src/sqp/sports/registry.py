@@ -31,7 +31,17 @@ FAMILY_PARAMS: dict[str, dict] = {
 }
 
 LEAGUE_OVERRIDES: dict[str, dict] = {
-    "wnba":   {"avg_total": 162.0, "total_sigma": 15.0, "points_per_elo": 0.024},
+    # avg_total 162 -> 171 (2026-07-04): el prior era de una era de menor
+    # anotacion y sesgaba TODA la proyeccion al Under (p(Over) media del modelo
+    # 0.302 sobre 35 partidos vs ~0.50 insesgado; est 0.597 vs obs 0.438 en 32
+    # Unders liquidados). Evidencia: total observado 2026 = 170.9 (n=137),
+    # ultimos 30 dias = 174.1, linea media de mercado = 175.1.
+    # scoring_half_life_days 180 (2026-07-04): las tasas de anotacion decaen con
+    # media vida de ~media temporada para seguir la era actual (el store 2023->
+    # 2026 sin decaimiento proyectaba ~165 contra lineas 2026 de ~175 y volcaba
+    # todos los totals al Under). Ver test_team_scoring y team_scoring.py.
+    "wnba":   {"avg_total": 171.0, "total_sigma": 15.0, "points_per_elo": 0.024,
+               "scoring_half_life_days": 180.0},
     "ncaab":  {"avg_total": 145.0, "total_sigma": 15.0, "margin_sigma": 10.5},
     "wncaab": {"avg_total": 132.0, "total_sigma": 14.0, "margin_sigma": 10.5},
     "ncaaf":  {"avg_total": 55.0, "total_sigma": 15.5, "margin_sigma": 15.5},

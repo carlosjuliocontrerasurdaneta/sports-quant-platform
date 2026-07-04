@@ -33,6 +33,7 @@ class NormalMarginAdapter(SportAdapter):
         super().__init__(league, params)
         self.scoring = TeamScoringRates(
             prior_games=params.get("scoring_prior_games", 6.0),
+            half_life_days=params.get("scoring_half_life_days", 0.0),
             normalize=self.normalize)
         # Rest / back-to-back margin adjustment. points_per_day 0.0 (default) =
         # no-op; set rest_points_per_day > 0 to enable after an OOS check.
@@ -42,7 +43,8 @@ class NormalMarginAdapter(SportAdapter):
 
     def observe(self, r: dict) -> None:
         super().observe(r)
-        self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"])
+        self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"],
+                            r.get("date"))
         self.rest.observe(r["home"], r["away"], r.get("date"))
 
     def estimate(self, event, spread_line, total_line) -> EstimatedProbabilities:
@@ -83,11 +85,13 @@ class PoissonAdapter(SportAdapter):
         super().__init__(league, params)
         self.scoring = TeamScoringRates(
             prior_games=params.get("scoring_prior_games", 6.0),
+            half_life_days=params.get("scoring_half_life_days", 0.0),
             normalize=self.normalize)
 
     def observe(self, r: dict) -> None:
         super().observe(r)
-        self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"])
+        self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"],
+                            r.get("date"))
 
     def _rates(self, event) -> tuple[float, float]:
         p_home = self.elo.expected_home_win(event.home, event.away)

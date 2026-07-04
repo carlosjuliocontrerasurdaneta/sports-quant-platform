@@ -27,6 +27,41 @@ def test_scoring_rates_are_matchup_specific():
     assert sr.expected_total("A", "B", 224.0) > sr.expected_total("C", "D", 224.0)
 
 
+def test_scoring_rates_recency_decay_weights_recent_era():
+    # Two eras for the same pair: old low-scoring games, then a recent
+    # high-scoring era. Without decay the rate is the blended career mean; with
+    # a 180-day half-life the 2-year-old games weigh <1%, so the estimate
+    # tracks the current era. Regression guard for the 2026-07-04 finding:
+    # WNBA totals ran ~9 pts under the market because 2023-25 games weighed
+    # the same as last week's.
+    no_decay = TeamScoringRates(prior_games=0.0)
+    decay = TeamScoringRates(prior_games=0.0, half_life_days=180.0)
+    for sr in (no_decay, decay):
+        for i in range(20):
+            sr.update("A", "B", 75, 75, date=f"2024-01-{i+1:02d}")   # total 150
+        for i in range(20):
+            sr.update("A", "B", 90, 85, date=f"2026-06-{i+1:02d}")   # total 175
+    assert abs(no_decay.expected_total("A", "B", 0.0) - 162.5) < 1.0
+    assert decay.expected_total("A", "B", 0.0) > 172.0
+
+
+def test_scoring_rates_decay_is_noop_without_dates_or_half_life():
+    plain = TeamScoringRates(prior_games=6.0)
+    with_hl = TeamScoringRates(prior_games=6.0, half_life_days=180.0)
+    for sr in (plain, with_hl):
+        sr.update("A", "B", 100, 90)          # no date -> decay must be a no-op
+        sr.update("A", "B", 102, 88, date=None)
+    assert plain.expected_total("A", "B", 200.0) == \
+        with_hl.expected_total("A", "B", 200.0)
+
+
+def test_wnba_adapter_enables_scoring_recency_decay():
+    # The WNBA override must plumb scoring_half_life_days into the adapter;
+    # other leagues default to 0 (legacy cumulative behavior, byte-identical).
+    assert get_adapter("wnba", "basketball").scoring.half_life_days > 0
+    assert get_adapter("nba", "basketball").scoring.half_life_days == 0
+
+
 def test_normal_adapter_total_is_matchup_specific():
     adapter = get_adapter("nba", "basketball")
     rows = []
