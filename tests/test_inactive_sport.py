@@ -35,10 +35,13 @@ def test_is_sport_active_states_and_cache():
     assert session.calls == 1  # /sports fetched once, then served from cache
 
 
-def test_run_league_skips_inactive_sport(monkeypatch):
+def test_run_league_skips_inactive_sport(tmp_path, monkeypatch):
+    import sqp.pipeline.daily as daily
+
     def _fail(*args, **kwargs):
         raise AssertionError("fetch must not be called for an inactive sport")
 
+    monkeypatch.setattr(daily, "ROOT", tmp_path)  # keep outputs out of the real data/
     monkeypatch.setattr(OddsAPIClient, "is_sport_active", lambda self, key: False)
     monkeypatch.setattr(OddsAPIClient, "fetch_odds", _fail)
     monkeypatch.setattr(OddsAPIClient, "fetch_scores", _fail)
@@ -78,7 +81,10 @@ def test_finalize_removes_stale_candidates_when_none(tmp_path, monkeypatch):
     assert not cand.exists()  # stale picks must be cleared, not left behind
 
 
-def test_run_league_skips_unknown_sport_key(monkeypatch):
+def test_run_league_skips_unknown_sport_key(tmp_path, monkeypatch):
+    import sqp.pipeline.daily as daily
+
+    monkeypatch.setattr(daily, "ROOT", tmp_path)  # keep outputs out of the real data/
     monkeypatch.setattr(OddsAPIClient, "is_sport_active", lambda self, key: None)
     df = run_league("ligamx", Settings.load(), mode="live")
     assert df.empty
