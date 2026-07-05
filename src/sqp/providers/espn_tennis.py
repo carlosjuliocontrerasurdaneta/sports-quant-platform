@@ -54,7 +54,8 @@ def parse_tennis_scoreboard(payload: dict, since: str | None = None) -> list[dic
                 comps = c.get("competitors", [])
                 if len(comps) != 2:
                     continue
-                names, winner_idx = [], None
+                names: list[str] = []
+                winner_idx: int | None = None
                 for i, x in enumerate(comps):
                     ath = x.get("athlete") or {}
                     name = ath.get("displayName") or ath.get("fullName")

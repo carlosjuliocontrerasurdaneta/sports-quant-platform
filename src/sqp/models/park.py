@@ -24,7 +24,7 @@ class ParkFactors:
                  normalize: Callable[[str | None], str] | None = None) -> None:
         self.prior_games = prior_games
         self.bound = bound
-        self.nk = normalize or (lambda s: s)
+        self.nk = normalize or (lambda s: s or "")
         self._home_runs: dict[str, float] = defaultdict(float)
         self._home_n: dict[str, int] = defaultdict(int)
         self._away_runs: dict[str, float] = defaultdict(float)

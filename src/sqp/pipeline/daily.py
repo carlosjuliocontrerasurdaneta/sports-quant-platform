@@ -72,7 +72,7 @@ def _merge_results(history: list[dict], recent: list[dict],
     `normalize` canonicalizes team names for the comparison keys only (rows are
     returned unchanged), so the same game spelled differently by two vendors is
     recognized as one and not double-counted into the ratings."""
-    nk = normalize or (lambda s: s)
+    nk = normalize or (lambda s: s or "")
     seen: dict[tuple, dict] = {}
     for r in history:
         day = str(r.get("date", ""))[:10]
@@ -154,7 +154,7 @@ def _attach_probable_pitchers(events: list[EventOdds], league: str,
     if provider is None:
         from sqp.providers.mlb_statsapi import MLBStatsProvider
         provider = MLBStatsProvider()
-    nk = normalize or (lambda s: s)
+    nk = normalize or (lambda s: s or "")
     fetch_days: set[str] = set()
     for eo in events:
         day = str(eo.event.start_time)[:10]
@@ -472,8 +472,9 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         rows.append(row)
 
         # Edge scan on consensus prices
-        model_map = {("h2h", eo.event.home, None): est.home_win_estimated_probability,
-                     ("h2h", eo.event.away, None): est.away_win_estimated_probability}
+        model_map: dict[tuple[str, str, float | None], float | None] = {
+            ("h2h", eo.event.home, None): est.home_win_estimated_probability,
+            ("h2h", eo.event.away, None): est.away_win_estimated_probability}
         if est.draw_estimated_probability is not None:
             model_map[("h2h", "Draw", None)] = est.draw_estimated_probability
         if est.home_cover_estimated_probability is not None and spread is not None:

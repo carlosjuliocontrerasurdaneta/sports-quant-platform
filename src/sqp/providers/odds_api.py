@@ -9,6 +9,8 @@
 from __future__ import annotations
 import os
 from pathlib import Path
+from typing import cast
+
 import requests
 from sqp.exceptions import ProviderNotConfiguredError
 from sqp.domain.models import Event, EventOdds, MarketLine
@@ -83,7 +85,7 @@ class OddsAPIClient:
     def _get(self, path: str, *, cache: bool = False, **params) -> list | dict:
         self.last_response_cached = False
         ckey = self._cache.key(path, params) if cache else None
-        if cache and not self.force_refresh:
+        if ckey is not None and not self.force_refresh:
             ttl = float("inf") if self.offline_mode else self.cache_ttl
             hit = self._cache.get(ckey, ttl)
             if hit is not None:
@@ -98,7 +100,7 @@ class OddsAPIClient:
         r.raise_for_status()
         self._capture_quota(getattr(r, "headers", {}) or {})
         data = r.json()
-        if cache:
+        if ckey is not None:
             self._cache.put(ckey, data)
         return data
 
@@ -114,7 +116,7 @@ class OddsAPIClient:
                     pass
 
     def list_sports(self, all_sports: bool = True) -> list[dict]:
-        return self._get("/sports", all="true" if all_sports else "false")
+        return cast("list[dict]", self._get("/sports", all="true" if all_sports else "false"))
 
     def is_sport_active(self, sport_key: str) -> bool | None:
         """Whether the sport is currently in season per /sports (cached per client).
@@ -147,7 +149,7 @@ class OddsAPIClient:
     def fetch_odds(self, league_id: str, sport_key: str, markets: str = "h2h,spreads,totals") -> list[EventOdds]:
         raw = self._get(f"/sports/{sport_key}/odds", cache=True, regions=self.regions,
                         markets=markets, oddsFormat=self.odds_format)
-        return self._parse_events(raw, sport_key, league_id)
+        return self._parse_events(cast(list, raw), sport_key, league_id)
 
     def fetch_historical_odds(self, sport_key: str, date_iso: str, league_id: str | None = None,
                               markets: str = "h2h,spreads,totals") -> dict:
@@ -171,4 +173,4 @@ class OddsAPIClient:
         """Completed games for settlement / rating updates (where supported).
         Not cached: settlement needs fresh final scores; a stale cache could grade
         not-yet-final games. Scores are cheap; correctness outweighs the saving."""
-        return self._get(f"/sports/{sport_key}/scores", daysFrom=days_from)
+        return cast("list[dict]", self._get(f"/sports/{sport_key}/scores", daysFrom=days_from))

@@ -10,8 +10,12 @@ This chain is independent of env vars and default.yaml (those feed Settings,
 not league_params). Full map: docs/CONFIG-PRECEDENCE.md.
 """
 from __future__ import annotations
+
+from typing import Callable
+
 from .adapters import (BasketballAdapter, FootballAdapter, BaseballAdapter,
                        HockeyAdapter, SoccerAdapter, TennisAdapter)
+from .base import SportAdapter
 
 FAMILY_PARAMS: dict[str, dict] = {
     "basketball": {"points_per_elo": 0.028, "margin_sigma": 12.0,
@@ -47,7 +51,7 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
     "ncaaf":  {"avg_total": 55.0, "total_sigma": 15.5, "margin_sigma": 15.5},
 }
 
-_FAMILY_ADAPTER = {
+_FAMILY_ADAPTER: dict[str, Callable[..., SportAdapter]] = {
     "basketball": BasketballAdapter, "football": FootballAdapter,
     "baseball": BaseballAdapter, "hockey": HockeyAdapter,
     "soccer": SoccerAdapter, "tennis": TennisAdapter,

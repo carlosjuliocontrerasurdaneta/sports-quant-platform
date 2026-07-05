@@ -66,14 +66,15 @@ def _spread_novig(cons: dict, home: str, away: str, spread: float | None) -> dic
 
 def _pick_main_lines(eo: EventOdds) -> tuple[float | None, float | None]:
     """Main spread (home point) and total line = most-quoted point."""
-    spread_counts, total_counts = defaultdict(int), defaultdict(int)
+    spread_counts: dict[float, int] = defaultdict(int)
+    total_counts: dict[float, int] = defaultdict(int)
     for ln in eo.lines:
         if ln.market == "spreads" and ln.outcome == eo.event.home and ln.point is not None:
             spread_counts[ln.point] += 1
         if ln.market == "totals" and ln.point is not None:
             total_counts[ln.point] += 1
-    spread = max(spread_counts, key=spread_counts.get) if spread_counts else None
-    total = max(total_counts, key=total_counts.get) if total_counts else None
+    spread = max(spread_counts, key=lambda p: spread_counts[p]) if spread_counts else None
+    total = max(total_counts, key=lambda p: total_counts[p]) if total_counts else None
     return spread, total
 
 

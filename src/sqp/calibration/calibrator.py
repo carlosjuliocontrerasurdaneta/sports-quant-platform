@@ -352,9 +352,10 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     unknown method, or a missing model all fall back to returning the input
     probabilities unchanged (safe no-op)."""
     if method == "auto":
-        method = _load_method_registry().get(sport)
-        if method is None:
+        resolved = _load_method_registry().get(sport)
+        if resolved is None:
             return probs
+        method = resolved
     name = {"isotonic": "iso", "beta": "beta"}.get(method)
     if name is None:
         return probs

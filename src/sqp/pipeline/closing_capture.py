@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -94,8 +95,8 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
     day = now.strftime("%Y%m%d")
     odds_dir = ROOT / "data" / "odds"
     targets = leagues_with_imminent_bets(predictions_dir, now, window_min)
-    summary = {"captured": {}, "skipped_budget": [], "credits_spent": 0,
-               "leagues_considered": list(targets)}
+    summary: dict[str, Any] = {"captured": {}, "skipped_budget": [], "credits_spent": 0,
+                               "leagues_considered": list(targets)}
     if not targets:
         return summary
     already = spent_today(odds_dir, day)

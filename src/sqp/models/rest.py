@@ -22,7 +22,7 @@ class RestModel:
                  normalize: Callable[[str | None], str] | None = None) -> None:
         self.points_per_day = points_per_day
         self.max_rest = max_rest
-        self.nk = normalize or (lambda s: s)
+        self.nk = normalize or (lambda s: s or "")
         self._last_date: dict[str, str] = {}
 
     def observe(self, home: str, away: str, game_date: str | None) -> None:

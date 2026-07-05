@@ -41,4 +41,6 @@ class StarterRatings:
         return max(1.0 - self.bound, min(1.0 + self.bound, expected / lg))
 
     def is_known(self, pitcher: str | None) -> bool:
-        return bool(pitcher) and self.starts.get(pitcher, 0) >= self.min_starts
+        if not pitcher:
+            return False
+        return self.starts.get(pitcher, 0) >= self.min_starts
