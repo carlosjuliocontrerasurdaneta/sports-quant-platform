@@ -36,8 +36,8 @@ data/output/
 *.backup-*
 graphify-out/
 
-# Obsidian (config local de la boveda; no versionar)
+# Obsidian: las notas de Obsidian/ SI se versionan (base de conocimiento del
+# proyecto); solo se ignora la config local del editor (workspace, layout).
 .obsidian/
-Obsidian/
 # Centinela del hook de tests (mark-tests-pending -> run-tests-on-stop)
 .claude/.tests-pending

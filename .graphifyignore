@@ -6,3 +6,7 @@
 # appearing as god nodes). Exclude them so god_nodes/query_graph reflect only
 # the real architecture.
 .claude/skills/
+
+# Boveda de Obsidian: notas de conocimiento del proyecto, versionadas en git
+# pero fuera del grafo de codigo (no son arquitectura ejecutable).
+Obsidian/
