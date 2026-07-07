@@ -16,6 +16,7 @@ from sqp.pipeline.daily import _league_meta
 from sqp.providers.odds_api import OddsAPIClient
 from sqp.settlement.settle import settle_candidates
 from sqp.sports.team_names import normalize_key
+from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.settle")
 
@@ -151,6 +152,30 @@ def _atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
         tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
+def _grade_served(league: str, scores: dict[str, tuple[int, int, str]]) -> int:
+    """Grade the league's pending served-probability rows (stake-0 calibration
+    stream) against final scores and persist them append-only. Idempotent: a
+    served row already graded is skipped by the store. Returns rows graded.
+
+    Best-effort by design: the served stream is evidence gathering, so a failure
+    here must never abort the settlement of real picks."""
+    try:
+        store = ServedStore(ROOT)
+        pending = store.pending(league)
+        if pending.empty:
+            return 0
+        graded = store.append_graded(league, settle_candidates(pending, scores))
+        if not graded.empty:
+            log.info("[%s] served stream: %d probabilities graded for calibration "
+                     "(%d still pending scores).", league, len(graded),
+                     len(pending) - len(graded))
+        return len(graded)
+    except Exception as exc:
+        log.warning("[%s] could not grade the served-probability stream: %s",
+                    league, exc)
+        return 0
+
+
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     """Grade tennis candidates via ESPN results matched by player name + date.
     Players and the match date come from predictions_<league>.csv (written by the
@@ -158,14 +183,9 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     pred_dir = ROOT / "data" / "predictions"
     cand_path = pred_dir / f"candidates_{league}.csv"
     pred_path = pred_dir / f"predictions_{league}.csv"
-    if not cand_path.exists():
+    pending_served = ServedStore(ROOT).pending(league)
+    if not cand_path.exists() and pending_served.empty:
         return pd.DataFrame()
-    if not pred_path.exists() or pred_path.stat().st_size <= 1:
-        log.warning("[%s] no predictions file to recover players/date for tennis "
-                    "settlement; skipped.", league)
-        return pd.DataFrame()
-    cands = pd.read_csv(cand_path)
-    preds = pd.read_csv(pred_path)
     if provider is None:
         from sqp.providers.espn_tennis import ESPNTennisResultsProvider
         provider = ESPNTennisResultsProvider()
@@ -174,6 +194,18 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     except Exception as exc:
         log.warning("[%s] could not fetch ESPN tennis results: %s", league, exc)
         return pd.DataFrame()
+    # Served rows carry their own players/date, so the calibration stream grades
+    # even when there were no candidates that day.
+    if not pending_served.empty:
+        _grade_served(league, tennis_scores_map(pending_served, results))
+    if not cand_path.exists():
+        return pd.DataFrame()
+    if not pred_path.exists() or pred_path.stat().st_size <= 1:
+        log.warning("[%s] no predictions file to recover players/date for tennis "
+                    "settlement; skipped.", league)
+        return pd.DataFrame()
+    cands = pd.read_csv(cand_path)
+    preds = pd.read_csv(pred_path)
     scores = tennis_scores_map(preds, results)
     settled = settle_candidates(cands, scores)
     meta = {str(r.event_id): {"home": str(r.home), "away": str(r.away),
@@ -194,12 +226,19 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         log.info("[%s] no scores in The Odds API; skipped (needs a secondary source).", league)
         return pd.DataFrame()
     cand_path = ROOT / "data" / "predictions" / f"candidates_{league}.csv"
-    if not cand_path.exists():
+    pending_served = ServedStore(ROOT).pending(league)
+    if not cand_path.exists() and pending_served.empty:
         return pd.DataFrame()
-    cands = pd.read_csv(cand_path)
     client = client or OddsAPIClient(settings.odds_api_key, settings.regions)
     raw = client.fetch_scores(meta["sport_key"], days_from=days_from)
     scores = _scores_map(raw)
+    # Calibration stream first (stake 0, best-effort): shares this scores fetch,
+    # and grades even on days the league produced no candidates.
+    if not pending_served.empty:
+        _grade_served(league, scores)
+    if not cand_path.exists():
+        return pd.DataFrame()
+    cands = pd.read_csv(cand_path)
     settled = settle_candidates(cands, scores)
     settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)

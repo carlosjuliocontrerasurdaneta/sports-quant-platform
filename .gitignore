@@ -8,6 +8,7 @@ data/predictions/*
 data/bets/*
 data/historical/*
 data/odds/*
+data/calibration/*
 data/cache/
 !data/**/.gitkeep
 logs/*

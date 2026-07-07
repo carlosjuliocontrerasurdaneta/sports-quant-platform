@@ -24,6 +24,7 @@ from sqp.risk.kelly import kelly_fraction_stake, edge
 from sqp.sports.registry import get_adapter
 from sqp.storage.odds_store import OddsStore
 from sqp.storage.results_store import ResultsStore
+from sqp.storage.served_store import ServedStore
 from sqp.storage.starters import StartersStore
 from sqp.storage.starter_fip import StarterFIPStore
 from sqp.logging_config import get_logger
@@ -452,6 +453,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
 
     rows: list[dict] = []
     candidates: list[BetCandidate] = []
+    served: list[dict] = []
+    # One timestamp for the whole run: the served-stream dedup key is
+    # (event, market, selection, line, run DAY), so re-running the same day is
+    # idempotent while consecutive-day serves of the same event both persist.
+    served_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for eo in events:
         spread, total = _pick_main_lines(eo)
         est = adapter.estimate(eo.event, spread, total)
@@ -510,6 +516,25 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                                               settings.risk.kelly_fraction,
                                               settings.risk.max_stake_pct,
                                               settings.risk.min_edge)
+            # Served-probability stream: record EVERY priced market side, before
+            # any stake/edge filtering. Placed picks alone are a small, adversely
+            # selected calibration sample; the full serve distribution lets the
+            # calibrator train unbiased (graded later by settlement).
+            served.append({
+                "league": league, "event_id": eo.event.event_id,
+                "home": eo.event.home, "away": eo.event.away,
+                "start_time": eo.event.start_time,
+                "game_date": str(eo.event.start_time)[:10],
+                "market": key[0], "selection": key[1], "line": key[2],
+                "price_decimal": price, "bookmaker": "consensus_median",
+                "model_probability": round(p_model, 4),
+                "estimated_probability": round(p_used, 4),
+                "calibrated_probability": round(p_decision, 4),
+                "implied_probability_novig": round(fair, 4) if fair is not None else float("nan"),
+                "estimated_edge": round(e, 4),
+                "books_count": int(cons_n.get(key) or 0),
+                "stake": 0.0, "data_label": eo.event.data_label,
+                "flags": "served_stream", "generated_at": served_at})
             # An edge above the plausibility cap is almost certainly model
             # miscalibration, not market value: record it for the audit trail but
             # do not stake it.
@@ -542,6 +567,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 kelly_stake_pct=round(pct, 4), stake=stake,
                 data_label=eo.event.data_label,
                 flags=flag))
+
+    if served:
+        n_served = ServedStore(ROOT, demo=(mode == "demo")).append_served(league, served)
+        log.info("[%s] served-probability stream: %d rows persisted for "
+                 "calibration training (%d already captured today).",
+                 league, n_served, len(served) - n_served)
 
     factor = _apply_daily_exposure_cap(candidates, settings.bankroll,
                                        settings.risk.max_daily_exposure_pct)

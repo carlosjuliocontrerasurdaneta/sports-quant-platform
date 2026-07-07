@@ -13,6 +13,7 @@ from sqp.audit.report import settlement_audit_report
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.settlement.runner import fetch_and_settle, realized_roi
+from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.settle_all")
 
@@ -24,9 +25,14 @@ def main() -> int:
     settings = Settings.load()
 
     pred = ROOT / "data" / "predictions"
-    leagues = sorted(p.stem.replace("candidates_", "") for p in pred.glob("candidates_*.csv"))
+    # Union: leagues with pending candidates AND leagues that only have a
+    # served-probability stream to grade (a day with zero candidates still
+    # produced calibration rows for every priced market side).
+    leagues = sorted(
+        {p.stem.replace("candidates_", "") for p in pred.glob("candidates_*.csv")}
+        | set(ServedStore(ROOT).leagues()))
     if not leagues:
-        log.warning("No hay archivos de candidatos que liquidar.")
+        log.warning("No hay candidatos ni stream servido que liquidar.")
     total_new = 0
     for lg in leagues:
         try:

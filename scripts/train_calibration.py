@@ -1,8 +1,11 @@
 #!/usr/bin/env python
-"""Train per-(league, market) probability calibrators from settled live bets.
+"""Train per-(league, market) probability calibrators from graded live serves.
 
-By default reads data/bets/settled_*.csv (opening-anchored live outcomes built
-by SETTLE_ALL.bat) and calibrates the PURE model probability
+By default reads the COMBINED serve-anchored history: settled live bets
+(data/bets/settled_*.csv, built by SETTLE_ALL.bat) plus the graded per-event
+served-probability stream (data/calibration/graded_*.csv -- every priced market
+side the pipeline evaluated, not just placed picks), deduplicated so picks are
+not double-weighted. It calibrates the PURE model probability
 (model_probability, pre market-blend -- the target daily.py serves since
 research 2026-07-02); for every (league, market) with enough graded bets it
 fits an isotonic + beta calibrator with a TEMPORAL split (earlier games train,
@@ -35,7 +38,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.patterns import build_pick_history, load_pick_history
 from sqp.calibration.calibrator import (MODELS_DIR, _gate_label,
                                         train_market_calibrators)
-from sqp.calibration.data import load_settled_training_history
+from sqp.calibration.data import (load_calibration_training_history,
+                                  load_served_training_history,
+                                  load_settled_training_history)
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.train_calibration")
@@ -47,19 +52,26 @@ def main() -> int:
                     help="Minimum graded bets per (league, market) to calibrate")
     ap.add_argument("--rebuild", action="store_true",
                     help="Rebuild pick_history.csv from the backtest first")
-    ap.add_argument("--source", choices=["settled", "backtest"], default="settled",
-                    help="Datos de entrenamiento: 'settled' (apuestas liquidadas "
-                         "en vivo, ancladas a la apertura -- corrige el desajuste "
-                         "train/serve) o 'backtest' (historial anclado al cierre).")
+    ap.add_argument("--source", choices=["combined", "settled", "served", "backtest"],
+                    default="combined",
+                    help="Datos de entrenamiento: 'combined' (default: apuestas "
+                         "liquidadas + stream servido per-evento, deduplicado -- "
+                         "misma fuente que el staging diario), 'settled' (solo "
+                         "apuestas liquidadas en vivo), 'served' (solo el stream "
+                         "per-evento graduado, muestra sin sesgo de seleccion) o "
+                         "'backtest' (historial anclado al cierre).")
     args = ap.parse_args()
 
-    if args.source == "settled":
+    if args.source != "backtest":
         if args.rebuild:
             log.warning("--rebuild solo aplica con --source backtest (reconstruye "
-                        "pick_history); con 'settled' se IGNORA.")
-        hist = load_settled_training_history()
-        empty_msg = ("no hay apuestas liquidadas (data/bets/settled_*.csv): corre "
-                     "SETTLE_ALL.bat antes de calibrar sobre settled.")
+                        "pick_history); con '%s' se IGNORA.", args.source)
+        loader = {"combined": load_calibration_training_history,
+                  "settled": load_settled_training_history,
+                  "served": load_served_training_history}[args.source]
+        hist = loader()
+        empty_msg = (f"fuente '{args.source}' vacia: corre SETTLE_ALL.bat (liquida "
+                     "picks y gradua el stream servido) antes de calibrar.")
     else:
         hist = build_pick_history(write=True) if args.rebuild else load_pick_history()
         empty_msg = ("pick_history vacio: corre scripts/build_pick_history.py "
@@ -68,9 +80,11 @@ def main() -> int:
         log.warning(empty_msg)
         return 1
 
-    # settled calibra p_model PURO (pre-blend, el objetivo que sirve daily.py);
-    # backtest conserva la semantica legacy sobre la mezcla estimated_probability.
-    prob_col = "model_probability" if args.source == "settled" else "estimated_probability"
+    # Las fuentes serve-anchored (combined/settled/served) calibran p_model PURO
+    # (pre-blend, el objetivo que sirve daily.py); backtest conserva la semantica
+    # legacy sobre la mezcla estimated_probability.
+    prob_col = ("estimated_probability" if args.source == "backtest"
+                else "model_probability")
     results = train_market_calibrators(hist, min_n=args.min_n, prob_col=prob_col)
     trained = [r for r in results if r.get("trained")]
     skipped = [r for r in results if not r.get("trained")]
