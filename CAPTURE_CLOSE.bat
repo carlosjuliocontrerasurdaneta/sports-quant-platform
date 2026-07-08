@@ -5,7 +5,7 @@ REM de creditos). Anade un segundo snapshot de cuotas para que el CLV sea medibl
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
-set ODDS_API_REGIONS=us,eu,uk,au
+set ODDS_API_REGIONS=us,us2,uk,eu,au
 
 if not exist logs mkdir logs
 

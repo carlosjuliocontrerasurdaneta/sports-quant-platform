@@ -12,7 +12,7 @@ setlocal
 cd /d %~dp0
 set PYTHONPATH=src
 REM Plan de pago 20,000 creditos/mes; el guard de presupuesto raciona la cuota real.
-set ODDS_API_REGIONS=us,eu,uk,au
+set ODDS_API_REGIONS=us,us2,uk,eu,au
 
 if not exist logs mkdir logs
 
