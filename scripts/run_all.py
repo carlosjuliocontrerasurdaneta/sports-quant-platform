@@ -204,15 +204,31 @@ def main() -> int:
             # probabilities, so only settled outcomes make live overconfidence
             # learnable. Today's picks were already generated with the prior LIVE
             # models, so this cannot leak the current day into its own calibrator.
-            # STAGING only -- promotion is a deliberate, separate step
-            # (scripts/promote_calibration.py), so a degenerate daily fit cannot
-            # auto-install itself. Only when enabled.
+            # With calibration.auto_promote (2026-07-08) the gated staging
+            # recommendation is then adopted into the LIVE registry (OOS gates +
+            # n_val guard, see auto_promote_calibrators); improvements apply from
+            # the NEXT run. Flag off = staging only, human promotion.
             cal = stage_calibrators_from_settled(settings)
             if cal:
                 n_ok = sum(1 for r in cal if r.get("trained"))
                 log.info("Calibradores reentrenados a STAGING desde settled: %d de "
-                         "%d grupos (sin promover; usa scripts/promote_calibration.py "
-                         "para revisar y promover)", n_ok, len(cal))
+                         "%d grupos", n_ok, len(cal))
+                if settings.calibration_auto_promote:
+                    from sqp.calibration.calibrator import auto_promote_calibrators
+                    sync = auto_promote_calibrators(cal)
+                    if sync["promoted"] or sync["demoted"]:
+                        log.info("Autocorrección de calibración: promovidos=%s "
+                                 "demovidos=%s omitidos_por_n_val=%s — aplican "
+                                 "desde el próximo run (log: data/models/"
+                                 "promotion_log.csv)", sync["promoted"],
+                                 sync["demoted"], sync["skipped"])
+                    else:
+                        log.info("Autocorrección de calibración: ningún candidato "
+                                 "elegible hoy (gates OOS / n_val); registro live "
+                                 "sin cambios. Omitidos=%s", sync["skipped"])
+                else:
+                    log.info("Auto-promoción OFF: candidatos en staging; usa "
+                             "scripts/promote_calibration.py para revisar y promover")
         except Exception as exc:
             log.warning("No se pudo construir el historial / recalibrar: %s", exc)
         if not args.no_html:

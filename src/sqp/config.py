@@ -104,6 +104,14 @@ class Settings:
         in ("1", "true", "yes"))
     calibration_method: str = field(
         default_factory=lambda: os.getenv("CALIBRATION_METHOD", "isotonic"))
+    # Auto-correction (2026-07-08): after the daily staging retrain, promote
+    # into the LIVE registry the candidates that passed the OOS gates (ECE +
+    # Brier + monotonicity) with enough validation sample, and demote what the
+    # retrain no longer recommends. OFF by default: with the flag unset the
+    # promotion stays a deliberate human step (scripts/promote_calibration.py).
+    calibration_auto_promote: bool = field(
+        default_factory=lambda: os.getenv("CALIBRATION_AUTO_PROMOTE", "").lower()
+        in ("1", "true", "yes"))
 
     @classmethod
     def load(cls) -> "Settings":
@@ -141,6 +149,8 @@ class Settings:
                 s.calibration_enabled = bool(cal["enabled"])
             if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
                 s.calibration_method = str(cal["method"])
+            if "CALIBRATION_AUTO_PROMOTE" not in os.environ and "auto_promote" in cal:
+                s.calibration_auto_promote = bool(cal["auto_promote"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])

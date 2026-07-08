@@ -343,6 +343,62 @@ def promote_calibrators(keys: list[str] | None = None) -> list[str]:
     return promoted
 
 
+AUTO_PROMOTE_MIN_N_VAL = 15
+
+
+def auto_promote_calibrators(results: list[dict], *,
+                             min_n_val: int = AUTO_PROMOTE_MIN_N_VAL) -> dict:
+    """Adopt the latest gated retrain into the LIVE registry without a human
+    step (auto-correction cycle, decision 2026-07-08).
+
+    Promotes exactly the staged keys whose fit passed the OOS gates (ECE +
+    Brier + monotonicity, enforced at staging time by ``train_calibration``)
+    AND validated on at least ``min_n_val`` out-of-sample bets -- the guard
+    that would have kept the 2026-07-02 ``n_val=9`` step-function candidate
+    out of production. Staged-but-small groups are left in staging (they keep
+    accruing sample). Live keys the retrain no longer recommends are demoted
+    to safe no-op, preserving the self-healing of a full manual promotion.
+    Every action is appended to ``data/models/promotion_log.csv`` so the
+    auto-corrections stay auditable after the fact.
+
+    Returns ``{"promoted": [...], "demoted": [...], "skipped": [...]}``.
+    """
+    staged = _load_method_registry(staging=True)
+    eligible: list[tuple[str, dict]] = []
+    skipped: list[tuple[str, dict]] = []
+    for r in results or []:
+        key = calibration_key(str(r.get("league", "")), str(r.get("market", "")))
+        if key not in staged or not r.get("persisted"):
+            continue
+        if int(r.get("n_val") or 0) >= min_n_val:
+            eligible.append((key, r))
+        else:
+            skipped.append((key, r))
+    promoted = promote_calibrators(keys=[k for k, _ in eligible]) if eligible else []
+    demoted = [k for k in _load_method_registry() if k not in staged]
+    for key in demoted:
+        _set_best_method(key, None)
+        for name in ("iso", "beta"):
+            _model_path(key, name).unlink(missing_ok=True)
+    _load_calibrator.cache_clear()
+    now = pd.Timestamp.now(tz="UTC").isoformat()
+    entries = ([{"timestamp": now, "key": k, "action": "promoted",
+                 "method": staged.get(k, ""), "n_val": r.get("n_val")}
+                for k, r in eligible]
+               + [{"timestamp": now, "key": k, "action": "demoted",
+                   "method": "", "n_val": None} for k in demoted]
+               + [{"timestamp": now, "key": k, "action": "skipped_small_n_val",
+                   "method": staged.get(k, ""), "n_val": r.get("n_val")}
+                  for k, r in skipped])
+    if entries:
+        log_path = MODELS_DIR / "promotion_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(entries).to_csv(log_path, mode="a", index=False,
+                                     header=not log_path.exists())
+    return {"promoted": promoted, "demoted": demoted,
+            "skipped": [k for k, _ in skipped]}
+
+
 def apply_calibration(probs: np.ndarray, sport: str = "mlb",
                       method: str = "isotonic") -> np.ndarray:
     """Apply a previously trained calibrator for ``sport``.
