@@ -36,6 +36,15 @@ validación deja de ser ruido y el Brier decidirá con evidencia.
   gate. Doc: docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md. Decisión de adoptar el
   cambio de serving = humana, pendiente.
 
+- 2026-07-08 data-edge-cases: COMPLETADO el ítem 2 del backlog (casos límite de
+  `sqp/calibration/data.py`). Destapó y corrigió un bug real: `game_date` no-ISO de 10+ chars
+  (p. ej. `20/06/2026`) pasaba el check de longitud y entraba como fecha de entrenamiento,
+  rompiendo el orden del split temporal (guarda anti-leakage). Ahora solo un día ISO válido
+  (`_iso_day`) puede ser `date`; fallback a `generated_at`, fila descartada si ninguna sirve.
+  Cobertura nueva: frontera exacta de min_n (inclusiva, push no cuenta) y proyección con
+  columnas extra. TDD (2 rojos primero), suite 298 verde, ruff limpio. (commit b553b7d,
+  rama loop/calibration-data-edge-cases — pendiente de merge humano)
+
 - 2026-07-02 pmodel-serving: IMPLEMENTADO el cambio de serving aprobado por Carlos (deriva del
   research): el retrain entrena sobre `model_probability` (requisito duro; `prob_col` explícito
   en el trainer) y `daily._decision_probability` calibra p_model ANTES del shrink
