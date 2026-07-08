@@ -16,6 +16,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from sqp.audit.clv import SHADOW_EXIT_MIN_N, daily_clv
 from sqp.audit.html_report import html_dashboard, open_in_browser
 from sqp.audit.patterns import build_pick_history
 from sqp.audit.report import consolidated_report, settlement_audit_report
@@ -195,6 +196,26 @@ def main() -> int:
             log.info("Auditoria de liquidacion (md) -> %s", audit_md)
         except Exception as exc:
             log.warning("No se pudo generar la auditoria de liquidacion: %s", exc)
+        # CLV diario: mide precio de entrada vs cierre capturado sobre lo ya
+        # liquidado y deja en el log el avance de la regla de salida del shadow
+        # mode (mediana > 0 con n suficiente). Best-effort, como la auditoria.
+        try:
+            clv = daily_clv(ROOT / "data" / "bets", ROOT)
+            if clv["n_matched"]:
+                log.info("CLV diario -> %s | n=%d (sin cierre: %d) | "
+                         "mediana=%+.2f%% | batio cierre=%.1f%% | salida shadow "
+                         "(parte CLV): %s", clv["path"], clv["n_matched"],
+                         clv["n_unmatched"], clv["median_clv_pct"] * 100,
+                         clv["beat_close_rate"] * 100,
+                         "CUMPLE" if clv["shadow_clv_ok"]
+                         else f"pendiente (requiere n>={SHADOW_EXIT_MIN_N} "
+                              f"y mediana>0)")
+            else:
+                log.info("CLV diario: aun no hay apuestas emparejables a un "
+                         "cierre capturado (sin cierre: %d) -> %s",
+                         clv["n_unmatched"], clv["path"])
+        except Exception as exc:
+            log.warning("No se pudo generar el analisis CLV: %s", exc)
         try:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))
