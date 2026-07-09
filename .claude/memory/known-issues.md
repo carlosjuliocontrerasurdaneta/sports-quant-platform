@@ -125,11 +125,11 @@ Format:
 - Description: La liquidación de tenis (`_settle_tennis`: recuperación de jugadores/fecha desde predictions_<liga>.csv + matching por nombre normalizado + fecha ±1 día) no tiene test end-to-end; solo hay tests unitarios de las piezas. Una regresión en el flujo completo (candidates→predictions→ESPN→grade) pasaría silenciosa. Detectado como fast-follow del feature dashboard-history (2026-06-26) y formalizado por la auditoría 2026-07-02.
 - Affected files: src/sqp/settlement/runner.py (_settle_tennis), tests/ (falta tests/settlement/test_settle_tennis_e2e.py).
 - Proposed fix: test e2e con fixtures: candidates+predictions de tenis sintéticos + provider ESPN mockeado, verificando grade/PnL/persistencia.
-- Status: ABIERTO (2026-07-02).
+- Status: RESUELTO (2026-07-08). tests/settlement/test_settle_tennis_e2e.py (4 tests): flujo completo candidates→predictions→ESPN mock→grade→persistencia, con grafías divergentes (acentos), ventana de fecha ±1 (e3 fuera queda pendiente), idempotencia del dedup (requiere generated_at en candidates — parte de DEDUP_KEY), skip seguro sin predictions y fallo de provider no fatal.
 
 - ID: KI-018
 - Severity: Baja (UI del reporte)
 - Description: En el dashboard HTML, la columna "Línea" muestra/filtra "nan" para mercados sin punto (h2h). Fast-follow del feature dashboard-history (2026-06-26), formalizado por la auditoría 2026-07-02.
 - Affected files: src/sqp/audit/html_report.py.
 - Proposed fix: renderizar vacío o "—" cuando point es NaN y excluir "nan" de las opciones del filtro.
-- Status: ABIERTO (2026-07-02).
+- Status: RESUELTO (2026-07-08). Mitad del issue ya estaba resuelta el 2026-07-03 (el filtro de Historial pasó de Línea a Mercado, así que no hay filtro que muestre "nan"). Restaba el render: _fmt_cell (html_report.py) ahora devuelve "—" para float NaN (tablas server-rendered de Auditoría/Historial); la tabla de Picks ya manejaba null→"" client-side. Test de regresión en test_html_report.py.
