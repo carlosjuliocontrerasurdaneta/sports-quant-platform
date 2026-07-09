@@ -35,4 +35,11 @@ Producción vive en `C:\dev\sports-quant-platform` (migración desde OneDrive co
 - Guard de presupuesto de The Odds API en el run live; el gasto de créditos históricos siempre se autoriza a mano.
 - Tests: `PYTHONPATH=src pytest tests/ -q`. CI en GitHub Actions (ruff + pytest, 3.11/3.12/3.13 + windows, pip-audit bloqueante).
 
+## Grafo de conocimiento del código (graphify)
+
+- `graphify-out/` (gitignorado): grafo consultable del código (`graphify query/path/explain`), reporte y visualización HTML.
+- Se auto-actualiza vía git hooks post-commit/post-checkout (AST local, sin costo de API).
+- Exclusiones en `.graphifyignore` (`.claude/skills/`, `Obsidian/`). Paquete PyPI: `graphifyy` (con doble "y").
+- Sección de uso para el asistente en `CLAUDE.md` raíz; hooks PreToolUse en `settings.local.json` (local por ruta de máquina).
+
 Relacionado: [[Estado del proyecto]], [[Arquitectura/Arquitectura del sistema]].
