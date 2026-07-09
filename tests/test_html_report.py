@@ -145,6 +145,17 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     assert "makeSortable(" in text and "initSortable()" in text
 
 
+def test_dashboard_line_without_point_renders_dash_not_nan(tmp_path):
+    # KI-018: h2h rows have no point -> line is NaN after the CSV round-trip;
+    # server-rendered cells must show an em dash, never the string "nan".
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    assert ">nan<" not in text
+    assert ">—<" in text                    # h2h history row, Linea column
+    assert html_report._fmt_cell(float("nan")) == "—"
+    assert html_report._fmt_cell(-2.5) == "-2.5000"
+
+
 def test_dashboard_empty_is_safe(tmp_path):
     pred = tmp_path / "predictions"
     bets = tmp_path / "bets"

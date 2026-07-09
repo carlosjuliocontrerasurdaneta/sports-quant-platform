@@ -88,6 +88,8 @@ def _df_to_html_table(df: pd.DataFrame, *, empty_msg: str) -> str:
 
 def _fmt_cell(v: object) -> str:
     if isinstance(v, float):
+        if v != v:  # NaN: markets without a point (h2h) — KI-018
+            return "—"
         return f"{v:.4f}" if abs(v) < 1000 else f"{v:.2f}"
     return "" if v is None else str(v)
 
