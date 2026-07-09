@@ -112,6 +112,19 @@ class Settings:
     calibration_auto_promote: bool = field(
         default_factory=lambda: os.getenv("CALIBRATION_AUTO_PROMOTE", "").lower()
         in ("1", "true", "yes"))
+    # CLV gate (2026-07-08): per-(league, market) ALLOW-LIST for real staking.
+    # A market may carry stake only if its median CLV over >= clv_gate_min_n
+    # settled bets matched to a captured close is positive, per the registry
+    # data/bets/clv_gate.json rewritten by the daily CLV audit. Default-deny
+    # (no registry / no entry / thin sample -> stake 0, flag "clv_gate");
+    # layered UNDER shadow_mode, so it becomes the binding per-market exit
+    # rule when shadow mode is lifted. OFF by default so direct Settings()
+    # (tests/demo) is unaffected; production enables it via yaml.
+    clv_gate_enabled: bool = field(
+        default_factory=lambda: os.getenv("CLV_GATE_ENABLED", "").lower()
+        in ("1", "true", "yes"))
+    clv_gate_min_n: int = field(
+        default_factory=lambda: int(os.getenv("CLV_GATE_MIN_N", "30")))
 
     @classmethod
     def load(cls) -> "Settings":
@@ -151,6 +164,11 @@ class Settings:
                 s.calibration_method = str(cal["method"])
             if "CALIBRATION_AUTO_PROMOTE" not in os.environ and "auto_promote" in cal:
                 s.calibration_auto_promote = bool(cal["auto_promote"])
+            cg = cfg.get("clv_gate") or {}
+            if "CLV_GATE_ENABLED" not in os.environ and "enabled" in cg:
+                s.clv_gate_enabled = bool(cg["enabled"])
+            if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
+                s.clv_gate_min_n = int(cg["min_n"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])

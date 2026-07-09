@@ -19,6 +19,7 @@ from sqp.audit.report import DISCLAIMER, load_all_settled
 from sqp.backtesting.roi_engine import load_closing_odds
 from sqp.config import ROOT
 from sqp.pipeline.probabilities import _consensus_lines
+from sqp.risk.clv_gate import CLV_GATE_MIN_N, gate_decisions, write_clv_gate
 
 # Regla de salida del shadow mode (2026-07-04), parte CLV: mediana positiva
 # sobre al menos este numero de picks liquidados. La otra parte (gate de
@@ -85,21 +86,34 @@ def clv_segments(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     return out
 
 
-def daily_clv(bets_dir: Path | None = None, root: Path | None = None) -> dict:
+def daily_clv(bets_dir: Path | None = None, root: Path | None = None,
+              gate_min_n: int = CLV_GATE_MIN_N) -> dict:
     """Calcula el CLV de todas las apuestas liquidadas, escribe el reporte
     markdown con fecha (data/bets/clv_YYYYMMDD.md, junto a la auditoria de
-    liquidacion) y devuelve un resumen para el log del run diario."""
+    liquidacion), reescribe el registro del gate por (liga, mercado)
+    (data/bets/clv_gate.json, allow-list que consume el run diario) y devuelve
+    un resumen para el log del run diario."""
     root = root or ROOT
     bets_dir = bets_dir or (root / "data" / "bets")
     df, unmatched = compute_clv(bets_dir, root)
+    seg_lm = clv_segments(df, ["league", "market"])
+    gate_path = write_clv_gate(seg_lm, bets_dir, gate_min_n)
+    decided = gate_decisions(seg_lm, gate_min_n)
+    gate_allowed = ([] if decided.empty else
+                    sorted(f"{r.league}|{r.market}"
+                           for r in decided.itertuples() if r.allowed))
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [f"# CLV sobre apuestas liquidadas - {ts[:8]}", f"Generado: {ts}", ""]
     summary: dict = {"n_matched": int(len(df)), "n_unmatched": int(unmatched),
                      "median_clv_pct": None, "beat_close_rate": None,
-                     "shadow_clv_ok": False}
+                     "shadow_clv_ok": False, "gate_path": str(gate_path),
+                     "gate_allowed": gate_allowed}
     if df.empty:
         lines += ["(ninguna apuesta liquidada pudo emparejarse a un precio de "
-                  f"cierre capturado; sin_cierre={unmatched})"]
+                  f"cierre capturado; sin_cierre={unmatched})", "",
+                  "## Gate de CLV por (liga, mercado)",
+                  "Registro reescrito sin mercados habilitados (default-deny): "
+                  "ningun (liga, mercado) puede llevar stake real."]
     else:
         med = float(df["clv_pct"].median())
         beat = float(df["beat_close"].mean())
@@ -117,6 +131,11 @@ def daily_clv(bets_dir: Path | None = None, root: Path | None = None) -> dict:
             + ("CUMPLE la parte CLV (falta verificar el gate de Brier)"
                if summary["shadow_clv_ok"] else "aun NO cumple"),
             "",
+            "## Gate de CLV por (liga, mercado)",
+            f"Habilitados para stake real (mediana > 0 con n >= {gate_min_n}): "
+            + (", ".join(gate_allowed) if gate_allowed else
+               "ninguno (default-deny)"),
+            decided.to_string(index=False), "",
             "## Por liga", clv_segments(df, ["league"]).to_string(index=False), "",
             "## Por mercado", clv_segments(df, ["market"]).to_string(index=False), "",
             "## Por resultado (con edge real, los ganadores baten mas el cierre)",

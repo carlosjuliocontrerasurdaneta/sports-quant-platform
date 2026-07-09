@@ -20,6 +20,7 @@ from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
                                         _pick_main_lines, _decision_probability)
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
+from sqp.risk.clv_gate import load_clv_gate, market_allowed
 from sqp.risk.kelly import kelly_fraction_stake, edge
 from sqp.sports.registry import get_adapter
 from sqp.storage.odds_store import OddsStore
@@ -328,16 +329,23 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
     return df
 
 
-def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool) -> str | None:
+def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
+                     clv_blocked: bool = False) -> str | None:
     """Reason a selected candidate must be recorded with stake 0, or None to
     stake it. Pausing wins over the plausibility cap; shadow mode (global,
-    stake-0 evidence gathering) zeroes whatever remains."""
+    stake-0 evidence gathering) zeroes whatever remains; the per-market CLV
+    gate (allow-list, sqp.risk.clv_gate) blocks any market not yet proven
+    against the captured close. Shadow outranks the gate so reports keep the
+    shadow_mode flag while shadow is on; the gate becomes the visible,
+    binding reason once shadow mode is lifted."""
     if paused:
         return "market_paused"
     if suspect:
         return "edge_exceeds_max_plausible"
     if shadow:
         return "shadow_mode"
+    if clv_blocked:
+        return "clv_gate"
     return None
 
 
@@ -383,6 +391,20 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     meta = _league_meta(league)
     family, three_way = meta["family"], meta.get("three_way", False)
     adapter = get_adapter(league, family, meta.get("league_params"))
+
+    # CLV gate (allow-list por liga|mercado): solo mercados con CLV mediano
+    # positivo demostrado sobre muestra liquidada emparejada a cierre pueden
+    # llevar stake real (registro escrito por la auditoria CLV diaria). Solo
+    # live: el demo sintetico no debe filtrarse por historial real. None =
+    # gate apagado; {} = registro ausente/ilegible -> default-deny.
+    clv_gate: dict[str, dict] | None = None
+    if settings.clv_gate_enabled and mode != "demo":
+        clv_gate = load_clv_gate(ROOT / "data" / "bets")
+        if not clv_gate:
+            log.warning("[%s] CLV gate activo sin registro utilizable "
+                        "(data/bets/clv_gate.json): default-deny, ningun "
+                        "mercado lleva stake real hasta que la auditoria CLV "
+                        "diaria lo reescriba.", league)
 
     if mode == "demo":
         provider = SyntheticProvider(family)
@@ -548,8 +570,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 continue
             # A paused market is suspended from staking but kept in the audit trail
             # (stake 0, flagged). Pausing takes precedence over the plausibility cap;
-            # shadow mode zeroes whatever remains.
-            flag = _zero_stake_flag(paused, suspect, settings.shadow_mode) or ""
+            # shadow mode zeroes whatever remains; the CLV gate blocks markets not
+            # yet proven against the captured close (allow-list, default-deny).
+            flag = _zero_stake_flag(
+                paused, suspect, settings.shadow_mode,
+                clv_blocked=(clv_gate is not None
+                             and not market_allowed(clv_gate, league, key[0]))) or ""
             if flag:
                 stake, pct = 0.0, 0.0
             candidates.append(BetCandidate(

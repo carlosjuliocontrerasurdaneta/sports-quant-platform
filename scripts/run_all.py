@@ -200,7 +200,8 @@ def main() -> int:
         # liquidado y deja en el log el avance de la regla de salida del shadow
         # mode (mediana > 0 con n suficiente). Best-effort, como la auditoria.
         try:
-            clv = daily_clv(ROOT / "data" / "bets", ROOT)
+            clv = daily_clv(ROOT / "data" / "bets", ROOT,
+                            gate_min_n=settings.clv_gate_min_n)
             if clv["n_matched"]:
                 log.info("CLV diario -> %s | n=%d (sin cierre: %d) | "
                          "mediana=%+.2f%% | batio cierre=%.1f%% | salida shadow "
@@ -214,6 +215,11 @@ def main() -> int:
                 log.info("CLV diario: aun no hay apuestas emparejables a un "
                          "cierre capturado (sin cierre: %d) -> %s",
                          clv["n_unmatched"], clv["path"])
+            allowed = clv.get("gate_allowed") or []
+            log.info("Gate de CLV por mercado -> %s | habilitados para stake "
+                     "real: %s", clv["gate_path"],
+                     ", ".join(allowed) if allowed
+                     else "ninguno (default-deny)")
         except Exception as exc:
             log.warning("No se pudo generar el analisis CLV: %s", exc)
         try:

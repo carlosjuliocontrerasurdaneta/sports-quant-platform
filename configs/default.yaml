@@ -74,3 +74,16 @@ paused_markets: {}
 # positive AND a calibrator passes the OOS Brier gate; otherwise stay shadow.
 # Env var SHADOW_MODE (when set) wins over this key.
 shadow_mode: true
+# CLV gate per (league, market) (ENABLED 2026-07-08): allow-list layered UNDER
+# shadow mode. A market may carry real stake only if its median CLV over >=
+# min_n settled bets matched to a captured close is positive, per the registry
+# data/bets/clv_gate.json rewritten by the daily CLV audit. Default-deny: no
+# registry, no entry or thin sample -> stake 0, flag "clv_gate". While
+# shadow_mode is true the gate is invisible (shadow already zeroes every stake
+# and outranks the flag); it becomes the binding PER-MARKET exit rule when
+# shadow mode is lifted, implementing the agreed rule "promote a market to
+# real stakes only if its median CLV is positive". Env vars CLV_GATE_ENABLED /
+# CLV_GATE_MIN_N (when set) win over these keys.
+clv_gate:
+  enabled: true
+  min_n: 30
