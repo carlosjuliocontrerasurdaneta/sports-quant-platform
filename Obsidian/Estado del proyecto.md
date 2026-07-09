@@ -1,12 +1,12 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-07
+actualizada: 2026-07-08
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Nota inicial de la bóveda. Snapshot al 2026-07-07 (commit `d047900` en `main`).
+> Snapshot al 2026-07-08 (commit `4651392` en `main`). Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
 
 ## Modo operativo: SHADOW MODE
@@ -14,6 +14,7 @@ actualizada: 2026-07-07
 - `shadow_mode: true` en `configs/default.yaml` (desde el 2026-07-03, commit `fe9ef84`).
 - Todos los picks se generan y registran con **stake 0** (tenis incluido); no hay dinero en juego.
 - **Regla de salida**: mediana de CLV positiva + pasar el gate de Brier tras ~100 picks liquidados.
+- **Gate de CLV por (liga, mercado)** (2026-07-08, `bc27252`): la salida del shadow es POR MERCADO — allow-list default-deny, ≥30 apuestas con CLV mediano positivo. Ver [[Conocimiento/CLV y selección adversa]].
 - Balance congelado: 915.75.
 
 ## Por qué estamos en shadow
@@ -56,7 +57,9 @@ actualizada: 2026-07-07
 
 ## Pendientes
 
+Lista viva en [[Tareas]]. Resumen:
+
 - [ ] Acumular ~100 picks liquidados en shadow y evaluar la regla de salida (CLV mediana + Brier).
 - [ ] Revisar/promover el candidato de calibración MLB spreads.
-- [ ] Deuda técnica no ticketeada del dashboard-history: escrituras atómicas en settle, filtro de Línea "nan", cobertura e2e de tenis.
 - [ ] Seguimiento del quota-guard del proveedor de odds.
+- [x] ~~Deuda del dashboard-history~~: escrituras atómicas en settle (07-01), filtro/"nan" de Línea (KI-018, `11bd999`) y e2e de tenis (KI-017, `7471ce4`) — todo cerrado.

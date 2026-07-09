@@ -10,7 +10,7 @@ scripts en `scripts/`, tests en `tests/`.
 - No escanear `data/`, `historical/`, `logs/` ni `exports/` (también bloqueado vía permisos `deny`).
 - No abrir CSV ni Parquet completos: usar encabezados, muestras (`nrows`) o esquemas.
 - No analizar modelos no relacionados con la tarea.
-- No generar documentación salvo solicitud explícita.
+- No generar documentación salvo solicitud explícita (excepción: la bóveda Obsidian, ver abajo).
 - Preferir modificaciones locales y lectura selectiva.
 
 ## Control de costos
@@ -29,6 +29,20 @@ archivos ya analizados en la sesión salvo que hayan cambiado.
 
 - Al iniciar sesión de trabajo: ejecutar `/memoria-cargar`.
 - Al cerrar sesión con trabajo relevante: ejecutar `/memoria-guardar`.
+
+## Segundo cerebro Obsidian (obligatorio desde 2026-07-08)
+
+La bóveda `Obsidian/` es la fuente central de conocimiento del proyecto.
+Todo cambio relevante (feature, fix, decisión, hallazgo, config de producción,
+resultado de validación) debe reflejarse en la MISMA sesión:
+
+1. Entrada en `Obsidian/Bitácora/AAAA-MM-DD.md` (qué, por qué, commits).
+2. Actualizar las notas temáticas afectadas y su frontmatter `actualizada:`.
+3. `Estado del proyecto.md` solo si cambia el estado operativo; `Tareas.md` siempre que aplique.
+4. Committear la bóveda junto con el trabajo que documenta.
+
+Convenciones y estructura: `Obsidian/Metodología de documentación.md`.
+NUNCA abrir la raíz del repo como bóveda (solo `Obsidian/`).
 
 ## Entorno
 
