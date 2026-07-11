@@ -70,6 +70,28 @@ def test_train_rejects_tiny_dataset(tmp_path, monkeypatch):
         cal.train_calibration(df, sport="too_small")
 
 
+def test_temporal_holdout_keeps_event_sides_together(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    # Two complementary rows per event. A row-level 80/20 split would count
+    # eight validation rows as eight independent observations and can split an
+    # event at the boundary; the grouped split must report four events.
+    rows = []
+    for i in range(20):
+        day = f"2026-05-{i + 1:02d}"
+        rows += [
+            {"probability": 0.70, "won": float(i % 2 == 0),
+             "date": day, "event_id": f"e{i}"},
+            {"probability": 0.30, "won": float(i % 2 != 0),
+             "date": day, "event_id": f"e{i}"},
+        ]
+    res = cal.train_calibration(
+        pd.DataFrame(rows), prob_col="probability", outcome_col="won",
+        sport="grouped", time_col="date", group_col="event_id")
+    assert res["n_train_events"] == 16
+    assert res["n_val_events"] == 4
+    assert res["n_train"] == 32 and res["n_val"] == 8
+
+
 def test_persist_or_remove_writes_and_cleans_stale(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     (tmp_path / "models").mkdir()

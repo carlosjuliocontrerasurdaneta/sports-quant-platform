@@ -12,7 +12,7 @@ def _write_settled(bets_dir, name, rows):
 def test_projects_to_training_schema(tmp_path):
     _write_settled(tmp_path, "mlb", [
         {"market": "h2h", "model_probability": 0.62, "estimated_probability": 0.58, "result": "win",
-         "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
+         "event_id": "e1", "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
         {"market": "spreads", "model_probability": 0.66, "estimated_probability": 0.61, "result": "loss",
          "game_date": "2026-06-21", "generated_at": "2026-06-21T12:00:00Z"},
     ])
@@ -21,6 +21,7 @@ def test_projects_to_training_schema(tmp_path):
     assert out.loc[0, "league"] == "mlb"
     assert out.loc[0, "market"] == "h2h"
     assert out.loc[0, "date"] == "2026-06-20"
+    assert out.loc[0, "event_id"] == "e1"
     assert out.loc[0, "model_probability"] == pytest.approx(0.62)
     assert set(out["result"]) == {"win", "loss"}
 

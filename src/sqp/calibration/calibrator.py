@@ -36,8 +36,8 @@ MODELS_DIR = ROOT / "data" / "models"
 def _staging_dir():
     """Where a retrain writes CANDIDATE calibrators. Kept separate from the live
     ``MODELS_DIR`` so a daily retrain can never overwrite a production model or
-    promote itself: candidates land here and only an explicit promotion copies
-    them up. Derived from ``MODELS_DIR`` so a monkeypatched dir still nests."""
+    promote itself: candidates land here and a separate gated/manual promotion
+    copies them up. Derived from ``MODELS_DIR`` so a monkeypatched dir still nests."""
     return MODELS_DIR / "staging"
 
 
@@ -152,21 +152,56 @@ class BetaCalibrator:
 
 def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
                       outcome_col: str = "home_win", sport: str = "mlb",
-                      val_fraction: float = 0.20, staging: bool = False) -> dict:
+                      val_fraction: float = 0.20, staging: bool = False,
+                      time_col: str | None = None,
+                      group_col: str | None = None) -> dict:
     """Fit isotonic + beta calibrators on the earlier games and validate on the
     most recent ``val_fraction``. Persists both models and returns OOS metrics.
 
     With ``staging=True`` the candidate model + method are written to the staging
     area instead of the live one, so a retrain produces candidates that the
-    pipeline does NOT apply until an explicit ``promote_calibrators`` call. This
-    is what stops a daily retrain from promoting a (possibly degenerate) model
-    into production in the same cycle."""
-    df2 = df.dropna(subset=[prob_col, outcome_col]).reset_index(drop=True)
+    pipeline does NOT apply until a separate promotion call. In production that
+    call may be automatic, but only after the OOS and independent-event gates."""
+    required = [prob_col, outcome_col]
+    if time_col:
+        required.append(time_col)
+    df2 = df.dropna(subset=required).copy()
     if len(df2) < 40:
         raise ValueError(f"Not enough data to calibrate: {len(df2)} rows (need >=40)")
 
-    split = int(len(df2) * (1.0 - val_fraction))
-    train_df, val_df = df2.iloc[:split], df2.iloc[split:]
+    if time_col:
+        df2 = df2.sort_values(time_col, kind="stable").reset_index(drop=True)
+    else:
+        df2 = df2.reset_index(drop=True)
+
+    if group_col and group_col in df2.columns:
+        # Every side of one event has a deterministically related target (A wins
+        # implies B loses; 1X2 carries three correlated rows). Splitting rows can
+        # therefore put one side in train and its complement in validation. Build
+        # the temporal holdout from whole event groups so that leakage is
+        # impossible and expose the independent-event count to the promotion gate.
+        groups = df2[group_col].astype(str)
+        missing = groups.isin(("", "nan", "None", "<NA>"))
+        groups = groups.where(~missing,
+                              [f"__row_{i}" for i in range(len(df2))])
+        df2 = df2.assign(_split_group=groups)
+        if time_col:
+            ordered = (df2.groupby("_split_group", sort=False)[time_col]
+                       .min().sort_values(kind="stable").index.tolist())
+        else:
+            ordered = list(dict.fromkeys(groups.tolist()))
+        if len(ordered) < 2:
+            raise ValueError("Not enough independent events to create a temporal holdout")
+        split = max(1, min(len(ordered) - 1,
+                           int(len(ordered) * (1.0 - val_fraction))))
+        train_groups = set(ordered[:split])
+        train_df = df2[df2["_split_group"].isin(train_groups)]
+        val_df = df2[~df2["_split_group"].isin(train_groups)]
+        n_train_groups, n_val_groups = split, len(ordered) - split
+    else:
+        split = int(len(df2) * (1.0 - val_fraction))
+        train_df, val_df = df2.iloc[:split], df2.iloc[split:]
+        n_train_groups, n_val_groups = len(train_df), len(val_df)
 
     train_probs = train_df[prob_col].to_numpy(dtype=float)
     train_outcomes = train_df[outcome_col].to_numpy(dtype=float)
@@ -238,6 +273,8 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
         "beta_path": str(beta_path),
         "n_train": len(train_df),
         "n_val": len(val_df),
+        "n_train_events": n_train_groups,
+        "n_val_events": n_val_groups,
         "raw_val_ece": raw_val_ece,
         "raw_val_brier": raw_val_brier,
         "beta_val_ece": beta_val_ece,
@@ -271,9 +308,8 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     the live application is a no-op without a model, an untrained market simply
     stays uncalibrated. Returns one summary dict per group.
 
-    Candidates are written to STAGING by default: the daily retrain must not
-    promote a calibrator into production in the same cycle. Call
-    ``promote_calibrators`` as an explicit, separate step to make candidates live.
+    Candidates are written to STAGING by default. A separate caller chooses the
+    manual promotion path or ``auto_promote_calibrators`` with its OOS/event gates.
     """
     out: list[dict] = []
     if hist is None or hist.empty:
@@ -283,9 +319,18 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     for (league, market), g in graded.groupby(["league", "market"]):
         if "date" in g.columns:
             g = g.sort_values("date")
+        raw_event_ids = (g["event_id"].astype(str).tolist()
+                         if "event_id" in g.columns else [""] * len(g))
+        event_ids = [eid if eid not in ("", "nan", "None", "<NA>")
+                     else f"__row_{i}"
+                     for i, eid in enumerate(raw_event_ids)]
         df = pd.DataFrame({"probability": g[prob_col].to_numpy(dtype=float),
-                           "won": g["won"].to_numpy(dtype=float)}).dropna()
+                           "won": g["won"].to_numpy(dtype=float),
+                           "date": g["date"].astype(str).to_numpy(),
+                           "event_id": event_ids}).dropna(
+                               subset=["probability", "won", "date"])
         rec = {"league": str(league), "market": str(market), "n": int(len(df)),
+               "n_events": int(df["event_id"].nunique()),
                "trained": False}
         if len(df) < min_n:
             out.append(rec)
@@ -293,10 +338,12 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
         try:
             r = train_calibration(df, prob_col="probability", outcome_col="won",
                                   sport=calibration_key(str(league), str(market)),
-                                  staging=staging)
+                                  staging=staging, time_col="date",
+                                  group_col="event_id")
             rec.update({"trained": True, "raw_val_ece": r["raw_val_ece"],
                         "cal_val_ece": r["val_metrics"]["ece"],
                         "beta_val_ece": r["beta_val_ece"], "n_val": r["n_val"],
+                        "n_val_events": r["n_val_events"],
                         "raw_val_brier": r["raw_val_brier"],
                         "iso_persisted": r["iso_persisted"],
                         "iso_gate": r["iso_gate"], "beta_gate": r["beta_gate"],
@@ -353,7 +400,7 @@ def auto_promote_calibrators(results: list[dict], *,
 
     Promotes exactly the staged keys whose fit passed the OOS gates (ECE +
     Brier + monotonicity, enforced at staging time by ``train_calibration``)
-    AND validated on at least ``min_n_val`` out-of-sample bets -- the guard
+    AND validated on at least ``min_n_val`` independent out-of-sample events -- the guard
     that would have kept the 2026-07-02 ``n_val=9`` step-function candidate
     out of production. Staged-but-small groups are left in staging (they keep
     accruing sample). Live keys the retrain no longer recommends are demoted
@@ -370,7 +417,10 @@ def auto_promote_calibrators(results: list[dict], *,
         key = calibration_key(str(r.get("league", "")), str(r.get("market", "")))
         if key not in staged or not r.get("persisted"):
             continue
-        if int(r.get("n_val") or 0) >= min_n_val:
+        # New summaries report independent events. Fall back to row count for
+        # compatibility with staged summaries produced by older versions.
+        validation_n = int(r.get("n_val_events", r.get("n_val")) or 0)
+        if validation_n >= min_n_val:
             eligible.append((key, r))
         else:
             skipped.append((key, r))
@@ -383,18 +433,31 @@ def auto_promote_calibrators(results: list[dict], *,
     _load_calibrator.cache_clear()
     now = pd.Timestamp.now(tz="UTC").isoformat()
     entries = ([{"timestamp": now, "key": k, "action": "promoted",
-                 "method": staged.get(k, ""), "n_val": r.get("n_val")}
+                 "method": staged.get(k, ""), "n_val": r.get("n_val"),
+                 "n_val_events": r.get("n_val_events", r.get("n_val"))}
                 for k, r in eligible]
                + [{"timestamp": now, "key": k, "action": "demoted",
-                   "method": "", "n_val": None} for k in demoted]
+                   "method": "", "n_val": None, "n_val_events": None}
+                  for k in demoted]
                + [{"timestamp": now, "key": k, "action": "skipped_small_n_val",
-                   "method": staged.get(k, ""), "n_val": r.get("n_val")}
+                   "method": staged.get(k, ""), "n_val": r.get("n_val"),
+                   "n_val_events": r.get("n_val_events", r.get("n_val"))}
                   for k, r in skipped])
     if entries:
         log_path = MODELS_DIR / "promotion_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(entries).to_csv(log_path, mode="a", index=False,
-                                     header=not log_path.exists())
+        new = pd.DataFrame(entries)
+        if log_path.exists():
+            try:
+                prior = pd.read_csv(log_path)
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                prior = pd.DataFrame()
+            cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
+            new = pd.concat([prior.reindex(columns=cols),
+                             new.reindex(columns=cols)], ignore_index=True)
+        tmp = log_path.with_suffix(".csv.tmp")
+        new.to_csv(tmp, index=False)
+        tmp.replace(log_path)
     return {"promoted": promoted, "demoted": demoted,
             "skipped": [k for k, _ in skipped]}
 

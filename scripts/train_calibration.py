@@ -10,8 +10,8 @@ not double-weighted. It calibrates the PURE model probability
 research 2026-07-02); for every (league, market) with enough graded bets it
 fits an isotonic + beta calibrator with a TEMPORAL split (earlier games train,
 most recent validate), staging candidates under data/models/staging/. Prints the out-of-sample ECE
-before vs after so you can see where calibration actually helps before
-promoting a candidate into the live registry.
+before vs after so you can see where calibration actually helps before a
+manual or gated automatic promotion into the live registry.
 
   python scripts/train_calibration.py
   python scripts/train_calibration.py --min-n 60
@@ -21,12 +21,11 @@ Use --source backtest to train from data/processed/pick_history.csv instead
 pass --rebuild). Note: the backtest source anchors to closing lines, so the
 trained calibrator will not correct the opening-line overconfidence seen live.
 
-Training NEVER touches the live registry: candidates land in staging and the
-pipeline keeps applying whatever was last PROMOTED (scripts/promote_calibration.py,
-a deliberate human step). With calibration.enabled: true and an empty live
-registry (the current state), live application is a safe no-op. These calibrators
-produce calibrated ESTIMATED probabilities -- not certainties, not a profit
-guarantee.
+This CLI NEVER touches the live registry: candidates land in staging. The daily
+orchestrator may subsequently auto-promote only candidates that pass its OOS and
+independent-event gates; `scripts/promote_calibration.py` remains the manual path.
+Missing live entries are safe no-ops. These calibrators produce calibrated
+ESTIMATED probabilities -- not certainties, not a profit guarantee.
 """
 from __future__ import annotations
 
@@ -93,14 +92,15 @@ def main() -> int:
     print(f"grupos: {len(results)} | entrenados: {len(trained)} | "
           f"omitidos (<{args.min_n} graduados): {len(skipped)}")
     if trained:
-        print("\nliga       mercado   n_val   ECE_antes  ECE_mejor  delta    metodo")
+        print("\nliga       mercado   val_filas val_eventos  ECE_antes  ECE_mejor  delta    metodo")
         for r in sorted(trained, key=lambda x: (x["league"], x["market"])):
             best = r.get("best_method")
             best_ece = ({"isotonic": r["cal_val_ece"], "beta": r["beta_val_ece"]}
                         .get(best, r["raw_val_ece"]))
             delta = r["raw_val_ece"] - best_ece
             label = best if best else "NINGUNO (no-op)"
-            print(f"{r['league']:<10} {r['market']:<8} {r['n_val']:>5}   "
+            print(f"{r['league']:<10} {r['market']:<8} {r['n_val']:>9} "
+                  f"{r['n_val_events']:>11}  "
                   f"{r['raw_val_ece']:>8.4f}  {best_ece:>9.4f}  "
                   f"{delta:>+7.4f}  {label}")
     if skipped:

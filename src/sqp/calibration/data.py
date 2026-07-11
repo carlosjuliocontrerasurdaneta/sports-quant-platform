@@ -27,7 +27,8 @@ import pandas as pd
 from sqp.audit.report import load_all_settled
 from sqp.config import ROOT
 
-TRAINING_COLS = ["league", "market", "date", "model_probability", "result"]
+TRAINING_COLS = ["league", "market", "event_id", "date",
+                 "model_probability", "result"]
 _KEY_COL = "_dedup_key"
 
 
@@ -59,6 +60,8 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     out = pd.DataFrame(index=frame.index)
     out["league"] = frame["league"].astype(str) if "league" in frame else ""
     out["market"] = frame["market"].astype(str) if "market" in frame else ""
+    out["event_id"] = (frame["event_id"].astype(str)
+                       if "event_id" in frame else "")
     gd = (frame["game_date"].astype(str) if "game_date" in frame
           else pd.Series("", index=frame.index))
     gen = (frame["generated_at"].astype(str) if "generated_at" in frame
@@ -73,7 +76,7 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     out["date"] = out["date"].where(out["date"].str.len() >= 10, other=pd.NA)
     if with_key:
         empty = pd.Series("", index=frame.index)
-        eid = frame["event_id"].astype(str) if "event_id" in frame else empty
+        eid = out["event_id"]
         sel = frame["selection"].astype(str) if "selection" in frame else empty
         # .map(str), not .astype(str): under pandas' string dtype astype keeps
         # NaN as NA, which would poison the whole key for h2h rows (line=None)
@@ -151,8 +154,9 @@ def stage_calibrators_from_settled(settings) -> list[dict]:
     graded history (settled live bets UNION the graded served-probability
     stream, deduplicated -- see ``load_calibration_training_history``).
 
-    Training lands in STAGING only -- promotion into the live registry stays a
-    deliberate, separate step (scripts/promote_calibration). Returns
+    Training lands in STAGING only. A caller may then run the gated automatic
+    promotion or the manual review CLI; fitting itself never overwrites live.
+    Returns
     ``train_market_calibrators``' per-group summaries, or ``[]`` when
     calibration is disabled or nothing is graded yet.
     """

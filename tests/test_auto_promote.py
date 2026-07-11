@@ -53,6 +53,16 @@ def test_auto_promote_skips_small_validation_sample(tmp_path, monkeypatch):
     assert out[0] == pytest.approx(0.70)  # live sigue no-op
 
 
+def test_auto_promote_uses_independent_event_count(tmp_path, monkeypatch):
+    results = _stage_overconfident(tmp_path, monkeypatch)
+    rec = next(r for r in results if r.get("persisted"))
+    rec["n_val"] = 100       # many correlated market-side rows
+    rec["n_val_events"] = 4  # but only four independent matches
+    sync = cal.auto_promote_calibrators(results, min_n_val=15)
+    assert sync["promoted"] == []
+    assert sync["skipped"] == ["mlb_h2h"]
+
+
 def test_auto_promote_demotes_key_no_longer_staged(tmp_path, monkeypatch):
     # Self-healing: un mercado live que el retrain de hoy ya no recomienda
     # (ausente de staging) se demota a no-op, igual que la promoción manual full.
