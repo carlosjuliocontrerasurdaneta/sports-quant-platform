@@ -1,12 +1,12 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-08
+actualizada: 2026-07-11
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-07-08 (commit `4651392` en `main`). Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-07-11 (commit `96d8535` en `main`). Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
 
 ## Modo operativo: SHADOW MODE
@@ -25,7 +25,7 @@ actualizada: 2026-07-08
 
 ## Calibración: estado del pipeline
 
-- **Train ≠ promote**: el reentreno diario solo *presenta candidatos* (staging); la promoción a live es un paso humano explícito (`scripts/promote_calibration.py`).
+- **Train ≠ promote**: el reentreno diario *presenta candidatos* (staging); desde el 2026-07-08 la **auto-promoción gated** está activa (`auto_promote: true`): promueve a live solo candidatos que pasan los gates OOS (ECE + Brier + monotonía) y, desde el 2026-07-11, con **≥15 eventos independientes** de validación (no lados correlacionados del mismo partido — port del linaje Nc2, commit `a2027b9`). `scripts/promote_calibration.py` sigue como vía manual.
 - **Fix del mismatch train/serve** (2026-07-01, `d39f975`): se entrenaba con historial anclado al cierre pero se servía anclado a apertura; ahora entrena sobre `data/bets/settled_*.csv` (distribución de servicio).
 - **Stream de probabilidades servidas** (2026-07-05/07, `578ace6`): `ServedStore` captura la distribución completa de probabilidades servidas (no solo los picks apostados) para entrenar calibradores sin sesgo de selección. Liquidación del stream integrada para todas las ligas no-tenis.
 - Primer candidato en staging: MLB spreads (ECE OOS +0.0524). Promoción pendiente de revisión.
@@ -47,7 +47,7 @@ actualizada: 2026-07-08
 | Refresh_ML | lunes 09:45 |
 | Validate_OOS | mensual, día 1, 12:00 |
 
-`StartWhenAvailable` debe permanecer en True. Producción vive en `C:\dev` (migración desde OneDrive completada).
+`StartWhenAvailable` debe permanecer en True. Producción vive en `C:\dev` (migración desde OneDrive completada). **2026-07-11**: retirada la copia paralela de `C:\Nueva carpeta (2)` — sus mejoras se portaron a `C:\dev` (ver [[Bitácora/2026-07-11]]), sus 5 tareas `SQP_*_Nc2` se eliminaron y la carpeta quedó respaldada en `C:\ZIP\sports-quant-platform-Nc2-respaldo-20260711.zip`. Ya no existe pipeline paralelo ni gasto doble de cuota del API de odds.
 
 ## Riesgo
 
