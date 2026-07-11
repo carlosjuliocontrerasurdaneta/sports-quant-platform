@@ -168,14 +168,16 @@ def test_dashboard_history_team_lists_cascade_by_sport(tmp_path):
     assert 'getElementById("hSport").addEventListener("input", fillTeams)' in text
 
 
-def test_pick_condition_uses_normalized_identity():
+def test_team_condition_uses_normalized_identity():
     # same criterion as settlement grading: accents/casing must not break the
     # home/away match; Over/Under and Draw are not team sides
-    assert html_report._pick_condition("Atlético Madrid", "Atletico Madrid", "Real") == "home"
-    assert html_report._pick_condition("real", "Atletico Madrid", "Real") == "away"
-    assert html_report._pick_condition("Over", "A", "B") == ""
-    assert html_report._pick_condition("Draw", "A", "B") == ""
-    assert html_report._pick_condition(None, "A", "B") == ""
+    assert html_report._team_condition("Atlético Madrid", "Atletico Madrid", "Real") == "home"
+    assert html_report._team_condition("real", "Atletico Madrid", "Real") == "away"
+    assert html_report._team_condition("Over", "A", "B") == ""
+    assert html_report._team_condition("Draw", "A", "B") == ""
+    assert html_report._team_condition(None, "A", "B") == ""
+    # spread-style selections append the line and must match via prefix
+    assert html_report._team_condition("Yankees -1.5", "Yankees", "Red Sox") == "home"
 
 
 def test_dashboard_line_without_point_renders_dash_not_nan(tmp_path):

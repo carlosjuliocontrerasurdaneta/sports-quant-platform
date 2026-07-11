@@ -48,10 +48,11 @@ _PICK_COLUMNS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _picks_records(predictions_dir: Path) -> list[dict]:
+def _picks_records(predictions_dir: Path,
+                   generated_day: str | None = None) -> list[dict]:
     """Actionable picks (stake>0, not flagged) ranked by estimated edge, as plain
     JSON-serializable dicts for the client-side table."""
-    df = load_all_candidates(predictions_dir)
+    df = load_all_candidates(predictions_dir, generated_day=generated_day)
     if df.empty:
         return []
     ranked = rank_candidates(df)
@@ -194,26 +195,31 @@ _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
 )
 
 
-def _pick_condition(selection: object, home: object, away: object) -> str:
-    """'home'/'away' when the selection is one of the two sides (normalized
-    identity, same criterion as settlement grading); '' when the selection is
-    not a team side (Over/Under, Draw)."""
-    key = normalize_key(str(selection))
-    if key and key == normalize_key(str(home)):
-        return "home"
-    if key and key == normalize_key(str(away)):
-        return "away"
+def _team_condition(selection: object, home: object, away: object) -> str:
+    """Condition of the picked side: "home" | "away" | "" (not team-bound).
+
+    Compares the normalized selection against the normalized team names so
+    vendor spelling differences do not break the match. Spread-style selections
+    that append the line ("Yankees -1.5") match via prefix. Totals (Over/Under)
+    and unmatched selections yield "" and are excluded from the condition
+    filter rather than guessed."""
+    sel = normalize_key(str(selection))
+    if not sel:
+        return ""
+    for key, cond in ((normalize_key(str(home)), "home"),
+                      (normalize_key(str(away)), "away")):
+        if key and (sel == key or sel.startswith(key + " ")):
+            return cond
     return ""
 
 
 def _history_section(predictions_dir: Path, bets_dir: Path,
                      today: str | None = None) -> str:
     """Unified history: closed bets + open actionable picks, with filters
-    (sport/market/condition home-away/team/home/away/date) and totals cards
-    (picks, closed, wins, losses, realized hit-rate) recomputed client-side
-    over the visible rows. The team / home / away option lists cascade from
-    the selected sport. Past picks that never settled are hidden (not
-    deleted)."""
+    (sport/market/condition/team/home/away/date) and totals cards (picks,
+    closed, wins, losses, hit-rate %) recomputed client-side over the visible
+    rows. The team / home / away option lists cascade from the selected sport.
+    Past picks that never settled are hidden (not deleted)."""
     from datetime import date
     from sqp.audit.report import load_history, visible_history
     today = today or date.today().isoformat()
@@ -228,14 +234,15 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
         '<div class="card"><span class="label">Picks cerrados</span><span class="value" id="hClosed">0</span></div>'
         '<div class="card"><span class="label">Wins</span><span class="value pos" id="hWins">0</span></div>'
         '<div class="card"><span class="label">Losses</span><span class="value neg" id="hLosses">0</span></div>'
-        '<div class="card"><span class="label">% aciertos</span><span class="value" id="hHit">&mdash;</span></div>'
+        '<div class="card"><span class="label">Acierto %</span><span class="value" id="hHit">-</span></div>'
         '</div>')
     controls = (
         '<div class="filters" id="historyFilters">'
         '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
         '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
         '<label>Condicion<select id="hCond"><option value="">(todas)</option>'
-        '<option value="home">Home</option><option value="away">Away</option></select></label>'
+        '<option value="home">Home (local)</option>'
+        '<option value="away">Away (visitante)</option></select></label>'
         '<label>Equipo<select id="hTeam"><option value="">(todos)</option></select></label>'
         '<label>Home<select id="hHome"><option value="">(todos)</option></select></label>'
         '<label>Away<select id="hAway"><option value="">(todos)</option></select></label>'
@@ -256,7 +263,7 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
             f'data-market="{html.escape(str(row.get("market", "")))}" '
             f'data-home="{html.escape(str(row.get("home", "")))}" '
             f'data-away="{html.escape(str(row.get("away", "")))}" '
-            f'data-cond="{_pick_condition(row.get("selection"), row.get("home"), row.get("away"))}" '
+            f'data-cond="{_team_condition(row.get("selection"), row.get("home"), row.get("away"))}" '
             f'data-result="{html.escape(str(row.get("result", "")))}">{cells}</tr>')
     table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
              f'<tbody>{"".join(body)}</tbody></table>')
@@ -284,7 +291,8 @@ def open_in_browser(path: str | Path) -> bool:
 
 def html_dashboard(predictions_dir: Path | None = None,
                    bets_dir: Path | None = None,
-                   *, make_latest: bool = True) -> str:
+                   *, make_latest: bool = True,
+                   patterns_path: Path | None = None) -> str:
     """Build the daily HTML dashboard and return the written file path.
 
     When ``make_latest`` is True, also write a stable ``report_latest.html`` copy
@@ -295,7 +303,8 @@ def html_dashboard(predictions_dir: Path | None = None,
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     day = ts[:8]
 
-    picks = _picks_records(predictions_dir)
+    generated_day = f"{day[:4]}-{day[4:6]}-{day[6:8]}"
+    picks = _picks_records(predictions_dir, generated_day=generated_day)
     columns_meta = [{"key": k, "header": h, "kind": kind}
                     for k, h, kind in _PICK_COLUMNS]
     payload = json.dumps({"picks": picks, "columns": columns_meta},
@@ -305,7 +314,7 @@ def html_dashboard(predictions_dir: Path | None = None,
         day=html.escape(day),
         generated=html.escape(ts),
         audit=_audit_section(bets_dir),
-        patterns=_patterns_section(),
+        patterns=_patterns_section(patterns_path),
         history=_history_section(predictions_dir, bets_dir),
         disclaimer=html.escape(DISCLAIMER),
         data_json=payload,
@@ -552,7 +561,7 @@ function initSortable() {{
   }});
 }}
 
-// Historial: filter rows by sport / market / condition (home-away) / team
+// Historial: filter rows by sport / market / condition (home|away) / team
 // (either side) / home / away / date range (data-* on each row). Team lists
 // cascade from the selected sport.
 function initHistory() {{
@@ -612,8 +621,8 @@ function filterHistory() {{
   }});
   const set = (id, v) => {{ const e = document.getElementById(id); if (e) e.textContent = v; }};
   set("hPicks", picks); set("hClosed", closed); set("hWins", wins); set("hLosses", losses);
-  const graded = wins + losses;   // hit-rate realizado: excluye push/void y picks abiertos
-  set("hHit", graded ? (100 * wins / graded).toFixed(1) + "%" : "—");
+  const graded = wins + losses;
+  set("hHit", graded ? (100 * wins / graded).toFixed(1) + "%" : "-");
   set("hCount", picks + " filas");
 }}
 

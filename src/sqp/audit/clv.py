@@ -66,7 +66,10 @@ def compute_clv(bets_dir: Path, root: Path) -> tuple[pd.DataFrame, int]:
             "league": r.league, "market": r.market, "selection": r.selection,
             "result": r.result, "entry": entry, "close": float(close),
             "clv_pct": entry / float(close) - 1.0,
-            "beat_close": entry >= float(close),
+            # Equality is neutral CLV, not "beating" the close. Counting ties as
+            # wins inflated the observed beat-close rate (82.7% while the median
+            # CLV was exactly zero in the audited dataset).
+            "beat_close": entry > float(close),
         })
     return pd.DataFrame(rows), unmatched
 

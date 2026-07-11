@@ -68,6 +68,21 @@ def test_consolidated_report_empty_is_safe(tmp_path):
     assert "sin candidatos" in open(path, encoding="utf-8").read()
 
 
+def test_consolidated_report_excludes_prior_day_candidates(tmp_path, monkeypatch):
+    old = _candidates().iloc[:1].copy()
+    old["generated_at"] = "2026-07-09T12:00:00+00:00"
+    old.to_csv(tmp_path / "candidates_nba.csv", index=False)
+    # The report derives its UTC date internally. Pin its datetime source.
+    class _Now:
+        @classmethod
+        def now(cls, tz=None):
+            return pd.Timestamp("2026-07-10T12:00:00Z").to_pydatetime()
+    import sqp.audit.report as report
+    monkeypatch.setattr(report, "datetime", _Now)
+    path = consolidated_report(tmp_path)
+    assert "sin candidatos generados" in open(path, encoding="utf-8").read()
+
+
 def test_settlement_audit_report(tmp_path):
     pd.DataFrame([
         {"league": "nba", "market": "spreads", "result": "win", "stake": 10.0,

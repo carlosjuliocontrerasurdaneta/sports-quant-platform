@@ -53,15 +53,30 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     return visible.sort_values("estimated_edge", ascending=False)
 
 
-def load_all_candidates(predictions_dir: Path) -> pd.DataFrame:
+def load_all_candidates(predictions_dir: Path,
+                        generated_day: str | None = None) -> pd.DataFrame:
     """Concatenate every candidates_<league>.csv (league inferred from filename),
-    joining home/away from the matching predictions_<league>.csv when present."""
+    joining home/away from the matching predictions_<league>.csv when present.
+
+    When ``generated_day`` is supplied, current-schema files are restricted to
+    that UTC generation day. This prevents a league skipped by today's quota
+    guard (or preserved after a transient failure) from appearing as a new pick
+    merely because yesterday's candidates file still exists. Legacy files with
+    no usable ``generated_at`` retain the prior behavior for compatibility.
+    """
     frames = []
     for cf in sorted(predictions_dir.glob("candidates_*.csv")):
         league = cf.stem.replace("candidates_", "")
         c = pd.read_csv(cf)
         if c.empty:
             continue
+        if generated_day and "generated_at" in c.columns:
+            days = c["generated_at"].astype(str).str[:10]
+            valid = days.str.fullmatch(r"\d{4}-\d{2}-\d{2}")
+            if valid.any():
+                c = c[days == generated_day].copy()
+                if c.empty:
+                    continue
         c["league"] = league
         pf = predictions_dir / f"predictions_{league}.csv"
         if pf.exists() and pf.stat().st_size > 1:
@@ -77,7 +92,8 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
     predictions_dir = predictions_dir or (ROOT / "data" / "predictions")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     day = ts[:8]
-    df = load_all_candidates(predictions_dir)
+    generated_day = f"{day[:4]}-{day[4:6]}-{day[6:8]}"
+    df = load_all_candidates(predictions_dir, generated_day=generated_day)
     lines = [f"# Reporte consolidado de picks - {day}", f"Generado: {ts}", ""]
     if df.empty:
         lines += ["(sin candidatos generados)", "", f"> {DISCLAIMER}"]

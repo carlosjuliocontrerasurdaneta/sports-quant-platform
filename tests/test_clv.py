@@ -59,6 +59,14 @@ def test_compute_clv_negative_when_entry_worse_than_close(tmp_path):
     assert bool(df.iloc[0]["beat_close"]) is False
 
 
+def test_equal_entry_is_neutral_not_beating_close(tmp_path):
+    _write_odds(tmp_path, [_odds_row(price_decimal=2.0)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=2.0)])
+    df, _ = compute_clv(tmp_path / "data" / "bets", tmp_path)
+    assert df.iloc[0]["clv_pct"] == 0.0
+    assert bool(df.iloc[0]["beat_close"]) is False
+
+
 def test_compute_clv_matches_spreads_by_line(tmp_path):
     _write_odds(tmp_path, [_odds_row(market="spreads", point=-1.5),
                            _odds_row(market="spreads", point=-2.5,
