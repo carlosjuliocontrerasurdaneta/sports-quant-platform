@@ -33,3 +33,14 @@ def test_present_artifacts_reduce_warnings(tmp_path):
     assert not any(w.startswith("nba: no stored results") for w in r["warnings"])
     assert any(w.startswith("mlb:") for w in r["warnings"])
     assert r["status"] == "WARN"  # still WARN because mlb/nfl/nhl incomplete
+
+
+def test_health_detects_per_market_calibration_registry(tmp_path):
+    models = tmp_path / "data" / "models"
+    models.mkdir(parents=True)
+    (models / "mlb_spreads_calibration_iso.joblib").write_bytes(b"x")
+    (models / "calibration_methods.json").write_text(
+        '{"mlb_spreads": "isotonic"}', encoding="utf-8")
+    r = generate_health_report(root=tmp_path)
+    assert r["leagues"]["mlb"]["calibration"] is True
+    assert r["leagues"]["mlb"]["calibration_markets"] == ["spreads"]

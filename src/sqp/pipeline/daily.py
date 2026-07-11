@@ -223,7 +223,8 @@ def _apply_daily_exposure_cap(candidates: list[BetCandidate], bankroll: float,
     return factor
 
 
-def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -> float:
+def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float,
+                              generated_day: str | None = None) -> float:
     """Cap the WHOLE day's staked exposure across every league at
     ``bankroll * cap_pct``, rewriting the per-league ``candidates_*.csv`` in place.
 
@@ -238,7 +239,7 @@ def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -
     no cap was needed)."""
     if cap_pct <= 0 or bankroll <= 0:
         return 1.0
-    frames: dict[Path, pd.DataFrame] = {}
+    frames: dict[Path, tuple[pd.DataFrame, pd.Series]] = {}
     total = 0.0
     for f in sorted(pred_dir.glob("candidates_*.csv")):
         try:
@@ -247,14 +248,24 @@ def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float) -
             continue
         if df.empty or "stake" not in df.columns:
             continue
-        frames[f] = df
-        total += float(df.loc[df["stake"] > 0, "stake"].sum())
+        eligible = df["stake"] > 0
+        if generated_day and "generated_at" in df.columns:
+            days = df["generated_at"].astype(str).str[:10]
+            valid = days.str.fullmatch(r"\d{4}-\d{2}-\d{2}")
+            # Old schemas without a usable timestamp retain the legacy behavior;
+            # current schemas are scoped strictly to this run day so a
+            # budget-skipped league from yesterday is never re-staked/re-scaled.
+            if valid.any():
+                eligible &= days == generated_day
+        if not eligible.any():
+            continue
+        frames[f] = (df, eligible)
+        total += float(df.loc[eligible, "stake"].sum())
     cap = bankroll * cap_pct
     if total <= cap or total <= 0:
         return 1.0
     factor = cap / total
-    for f, df in frames.items():
-        mask = df["stake"] > 0
+    for f, (df, mask) in frames.items():
         if not mask.any():
             continue
         df.loc[mask, "stake"] = (df.loc[mask, "stake"] * factor).round(2)
@@ -330,7 +341,8 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
 
 
 def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
-                     clv_blocked: bool = False) -> str | None:
+                     clv_blocked: bool = False,
+                     incomplete_market: bool = False) -> str | None:
     """Reason a selected candidate must be recorded with stake 0, or None to
     stake it. Pausing wins over the plausibility cap; shadow mode (global,
     stake-0 evidence gathering) zeroes whatever remains; the per-market CLV
@@ -340,6 +352,8 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
     binding reason once shadow mode is lifted."""
     if paused:
         return "market_paused"
+    if incomplete_market:
+        return "incomplete_market"
     if suspect:
         return "edge_exceeds_max_plausible"
     if shadow:
@@ -520,6 +534,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 fair = _spread_novig(cons, eo.event.home, eo.event.away, spread).get(key[1])
             else:
                 fair = _novig_probs(cons, key[0], key[2]).get(key[1])
+            # A no-vig probability requires the complete complementary market
+            # (both sides, or all three 1X2 outcomes). A lone/malformed quote can
+            # still be captured in the served stream, but it must never carry
+            # stake: there is no valid market anchor or vig removal for it.
+            incomplete_market = fair is None
             p_used, p_decision = _decision_probability(
                 p_model, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)
@@ -575,7 +594,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             flag = _zero_stake_flag(
                 paused, suspect, settings.shadow_mode,
                 clv_blocked=(clv_gate is not None
-                             and not market_allowed(clv_gate, league, key[0]))) or ""
+                             and not market_allowed(clv_gate, league, key[0])),
+                incomplete_market=incomplete_market) or ""
             if flag:
                 stake, pct = 0.0, 0.0
             candidates.append(BetCandidate(

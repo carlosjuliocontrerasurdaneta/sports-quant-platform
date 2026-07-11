@@ -60,11 +60,12 @@ def test_cap_disabled_when_pct_non_positive():
 
 # --- Global (cross-league) exposure cap -------------------------------------
 
-def _write_cands(path, rows):
+def _write_cands(path, rows, generated_at=None):
     """rows: list of (selection, stake, kelly_pct, flags)."""
     pd.DataFrame([{"event_id": "e", "market": "h2h", "selection": s, "line": None,
                    "price_decimal": 2.0, "stake": st, "kelly_stake_pct": k,
-                   "flags": fl} for s, st, k, fl in rows]).to_csv(path, index=False)
+                   "flags": fl, **({"generated_at": generated_at} if generated_at else {})}
+                  for s, st, k, fl in rows]).to_csv(path, index=False)
 
 
 def test_global_cap_no_scaling_when_under(tmp_path):
@@ -114,3 +115,15 @@ def test_global_cap_disabled_when_pct_non_positive(tmp_path):
     _write_cands(tmp_path / "candidates_mlb.csv", [("A", 500.0, 0.5, "")])
     assert apply_global_exposure_cap(tmp_path, bankroll=1000.0, cap_pct=0.0) == 1.0
     assert pd.read_csv(tmp_path / "candidates_mlb.csv")["stake"].iloc[0] == 500.0
+
+
+def test_global_cap_ignores_prior_day_files(tmp_path):
+    _write_cands(tmp_path / "candidates_mlb.csv", [("old", 90.0, 0.09, "")],
+                 generated_at="2026-07-09T12:00:00+00:00")
+    _write_cands(tmp_path / "candidates_nba.csv", [("today", 60.0, 0.06, "")],
+                 generated_at="2026-07-10T12:00:00+00:00")
+    factor = apply_global_exposure_cap(
+        tmp_path, bankroll=1000.0, cap_pct=0.10,
+        generated_day="2026-07-10")
+    assert factor == 1.0  # only today's 60 counts; yesterday's 90 is untouched
+    assert pd.read_csv(tmp_path / "candidates_mlb.csv")["stake"].iloc[0] == 90.0

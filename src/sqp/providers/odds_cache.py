@@ -20,7 +20,11 @@ class FileCache:
     @staticmethod
     def key(path: str, params: dict) -> str:
         norm = "&".join(f"{k}={params[k]}" for k in sorted(params) if k != "apiKey")
-        return hashlib.sha1(f"{path}?{norm}".encode("utf-8")).hexdigest()
+        # Content-addressing only, never a signature or credential hash. Marking
+        # that intent explicitly avoids treating this cache key as cryptography.
+        return hashlib.sha1(
+            f"{path}?{norm}".encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
 
     def _file(self, key: str) -> Path:
         return self.dir / f"{key}.json"

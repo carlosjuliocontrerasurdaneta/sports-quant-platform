@@ -38,6 +38,32 @@ def _age_days(path: Path) -> float | None:
     return round((time.time() - path.stat().st_mtime) / 86400.0, 1)
 
 
+def _live_calibration_markets(models_dir: Path, league: str) -> list[str]:
+    """Markets whose per-(league, market) calibrator is actually live.
+
+    The pipeline resolves ``calibration_methods.json`` and files named
+    ``<league>_<market>_calibration_<iso|beta>.joblib``. The old health check
+    looked only for ``<league>_calibration_iso.joblib`` and therefore reported
+    calibration=False even while three MLB market models were active.
+    """
+    registry = models_dir / "calibration_methods.json"
+    try:
+        methods = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(methods, dict):
+        return []
+    prefix = f"{league}_"
+    out: list[str] = []
+    for key, method in methods.items():
+        if not str(key).startswith(prefix):
+            continue
+        suffix = {"isotonic": "iso", "beta": "beta"}.get(str(method))
+        if suffix and (models_dir / f"{key}_calibration_{suffix}.joblib").exists():
+            out.append(str(key)[len(prefix):])
+    return sorted(out)
+
+
 def generate_health_report(root: Path = ROOT) -> dict:
     data = root / "data"
     leagues: dict[str, dict] = {}
@@ -48,26 +74,31 @@ def generate_health_report(root: Path = ROOT) -> dict:
         feats = data / "features" / f"{lg}_training_dataset.csv"
         ml_model = data / "models" / f"{lg}_moneyline_model.joblib"
         tot_model = data / "models" / f"{lg}_totals_model.joblib"
-        calib = data / "models" / f"{lg}_calibration_iso.joblib"
+        calibration_markets = _live_calibration_markets(data / "models", lg)
+        results_rows = _rows(results)
+        features_rows = _rows(feats)
+        features_age_days = _age_days(feats)
+        moneyline_exists = ml_model.exists()
 
         info = {
-            "results_rows": _rows(results),
-            "features_rows": _rows(feats),
-            "features_age_days": _age_days(feats),
-            "moneyline_model": ml_model.exists(),
+            "results_rows": results_rows,
+            "features_rows": features_rows,
+            "features_age_days": features_age_days,
+            "moneyline_model": moneyline_exists,
             "totals_model": tot_model.exists(),
-            "calibration": calib.exists(),
+            "calibration": bool(calibration_markets),
+            "calibration_markets": calibration_markets,
             "model_age_days": _age_days(ml_model),
         }
         leagues[lg] = info
 
-        if info["results_rows"] in (None, 0):
+        if results_rows in (None, 0):
             warnings.append(f"{lg}: no stored results (run scripts/backfill_results.py)")
-        if info["features_rows"] in (None, 0):
+        if features_rows in (None, 0):
             warnings.append(f"{lg}: feature dataset missing/empty (run scripts/build_features.py)")
-        elif info["features_age_days"] is not None and info["features_age_days"] > STALE_FEATURES_DAYS:
-            warnings.append(f"{lg}: features stale ({info['features_age_days']}d)")
-        if not info["moneyline_model"]:
+        elif features_age_days is not None and features_age_days > STALE_FEATURES_DAYS:
+            warnings.append(f"{lg}: features stale ({features_age_days}d)")
+        if not moneyline_exists:
             warnings.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
 
     report = {

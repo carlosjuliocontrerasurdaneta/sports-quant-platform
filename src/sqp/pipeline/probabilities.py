@@ -8,6 +8,7 @@ de decisión; ``daily`` los re-importa, así que los consumidores existentes
 """
 from __future__ import annotations
 from collections import defaultdict
+from statistics import median
 from sqp.calibration.calibrator import calibrate_probability
 from sqp.domain.models import EventOdds
 from sqp.markets.vig import remove_vig_power
@@ -19,7 +20,10 @@ def _consensus_lines(eo: EventOdds) -> dict:
     groups: dict[tuple, list[float]] = defaultdict(list)
     for ln in eo.lines:
         groups[(ln.market, ln.outcome, ln.point)].append(ln.price_decimal)
-    cons = {k: sorted(v)[len(v) // 2] for k, v in groups.items()}
+    # ``statistics.median`` averages the two central values for an even number
+    # of books. Picking ``sorted(v)[len(v)//2]`` was the *upper* median and
+    # systematically biased every even-book consensus toward that one quote.
+    cons = {k: float(median(v)) for k, v in groups.items()}
     return cons
 
 
