@@ -209,9 +209,11 @@ def _pick_condition(selection: object, home: object, away: object) -> str:
 def _history_section(predictions_dir: Path, bets_dir: Path,
                      today: str | None = None) -> str:
     """Unified history: closed bets + open actionable picks, with filters
-    (sport/market/condition home-away/team/date) and totals cards (picks,
-    closed, wins, losses, realized hit-rate) recomputed client-side over the
-    visible rows. Past picks that never settled are hidden (not deleted)."""
+    (sport/market/condition home-away/team/home/away/date) and totals cards
+    (picks, closed, wins, losses, realized hit-rate) recomputed client-side
+    over the visible rows. The team / home / away option lists cascade from
+    the selected sport. Past picks that never settled are hidden (not
+    deleted)."""
     from datetime import date
     from sqp.audit.report import load_history, visible_history
     today = today or date.today().isoformat()
@@ -234,6 +236,7 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
         '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
         '<label>Condicion<select id="hCond"><option value="">(todas)</option>'
         '<option value="home">Home</option><option value="away">Away</option></select></label>'
+        '<label>Equipo<select id="hTeam"><option value="">(todos)</option></select></label>'
         '<label>Home<select id="hHome"><option value="">(todos)</option></select></label>'
         '<label>Away<select id="hAway"><option value="">(todos)</option></select></label>'
         '<label>Desde<input type="date" id="hFrom"></label>'
@@ -549,8 +552,9 @@ function initSortable() {{
   }});
 }}
 
-// Historial: filter rows by sport / market / condition (home-away) / team / date
-// range (data-* on each row).
+// Historial: filter rows by sport / market / condition (home-away) / team
+// (either side) / home / away / date range (data-* on each row). Team lists
+// cascade from the selected sport.
 function initHistory() {{
   const table = document.getElementById("historyTable");
   if (!table) return;
@@ -562,22 +566,41 @@ function initHistory() {{
   }};
   fill("hSport", uniqOf("league"), labelFor);
   fill("hMarket", uniqOf("market"));
-  fill("hHome", uniqOf("home"));
-  fill("hAway", uniqOf("away"));
-  ["hSport", "hMarket", "hCond", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
+  // Equipo / Home / Away options are scoped to the selected sport and rebuilt
+  // whenever it changes; a selection still valid for the new sport is kept.
+  const refill = (id, vals) => {{
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.length = 1;                          // keep the "(todos)" option
+    vals.forEach(v => sel.add(new Option(v, v)));
+    sel.value = vals.includes(prev) ? prev : "";
+  }};
+  const fillTeams = () => {{
+    const lg = document.getElementById("hSport").value;
+    const rows = rowsArr.filter(r => !lg || r.dataset.league === lg);
+    const vals = a => rows.map(r => r.dataset[a]).filter(Boolean);
+    refill("hTeam", [...new Set([...vals("home"), ...vals("away")])].sort());
+    refill("hHome", [...new Set(vals("home"))].sort());
+    refill("hAway", [...new Set(vals("away"))].sort());
+  }};
+  fillTeams();
+  // registered before filterHistory so the team lists are rebuilt first
+  document.getElementById("hSport").addEventListener("input", fillTeams);
+  ["hSport", "hMarket", "hCond", "hTeam", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
     document.getElementById(id).addEventListener("input", filterHistory));
   filterHistory();
 }}
 function filterHistory() {{
   const table = document.getElementById("historyTable");
   const g = id => document.getElementById(id).value;
-  const lg = g("hSport"), mk = g("hMarket"), cn = g("hCond"),
+  const lg = g("hSport"), mk = g("hMarket"), cn = g("hCond"), tm = g("hTeam"),
         ho = g("hHome"), aw = g("hAway"), from = g("hFrom"), to = g("hTo");
   let picks = 0, closed = 0, wins = 0, losses = 0;
   table.querySelectorAll("tbody tr").forEach(r => {{
     const d = r.dataset;
     const ok = (!lg || d.league === lg) && (!mk || d.market === mk) &&
                (!cn || d.cond === cn) &&
+               (!tm || d.home === tm || d.away === tm) &&
                (!ho || d.home === ho) && (!aw || d.away === aw) &&
                (!from || d.fecha >= from) && (!to || d.fecha <= to);
     r.style.display = ok ? "" : "none";

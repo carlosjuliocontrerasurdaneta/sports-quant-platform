@@ -137,8 +137,9 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
     # history filter controls (hLine replaced back by hMarket, 2026-07-03)
-    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hCond"', 'id="hHome"',
-                 'id="hAway"', 'id="hFrom"', 'id="hTo"', 'id="historyTable"'):
+    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hCond"', 'id="hTeam"',
+                 'id="hHome"', 'id="hAway"', 'id="hFrom"', 'id="hTo"',
+                 'id="historyTable"'):
         assert ctrl in text
     assert 'id="hLine"' not in text
     # each history row carries the filter keys
@@ -155,6 +156,16 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     assert 'id="hHit"' in text
     # generic client-side sorting wired for the server-rendered grids
     assert "makeSortable(" in text and "initSortable()" in text
+
+
+def test_dashboard_history_team_lists_cascade_by_sport(tmp_path):
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    # the Equipo / Home / Away option lists are rebuilt from the rows of the
+    # selected sport whenever it changes, keeping a still-valid selection
+    assert 'id="hTeam"' in text
+    assert "fillTeams" in text
+    assert 'getElementById("hSport").addEventListener("input", fillTeams)' in text
 
 
 def test_pick_condition_uses_normalized_identity():
