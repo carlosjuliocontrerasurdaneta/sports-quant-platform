@@ -37,8 +37,11 @@ def _captured_dates(league: str) -> set[str]:
         try:
             col = pd.read_csv(f, usecols=["captured_at"])["captured_at"].astype(str)
             days.update(col.str[:10].unique())
-        except Exception:  # malformed/partial file: ignore, treat as not-captured
-            continue
+        except (OSError, ValueError, pd.errors.ParserError) as exc:
+            # A corrupt/partial snapshot must be visible: treating its date as
+            # uncaptured can trigger another paid API call on the next backfill.
+            log.warning("[%s] cannot read captured dates from %s: %s",
+                        league, f, exc)
     return days
 
 

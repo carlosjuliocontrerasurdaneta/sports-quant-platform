@@ -12,7 +12,7 @@ left in the month, so the daily run never exhausts the plan mid-month.
 import argparse
 import os
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -27,8 +27,7 @@ from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
                                  leagues_within_budget, request_cost_per_league)
 from sqp.pipeline.cleanup import (prune_stale_candidates,
                                   unsettled_completed_picks)
-from sqp.pipeline.daily import (_finalize, apply_global_exposure_cap,
-                                run_league)
+from sqp.pipeline.daily import apply_global_exposure_cap, run_league
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
 
 log = get_logger("sqp.run_all")
@@ -113,6 +112,7 @@ def main() -> int:
                     help="Open the HTML dashboard in the default browser when the "
                          "run finishes (used by RUN_DIARIO_ALL.bat)")
     args = ap.parse_args()
+    failures = 0
 
     settings = Settings.load()
     # Size today's stakes on the real running balance (initial + realized PnL +
@@ -158,14 +158,11 @@ def main() -> int:
         try:
             run_league(lg, settings, mode=args.mode)
         except Exception as exc:
+            failures += 1
             log.error("[%s] fallo en el pipeline: %s", lg, exc)
-            # Clear this league's picks so the report never shows a PRIOR day's
-            # candidates as today's after a transient failure. _finalize archives
-            # the old files first, so any un-settled pick stays recoverable.
-            try:
-                _finalize(lg, [], [], args.mode)
-            except Exception as exc2:
-                log.error("[%s] no se pudo limpiar picks tras el fallo: %s", lg, exc2)
+            # Preserve the prior file for settlement. Daily reports and the
+            # global cap are scoped by generated_at, so yesterday's candidates
+            # cannot masquerade as today's picks after this failure.
 
     pred_dir = (ROOT / "data" / "predictions" / ("demo" if args.mode == "demo" else ".")).resolve()
     if args.mode != "demo":
@@ -178,8 +175,10 @@ def main() -> int:
     # league alone, so a multi-league day could compound to N x that fraction.
     # Enforce the whole day's total here, after every league is written and stale
     # files pruned. Applies in both modes (demo sizes on the static bankroll).
-    factor = apply_global_exposure_cap(pred_dir, settings.bankroll,
-                                       settings.risk.max_total_exposure_pct)
+    run_day = datetime.now(timezone.utc).date().isoformat()
+    factor = apply_global_exposure_cap(
+        pred_dir, settings.bankroll, settings.risk.max_total_exposure_pct,
+        generated_day=run_day)
     if factor < 1.0:
         log.warning("Exposición global del día excedió %.0f%% del bankroll; stakes de "
                     "todas las ligas escalados por %.3f para respetar el cap global.",
@@ -188,6 +187,19 @@ def main() -> int:
     if not args.no_report:
         path = consolidated_report(pred_dir)
         log.info("Reporte consolidado (md) -> %s", path)
+        if args.mode == "demo":
+            # Demo data is isolated under predictions/demo + calibration/demo.
+            # Never let a synthetic run rewrite the real CLV gate, settled-bet
+            # audit, pick history, staging models or live calibration registry.
+            if not args.no_html:
+                demo_bets = ROOT / "data" / "bets" / "demo"
+                html_path = html_dashboard(
+                    pred_dir, demo_bets,
+                    patterns_path=pred_dir / "pick_history.csv")
+                log.info("Dashboard HTML demo -> %s", html_path)
+                if args.open_dashboard:
+                    open_in_browser(html_path)
+            return 1 if failures else 0
         # Refresh the realized-result artifacts the dashboard reads. Both are
         # best-effort: a failure here must never sink the daily run, which has
         # already produced the picks and the markdown report.
@@ -195,6 +207,7 @@ def main() -> int:
             audit_md = settlement_audit_report(ROOT / "data" / "bets")
             log.info("Auditoria de liquidacion (md) -> %s", audit_md)
         except Exception as exc:
+            failures += 1
             log.warning("No se pudo generar la auditoria de liquidacion: %s", exc)
         # CLV diario: mide precio de entrada vs cierre capturado sobre lo ya
         # liquidado y deja en el log el avance de la regla de salida del shadow
@@ -221,19 +234,19 @@ def main() -> int:
                      ", ".join(allowed) if allowed
                      else "ninguno (default-deny)")
         except Exception as exc:
+            failures += 1
             log.warning("No se pudo generar el analisis CLV: %s", exc)
         try:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))
             # Retrain per-(league, market) calibrators as CANDIDATES for NEXT runs.
-            # Trains on the SETTLED live bets (opening-anchored), NOT the
-            # closing-anchored backtest above: the pipeline serves opening-anchored
-            # probabilities, so only settled outcomes make live overconfidence
-            # learnable. Today's picks were already generated with the prior LIVE
+            # Trains on settled live bets UNION the graded served stream
+            # (opening-anchored), NOT the closing-anchored backtest above. Today's
+            # picks were already generated with the prior LIVE
             # models, so this cannot leak the current day into its own calibrator.
             # With calibration.auto_promote (2026-07-08) the gated staging
             # recommendation is then adopted into the LIVE registry (OOS gates +
-            # n_val guard, see auto_promote_calibrators); improvements apply from
+            # independent-event guard, see auto_promote_calibrators); improvements apply from
             # the NEXT run. Flag off = staging only, human promotion.
             cal = stage_calibrators_from_settled(settings)
             if cal:
@@ -257,6 +270,7 @@ def main() -> int:
                     log.info("Auto-promoción OFF: candidatos en staging; usa "
                              "scripts/promote_calibration.py para revisar y promover")
         except Exception as exc:
+            failures += 1
             log.warning("No se pudo construir el historial / recalibrar: %s", exc)
         if not args.no_html:
             html_path = html_dashboard(pred_dir, ROOT / "data" / "bets")
@@ -268,7 +282,7 @@ def main() -> int:
                 else:
                     log.warning("No se pudo abrir el navegador (entorno headless?). "
                                 "Abre manualmente: %s", html_path)
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

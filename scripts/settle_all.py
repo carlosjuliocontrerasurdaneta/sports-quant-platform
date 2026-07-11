@@ -34,10 +34,12 @@ def main() -> int:
     if not leagues:
         log.warning("No hay candidatos ni stream servido que liquidar.")
     total_new = 0
+    failures = 0
     for lg in leagues:
         try:
             settled = fetch_and_settle(lg, settings, days_from=args.days_from)
         except Exception as exc:
+            failures += 1
             log.error("[%s] fallo al liquidar: %s", lg, exc)
             continue
         if not settled.empty:
@@ -50,7 +52,10 @@ def main() -> int:
     path = settlement_audit_report()
     log.info("Total nuevas liquidadas: %d. Auditoria -> %s", total_new, path)
     print(f"Liquidadas {total_new} apuestas nuevas. Auditoria: {path}")
-    return 0
+    # DIARIO_COMPLETO.bat relies on this exit status to abort before the daily
+    # run. Returning success after one or more league failures made its documented
+    # safety guarantee ineffective.
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

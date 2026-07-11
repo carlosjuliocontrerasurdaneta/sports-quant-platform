@@ -40,6 +40,17 @@ def test_spread_novig_pairs_only_the_main_line():
     assert _spread_novig(cons, "New York Mets", "Atlanta Braves", None) == {}
 
 
+def test_consensus_even_book_count_uses_true_median():
+    from sqp.domain.models import Event, EventOdds, MarketLine
+    from sqp.pipeline.daily import _consensus_lines
+    eo = EventOdds(
+        Event("e", "basketball_nba", "nba", "A", "B",
+              "2099-01-01T00:00:00Z"),
+        [MarketLine("h2h", "b1", "A", 1.8),
+         MarketLine("h2h", "b2", "A", 2.0)])
+    assert _consensus_lines(eo)[("h2h", "A", None)] == 1.9
+
+
 def test_default_config_unpauses_mlb_totals_with_park_factor():
     # MLB totals was paused 2026-06-14, UN-PAUSED 2026-06-22 once the ballpark
     # factor (ratings.yaml mlb.park_bound) fixed totals OOS.
@@ -73,6 +84,8 @@ def test_zero_stake_flag_precedence():
     assert _zero_stake_flag(paused=False, suspect=False, shadow=True) == "shadow_mode"
     assert _zero_stake_flag(paused=True, suspect=True, shadow=True) == "market_paused"
     assert _zero_stake_flag(paused=False, suspect=True, shadow=True) == "edge_exceeds_max_plausible"
+    assert _zero_stake_flag(paused=False, suspect=False, shadow=False,
+                            incomplete_market=True) == "incomplete_market"
 
 
 def test_shadow_mode_settings_plumbing(monkeypatch):
