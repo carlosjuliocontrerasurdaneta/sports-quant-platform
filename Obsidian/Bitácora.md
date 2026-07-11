@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-07-11
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-07-11]] — filtro por condición Home/Away y tarjeta % aciertos en la pestaña Historial del dashboard.
 - [[Bitácora/2026-07-08]] — gate de CLV por mercado; KI-017 y KI-018 cerrados; scheduler final; bóveda Obsidian creada.
 
 ## Historia previa a la bóveda

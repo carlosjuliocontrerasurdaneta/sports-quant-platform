@@ -29,6 +29,7 @@ from sqp.audit.patterns import (conclusions, load_pick_history,
 from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled, rank_candidates)
 from sqp.config import ROOT
+from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
 # kind drives client-side sorting and formatting: "txt" | "num" | "pct" | "odds".
@@ -193,12 +194,24 @@ _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
 )
 
 
+def _pick_condition(selection: object, home: object, away: object) -> str:
+    """'home'/'away' when the selection is one of the two sides (normalized
+    identity, same criterion as settlement grading); '' when the selection is
+    not a team side (Over/Under, Draw)."""
+    key = normalize_key(str(selection))
+    if key and key == normalize_key(str(home)):
+        return "home"
+    if key and key == normalize_key(str(away)):
+        return "away"
+    return ""
+
+
 def _history_section(predictions_dir: Path, bets_dir: Path,
                      today: str | None = None) -> str:
     """Unified history: closed bets + open actionable picks, with filters
-    (sport/market/home/away/date) and totals cards (picks, closed, wins, losses)
-    recomputed client-side over the visible rows. Past picks that never settled
-    are hidden (not deleted)."""
+    (sport/market/condition home-away/team/date) and totals cards (picks,
+    closed, wins, losses, realized hit-rate) recomputed client-side over the
+    visible rows. Past picks that never settled are hidden (not deleted)."""
     from datetime import date
     from sqp.audit.report import load_history, visible_history
     today = today or date.today().isoformat()
@@ -213,11 +226,14 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
         '<div class="card"><span class="label">Picks cerrados</span><span class="value" id="hClosed">0</span></div>'
         '<div class="card"><span class="label">Wins</span><span class="value pos" id="hWins">0</span></div>'
         '<div class="card"><span class="label">Losses</span><span class="value neg" id="hLosses">0</span></div>'
+        '<div class="card"><span class="label">% aciertos</span><span class="value" id="hHit">&mdash;</span></div>'
         '</div>')
     controls = (
         '<div class="filters" id="historyFilters">'
         '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
         '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
+        '<label>Condicion<select id="hCond"><option value="">(todas)</option>'
+        '<option value="home">Home</option><option value="away">Away</option></select></label>'
         '<label>Home<select id="hHome"><option value="">(todos)</option></select></label>'
         '<label>Away<select id="hAway"><option value="">(todos)</option></select></label>'
         '<label>Desde<input type="date" id="hFrom"></label>'
@@ -237,6 +253,7 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
             f'data-market="{html.escape(str(row.get("market", "")))}" '
             f'data-home="{html.escape(str(row.get("home", "")))}" '
             f'data-away="{html.escape(str(row.get("away", "")))}" '
+            f'data-cond="{_pick_condition(row.get("selection"), row.get("home"), row.get("away"))}" '
             f'data-result="{html.escape(str(row.get("result", "")))}">{cells}</tr>')
     table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
              f'<tbody>{"".join(body)}</tbody></table>')
@@ -532,7 +549,8 @@ function initSortable() {{
   }});
 }}
 
-// Historial: filter rows by sport / market / home / away / date range (data-* on each row).
+// Historial: filter rows by sport / market / condition (home-away) / team / date
+// range (data-* on each row).
 function initHistory() {{
   const table = document.getElementById("historyTable");
   if (!table) return;
@@ -546,19 +564,20 @@ function initHistory() {{
   fill("hMarket", uniqOf("market"));
   fill("hHome", uniqOf("home"));
   fill("hAway", uniqOf("away"));
-  ["hSport", "hMarket", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
+  ["hSport", "hMarket", "hCond", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
     document.getElementById(id).addEventListener("input", filterHistory));
   filterHistory();
 }}
 function filterHistory() {{
   const table = document.getElementById("historyTable");
   const g = id => document.getElementById(id).value;
-  const lg = g("hSport"), mk = g("hMarket"), ho = g("hHome"), aw = g("hAway"),
-        from = g("hFrom"), to = g("hTo");
+  const lg = g("hSport"), mk = g("hMarket"), cn = g("hCond"),
+        ho = g("hHome"), aw = g("hAway"), from = g("hFrom"), to = g("hTo");
   let picks = 0, closed = 0, wins = 0, losses = 0;
   table.querySelectorAll("tbody tr").forEach(r => {{
     const d = r.dataset;
     const ok = (!lg || d.league === lg) && (!mk || d.market === mk) &&
+               (!cn || d.cond === cn) &&
                (!ho || d.home === ho) && (!aw || d.away === aw) &&
                (!from || d.fecha >= from) && (!to || d.fecha <= to);
     r.style.display = ok ? "" : "none";
@@ -570,6 +589,8 @@ function filterHistory() {{
   }});
   const set = (id, v) => {{ const e = document.getElementById(id); if (e) e.textContent = v; }};
   set("hPicks", picks); set("hClosed", closed); set("hWins", wins); set("hLosses", losses);
+  const graded = wins + losses;   // hit-rate realizado: excluye push/void y picks abiertos
+  set("hHit", graded ? (100 * wins / graded).toFixed(1) + "%" : "—");
   set("hCount", picks + " filas");
 }}
 

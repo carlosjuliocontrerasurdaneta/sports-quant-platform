@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-07-11
 ---
 
 # Tareas
@@ -24,6 +24,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-11 — Filtro por condición Home/Away + tarjeta % aciertos en pestaña Historial del dashboard.
 - [x] 2026-07-08 — Gate de CLV por (liga, mercado) (`bc27252`).
 - [x] 2026-07-08 — KI-018: "nan" en columna Línea (`11bd999`).
 - [x] 2026-07-08 — KI-017: e2e de liquidación de tenis (`7471ce4`).

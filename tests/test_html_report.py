@@ -32,12 +32,17 @@ def _settled() -> pd.DataFrame:
         {"event_id": "e1", "league": "nba", "market": "spreads", "selection": "A",
          "line": -2.5, "price_decimal": 1.91, "stake": 10.0, "result": "win",
          "pnl": 9.1, "estimated_edge": 0.10, "estimated_probability": 0.58,
-         "game_date": "2026-06-12", "home": "TeamA", "away": "TeamB",
+         "game_date": "2026-06-12", "home": "A", "away": "B",
          "settled_at": "2026-06-12T03:00:00+00:00"},
-        {"event_id": "e2", "league": "nba", "market": "h2h", "selection": "B",
+        {"event_id": "e2", "league": "nba", "market": "h2h", "selection": "D",
          "line": None, "price_decimal": 2.1, "stake": 10.0, "result": "loss",
          "pnl": -10.0, "estimated_edge": 0.08, "estimated_probability": 0.52,
-         "game_date": "2026-06-13", "home": "TeamC", "away": "TeamD",
+         "game_date": "2026-06-13", "home": "C", "away": "D",
+         "settled_at": "2026-06-13T03:00:00+00:00"},
+        {"event_id": "e3", "league": "nba", "market": "totals", "selection": "Over",
+         "line": 220.5, "price_decimal": 1.95, "stake": 10.0, "result": "win",
+         "pnl": 9.5, "estimated_edge": 0.06, "estimated_probability": 0.55,
+         "game_date": "2026-06-13", "home": "E", "away": "F",
          "settled_at": "2026-06-13T03:00:00+00:00"},
     ])
 
@@ -132,8 +137,8 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
     # history filter controls (hLine replaced back by hMarket, 2026-07-03)
-    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hHome"', 'id="hAway"',
-                 'id="hFrom"', 'id="hTo"', 'id="historyTable"'):
+    for ctrl in ('id="hSport"', 'id="hMarket"', 'id="hCond"', 'id="hHome"',
+                 'id="hAway"', 'id="hFrom"', 'id="hTo"', 'id="historyTable"'):
         assert ctrl in text
     assert 'id="hLine"' not in text
     # each history row carries the filter keys
@@ -141,8 +146,25 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     assert 'data-league="nba"' in text
     assert 'data-market=' in text
     assert 'data-home=' in text
+    # condition derived per row: settled e1 picked the home side, e2 the away
+    # side, and the Over pick is not a team side
+    assert 'data-cond="home"' in text
+    assert 'data-cond="away"' in text
+    assert 'data-cond=""' in text
+    # realized hit-rate card recomputed with the active filters
+    assert 'id="hHit"' in text
     # generic client-side sorting wired for the server-rendered grids
     assert "makeSortable(" in text and "initSortable()" in text
+
+
+def test_pick_condition_uses_normalized_identity():
+    # same criterion as settlement grading: accents/casing must not break the
+    # home/away match; Over/Under and Draw are not team sides
+    assert html_report._pick_condition("Atlético Madrid", "Atletico Madrid", "Real") == "home"
+    assert html_report._pick_condition("real", "Atletico Madrid", "Real") == "away"
+    assert html_report._pick_condition("Over", "A", "B") == ""
+    assert html_report._pick_condition("Draw", "A", "B") == ""
+    assert html_report._pick_condition(None, "A", "B") == ""
 
 
 def test_dashboard_line_without_point_renders_dash_not_nan(tmp_path):
