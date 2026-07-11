@@ -1,7 +1,8 @@
 """Realized-ROI backtest: closing-snapshot selection, result matching, summary."""
 import pandas as pd
 
-from sqp.backtesting.roi_engine import (_match_index, _match_result, _summarize,
+from sqp.backtesting.roi_engine import (_apply_backtest_daily_cap, _match_index,
+                                        _match_result, _summarize,
                                         discover_leagues_with_odds,
                                         load_closing_odds, realized_roi_backtest)
 from sqp.config import RiskConfig
@@ -65,6 +66,17 @@ def test_summarize_computes_realized_roi_and_by_market():
 def test_summarize_empty_is_safe():
     out = _summarize("mlb", pd.DataFrame(), n_matched=0)
     assert out["n_bets"] == 0 and out["by_market"].empty
+
+
+def test_backtest_daily_cap_is_applied_per_day():
+    cands = pd.DataFrame([
+        {"date": "2026-06-01", "stake": 80.0},
+        {"date": "2026-06-01", "stake": 80.0},
+        {"date": "2026-06-02", "stake": 20.0},
+    ])
+    out = _apply_backtest_daily_cap(cands, bankroll=1000.0, cap_pct=0.10)
+    assert out[out["date"] == "2026-06-01"]["stake"].sum() == 100.0
+    assert out[out["date"] == "2026-06-02"]["stake"].sum() == 20.0
 
 
 def test_discover_leagues_with_odds(tmp_path):

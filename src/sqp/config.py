@@ -4,12 +4,9 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 import yaml
+from dotenv import load_dotenv
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:  # pragma: no cover - dotenv optional at runtime
-    pass
+load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "configs"
@@ -106,8 +103,8 @@ class Settings:
         default_factory=lambda: os.getenv("CALIBRATION_METHOD", "isotonic"))
     # Auto-correction (2026-07-08): after the daily staging retrain, promote
     # into the LIVE registry the candidates that passed the OOS gates (ECE +
-    # Brier + monotonicity) with enough validation sample, and demote what the
-    # retrain no longer recommends. OFF by default: with the flag unset the
+    # Brier + monotonicity) with enough independent validation events, and
+    # demote what the retrain no longer recommends. OFF by default: with the flag unset the
     # promotion stays a deliberate human step (scripts/promote_calibration.py).
     calibration_auto_promote: bool = field(
         default_factory=lambda: os.getenv("CALIBRATION_AUTO_PROMOTE", "").lower()
@@ -125,6 +122,46 @@ class Settings:
         in ("1", "true", "yes"))
     clv_gate_min_n: int = field(
         default_factory=lambda: int(os.getenv("CLV_GATE_MIN_N", "30")))
+
+    def validate(self) -> "Settings":
+        """Fail fast on unsafe or internally inconsistent operator settings."""
+        if self.mode not in ("demo", "live"):
+            raise ValueError(f"SQP_MODE must be 'demo' or 'live', got {self.mode!r}")
+        if self.bankroll <= 0:
+            raise ValueError("BANKROLL must be > 0")
+        bounded = {
+            "KELLY_FRACTION": self.risk.kelly_fraction,
+            "MAX_STAKE_PCT": self.risk.max_stake_pct,
+            "MAX_DAILY_EXPOSURE_PCT": self.risk.max_daily_exposure_pct,
+            "MAX_TOTAL_EXPOSURE_PCT": self.risk.max_total_exposure_pct,
+            "MARKET_SHRINK": self.risk.market_shrink,
+        }
+        for name, value in bounded.items():
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1, got {value}")
+        nonnegative = {
+            "MIN_EDGE": self.risk.min_edge,
+            "MAX_PLAUSIBLE_EDGE": self.risk.max_plausible_edge,
+            "UNCERTAINTY_PENALTY": self.risk.uncertainty_penalty,
+            "ANOMALY_EDGE_GAP": self.risk.anomaly_edge_gap,
+            "ANOMALY_EXTRA_PENALTY": self.risk.anomaly_extra_penalty,
+            "LOW_BOOK_PENALTY": self.risk.low_book_penalty,
+        }
+        for name, value in nonnegative.items():
+            if value < 0:
+                raise ValueError(f"{name} must be >= 0, got {value}")
+        if self.risk.max_plausible_edge < self.risk.min_edge:
+            raise ValueError("MAX_PLAUSIBLE_EDGE must be >= MIN_EDGE")
+        if self.risk.min_books_for_consensus < 0:
+            raise ValueError("MIN_BOOKS_FOR_CONSENSUS must be >= 0")
+        if self.event_horizon_days < 0:
+            raise ValueError("MAX_EVENT_HORIZON_DAYS must be >= 0")
+        if self.clv_gate_min_n < 1:
+            raise ValueError("CLV_GATE_MIN_N must be >= 1")
+        if self.calibration_method not in ("isotonic", "beta", "auto"):
+            raise ValueError(
+                "CALIBRATION_METHOD must be isotonic, beta or auto")
+        return self
 
     @classmethod
     def load(cls) -> "Settings":
@@ -174,4 +211,4 @@ class Settings:
                 s.bankroll = float(bk["initial"])
             if "BANKROLL_DYNAMIC" not in os.environ and "dynamic" in bk:
                 s.bankroll_dynamic = bool(bk["dynamic"])
-        return s
+        return s.validate()

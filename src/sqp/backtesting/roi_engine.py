@@ -1,7 +1,7 @@
 """Realized-ROI backtest over captured historical odds + final results.
 
 Unlike the calibration backtest (engine.py), this measures REALIZED ROI: it
-replays the live pipeline's exact staking logic against the odds as they stood
+replays the core single-league staking logic against the odds as they stood
 before each game (the last captured snapshot strictly before commence_time) and
 grades the resulting bets with the production settlement code.
 
@@ -9,11 +9,12 @@ No lookahead: ratings are built strictly walk-forward (each game estimated
 before it is observed), and only odds snapshots dated before commence are used.
 Coverage is limited to games for which historical odds were captured.
 
-This replays market-shrink + Kelly staking, but intentionally does NOT apply the
-live per-(league, market) calibrator: the pick history produced here is exactly
-what those calibrators are trained on, so calibrating within the backtest would
-be circular. Realized ROI here therefore reflects the uncalibrated (shrunk)
-probability; the live run additionally calibrates when CALIBRATION_ENABLED.
+This replays market-shrink, edge penalties, Kelly staking and the per-league
+daily exposure cap, but intentionally does NOT apply today's live calibrator to
+past rows (that would leak a model trained with later outcomes). The global
+cross-league cap, dynamic bankroll, shadow mode and CLV gate are also outside
+this single-league benchmark. It is therefore not an exact reconstruction of
+live capital deployment and cannot prove a production edge.
 
 Realized ROI is the field truth that calibration cannot provide; it is still a
 backtest (selection, regime change, single closing snapshot rather than true
@@ -135,6 +136,20 @@ def _model_map(est, event: Event, spread, total) -> dict:
     return mm
 
 
+def _apply_backtest_daily_cap(candidates: pd.DataFrame, bankroll: float,
+                              cap_pct: float) -> pd.DataFrame:
+    """Apply the production per-league exposure cap independently per game day."""
+    if candidates.empty or cap_pct <= 0 or bankroll <= 0 or "date" not in candidates:
+        return candidates
+    out = candidates.copy()
+    cap = bankroll * cap_pct
+    for _day, idx in out.groupby("date").groups.items():
+        total = float(out.loc[idx, "stake"].clip(lower=0).sum())
+        if total > cap and total > 0:
+            out.loc[idx, "stake"] = (out.loc[idx, "stake"] * (cap / total)).round(2)
+    return out
+
+
 def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                           league: str, family: str, league_params: dict | None,
                           risk, bankroll: float, warmup: int = 60,
@@ -182,6 +197,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                         fair = _spread_novig(cons, ev.home, ev.away, spread).get(key[1])
                     else:
                         fair = _novig_probs(cons, key[0], key[2]).get(key[1])
+                    if fair is None:
+                        continue  # incomplete market: the live pipeline cannot remove vig
                     s = risk.market_shrink
                     p_used = (1.0 - s) * p_model + s * fair if (fair is not None and s > 0) else p_model
                     e = edge(p_used, price)
@@ -210,6 +227,9 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                         "estimated_probability": round(p_used, 4)})
         adapter.observe(r)
     cands = pd.DataFrame(cand_rows)
+    if not cands.empty:
+        cands = _apply_backtest_daily_cap(
+            cands, bankroll, getattr(risk, "max_daily_exposure_pct", 0.0))
     settled = settle_candidates(cands, scores) if not cands.empty else pd.DataFrame()
     out = _summarize(league, settled, n_matched)
     out["settled"] = settled  # per-bet detail (team, side, result) for history/audit

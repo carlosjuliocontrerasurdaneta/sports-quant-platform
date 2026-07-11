@@ -21,8 +21,8 @@ risk:
   # over captured odds (1654 bets, mostly MLB): aggregate realized ROI -0.74% ->
   # +0.37% and staked exposure roughly halved (MLB and WNBA both improved). Still
   # ~break-even and in-sample on parameters -> not a profit claim. Disable by
-  # setting the coefficients to 0. max_plausible_edge left at 0.15 pending its own
-  # check (project-2 ceiling is 0.075).
+  # setting the coefficients to 0. max_plausible_edge was later validated and
+  # lowered separately to 0.075 (see above).
   uncertainty_penalty: 0.35
   anomaly_edge_gap: 0.06
   anomaly_extra_penalty: 0.02
@@ -30,8 +30,7 @@ risk:
   min_books_for_consensus: 2
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
-# after verifying the ledger balance (937.28 = 1000 - 62.72 over 93 graded bets,
-# consistent with the settlement audit). When dynamic, the live run sizes Kelly +
+# Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +
 # the daily-exposure cap on the running balance; demo keeps the static initial.
 # See sqp.risk.bankroll; audit anytime with scripts/bankroll_status.py.
 bankroll:
@@ -53,10 +52,11 @@ calibration:
   # Auto-correccion (ACTIVADA 2026-07-08, directiva del usuario: loop unificado
   # de autoevaluacion): tras el retrain diario a staging, el ciclo promueve a
   # LIVE los calibradores que pasan los gates OOS (ECE + Brier + monotonia) con
-  # n_val >= 15, y demota lo que el retrain ya no recomienda. Rastro auditable
+  # n_val_events >= 15 EVENTOS INDEPENDIENTES (no lados correlacionados del mismo
+  # partido), y demota lo que el retrain ya no recomienda. Rastro auditable
   # en data/models/promotion_log.csv. Revierte la regla de promocion solo-humana
   # del 2026-06-30: el gate de Brier que falto en aquel incidente ya existe y
-  # esta testeado; el guard de n_val cubre el caso escalon (n_val=9) del
+  # esta testeado; el guard de n_val_events cubre el caso escalon (n_val=9) del
   # 2026-07-02. false = staging + promocion humana (scripts/promote_calibration.py).
   auto_promote: true
 # Markets suspended from staking (still estimated; picks recorded flagged
@@ -67,11 +67,11 @@ calibration:
 paused_markets: {}
 # Shadow mode (ENABLED 2026-07-04): picks are selected exactly as in real mode
 # but recorded with stake 0, flagged "shadow_mode". Rationale: realized ROI
-# -15.3% over 390 settled bets and adversely-selected CLV mean no market has a
+# -15.26% over 431 graded bets and non-positive median CLV mean no market has a
 # demonstrated edge; shadow keeps settlement/CLV/calibration evidence accruing
-# at zero capital risk. Exit rule agreed with the user: revisit after ~100 new
-# picks — promote a market to minimal real stakes only if its median CLV is
-# positive AND a calibrator passes the OOS Brier gate; otherwise stay shadow.
+# at zero capital risk. Exit rule: evaluate by market and lift shadow only by a
+# human decision when median CLV is strictly positive with adequate sample AND
+# calibration passes its OOS/event gate; otherwise stay shadow.
 # Env var SHADOW_MODE (when set) wins over this key.
 shadow_mode: true
 # CLV gate per (league, market) (ENABLED 2026-07-08): allow-list layered UNDER

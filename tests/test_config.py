@@ -1,4 +1,6 @@
 """Settings env overrides for the risk caps."""
+import pytest
+
 from sqp.config import Settings
 
 
@@ -19,3 +21,15 @@ def test_exposure_caps_fall_back_to_config_without_env(monkeypatch):
     # Shipped configs/default.yaml ships 0.10 for both.
     assert s.risk.max_daily_exposure_pct == 0.10
     assert s.risk.max_total_exposure_pct == 0.10
+
+
+@pytest.mark.parametrize("name,value", [
+    ("KELLY_FRACTION", "1.1"),
+    ("MARKET_SHRINK", "-0.1"),
+    ("MAX_TOTAL_EXPOSURE_PCT", "2"),
+    ("CLV_GATE_MIN_N", "0"),
+])
+def test_invalid_risk_configuration_fails_fast(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError):
+        Settings.load()
