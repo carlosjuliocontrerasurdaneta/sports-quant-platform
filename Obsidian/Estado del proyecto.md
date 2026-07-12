@@ -29,7 +29,7 @@ actualizada: 2026-07-12
 - **Train ≠ promote**: el reentreno diario *presenta candidatos* (staging); desde el 2026-07-08 la **auto-promoción gated** está activa (`auto_promote: true`): promueve a live solo candidatos que pasan los gates OOS (ECE + Brier + monotonía) y, desde el 2026-07-11, con **≥15 eventos independientes** de validación (no lados correlacionados del mismo partido — port del linaje Nc2, commit `a2027b9`). `scripts/promote_calibration.py` sigue como vía manual.
 - **Fix del mismatch train/serve** (2026-07-01, `d39f975`): se entrenaba con historial anclado al cierre pero se servía anclado a apertura; ahora entrena sobre `data/bets/settled_*.csv` (distribución de servicio).
 - **Stream de probabilidades servidas** (2026-07-05/07, `578ace6`): `ServedStore` captura la distribución completa de probabilidades servidas (no solo los picks apostados) para entrenar calibradores sin sesgo de selección. Liquidación del stream integrada para todas las ligas no-tenis.
-- Primer candidato en staging: MLB spreads (ECE OOS +0.0524). Promoción pendiente de revisión.
+- **Staging vacío al 2026-07-12**: el candidato MLB spreads del 07-01 (ECE OOS +0.0524) dejó de regenerarse — con los datos actuales y los gates vigentes (Brier OOS desde 06-30, monotonía, ≥15 eventos independientes desde 07-11), los 8 mercados con muestra suficiente fallan al menos un gate. Ej.: mlb_spreads iso mejora ECE (0.1461→0.1076) pero empeora Brier OOS → descartado. No hay nada que promover; el sistema sigue sirviendo probabilidades crudas por diseño.
 
 ## Modelo — fixes recientes
 
@@ -61,6 +61,6 @@ actualizada: 2026-07-12
 Lista viva en [[Tareas]]. Resumen:
 
 - [ ] Evaluar la regla de salida del shadow (CLV mediana + Brier). El volumen ya está (n=191 con cierre genuino al 07-12); falta que algún mercado logre mediana > 0 con n≥30 y que un calibrador pase el gate de Brier.
-- [ ] Revisar/promover el candidato de calibración MLB spreads.
+- [x] ~~Revisar/promover el candidato de calibración MLB spreads~~ — obsoleto al 07-12: el candidato ya no se regenera (falla el gate de Brier OOS con los datos actuales); staging vacío, nada que promover.
 - [ ] Seguimiento del quota-guard del proveedor de odds.
 - [x] ~~Deuda del dashboard-history~~: escrituras atómicas en settle (07-01), filtro/"nan" de Línea (KI-018, `11bd999`) y e2e de tenis (KI-017, `7471ce4`) — todo cerrado.

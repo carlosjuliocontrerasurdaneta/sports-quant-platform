@@ -11,7 +11,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## En curso (fase shadow — el sistema trabaja solo)
 
 - [ ] **Evaluar la regla de salida del shadow** (CLV mediano + Brier). Volumen cumplido (n=191 con cierre genuino al 07-12, tras el filtro de frescura ≤90 min); falta que algún (liga, mercado) logre mediana > 0 con n≥30 (el más cercano: WTA Wimbledon h2h, n=21) y que un calibrador pase el gate de Brier. El run diario + captura horaria lo hacen automáticamente; revisar la auditoría CLV periódicamente.
-- [ ] **Revisar/promover el candidato de calibración MLB spreads** en staging (ECE OOS +0.0524) vía `scripts/promote_calibration.py`. Decisión humana.
+- [x] 2026-07-12 — ~~Revisar/promover el candidato de calibración MLB spreads~~. Obsoleto: staging está vacío — el candidato del 07-01 no se regenera con los gates vigentes (iso mejora ECE 0.1461→0.1076 pero empeora Brier OOS; beta falla Brier+monotonía). Nada que promover; ver [[Bitácora/2026-07-12]].
 
 ## Backlog
 
