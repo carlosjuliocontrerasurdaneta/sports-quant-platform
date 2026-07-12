@@ -32,6 +32,18 @@ def test_load_closing_odds_picks_last_snapshot_before_commence(tmp_path):
     assert prices == [1.9]                     # only the last strictly-pre-commence snapshot
 
 
+def test_load_closing_odds_max_age_drops_stale_events(tmp_path):
+    commence = "2026-06-10T23:00:00Z"
+    base = {"event_id": "e1", "commence_time": commence, "home": "Rays", "away": "Red Sox",
+            "market": "h2h", "point": "", "bookmaker": "dk"}
+    # Only snapshot is 12h before commence: fine as entry proxy (default),
+    # rejected as closing proxy under a freshness threshold.
+    _write_odds(tmp_path, [{**base, "captured_at": "2026-06-10T11:00:00Z",
+                            "outcome": "Rays", "price_decimal": 1.7}])
+    assert set(load_closing_odds(tmp_path, "test")) == {"e1"}
+    assert load_closing_odds(tmp_path, "test", max_age_min=90) == {}
+
+
 def test_match_result_by_name_and_date_window():
     from sqp.domain.models import Event, EventOdds, MarketLine
     eo = EventOdds(event=Event(event_id="e1", sport_key="bt", league="test",

@@ -1,12 +1,12 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-11
+actualizada: 2026-07-12
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-07-11 (commit `96d8535` en `main`). Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-07-12. Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
 
 ## Modo operativo: SHADOW MODE
@@ -15,6 +15,7 @@ actualizada: 2026-07-11
 - Todos los picks se generan y registran con **stake 0** (tenis incluido); no hay dinero en juego.
 - **Regla de salida**: mediana de CLV positiva + pasar el gate de Brier tras ~100 picks liquidados.
 - **Gate de CLV por (liga, mercado)** (2026-07-08, `bc27252`): la salida del shadow es POR MERCADO — allow-list default-deny, ≥30 apuestas con CLV mediano positivo. Ver [[Conocimiento/CLV y selección adversa]].
+- **Filtro de frescura del cierre** (2026-07-12): solo cuenta como cierre un snapshot a ≤90 min del comienzo; antes el 59% de las apuestas emparejaba contra el snapshot matinal (CLV≡0 por construcción) y la mediana del gate quedaba clavada en 0. Estado honesto: n=191 emparejadas, batió-el-cierre 41%, ningún mercado habilitado aún (el más cercano: WTA Wimbledon h2h, mediana +0.46%, n=21/30).
 - Balance congelado: 915.75.
 
 ## Por qué estamos en shadow
@@ -59,7 +60,7 @@ actualizada: 2026-07-11
 
 Lista viva en [[Tareas]]. Resumen:
 
-- [ ] Acumular ~100 picks liquidados en shadow y evaluar la regla de salida (CLV mediana + Brier).
+- [ ] Evaluar la regla de salida del shadow (CLV mediana + Brier). El volumen ya está (n=191 con cierre genuino al 07-12); falta que algún mercado logre mediana > 0 con n≥30 y que un calibrador pase el gate de Brier.
 - [ ] Revisar/promover el candidato de calibración MLB spreads.
 - [ ] Seguimiento del quota-guard del proveedor de odds.
 - [x] ~~Deuda del dashboard-history~~: escrituras atómicas en settle (07-01), filtro/"nan" de Línea (KI-018, `11bd999`) y e2e de tenis (KI-017, `7471ce4`) — todo cerrado.

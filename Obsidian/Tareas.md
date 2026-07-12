@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-11
+actualizada: 2026-07-12
 ---
 
 # Tareas
@@ -10,7 +10,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## En curso (fase shadow — el sistema trabaja solo)
 
-- [ ] **Acumular ~100 picks liquidados en shadow** y evaluar la regla de salida (CLV mediano + Brier). El run diario + captura horaria lo hacen automáticamente; revisar la auditoría CLV periódicamente.
+- [ ] **Evaluar la regla de salida del shadow** (CLV mediano + Brier). Volumen cumplido (n=191 con cierre genuino al 07-12, tras el filtro de frescura ≤90 min); falta que algún (liga, mercado) logre mediana > 0 con n≥30 (el más cercano: WTA Wimbledon h2h, n=21) y que un calibrador pase el gate de Brier. El run diario + captura horaria lo hacen automáticamente; revisar la auditoría CLV periódicamente.
 - [ ] **Revisar/promover el candidato de calibración MLB spreads** en staging (ECE OOS +0.0524) vía `scripts/promote_calibration.py`. Decisión humana.
 
 ## Backlog
@@ -24,6 +24,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-12 — Auditoría de la masa de CLV=0 y filtro de frescura del cierre (≤90 min) en la auditoría CLV; el gate deja de estar sesgado a mediana 0. Ver [[Bitácora/2026-07-12]].
 - [x] 2026-07-11 — Port del linaje Nc2 a `C:\dev` (5 commits `a2027b9`..`96d8535`: eventos independientes en calibración, `beat_close` estricto, mediana real de consenso, scoping por día, exit codes, `Settings.validate()`) y retiro de la copia paralela de `C:\Nueva carpeta (2)` (tareas `_Nc2` eliminadas, respaldo en `C:\ZIP`).
 - [x] 2026-07-11 — Filtro por condición Home/Away + tarjeta % aciertos en pestaña Historial del dashboard.
 - [x] 2026-07-08 — Gate de CLV por (liga, mercado) (`bc27252`).

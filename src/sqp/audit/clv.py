@@ -6,7 +6,9 @@ consistente (CLV positivo) es el mejor predictor conocido de rentabilidad a
 largo plazo; CLV negativo significa precios sistematicamente malos (perdida
 estructural, no varianza). Es un diagnostico, no una promesa: el proxy de
 cierre es el consenso mediano del ultimo snapshot capturado antes del comienzo
-del evento, con cobertura limitada a lo que CAPTURE_CLOSE haya guardado.
+del evento — y solo si ese snapshot es reciente (CLOSE_MAX_AGE_MIN); un
+snapshot matinal no es un cierre y produciria CLV=0 por construccion. La
+cobertura queda limitada a lo que CAPTURE_CLOSE haya guardado.
 """
 from __future__ import annotations
 
@@ -26,6 +28,15 @@ from sqp.risk.clv_gate import CLV_GATE_MIN_N, gate_decisions, write_clv_gate
 # Brier) se evalua en la capa de calibracion.
 SHADOW_EXIT_MIN_N = 100
 
+# Frescura maxima del snapshot de cierre (minutos antes del comienzo) para que
+# una apuesta cuente en el CLV. Auditoria 2026-07-12: sin este filtro, el 59%
+# de las apuestas emparejadas tenia CLV exactamente 0 porque su "cierre" era el
+# snapshot matinal (mediana de antiguedad ~2.8h, p75 >10h) — el mismo del que
+# salio el precio de entrada — sesgando la mediana del gate hacia cero. Con
+# captura horaria (CAPTURE_CLOSE, ventana 120 min) un snapshot a <=90 min del
+# comienzo si es un proxy razonable de cierre.
+CLOSE_MAX_AGE_MIN = 90.0
+
 
 def _point(market: str, line) -> float | None:
     if market == "h2h":
@@ -36,10 +47,14 @@ def _point(market: str, line) -> float | None:
         return None
 
 
-def compute_clv(bets_dir: Path, root: Path) -> tuple[pd.DataFrame, int]:
+def compute_clv(bets_dir: Path, root: Path,
+                max_age_min: float | None = CLOSE_MAX_AGE_MIN
+                ) -> tuple[pd.DataFrame, int]:
     """CLV por apuesta para cada apuesta liquidada (win/loss) emparejable a un
-    precio de cierre capturado. Devuelve (filas, n_sin_cierre); las filas traen
-    league, market, selection, result, entry, close, clv_pct y beat_close."""
+    precio de cierre capturado a lo sumo ``max_age_min`` minutos antes del
+    comienzo (sin captura fresca la apuesta cuenta como sin_cierre). Devuelve
+    (filas, n_sin_cierre); las filas traen league, market, selection, result,
+    entry, close, clv_pct y beat_close."""
     settled = load_all_settled(bets_dir)
     if settled.empty:
         return pd.DataFrame(), 0
@@ -47,7 +62,7 @@ def compute_clv(bets_dir: Path, root: Path) -> tuple[pd.DataFrame, int]:
 
     cons_cache: dict[str, dict] = {}
     for lg in sorted(settled["league"].unique()):
-        odds = load_closing_odds(root, lg)
+        odds = load_closing_odds(root, lg, max_age_min=max_age_min)
         cons_cache[lg] = {eid: _consensus_lines(eo) for eid, eo in odds.items()}
 
     rows: list[dict] = []
@@ -144,7 +159,9 @@ def daily_clv(bets_dir: Path | None = None, root: Path | None = None,
             "## Por resultado (con edge real, los ganadores baten mas el cierre)",
             clv_segments(df, ["result"]).to_string(index=False), "",
             "CLV positivo = entrada a mejor precio que el cierre. Proxy de "
-            "cierre = consenso mediano capturado; cobertura limitada.",
+            "cierre = consenso mediano capturado a <="
+            f"{CLOSE_MAX_AGE_MIN:.0f} min del comienzo; apuestas sin captura "
+            "fresca cuentan como sin_cierre (cobertura limitada).",
         ]
     lines += ["", f"> {DISCLAIMER}"]
     bets_dir.mkdir(parents=True, exist_ok=True)

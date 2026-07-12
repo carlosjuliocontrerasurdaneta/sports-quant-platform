@@ -49,9 +49,16 @@ def discover_leagues_with_odds(root: Path) -> list[str]:
     return sorted(leagues)
 
 
-def load_closing_odds(root: Path, league: str) -> dict[str, EventOdds]:
+def load_closing_odds(root: Path, league: str,
+                      max_age_min: float | None = None) -> dict[str, EventOdds]:
     """event_id -> EventOdds built from the last snapshot strictly before each
-    event's commence_time (the captured proxy for closing odds)."""
+    event's commence_time (the captured proxy for closing odds).
+
+    ``max_age_min`` drops events whose last pre-commence snapshot is older than
+    that many minutes before commence: a morning snapshot is a valid *entry*
+    proxy for the ROI backtest (default, None) but not a *closing* proxy for
+    CLV — when entry and "close" come from the same snapshot, CLV is 0 by
+    construction and dilutes the median toward zero."""
     odds_dir = root / "data" / "odds"
     files = sorted(odds_dir.glob(f"odds_{league}_*.csv"))
     if not files:
@@ -63,6 +70,15 @@ def load_closing_odds(root: Path, league: str) -> dict[str, EventOdds]:
         pre = g[g["captured_at"].astype(str) < commence]
         if pre.empty:
             continue
+        if max_age_min is not None:
+            try:
+                age_min = (pd.Timestamp(commence)
+                           - pd.Timestamp(str(pre["captured_at"].max()))
+                           ).total_seconds() / 60.0
+            except (ValueError, TypeError):
+                continue
+            if age_min > max_age_min:
+                continue
         snap = pre[pre["captured_at"] == pre["captured_at"].max()]
         lines = [MarketLine(market=str(r.market), bookmaker=str(r.bookmaker),
                             outcome=str(r.outcome), price_decimal=float(r.price_decimal),

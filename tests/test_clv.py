@@ -84,6 +84,19 @@ def test_compute_clv_unmatched_when_no_closing_capture(tmp_path):
     assert df.empty and unmatched == 1
 
 
+def test_compute_clv_unmatched_when_snapshot_is_stale(tmp_path):
+    # Ultimo snapshot 12h antes del comienzo (el matinal): no es un cierre.
+    # Sin el filtro de frescura, entry==close daria CLV=0 por construccion.
+    _write_odds(tmp_path, [_odds_row(captured_at="2026-07-01T11:00:00Z")])
+    _write_settled(tmp_path, [_settled_row()])
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
+    assert df.empty and unmatched == 1
+    # El mismo snapshot cuenta si se relaja la frescura explicitamente.
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path,
+                                max_age_min=None)
+    assert unmatched == 0 and len(df) == 1
+
+
 def test_compute_clv_ignores_push_and_void(tmp_path):
     _write_odds(tmp_path, [_odds_row()])
     _write_settled(tmp_path, [_settled_row(result="push"),
