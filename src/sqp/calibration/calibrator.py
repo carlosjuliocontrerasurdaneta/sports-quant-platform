@@ -66,6 +66,23 @@ def _is_monotone_increasing(predict, lo: float = 0.01, hi: float = 0.99,
     return bool(np.all(np.diff(vals) >= -tol))
 
 
+def _no_extreme_expansion(predict, lo: float = 0.05, hi: float = 0.95,
+                          n: int = 19) -> bool:
+    """True when ``predict`` never inflates a non-extreme input into
+    near-certainty: no input <= 0.90 may map to >= 0.95. That inflation is the
+    signature of the 2026-06-30 incident (and the 2026-07-13 wnba_h2h
+    candidate): a monotone isotonic step fit on a small sample that sends
+    favorites to 0.9+ and manufactures phantom edges, while still passing the
+    ECE, Brier AND monotonicity gates on a small validation split. Only the
+    high side is guarded: picks exist where estimated > implied, so inflating
+    probabilities creates phantom edges, whereas a downward correction (e.g.
+    0.10 -> 0.02 for a genuinely overconfident model) merely suppresses picks
+    and must stay allowed. Compression toward the middle always passes."""
+    grid = np.linspace(lo, hi, n)
+    vals = np.asarray(predict(grid), dtype=float)
+    return not bool(np.any((grid <= 0.90) & (vals >= 0.95)))
+
+
 def _persist_or_remove(model, path, keep: bool) -> bool:
     """Persist ``model`` to ``path`` when ``keep`` is True; otherwise remove any
     stale model already at ``path``. Returns whether a model is present at
@@ -230,24 +247,30 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     # gated independently because the apply-time method (iso/beta) is
     # configurable. Without this, every retrain re-persisted worsening models
     # (e.g. low-sample markets), silently degrading the live picks.
-    # Gate on THREE conditions: the calibrator must not worsen (1) OOS ECE nor
-    # (2) the OOS Brier score, and (3) it must be monotone non-decreasing. ECE is
-    # a binned average that tolerates a confident-but-wrong fit -- a monotone yet
+    # Gate on FOUR conditions: the calibrator must not worsen (1) OOS ECE nor
+    # (2) the OOS Brier score, (3) it must be monotone non-decreasing, and (4)
+    # it must not inflate non-extreme inputs into near-certainty. ECE is a binned
+    # average that tolerates a confident-but-wrong fit -- a monotone yet
     # overfit isotonic step that pushed favorites toward 0.9 passed the ECE gate
     # while manufacturing phantom edges on mlb spreads. The Brier score is a
     # proper scoring rule that penalizes that overconfidence per sample, so it is
     # an ECE-independent requirement, as is monotonicity (which catches a
     # degenerate beta that maps low probabilities UP, inverting rank order).
+    # Even the three together are not sufficient on a small validation split:
+    # on 2026-07-13 a wnba_h2h isotonic fit passed all three (24 val rows, 8
+    # events) while mapping 0.80 -> 0.99, so extremity is its own condition.
     # Verdicts are recorded per condition (not just the conjunction) so the CLI
     # and the daily-run log can say WHY a candidate was dropped -- on 2026-07-02
     # an mlb_spreads fit that improved OOS ECE was dropped and the log gave no
     # reason (it was the Brier), forcing a manual re-fit to diagnose.
     iso_gate = {"ece_ok": bool(val_metrics["ece"] <= raw_val_ece),
                 "brier_ok": bool(val_metrics["brier_score"] <= raw_val_brier),
-                "monotone_ok": _is_monotone_increasing(iso.predict)}
+                "monotone_ok": _is_monotone_increasing(iso.predict),
+                "extreme_ok": _no_extreme_expansion(iso.predict)}
     beta_gate = {"ece_ok": bool(beta_val_ece <= raw_val_ece),
                  "brier_ok": bool(beta_val_brier <= raw_val_brier),
-                 "monotone_ok": _is_monotone_increasing(beta.predict)}
+                 "monotone_ok": _is_monotone_increasing(beta.predict),
+                 "extreme_ok": _no_extreme_expansion(beta.predict)}
     iso_persisted = _persist_or_remove(iso, iso_path, all(iso_gate.values()))
     beta_persisted = _persist_or_remove(beta, beta_path, all(beta_gate.values()))
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths

@@ -157,6 +157,65 @@ def test_train_drops_non_monotone_calibrator_despite_good_ece(tmp_path, monkeypa
     assert cal.apply_calibration(np.array([0.3]), sport="unit_ushape", method="auto")[0] == 0.3
 
 
+def test_no_extreme_expansion_guard():
+    # Identity and compression toward the middle are fine.
+    assert cal._no_extreme_expansion(lambda x: np.asarray(x, dtype=float)) is True
+    assert cal._no_extreme_expansion(
+        lambda x: 0.35 + 0.3 * np.asarray(x, dtype=float)) is True
+    # A step that sends non-extreme favorites to 0.99 (wnba_h2h 2026-07-13,
+    # mlb_spreads 2026-06-30) must be rejected.
+    assert cal._no_extreme_expansion(
+        lambda x: np.where(np.asarray(x, dtype=float) >= 0.75, 0.99, 0.50)) is False
+    # A downward correction of overconfident underdog probs suppresses picks
+    # rather than creating phantom edges, so it stays allowed.
+    assert cal._no_extreme_expansion(
+        lambda x: np.where(np.asarray(x, dtype=float) <= 0.25, 0.01, 0.50)) is True
+    # Mapping a genuinely extreme input to an extreme output stays allowed.
+    assert cal._no_extreme_expansion(
+        lambda x: np.clip(np.asarray(x, dtype=float), 0.04, 0.96)) is True
+
+
+class _ExtremePushingBeta:
+    """Monotone calibrator that pushes favorites >= 0.75 to 0.99 -- the phantom
+    -edge shape that passed ECE, Brier AND monotonicity on a small split."""
+
+    def fit(self, probs, outcomes):
+        return self
+
+    def predict(self, probs):
+        probs = np.asarray(probs, dtype=float)
+        return np.where(probs >= 0.75, 0.99, np.minimum(probs, 0.74))
+
+
+def test_train_drops_extreme_pushing_calibrator_despite_good_metrics(tmp_path, monkeypatch):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    # Drop iso via a bad reported ECE so beta is the only candidate.
+    monkeypatch.setattr(cal, "calibration_report",
+                        lambda probs, outcomes: {"ece": 1.0, "brier_score": 1.0})
+    # Stub metrics so beta BEATS raw on both ECE and Brier: without the
+    # extremity guard it would persist.
+    ece_calls = {"n": 0}
+
+    def fake_ece(*a, **k):
+        ece_calls["n"] += 1
+        return 0.5 if ece_calls["n"] == 1 else 0.0
+
+    monkeypatch.setattr(cal, "expected_calibration_error", fake_ece)
+    monkeypatch.setattr(cal, "brier_score", lambda *a, **k: 0.1)
+    monkeypatch.setattr(cal, "BetaCalibrator", _ExtremePushingBeta)
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_extreme")
+
+    assert res["beta_gate"]["monotone_ok"] is True
+    assert res["beta_gate"]["ece_ok"] is True
+    assert res["beta_gate"]["extreme_ok"] is False
+    assert res["beta_persisted"] is False
+    assert not (tmp_path / "models" / "unit_extreme_calibration_beta.joblib").exists()
+    # live application for this market is therefore a safe no-op
+    assert cal.apply_calibration(np.array([0.8]), sport="unit_extreme", method="auto")[0] == 0.8
+
+
 def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):
     """Observabilidad del gate: el resultado debe decir CUAL condicion paso/fallo
     (ECE / Brier / monotonia) por modelo. El 2026-07-02 un mlb_spreads que
@@ -167,7 +226,7 @@ def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):
     cal._load_calibrator.cache_clear()
     res = cal.train_calibration(_miscalibrated(), sport="unit_gates")
     for key in ("iso_gate", "beta_gate"):
-        assert set(res[key]) == {"ece_ok", "brier_ok", "monotone_ok"}
+        assert set(res[key]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
         for v in res[key].values():
             assert isinstance(v, bool)
     assert res["iso_persisted"] == all(res["iso_gate"].values())
@@ -192,7 +251,9 @@ def test_train_gate_verdicts_flag_brier_failure(tmp_path, monkeypatch):
 
     res = cal.train_calibration(_miscalibrated(), sport="unit_gate_brier")
 
-    assert res["iso_gate"] == {"ece_ok": True, "brier_ok": False, "monotone_ok": True}
+    assert res["iso_gate"]["ece_ok"] is True
+    assert res["iso_gate"]["brier_ok"] is False
+    assert res["iso_gate"]["monotone_ok"] is True
     assert res["iso_persisted"] is False
 
 

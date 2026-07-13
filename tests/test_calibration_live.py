@@ -83,8 +83,13 @@ def test_train_market_calibrators_groups_skips_and_persists(tmp_path, monkeypatc
     assert h2h["n"] == 300                       # push excluded from the graded count
     assert "raw_val_ece" in h2h and "cal_val_ece" in h2h
     # The retrain STAGES the candidate; it does NOT go live in the same cycle.
-    assert (tmp_path / "models" / "staging" / "mlb_h2h_calibration_iso.joblib").exists()
-    assert not (tmp_path / "models" / "mlb_h2h_calibration_iso.joblib").exists()
+    # (The extremity gate drops this fixture's small-sample isotonic tail, so
+    # the surviving candidate may be the beta model -- assert on the method
+    # actually persisted, not on a hardcoded one.)
+    assert h2h["persisted"] is True
+    staged = list((tmp_path / "models" / "staging").glob("mlb_h2h_calibration_*.joblib"))
+    assert staged
+    assert not list((tmp_path / "models").glob("mlb_h2h_calibration_*.joblib"))
     assert "mlb_h2h" not in cal._load_method_registry()          # live untouched
     assert cal.calibrate_probability(0.85, "mlb", "h2h", method="auto") == 0.85
 
@@ -108,8 +113,8 @@ def test_group_summaries_propagate_gate_verdicts_and_brier(tmp_path, monkeypatch
                if r.get("trained")]
     assert trained
     for r in trained:
-        assert set(r["iso_gate"]) == {"ece_ok", "brier_ok", "monotone_ok"}
-        assert set(r["beta_gate"]) == {"ece_ok", "brier_ok", "monotone_ok"}
+        assert set(r["iso_gate"]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
+        assert set(r["beta_gate"]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
         assert "raw_val_brier" in r
 
 

@@ -15,7 +15,9 @@ El retrain diario solo deja candidatos en staging; el registro live cambia
    - Entrena sobre apuestas liquidadas reales (`data/bets/settled_*.csv`,
      distribución de servicio anclada a la apertura — fix train/serve 2026-07-01).
    - Deja candidatos en `data/models/staging/`. NUNCA toca el registro live.
-   - Gates OOS aplicados al staging: ECE + Brier + monotonía + n_val_events.
+   - Gates OOS aplicados al staging: ECE + Brier + monotonía + no-inflación
+     a extremos (`extreme_ok`, 2026-07-13: ningún input ≤0.90 puede mapear
+     a ≥0.95) + n_val_events.
    - `--source {combined,settled,served,backtest}`; `--rebuild` solo aplica
      con `--source backtest`. `--min-n` por (liga, mercado).
 2. **Dry-run**: `python scripts/promote_calibration.py` (sin flags)
