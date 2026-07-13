@@ -1,6 +1,6 @@
 ---
 name: daily-operations
-description: Use this skill to review the daily operational run of the Sports Quant Platform — RUN_DIARIO_ALL.bat, the BAT/scripts it calls, and the most recent logs — without scanning large data directories. Covers pipeline status, generated picks, errors, dependencies and failure risks. (Absorbe el antiguo skill daily-run.)
+description: Use this skill to review the daily operational run of the Sports Quant Platform — RUN_DIARIO_ALL.bat, SETTLE_ALL.bat, the BAT/scripts they call, and the most recent logs — without scanning large data directories. Covers pipeline status, generated picks, settlement/liquidación, errors, dependencies and failure risks. (Absorbe los antiguos skills daily-run y settle-bets.)
 ---
 
 # Daily Operations
@@ -26,3 +26,17 @@ Entregar:
 4. Errores detectados
 5. Posibles puntos de fallo y riesgos
 6. Próxima acción recomendada
+
+## Liquidación (absorbe el antiguo skill settle-bets)
+
+Al revisar la liquidación (`SETTLE_ALL.bat` → `scripts/settle_all.py`):
+
+- Entradas: picks pendientes en `data/bets/`, resultados de proveedores.
+- Proceso: emparejado resultado↔pick, grading win/loss/push, void por
+  expiración (stale void: partidos cancelados/pospuestos sin score),
+  auditoría acumulada `data/bets/audit_AAAAMMDD.md`.
+- Salidas: settled_*.csv, auditoría markdown, CLV diario (ver skill
+  clv-shadow-exit para la evaluación del gate).
+- Riesgos: liga auto-saltada del run si tiene picks comenzados sin liquidar;
+  corridas idempotentes (re-correr no debe duplicar).
+- No abrir históricos completos: usar solo el final de los logs y encabezados.

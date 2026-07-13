@@ -1,7 +1,7 @@
 ---
 tags: [decisiones, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-07-13
 ---
 
 # Registro de decisiones
@@ -38,3 +38,4 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 ## Documentación
 
 - **Obsidian como segundo cerebro** (2026-07-08): esta bóveda es la fuente central de conocimiento; cada cambio relevante se refleja aquí (regla en `CLAUDE.md`). Ver [[Metodología de documentación]].
+- **Skills de Claude Code consolidados** (2026-07-13): un solo meta-skill acotado a arquitectura; análisis por deporte → `quant-*`; multi-rol → `sports-analytical-system` solo explícito; operaciones sensibles con skill propio (`review-calibration`, `clv-shadow-exit`) para que promoción de calibradores y evaluación shadow-exit usen siempre los mismos criterios. Ver [[Bitácora/2026-07-13]].

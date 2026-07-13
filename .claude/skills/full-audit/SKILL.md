@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: Realizar auditorías exhaustivas del proyecto, identificar errores, clasificarlos por severidad y proponer correcciones seguras antes de modificar código.
+description: Realizar auditorías exhaustivas del proyecto, identificar errores, clasificarlos por severidad y proponer correcciones seguras antes de modificar código. Absorbe el antiguo comando /full-system-audit (auditoría orquestada con subagentes especialistas).
 ---
 
 # Full Audit
@@ -104,6 +104,20 @@ Entregar:
 - Cambios realizados
 - Resultado de pruebas
 - Riesgos pendientes
+
+## Modo orquestado (antiguo /full-system-audit)
+
+Si la auditoría abarca todo el sistema (o el usuario pide "full system audit"),
+ejecutar la Fase 1 vía `principal-orchestrator` delegando en los especialistas:
+
+- repository-cartographer, backend-architect, data-engineer
+- feature-engineer, leakage-detector, ml-engineer
+- calibration-auditor, backtest-reviewer, odds-market-auditor
+- risk-manager, qa-engineer, security-reviewer
+
+Salida consolidada: Executive Summary, Critical Findings, High/Medium Risks,
+Required Fixes, Validation Commands, Prioritized Roadmap. Las Fases 2–5
+(validación, plan, corrección aprobada, validación final) aplican igual.
 
 ## Restricciones
 

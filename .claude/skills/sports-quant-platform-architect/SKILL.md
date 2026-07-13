@@ -1,6 +1,6 @@
 ---
 name: sports-quant-platform-architect
-description: Use for designing, implementing, auditing, and evolving Python sports quantitative analytics platforms for MLB, NBA, NFL, and NHL. Covers ETL, provider abstractions, feature engineering, probabilistic modeling, calibration, Monte Carlo simulation, backtesting, edge estimation, risk, auditability, tests, and documentation.
+description: Use ONLY for architecture and design decisions on the platform — layering, module boundaries, provider abstractions, and end-to-end pipeline design (ETL → features → models → calibration → simulation → edge → risk → backtesting → audit). Do NOT trigger for routine code changes, bug fixes, tests, or per-sport analysis; those are covered by CLAUDE.md rules and the quant-* skills.
 ---
 
 # Sports Quant Platform Architect

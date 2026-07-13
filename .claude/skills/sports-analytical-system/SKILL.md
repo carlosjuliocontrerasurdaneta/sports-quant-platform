@@ -1,7 +1,7 @@
 ---
 name: sports-analytical-system
 description: >
-  Use this skill whenever the user wants to analyze a sports game, generate pregame probability estimates, evaluate betting markets, identify edges, or make stake decisions across MLB, NBA, NFL, or NHL — and especially when operating as an integrated multi-role analytical entity. Trigger this skill for: match analysis requests ("analyze today's Lakers game"), market evaluation ("is this line off?"), probability estimation ("what's the real probability of the Dodgers winning?"), betting edge detection, Kelly sizing, arbitrage detection, line shopping, bankroll management advice, or any workflow that combines statistics + odds + decision-making. Also trigger when the user mentions roles like tipster, handicapper, trader, arbitragista, or inversor deportivo. This skill integrates 7 analytical roles into a single coordinated response pipeline — always use it instead of answering ad-hoc when sports betting analysis is requested.
+  Use this skill ONLY when the user explicitly asks for the integrated multi-role analysis — mentions roles like tipster, handicapper, trader, arbitragista or inversor deportivo, asks for cross-book arbitrage or line shopping, or wants conversational bankroll/Kelly advice outside the platform pipeline. Do NOT trigger for single-sport game analysis or picks ("picks de béisbol", "analiza el partido X"): those belong to the sport-specific quant-* skills (quant-baseball-mlb, quant-basketball, quant-american-football, quant-hockey-nhl, quant-soccer, quant-tennis), which know the platform's adapters and calibration state.
 ---
 
 # Sistema Analítico Integral de Mercados Deportivos
