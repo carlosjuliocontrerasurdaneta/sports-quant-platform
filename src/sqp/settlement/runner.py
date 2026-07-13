@@ -14,7 +14,8 @@ from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
 from sqp.providers.odds_api import OddsAPIClient
-from sqp.settlement.settle import settle_candidates
+from sqp.settlement.settle import (STALE_VOID_DAYS, settle_candidates,
+                                   void_stale_candidates)
 from sqp.sports.team_names import normalize_key
 from sqp.storage.served_store import ServedStore
 
@@ -152,6 +153,36 @@ def _atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
         tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
+def _prediction_start_times(league: str) -> dict[str, str]:
+    """event_id -> start_time desde predictions_<league>.csv (misma fuente que
+    usa cleanup.unsettled_completed_picks). Vacio si no se puede leer."""
+    pf = ROOT / "data" / "predictions" / f"predictions_{league}.csv"
+    if not pf.exists() or pf.stat().st_size <= 1:
+        return {}
+    try:
+        preds = pd.read_csv(pf, usecols=lambda c: c in ("event_id", "start_time"))
+    except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return {}
+    if "start_time" not in preds.columns:
+        return {}
+    return {str(r.event_id): str(r.start_time) for r in preds.itertuples()}
+
+
+def _with_stale_voids(league: str, cands: pd.DataFrame, settled: pd.DataFrame,
+                      scores: dict[str, tuple[int, int, str]],
+                      start_times: dict[str, str]) -> pd.DataFrame:
+    """Anade voids por expiracion (partidos comenzados hace >STALE_VOID_DAYS
+    sin score: cancelados/pospuestos) a las filas recien liquidadas, para que
+    un partido cancelado no deje su liga bloqueada indefinidamente."""
+    stale = void_stale_candidates(cands, scores, start_times)
+    if stale.empty:
+        return settled
+    log.warning("[%s] %d pick(s) comenzados hace >%dd sin resultado: se "
+                "liquidan como VOID (flag stale_void, pnl 0).",
+                league, len(stale), STALE_VOID_DAYS)
+    return pd.concat([settled, stale], ignore_index=True) if not settled.empty else stale
+
+
 def _grade_served(league: str, scores: dict[str, tuple[int, int, str]]) -> int:
     """Grade the league's pending served-probability rows (stake-0 calibration
     stream) against final scores and persist them append-only. Idempotent: a
@@ -208,6 +239,9 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     preds = pd.read_csv(pred_path)
     scores = tennis_scores_map(preds, results)
     settled = settle_candidates(cands, scores)
+    start_times = {str(r.event_id): str(getattr(r, "start_time", ""))
+                   for r in preds.itertuples()}
+    settled = _with_stale_voids(league, cands, settled, scores, start_times)
     meta = {str(r.event_id): {"home": str(r.home), "away": str(r.away),
                               "game_date": str(getattr(r, "start_time", ""))[:10]}
             for r in preds.itertuples()}
@@ -240,6 +274,8 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)
     settled = settle_candidates(cands, scores)
+    settled = _with_stale_voids(league, cands, settled, scores,
+                                _prediction_start_times(league))
     settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)
 

@@ -43,7 +43,7 @@ actualizada: 2026-07-12
 | Tarea | Frecuencia |
 |---|---|
 | Diario_Completo | diaria 11:00 |
-| Capture_Close (CLV) | cada hora |
+| Capture_Close (CLV) | cada hora, a los :30 (desfasada del run de las 11:00 el 07-12 para no escribir `data/odds` en paralelo) |
 | Backfill (tenis incluido) | lunes 09:00 |
 | Refresh_ML | lunes 09:45 |
 | Validate_OOS | mensual, día 1, 12:00 |

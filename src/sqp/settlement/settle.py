@@ -10,6 +10,13 @@ import pandas as pd
 
 from sqp.sports.team_names import normalize_key
 
+# Un partido cancelado/pospuesto nunca entrega score: sin expiracion, su pick
+# quedaria abierto para siempre y (post-shadow, stake > 0) la regla de
+# "picks comenzados sin liquidar" excluiria su liga del run diario
+# INDEFINIDAMENTE (auditoria 2026-07-12). Pasados estos dias desde el
+# comienzo sin resultado, el pick se liquida como void (pnl 0, flag).
+STALE_VOID_DAYS = 3
+
 
 def _grade(row: pd.Series, hs: int, as_: int, home: str) -> str:
     m, sel, line = row["market"], row["selection"], row["line"]
@@ -50,3 +57,43 @@ def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int
         staked = out.loc[out.result.isin(["win", "loss"]), "stake"].sum()
         out.attrs["realized_roi"] = float(out["pnl"].sum() / staked) if staked else 0.0
     return out
+
+
+def _parse_start(s: object) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def void_stale_candidates(candidates: pd.DataFrame,
+                          scores: dict[str, tuple[int, int, str]],
+                          start_times: dict[str, str], *,
+                          now: datetime | None = None,
+                          stale_days: int = STALE_VOID_DAYS) -> pd.DataFrame:
+    """Void por expiracion: candidatos comenzados hace mas de ``stale_days``
+    dias que siguen sin score (partido cancelado/pospuesto sin reprogramar).
+
+    Devuelve filas con result='void', pnl 0.0 y flag ``stale_void`` (mismo
+    formato que ``settle_candidates``, listas para ``_persist_settled``). Sin
+    ``start_time`` conocido el candidato se deja abierto (nunca adivinar)."""
+    if candidates.empty:
+        return pd.DataFrame()
+    now = now or datetime.now(timezone.utc)
+    scored = {str(k) for k in scores}
+    rows = []
+    for _, row in candidates.iterrows():
+        eid = str(row["event_id"])
+        if eid in scored:
+            continue
+        start = _parse_start(start_times.get(eid))
+        if start is None or (now - start).total_seconds() < stale_days * 86400:
+            continue
+        raw_flags = row.get("flags", "")
+        flags = "" if pd.isna(raw_flags) else str(raw_flags)
+        rows.append({**row.to_dict(),
+                     "flags": f"{flags};stale_void" if flags else "stale_void",
+                     "result": "void", "pnl": 0.0,
+                     "settled_at": now.isoformat()})
+    return pd.DataFrame(rows)

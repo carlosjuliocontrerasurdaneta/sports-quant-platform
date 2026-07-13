@@ -1,7 +1,11 @@
-"""Odds snapshot store: append, schema, accumulation across runs."""
+"""Odds snapshot store: append, schema, accumulation across runs, lock."""
+
+import os
+import time
+
 import pandas as pd
 from sqp.domain.models import Event, EventOdds, MarketLine
-from sqp.storage.odds_store import COLUMNS, OddsStore
+from sqp.storage.odds_store import COLUMNS, OddsStore, _locked
 
 
 def _events() -> list[EventOdds]:
@@ -55,3 +59,45 @@ def test_append_realigns_file_with_stale_schema(tmp_path):
     assert old["price_decimal"] == 1.80 and pd.isna(old["bookmaker"])
     # Filas nuevas alineadas: bookmaker cae en su columna, no desplazado.
     assert set(df[df["event_id"] == "e1"]["bookmaker"]) == {"pinnacle", "draftkings"}
+
+
+def test_locked_creates_and_removes_sidecar(tmp_path):
+    target = tmp_path / "odds_x_202607.csv"
+    lock = target.with_suffix(target.suffix + ".lock")
+    with _locked(target):
+        assert lock.exists()
+    assert not lock.exists()
+
+
+def test_locked_breaks_stale_lock_from_dead_process(tmp_path):
+    target = tmp_path / "odds_x_202607.csv"
+    lock = target.with_suffix(target.suffix + ".lock")
+    lock.write_text("")
+    old = time.time() - 3600
+    os.utime(lock, (old, old))  # lock huerfano de un proceso muerto
+    with _locked(target, timeout_s=5.0, stale_s=300.0):
+        assert lock.exists()  # lo rompio y lo re-adquirio
+    assert not lock.exists()
+
+
+def test_locked_times_out_and_degrades_without_removing_foreign_lock(tmp_path):
+    target = tmp_path / "odds_x_202607.csv"
+    lock = target.with_suffix(target.suffix + ".lock")
+    lock.write_text("")  # lock vivo de OTRO proceso (mtime fresco)
+    t0 = time.monotonic()
+    with _locked(target, timeout_s=0.4, stale_s=300.0):
+        pass  # degrada: procede sin lock tras el timeout
+    assert time.monotonic() - t0 >= 0.4
+    assert lock.exists()  # el lock ajeno NO se borra al salir
+
+
+def test_concurrent_appends_do_not_interleave_rows(tmp_path):
+    """Con el lock, dos appends secuenciales (mismo archivo) quedan integros;
+    smoke de la invariante que el lock protege entre procesos."""
+    store = OddsStore(tmp_path)
+    captured = "2026-06-13T01:00:00+00:00"
+    assert store.append_snapshot("wnba", _events(), captured_at=captured) == 3
+    assert store.append_snapshot("wnba", _events(), captured_at=captured) == 3
+    df = pd.read_csv(store.path("wnba", "202606"))
+    assert len(df) == 6 and list(df.columns) == COLUMNS
+    assert not store.path("wnba", "202606").with_suffix(".csv.lock").exists()

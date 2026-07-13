@@ -1,0 +1,23 @@
+# Lock de reproducibilidad (auditoria 2026-07-12): versiones EXACTAS con las
+# que corre produccion y se serializaron los artefactos joblib (modelos y
+# calibradores). Un upgrade silencioso de scikit-learn/joblib puede
+# des-serializar distinto o invalidar esos artefactos; instalar con:
+#   pip install -r requirements.lock.txt
+# Las cotas laxas para desarrollo siguen en pyproject.toml. Al actualizar una
+# dependencia: regenerar este archivo y re-validar la suite y la carga de los
+# modelos persistidos.
+
+# runtime
+joblib==1.5.3
+numpy==2.4.4
+pandas==3.0.2
+python-dotenv==1.2.2
+PyYAML==6.0.3
+requests==2.33.1
+scikit-learn==1.9.0
+scipy==1.17.1
+
+# dev (tests + lint + typecheck)
+mypy==2.1.0
+pytest==9.0.3
+ruff==0.15.14
