@@ -14,7 +14,8 @@ also removes the matching ``predictions_<league>.csv``.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -24,6 +25,11 @@ from sqp.logging_config import get_logger
 from sqp.settlement.runner import DEDUP_KEY
 
 log = get_logger("sqp.cleanup")
+
+# Retencion de artefactos regenerables/expirados (auditoria 2026-07-12): sin
+# purga, archive/ crece 2 archivos/liga/dia y los reportes clv_*.md y los
+# contadores .closing_credits_* se acumulan sin limite.
+PURGE_RETENTION_DAYS = 90
 
 
 def _actionable(cands: pd.DataFrame) -> pd.DataFrame:
@@ -139,3 +145,60 @@ def unsettled_completed_picks(predictions_dir: Path, bets_dir: Path,
         if n > 0:
             at_risk[league] = int(n)
     return at_risk
+
+
+def _artifact_date(name: str) -> datetime | None:
+    """Fecha YYYYMMDD embebida en el nombre del artefacto (None si no hay)."""
+    m = re.search(r"(20\d{6})", name)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y%m%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def purge_old_artifacts(root: Path, *, days: int = PURGE_RETENTION_DAYS,
+                        now: datetime | None = None) -> dict[str, int]:
+    """Borra artefactos regenerables/expirados con mas de ``days`` dias.
+
+    Allowlist ESTRICTA — solo tres familias, nunca datos crudos ni settled:
+
+    - ``data/predictions/archive/*.csv``: copias de seguridad de candidates/
+      predictions ya sobrescritos (la ventana util de recuperacion es dias).
+    - ``data/bets/clv_*.md``: reportes diarios de CLV (regenerables con
+      ``scripts/clv_analysis.py``; el registro vivo es clv_gate.json).
+    - ``data/odds/.closing_credits_*``: contadores diarios de creditos.
+
+    La edad sale de la fecha YYYYMMDD del nombre; sin fecha parseable se usa
+    mtime. Best-effort: un archivo imborrable se loguea y no aborta. Devuelve
+    conteo de borrados por familia."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+    families = {
+        "archive": (root / "data" / "predictions" / "archive", "*.csv"),
+        "clv_reports": (root / "data" / "bets", "clv_*.md"),
+        "closing_credits": (root / "data" / "odds", ".closing_credits_*"),
+    }
+    out: dict[str, int] = {}
+    for kind, (folder, pattern) in families.items():
+        n = 0
+        for f in (folder.glob(pattern) if folder.is_dir() else ()):
+            when = _artifact_date(f.name)
+            if when is None:
+                try:
+                    when = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                except OSError:
+                    continue
+            if when >= cutoff:
+                continue
+            try:
+                f.unlink()
+                n += 1
+            except OSError as exc:
+                log.warning("purge: no se pudo borrar %s: %s", f, exc)
+        out[kind] = n
+    if any(out.values()):
+        log.info("purge: %s artefactos borrados (retencion %dd): %s",
+                 sum(out.values()), days, out)
+    return out

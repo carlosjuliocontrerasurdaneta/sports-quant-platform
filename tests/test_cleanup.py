@@ -158,3 +158,58 @@ def test_only_requested_leagues_are_checked(tmp_path):
     _write_with_times(preds, "nba", [_cand_row(event_id="x1")], [_PAST])
     # nba holds an at-risk pick but is not in the overwrite set -> not reported.
     assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {"mlb": 1}
+
+
+# --- purge_old_artifacts -----------------------------------------------------
+
+def _touch(p, content=""):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def test_purge_deletes_only_old_allowlisted_artifacts(tmp_path):
+    from datetime import datetime, timezone
+    from sqp.pipeline.cleanup import purge_old_artifacts
+    now = datetime(2026, 7, 12, tzinfo=timezone.utc)
+    arch = tmp_path / "data" / "predictions" / "archive"
+    bets = tmp_path / "data" / "bets"
+    odds = tmp_path / "data" / "odds"
+    old_a = _touch(arch / "candidates_mlb_20260301.csv")   # 133d -> fuera
+    new_a = _touch(arch / "candidates_mlb_20260710.csv")   # 2d   -> se queda
+    old_r = _touch(bets / "clv_20260215.md")
+    new_r = _touch(bets / "clv_20260711.md")
+    old_c = _touch(odds / ".closing_credits_20260101")
+    # Fuera de la allowlist: viejos pero INTOCABLES.
+    settled = _touch(bets / "settled_mlb.csv", "event_id\n")
+    gate = _touch(bets / "clv_gate.json", "{}")
+    raw = _touch(odds / "odds_mlb_202603.csv", "captured_at\n")
+
+    out = purge_old_artifacts(tmp_path, days=90, now=now)
+
+    assert out == {"archive": 1, "clv_reports": 1, "closing_credits": 1}
+    assert not old_a.exists() and not old_r.exists() and not old_c.exists()
+    assert new_a.exists() and new_r.exists()
+    assert settled.exists() and gate.exists() and raw.exists()
+
+
+def test_purge_missing_dirs_is_noop(tmp_path):
+    from sqp.pipeline.cleanup import purge_old_artifacts
+    assert purge_old_artifacts(tmp_path, days=90) == {
+        "archive": 0, "clv_reports": 0, "closing_credits": 0}
+
+
+def test_purge_falls_back_to_mtime_when_name_has_no_date(tmp_path):
+    import os
+    import time
+    from datetime import datetime, timezone
+    from sqp.pipeline.cleanup import purge_old_artifacts
+    now = datetime.now(timezone.utc)
+    arch = tmp_path / "data" / "predictions" / "archive"
+    stale = _touch(arch / "sin_fecha.csv")
+    old = time.time() - 120 * 86400
+    os.utime(stale, (old, old))
+    fresh = _touch(arch / "reciente.csv")  # mtime actual -> se queda
+    out = purge_old_artifacts(tmp_path, days=90, now=now)
+    assert out["archive"] == 1
+    assert not stale.exists() and fresh.exists()

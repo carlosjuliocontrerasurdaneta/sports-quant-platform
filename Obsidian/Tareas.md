@@ -15,7 +15,6 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
-- [ ] Retención de artefactos crecientes (auditoría 07-12): purga >90 días de `data/predictions/archive/`, `data/bets/clv_YYYYMMDD.md` y `.closing_credits_*` (p. ej. en la tarea semanal).
 - [ ] Perf (auditoría 07-12): `load_closing_odds` concatena todos los meses de odds por llamada; filtrar por rango de meses relevante cuando el histórico crezca.
 - [ ] Seguimiento del quota-guard del proveedor de odds (follow-up de closing-capture).
 - [ ] KI-002: verificar nombres ESPN vs Odds API en soccer cuando el Apertura MX reactive la liga (~post 19-jul); re-validar dc_rho de UCL/Chile con temporada nueva.
@@ -26,6 +25,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-12 — Retención de artefactos (hallazgo 4 de la auditoría): `purge_old_artifacts` (allowlist estricta: `archive/`, `clv_*.md`, `.closing_credits_*`; 90 días) + `scripts/purge_artifacts.py`, cableado best-effort en `BACKFILL_ALL.bat` semanal.
 - [x] 2026-07-12 — Auditoría full del proyecto + fixes: lock anti-concurrencia en el odds store + Capture_Close desfasada a :30; void por expiración (`stale_void`, 3 días) para partidos cancelados; `requirements.lock.txt`. Ver [[Bitácora/2026-07-12]].
 - [x] 2026-07-12 — Auditoría de la masa de CLV=0 y filtro de frescura del cierre (≤90 min) en la auditoría CLV; el gate deja de estar sesgado a mediana 0. Ver [[Bitácora/2026-07-12]].
 - [x] 2026-07-11 — Port del linaje Nc2 a `C:\dev` (5 commits `a2027b9`..`96d8535`: eventos independientes en calibración, `beat_close` estricto, mediana real de consenso, scoping por día, exit codes, `Settings.validate()`) y retiro de la copia paralela de `C:\Nueva carpeta (2)` (tareas `_Nc2` eliminadas, respaldo en `C:\ZIP`).

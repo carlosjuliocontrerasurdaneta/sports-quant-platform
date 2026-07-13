@@ -21,6 +21,11 @@ REM tenis corren con forma vieja (causa #1 de la sobreconfianza del 2026-07-04).
 python scripts\backfill_tennis_results.py --tours atp wta --days 14 >> logs\backfill.log 2>&1
 if errorlevel 1 goto :error
 
+REM Purga semanal de artefactos regenerables (>90 dias): archive/, clv_*.md,
+REM .closing_credits_*. Best-effort a proposito: un fallo de la purga no debe
+REM marcar el backfill como fallido (por eso no hay chequeo de errorlevel).
+python scripts\purge_artifacts.py >> logs\backfill.log 2>&1
+
 echo === DONE ===
 endlocal
 goto :eof
