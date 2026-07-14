@@ -244,6 +244,17 @@ def main() -> int:
         except Exception as exc:
             failures += 1
             log.warning("No se pudo generar la auditoria de liquidacion: %s", exc)
+        # Diagnóstico por segmentos (2026-07-13): localiza DENTRO de cada
+        # (liga, mercado) dónde vive una desviación sistemática (favorito/
+        # underdog, local/visita, banda de probabilidad estimada, banda de
+        # línea). Solo observabilidad — las pausas las decide el monitor de
+        # degradación. Best-effort, como el bloque CLV.
+        try:
+            from sqp.audit.segments import segment_diagnostics_report
+            seg_md = segment_diagnostics_report(ROOT / "data" / "bets")
+            log.info("Diagnóstico por segmentos (md) -> %s", seg_md)
+        except Exception as exc:
+            log.warning("No se pudo generar el diagnóstico por segmentos: %s", exc)
         # CLV diario: mide precio de entrada vs cierre capturado sobre lo ya
         # liquidado y deja en el log el avance de la regla de salida del shadow
         # mode (mediana > 0 con n suficiente). Best-effort, como la auditoria.

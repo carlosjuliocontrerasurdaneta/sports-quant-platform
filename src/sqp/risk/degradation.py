@@ -21,12 +21,12 @@ estimado positivo. Sin imports del pipeline (mismo criterio que clv_gate).
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
-from sqp.audit.report import load_all_settled
+from sqp.audit.report import graded_in_window, load_all_settled
 
 DEGRADATION_FILENAME = "degradation_pause.json"
 DEGRADATION_LOG_FILENAME = "degradation_log.csv"
@@ -58,18 +58,7 @@ def degradation_metrics(settled: pd.DataFrame, *,
     win/loss: n, brier_model (probabilidad estimada vs resultado), brier_market
     (probabilidad implicita sin vig vs resultado; NaN sin la columna) y
     roi_flat (ROI realizado a stake plano de 1 unidad por pick)."""
-    if settled.empty or "result" not in settled.columns:
-        return pd.DataFrame(columns=_METRIC_COLS)
-    df = settled[settled["result"].isin(["win", "loss"])].copy()
-    if df.empty:
-        return pd.DataFrame(columns=_METRIC_COLS)
-    # Fecha del partido, fallback generated_at; comparacion lexicografica ISO.
-    gd = df["game_date"].astype(str) if "game_date" in df.columns else pd.Series("", index=df.index)
-    gen = df["generated_at"].astype(str) if "generated_at" in df.columns else pd.Series("", index=df.index)
-    fecha = gd.where(gd.str.len() >= 10, gen).str[:10]
-    cutoff = ((today or datetime.now(timezone.utc).date())
-              - timedelta(days=window_days)).isoformat()
-    df = df[fecha >= cutoff]
+    df = graded_in_window(settled, window_days=window_days, today=today)
     if df.empty:
         return pd.DataFrame(columns=_METRIC_COLS)
     y = (df["result"] == "win").astype(float)

@@ -1,7 +1,7 @@
 """Audit reports: per-league calibration, model-vs-market deviation, segment
 analysis (home/away, favorite/underdog). Reproducible and timestamped."""
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.config import ROOT
@@ -144,6 +144,24 @@ def load_all_settled(bets_dir: Path) -> pd.DataFrame:
             s["league"] = sf.stem.replace("settled_", "")
             frames.append(s)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def graded_in_window(settled: pd.DataFrame, *, window_days: int,
+                     today: date | None = None) -> pd.DataFrame:
+    """Filas graduadas win/loss cuya fecha de partido (fallback generated_at)
+    cae dentro de la ventana movil. Comparacion lexicografica ISO. Base comun
+    del monitor de degradacion y el diagnostico por segmentos."""
+    if settled.empty or "result" not in settled.columns:
+        return settled.iloc[0:0]
+    df = settled[settled["result"].isin(["win", "loss"])].copy()
+    if df.empty:
+        return df
+    gd = df["game_date"].astype(str) if "game_date" in df.columns else pd.Series("", index=df.index)
+    gen = df["generated_at"].astype(str) if "generated_at" in df.columns else pd.Series("", index=df.index)
+    fecha = gd.where(gd.str.len() >= 10, gen).str[:10]
+    cutoff = ((today or datetime.now(timezone.utc).date())
+              - timedelta(days=window_days)).isoformat()
+    return df[fecha >= cutoff]
 
 
 def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
