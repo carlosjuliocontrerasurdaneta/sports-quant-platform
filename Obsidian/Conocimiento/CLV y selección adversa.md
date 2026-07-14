@@ -1,7 +1,7 @@
 ---
 tags: [clv, riesgo, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-12
+actualizada: 2026-07-14
 ---
 
 # CLV y selección adversa
@@ -37,5 +37,20 @@ Causa raíz: `load_closing_odds` tomaba "el último snapshot antes del comienzo"
 Efecto: la masa de ceros sesgaba la mediana del gate hacia 0 — hacía la regla de salida **incumplible e irrefutable a la vez**.
 
 Fix (mismo día): `max_age_min` en `load_closing_odds` (default `None`, sin cambio para el backtest de ROI) + `CLOSE_MAX_AGE_MIN = 90` en la auditoría CLV. Con el filtro: n=191 emparejadas, batió-el-cierre 23%→41%, %CLV=0 baja a ~25% (líneas genuinamente sin movimiento a granularidad de consenso mediano). Ningún mercado pasa aún el gate; el más cercano es WTA Wimbledon h2h (mediana +0.46%, n=21 de 30). MLB/WNBA siguen con CLV medio negativo — la selección adversa persiste con medición honesta.
+
+## Filtro de confirmación por movimiento previo: hipótesis no confirmada (2026-07-14)
+
+Hipótesis: la selección adversa debería concentrarse en picks cuyo desacuerdo
+va CONTRA el movimiento previo de la línea; un "filtro de confirmación"
+(pickear solo cuando el mercado venía moviéndose a nuestro lado) la mitigaría.
+
+Test retrospectivo (`sqp/audit/clv_movement.py`, script
+`scripts/clv_by_line_movement.py`, repetible): sobre 116 picks con ≥2
+snapshots pre-pick, el CLV NO separa por dirección del movimiento (Spearman
+−0.096; "hacia" n=26 tiene el peor roi_flat −24.5%, inverso a la hipótesis).
+**El filtro no se implementa.** Caveat clave: las trayectorias son pobres
+(mediana 2 snapshots/pick, lookback p25 1.1h) porque la captura horaria es
+reciente — re-correr el script cuando haya ≥30 picks por dirección en algún
+mercado antes de dar la hipótesis por muerta. Ver [[Bitácora/2026-07-14]].
 
 Relacionado: [[Estado del proyecto]], [[Conocimiento/Calibración]], [[Objetivos y requisitos]].

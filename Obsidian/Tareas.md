@@ -15,6 +15,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
+- [ ] Re-correr `scripts/clv_by_line_movement.py` cuando haya ≥30 picks por dirección en algún (liga, mercado) — hipótesis del filtro de confirmación por movimiento NO confirmada el 07-14 con trayectorias pobres (mediana 2 snapshots/pick); ver [[Bitácora/2026-07-14]].
 - [ ] Perf (auditoría 07-12): `load_closing_odds` concatena todos los meses de odds por llamada; filtrar por rango de meses relevante cuando el histórico crezca.
 - [ ] Seguimiento del quota-guard del proveedor de odds (follow-up de closing-capture).
 - [ ] KI-002: verificar nombres ESPN vs Odds API en soccer cuando el Apertura MX reactive la liga (~post 19-jul); re-validar dc_rho de UCL/Chile con temporada nueva.
@@ -25,6 +26,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-14 — Análisis CLV × movimiento previo de línea (`clv_movement.py`): hipótesis del filtro de confirmación NO confirmada (Spearman −0.096, n=116); no se implementa el filtro. Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Pestaña Diagnóstico en el dashboard (estado del monitor de degradación + segmentos flageados; 3ª pieza del loop de autoevaluación). Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-13 — Diagnóstico automático por segmentos (`sqp/audit/segments.py`): favorito/underdog, lado, banda de prob., banda de línea; flags de sobre/subconfianza y Brier vs mercado; integrado al run diario. Dry-run: 22/94 segmentos flageados. Ver [[Bitácora/2026-07-13]].
 - [x] 2026-07-13 — Monitor de degradación por (liga, mercado) con auto-pausa gated (`sqp/risk/degradation.py`): Brier vs mercado o ROI plano bajo umbral → pausa; histéresis para reanudar; unión con `paused_markets`. Dry-run: pausaría mlb_spreads, tenis Wimbledon h2h x2 y wnba_totals. Ver [[Bitácora/2026-07-13]].

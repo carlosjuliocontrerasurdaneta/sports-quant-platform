@@ -77,8 +77,13 @@ def compute_clv(bets_dir: Path, root: Path,
             unmatched += 1
             continue
         entry = float(r.price_decimal)
+        gen = getattr(r, "generated_at", None)
         rows.append({
             "league": r.league, "market": r.market, "selection": r.selection,
+            # claves de join para analisis aguas abajo (p.ej. CLV condicionado
+            # al movimiento previo de linea): evento + linea + momento del pick
+            "event_id": str(r.event_id), "line": r.line,
+            "generated_at": "" if gen is None or pd.isna(gen) else str(gen),
             "result": r.result, "entry": entry, "close": float(close),
             "clv_pct": entry / float(close) - 1.0,
             # Equality is neutral CLV, not "beating" the close. Counting ties as
