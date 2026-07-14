@@ -154,6 +154,41 @@ def main() -> int:
         if at_risk:
             selected = [lg for lg in selected if lg not in at_risk]
 
+    # Monitor de degradación por (liga, mercado) (2026-07-13): sobre la ventana
+    # móvil de liquidadas, auto-pausa un mercado cuyo Brier estimado es peor que
+    # el baseline del mercado o cuyo ROI a stake plano cae bajo el umbral, con
+    # histéresis para reanudar (sqp.risk.degradation). Corre ANTES del loop de
+    # ligas y fusiona por UNIÓN con paused_markets, así nunca des-pausa una
+    # pausa estática del yaml. Best-effort: si el monitor falla, se aplican las
+    # auto-pausas del último registro persistido (conservador) y el run sigue.
+    if args.mode != "demo" and settings.degradation_enabled:
+        from sqp.risk.degradation import (load_degradation_registry,
+                                          paused_from_registry,
+                                          run_degradation_monitor)
+        try:
+            reg_path, transitions, auto_paused = run_degradation_monitor(
+                ROOT / "data" / "bets",
+                window_days=settings.degradation_window_days,
+                min_n=settings.degradation_min_n,
+                brier_margin=settings.degradation_brier_margin,
+                roi_pause=settings.degradation_roi_pause,
+                roi_resume=settings.degradation_roi_resume)
+            for t in transitions:
+                log.warning("Degradación [%s|%s] -> %s (%s; n=%d, brier_model=%s, "
+                            "brier_market=%s, roi_flat=%s)", t["league"], t["market"],
+                            t["action"].upper(), t["reasons"] or "-", t["n"],
+                            t["brier_model"], t["brier_market"], t["roi_flat"])
+            log.info("Monitor de degradación -> %s | mercados auto-pausados: %s",
+                     reg_path, auto_paused or "ninguno")
+        except Exception as exc:
+            log.warning("Monitor de degradación falló (%s); se aplican las "
+                        "auto-pausas del último registro persistido.", exc)
+            auto_paused = paused_from_registry(
+                load_degradation_registry(ROOT / "data" / "bets"))
+        for lg, mks in auto_paused.items():
+            settings.paused_markets[lg] = sorted(
+                set(settings.paused_markets.get(lg, [])) | set(mks))
+
     for lg in selected:
         try:
             run_league(lg, settings, mode=args.mode)

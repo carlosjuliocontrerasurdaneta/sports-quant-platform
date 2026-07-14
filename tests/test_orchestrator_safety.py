@@ -25,6 +25,7 @@ def _settings():
         risk=SimpleNamespace(max_total_exposure_pct=0.10),
         calibration_auto_promote=True, calibration_enabled=True,
         clv_gate_min_n=30,
+        degradation_enabled=False,
     )
 
 

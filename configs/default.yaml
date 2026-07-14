@@ -87,3 +87,22 @@ shadow_mode: true
 clv_gate:
   enabled: true
   min_n: 30
+# Monitor de degradacion por (liga, mercado) (ENABLED 2026-07-13): auto-pausa
+# gated, capa conservadora que alimenta paused_markets por UNION (nunca
+# des-pausa lo listado arriba ni sube stakes). Sobre la ventana movil de
+# liquidadas win/loss, un mercado con n >= min_n se PAUSA si el Brier de la
+# probabilidad estimada es peor que el del mercado (prob. implicita sin vig)
+# por mas de brier_margin, o si su ROI realizado a stake plano (1 unidad por
+# pick; los stakes reales son 0 bajo shadow) cae bajo roi_pause. Se REANUDA
+# solo con histeresis: Brier <= mercado Y roi_flat >= roi_resume. Con muestra
+# insuficiente el estado NO cambia. Registro: data/bets/degradation_pause.json;
+# transiciones: data/bets/degradation_log.csv. Precedente que automatiza:
+# mlb_totals pausado a mano 2026-06-14 (ROI realizado negativo con edge
+# estimado positivo). Env vars DEGRADATION_* (cuando estan) ganan sobre yaml.
+degradation_monitor:
+  enabled: true
+  window_days: 60
+  min_n: 30
+  brier_margin: 0.01
+  roi_pause: -0.15
+  roi_resume: -0.05

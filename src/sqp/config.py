@@ -122,6 +122,26 @@ class Settings:
         in ("1", "true", "yes"))
     clv_gate_min_n: int = field(
         default_factory=lambda: int(os.getenv("CLV_GATE_MIN_N", "30")))
+    # Monitor de degradacion por (liga, mercado) (2026-07-13): auto-pausa gated.
+    # Sobre la ventana movil de liquidadas, pausa un mercado cuyo Brier estimado
+    # es peor que el baseline del mercado (prob. implicita sin vig) por mas de
+    # brier_margin, o cuyo ROI a stake plano cae bajo roi_pause; reanuda solo
+    # con histeresis (Brier <= mercado Y roi >= roi_resume). Solo pausa (flag
+    # "market_paused" via paused_markets); nunca sube stakes. OFF por defecto
+    # para Settings() directo (tests/demo); produccion lo activa via yaml.
+    degradation_enabled: bool = field(
+        default_factory=lambda: os.getenv("DEGRADATION_ENABLED", "").lower()
+        in ("1", "true", "yes"))
+    degradation_window_days: int = field(
+        default_factory=lambda: int(os.getenv("DEGRADATION_WINDOW_DAYS", "60")))
+    degradation_min_n: int = field(
+        default_factory=lambda: int(os.getenv("DEGRADATION_MIN_N", "30")))
+    degradation_brier_margin: float = field(
+        default_factory=lambda: float(os.getenv("DEGRADATION_BRIER_MARGIN", "0.01")))
+    degradation_roi_pause: float = field(
+        default_factory=lambda: float(os.getenv("DEGRADATION_ROI_PAUSE", "-0.15")))
+    degradation_roi_resume: float = field(
+        default_factory=lambda: float(os.getenv("DEGRADATION_ROI_RESUME", "-0.05")))
 
     def validate(self) -> "Settings":
         """Fail fast on unsafe or internally inconsistent operator settings."""
@@ -158,6 +178,15 @@ class Settings:
             raise ValueError("MAX_EVENT_HORIZON_DAYS must be >= 0")
         if self.clv_gate_min_n < 1:
             raise ValueError("CLV_GATE_MIN_N must be >= 1")
+        if self.degradation_window_days < 1:
+            raise ValueError("DEGRADATION_WINDOW_DAYS must be >= 1")
+        if self.degradation_min_n < 1:
+            raise ValueError("DEGRADATION_MIN_N must be >= 1")
+        if self.degradation_brier_margin < 0:
+            raise ValueError("DEGRADATION_BRIER_MARGIN must be >= 0")
+        if self.degradation_roi_resume < self.degradation_roi_pause:
+            raise ValueError("DEGRADATION_ROI_RESUME must be >= "
+                             "DEGRADATION_ROI_PAUSE (hysteresis)")
         if self.calibration_method not in ("isotonic", "beta", "auto"):
             raise ValueError(
                 "CALIBRATION_METHOD must be isotonic, beta or auto")
@@ -206,6 +235,19 @@ class Settings:
                 s.clv_gate_enabled = bool(cg["enabled"])
             if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
                 s.clv_gate_min_n = int(cg["min_n"])
+            dm = cfg.get("degradation_monitor") or {}
+            if "DEGRADATION_ENABLED" not in os.environ and "enabled" in dm:
+                s.degradation_enabled = bool(dm["enabled"])
+            if "DEGRADATION_WINDOW_DAYS" not in os.environ and "window_days" in dm:
+                s.degradation_window_days = int(dm["window_days"])
+            if "DEGRADATION_MIN_N" not in os.environ and "min_n" in dm:
+                s.degradation_min_n = int(dm["min_n"])
+            if "DEGRADATION_BRIER_MARGIN" not in os.environ and "brier_margin" in dm:
+                s.degradation_brier_margin = float(dm["brier_margin"])
+            if "DEGRADATION_ROI_PAUSE" not in os.environ and "roi_pause" in dm:
+                s.degradation_roi_pause = float(dm["roi_pause"])
+            if "DEGRADATION_ROI_RESUME" not in os.environ and "roi_resume" in dm:
+                s.degradation_roi_resume = float(dm["roi_resume"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])

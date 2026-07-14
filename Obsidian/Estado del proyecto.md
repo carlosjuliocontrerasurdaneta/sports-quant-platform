@@ -16,6 +16,7 @@ actualizada: 2026-07-13
 - **Regla de salida**: mediana de CLV positiva + pasar el gate de Brier tras ~100 picks liquidados.
 - **Gate de CLV por (liga, mercado)** (2026-07-08, `bc27252`): la salida del shadow es POR MERCADO — allow-list default-deny, ≥30 apuestas con CLV mediano positivo. Ver [[Conocimiento/CLV y selección adversa]].
 - **Filtro de frescura del cierre** (2026-07-12): solo cuenta como cierre un snapshot a ≤90 min del comienzo; antes el 59% de las apuestas emparejaba contra el snapshot matinal (CLV≡0 por construcción) y la mediana del gate quedaba clavada en 0. Estado honesto: n=191 emparejadas, batió-el-cierre 41%, ningún mercado habilitado aún (el más cercano: WTA Wimbledon h2h, mediana +0.46%, n=21/30).
+- **Monitor de degradación por (liga, mercado)** (2026-07-13): auto-pausa gated diaria sobre la ventana móvil de 60 días de liquidadas — pausa si el Brier estimado es peor que el del mercado (+0.01) o el ROI a stake plano < −15% con n≥30; reanuda solo con histéresis. Alimenta `paused_markets` por unión (nunca des-pausa lo estático). Registro: `data/bets/degradation_pause.json`. Dry-run inicial pausaría: mlb_spreads, tenis ATP/WTA Wimbledon h2h y wnba_totals — exactamente los mercados con problemas ya diagnosticados; mlb_h2h queda intacto.
 - Balance congelado: 915.75.
 
 ## Por qué estamos en shadow
