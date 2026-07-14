@@ -26,12 +26,15 @@ if errorlevel 1 goto :error_run
 
 echo === DIARIO COMPLETO: OK ===
 
-REM Flujo terminado: abre el dashboard de inmediato (SIEMPRE). Va al final, ya
-REM escritos picks + reporte + report_latest.html, para que cualquier problema al
-REM lanzar el navegador no afecte el trabajo hecho. AVISO: bajo el Programador de
-REM tareas (sin escritorio) abrir el navegador puede terminar el proceso con
-REM 0xC000013A; el trabajo ya quedo completo de todos modos.
-start "" "%~dp0data\predictions\report_latest.html"
+REM Flujo terminado: abre el dashboard SOLO en sesion interactiva (SESSIONNAME
+REM definido, p.ej. "Console"). Bajo el Programador de tareas (sin escritorio)
+REM SESSIONNAME no existe y abrir el navegador podia terminar el proceso con
+REM 0xC000013A, registrando un fallo falso; en ese caso se omite.
+if defined SESSIONNAME (
+    start "" "%~dp0data\predictions\report_latest.html"
+) else (
+    echo [INFO] Sesion no interactiva: se omite abrir el dashboard.
+)
 
 endlocal
 goto :eof

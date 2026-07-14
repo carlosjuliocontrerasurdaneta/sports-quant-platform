@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-12
+actualizada: 2026-07-13
 ---
 
 # Tareas
@@ -25,6 +25,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-13 — Auditoría full + remediación de los 4 hallazgos menores: gate SESSIONNAME en DIARIO_COMPLETO.bat, helper `rest_days` unificado en features/common.py (+2 tests), docstring de budget.py y comentario de .gitignore al día. 361/361 verdes. Ver [[Bitácora/2026-07-13]].
 - [x] 2026-07-12 — Retención de artefactos (hallazgo 4 de la auditoría): `purge_old_artifacts` (allowlist estricta: `archive/`, `clv_*.md`, `.closing_credits_*`; 90 días) + `scripts/purge_artifacts.py`, cableado best-effort en `BACKFILL_ALL.bat` semanal.
 - [x] 2026-07-12 — Auditoría full del proyecto + fixes: lock anti-concurrencia en el odds store + Capture_Close desfasada a :30; void por expiración (`stale_void`, 3 días) para partidos cancelados; `requirements.lock.txt`. Ver [[Bitácora/2026-07-12]].
 - [x] 2026-07-12 — Auditoría de la masa de CLV=0 y filtro de frescura del cierre (≤90 min) en la auditoría CLV; el gate deja de estar sesgado a mediana 0. Ver [[Bitácora/2026-07-12]].

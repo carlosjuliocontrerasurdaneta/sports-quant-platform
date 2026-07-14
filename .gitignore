@@ -24,11 +24,9 @@ Second-Brain/
 data/output/
 .claude/tools/
 .claude/settings.local.json
-# Skills de terceros vendorizadas (KI-015): superpowers-main vive en disco (el
-# plugin se carga desde .claude/skills/superpowers-main — NO borrar el directorio)
-# pero no se versiona en el repo del producto. Des-trackeada 2026-07-02
-# (auditoria); restaurable desde el historial git o desde upstream. markitdown-main
-# ya fue eliminada por completo; la entrada evita re-trackearla si se re-vendoriza.
+# Skills de terceros vendorizadas (KI-015): superpowers-main fue eliminada
+# deliberadamente el 2026-07-04 (no restaurar) y markitdown-main tambien; las
+# entradas solo evitan re-trackearlas si alguna vez se re-vendorizan.
 .claude/skills/markitdown-main/
 .claude/skills/superpowers-main/
 # Lock efimero del scheduler de Claude Code (se recrea en cada sesion)

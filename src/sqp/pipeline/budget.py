@@ -1,8 +1,9 @@
 """Quota budget guard for the daily multi-league run.
 
-The Odds API free tier is 500 requests/month and each /odds request costs
-(markets x regions). Running every in-season league daily would blow that in
-the autumn (15-20 active leagues). This guard rations the REAL remaining quota
+Each Odds API /odds request costs (markets x regions) credits against the
+plan's monthly quota (production runs on a 20k-credit plan, not the 500-request
+free tier). Unrationed, running every in-season league daily still burns quota
+fast in the autumn (15-20 active leagues). This guard rations the REAL remaining quota
 (read from the API response headers) evenly over the days left in the month, so
 the daily run never exhausts the plan mid-month. It is plan-agnostic: raise the
 plan and the same code automatically runs more leagues.
