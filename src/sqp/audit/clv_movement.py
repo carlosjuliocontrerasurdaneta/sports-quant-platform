@@ -37,8 +37,8 @@ def movement_direction(movement_pp: float,
     return "plano"
 
 
-def _consensus_price(snap: pd.DataFrame, market: str, selection: str,
-                     point: float | None) -> float | None:
+def snapshot_consensus_price(snap: pd.DataFrame, market: str, selection: str,
+                             point: float | None) -> float | None:
     """Mediana del precio decimal entre books para (market, selection, point)
     dentro de un snapshot; None sin filas validas. Mismo criterio de consenso
     que _consensus_lines (mediana real), sobre las filas crudas del store."""
@@ -74,9 +74,10 @@ def pre_pick_movement(event_odds: pd.DataFrame, *, market: str, selection: str,
     if len(stamps) < 2:
         return None
     pre_ts = pd.to_datetime(pre["captured_at"], utc=True)
-    ref = _consensus_price(pre[pre_ts == stamps[0]], market, selection, point)
-    at_pick = _consensus_price(pre[pre_ts == stamps[-1]], market, selection,
-                               point)
+    ref = snapshot_consensus_price(pre[pre_ts == stamps[0]], market, selection,
+                                   point)
+    at_pick = snapshot_consensus_price(pre[pre_ts == stamps[-1]], market,
+                                       selection, point)
     if ref is None or at_pick is None:
         return None
     return {

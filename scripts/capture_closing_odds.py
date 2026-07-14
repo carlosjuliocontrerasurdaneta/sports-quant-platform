@@ -35,6 +35,24 @@ def main() -> int:
     print(f"Closing capture: {sum(out['captured'].values())} lines across "
           f"{len(out['captured'])} leagues; credits {out['credits_spent']}; "
           f"skipped(budget): {out['skipped_budget']}")
+    # Segundo pase pre-partido: re-valida los picks del dia contra el snapshot
+    # recien capturado (sin cuota extra). Best-effort: nunca rompe la captura.
+    if settings.revalidation_enabled:
+        try:
+            from sqp.pipeline.revalidation import revalidate_candidates
+            rv = revalidate_candidates(
+                ROOT / "data" / "predictions", ROOT,
+                min_edge=settings.risk.min_edge,
+                window_min=settings.revalidation_window_min,
+                price_max_age_min=settings.revalidation_price_max_age_min)
+            log.info("revalidation: evaluated=%d kept=%d revoked=%d "
+                     "skipped_no_price=%d", rv["evaluated"], rv["kept"],
+                     rv["revoked"], rv["skipped_no_price"])
+            print(f"Revalidation: {rv['evaluated']} evaluated, "
+                  f"{rv['kept']} kept, {rv['revoked']} revoked, "
+                  f"{rv['skipped_no_price']} without fresh price")
+        except Exception as exc:
+            log.warning("revalidation pass failed (non-fatal): %s", exc)
     return 0
 
 

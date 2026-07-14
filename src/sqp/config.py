@@ -142,6 +142,20 @@ class Settings:
         default_factory=lambda: float(os.getenv("DEGRADATION_ROI_PAUSE", "-0.15")))
     degradation_roi_resume: float = field(
         default_factory=lambda: float(os.getenv("DEGRADATION_ROI_RESUME", "-0.05")))
+    # Segundo pase pre-partido (2026-07-14): tras cada captura de cierre
+    # horaria, re-valida el edge de los picks del dia con evento inminente
+    # contra el consenso vigente y revoca (stake 0, flag stale_edge_revoked)
+    # los que ya no se generarian (edge < min_edge al precio actual). Solo
+    # baja stakes; sin snapshot fresco no actua. OFF por defecto para
+    # Settings() directo (tests/demo); produccion lo activa via yaml.
+    revalidation_enabled: bool = field(
+        default_factory=lambda: os.getenv("REVALIDATION_ENABLED", "").lower()
+        in ("1", "true", "yes"))
+    revalidation_window_min: int = field(
+        default_factory=lambda: int(os.getenv("REVALIDATION_WINDOW_MIN", "120")))
+    revalidation_price_max_age_min: float = field(
+        default_factory=lambda: float(
+            os.getenv("REVALIDATION_PRICE_MAX_AGE_MIN", "90")))
 
     def validate(self) -> "Settings":
         """Fail fast on unsafe or internally inconsistent operator settings."""
@@ -187,6 +201,10 @@ class Settings:
         if self.degradation_roi_resume < self.degradation_roi_pause:
             raise ValueError("DEGRADATION_ROI_RESUME must be >= "
                              "DEGRADATION_ROI_PAUSE (hysteresis)")
+        if self.revalidation_window_min < 1:
+            raise ValueError("REVALIDATION_WINDOW_MIN must be >= 1")
+        if self.revalidation_price_max_age_min <= 0:
+            raise ValueError("REVALIDATION_PRICE_MAX_AGE_MIN must be > 0")
         if self.calibration_method not in ("isotonic", "beta", "auto"):
             raise ValueError(
                 "CALIBRATION_METHOD must be isotonic, beta or auto")
@@ -248,6 +266,14 @@ class Settings:
                 s.degradation_roi_pause = float(dm["roi_pause"])
             if "DEGRADATION_ROI_RESUME" not in os.environ and "roi_resume" in dm:
                 s.degradation_roi_resume = float(dm["roi_resume"])
+            rv = cfg.get("revalidation") or {}
+            if "REVALIDATION_ENABLED" not in os.environ and "enabled" in rv:
+                s.revalidation_enabled = bool(rv["enabled"])
+            if "REVALIDATION_WINDOW_MIN" not in os.environ and "window_min" in rv:
+                s.revalidation_window_min = int(rv["window_min"])
+            if ("REVALIDATION_PRICE_MAX_AGE_MIN" not in os.environ
+                    and "price_max_age_min" in rv):
+                s.revalidation_price_max_age_min = float(rv["price_max_age_min"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])

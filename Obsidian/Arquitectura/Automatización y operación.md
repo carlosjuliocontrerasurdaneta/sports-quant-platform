@@ -1,7 +1,7 @@
 ---
 tags: [operacion, scheduler, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-07-14
 ---
 
 # Automatización y operación
@@ -13,7 +13,7 @@ Producción vive en `C:\dev\sports-quant-platform` (migración desde OneDrive co
 | Tarea | Frecuencia | Qué hace |
 |---|---|---|
 | `Diario_Completo` | diaria 11:00 | `DIARIO_COMPLETO.bat`: settle → run encadenado (orden obligatorio) |
-| `Capture_Close` | cada hora | captura líneas de cierre → hace medible el CLV |
+| `Capture_Close` | cada hora (a los :30 desde 07-12) | captura líneas de cierre → hace medible el CLV; desde 07-14 encadena el segundo pase de revalidación (revoca picks del día cuyo edge desapareció al consenso vigente; `revalidation:` en default.yaml, ver [[Bitácora/2026-07-14]]) |
 | `Backfill` | lunes 09:00 | resultados históricos (tenis incluido) |
 | `Refresh_ML` | lunes 09:45 | reentreno/refresh de la ruta ML |
 | `Validate_OOS` | mensual, día 1, 12:00 | validación out-of-sample |

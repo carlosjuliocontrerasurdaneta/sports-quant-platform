@@ -106,3 +106,16 @@ degradation_monitor:
   brier_margin: 0.01
   roi_pause: -0.15
   roi_resume: -0.05
+
+# Segundo pase pre-partido (2026-07-14): tras cada captura de cierre horaria,
+# re-valida el edge de los picks del dia con evento inminente contra el
+# consenso vigente y REVOCA (stake 0, flag stale_edge_revoked, rastro en
+# data/bets/revalidation_log.csv) los que ya no se generarian (edge actual <
+# min_edge). Un revoke es final; un keep se re-evalua cada pase. Sin snapshot
+# fresco (<= price_max_age_min) no actua. Solo baja stakes, nunca los sube.
+# Bajo shadow es medicion pura (revocados vs mantenidos comparables en CLV).
+# Env vars REVALIDATION_* (cuando estan) ganan sobre yaml.
+revalidation:
+  enabled: true
+  window_min: 120
+  price_max_age_min: 90
