@@ -1,7 +1,7 @@
 ---
 tags: [calibracion, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-13
+actualizada: 2026-07-14
 ---
 
 # Calibración
@@ -19,7 +19,7 @@ Estado al 2026-07-13: **solo `mlb_h2h` LIVE** (isotónico, auto-promovido 07-13:
 
 1. **Mismatch train/serve** (detectado 2026-06-30, fix 2026-07-01 `d39f975`): se entrenaba sobre pick_history anclado al **cierre** (bien calibrado) pero se servía anclado a **apertura** (sobreconfiado) — la miscalibración era inaprendible. Ahora entrena sobre `data/bets/settled_*.csv` (distribución de servicio).
 2. **Calibradores degenerados** (regresión 2026-06-30): el retrain diario re-persistió un isotónico mlb_spreads sobreajustado (step function que el gate monótono no detectaba); empujaba favoritos a 0.92–0.99 creando edges fantasma. Fix: drop a no-op + gate de Brier OOS (TDD, verificado sobre el incidente real). nhl_h2h también degenerado → drop.
-3. **Sobreconfianza per-game vs per-bet**: el calibrador entrena sobre apuestas colocadas por mercado (muestra chica y sesgada), no sobre el set per-game del backtest — la sobreconfianza del moneyline MLB (bins 0.5–0.7) no es corregible por esta vía.
+3. **Sobreconfianza per-game vs per-bet**: el calibrador entrena sobre apuestas colocadas por mercado (muestra chica y sesgada), no sobre el set per-game del backtest — la sobreconfianza del moneyline MLB (bins 0.5–0.7) no es corregible por esta vía. **Actualización 2026-07-14**: la ruta per-game existe (`sqp/calibration/pergame.py`, clave sandbox `mlb_h2h_pergame` solo en staging). El candidato beta es sólido en su dominio (ECE per-game 0.0289→0.0141, 1.738 eventos de validación, 4 gates OK) pero NO se adopta: en la evaluación cruzada sobre picks liquidados (n=10 cola / n=52 total — ruido) no mejora al raw. Hallazgo clave: la miscalibración de servicio (ECE ~0.26 en la cola) es ~10× la per-game (0.029) → el daño dominante es la SELECCIÓN, no la calibración del modelo. Re-evaluar cuando los h2h liquidados de MLB acumulen n≥50 en la cola.
 4. **Los tres gates no bastan con validación chica** (2026-07-13): un candidato wnba_h2h pasó ECE+Brier+monotonía sobre 24 filas / 8 eventos mientras mapeaba 0.80→0.99 — la misma forma del incidente 06-30. Solo lo frenaba el umbral de ≥15 eventos de la auto-promoción; con una semana más de datos WNBA habría entrado a live. Fix: condición `extreme_ok` en el fit (rechazo en origen, no en promoción).
 
 ## Lección central

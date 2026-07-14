@@ -18,6 +18,7 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
                           league_params: dict | None = None, warmup: int = 60) -> dict:
     adapter = get_adapter(league, family, league_params)
     probs, outcomes = [], []
+    dates: list[str] = []
     draw_probs, draw_outcomes = [], []
     threeway_ll_terms: list[float] = []
     for i, r in enumerate(results):
@@ -48,10 +49,12 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
                 probs.append(ph)
             outcomes.append(1.0 if r["home_score"] > r["away_score"] else
                             (0.5 if r["home_score"] == r["away_score"] else 0.0))
+            dates.append(str(r.get("date")))
         adapter.observe(r)
     mask = [o in (0.0, 1.0) for o in outcomes]  # binary metrics exclude draws
     p = [x for x, m in zip(probs, mask) if m]
     y = [x for x, m in zip(outcomes, mask) if m]
+    d = [x for x, m in zip(dates, mask) if m]
     return {
         "league": league, "n_games_evaluated": len(p),
         "brier_score": brier_score(p, y) if p else float("nan"),
@@ -67,6 +70,7 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
         # in tuning (compute losses over arbitrary time windows without re-running).
         "binary_probs": p,
         "binary_outcomes": y,
+        "binary_dates": d,
         "threeway_ll_series": list(threeway_ll_terms),
         "note": ("Calibration-only backtest. Three-way leagues are scored on "
                  "P(home | no draw) vs draw-excluded outcomes; draw calibration "

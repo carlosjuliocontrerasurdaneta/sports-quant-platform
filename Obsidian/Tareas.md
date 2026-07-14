@@ -15,6 +15,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
+- [ ] Re-evaluar el candidato per-game `mlb_h2h_pergame` (staged) cuando la cola de settled h2h MLB llegue a n≥50: `python scripts/train_pergame_calibration.py --leagues mlb`; adoptar solo si mejora ECE y Brier sobre la distribución de servicio.
 - [ ] Evaluar el segundo pase de revalidación cuando haya muestra: comparar CLV/ROI de picks `reval_action=revoke` vs `keep` en settled (la etiqueta viaja vía unión de columnas); si los revocados tienen peor CLV, el pase queda validado para el post-shadow.
 - [ ] Re-correr `scripts/clv_by_line_movement.py` cuando haya ≥30 picks por dirección en algún (liga, mercado) — hipótesis del filtro de confirmación por movimiento NO confirmada el 07-14 con trayectorias pobres (mediana 2 snapshots/pick); ver [[Bitácora/2026-07-14]].
 - [ ] Perf (auditoría 07-12): `load_closing_odds` concatena todos los meses de odds por llamada; filtrar por rango de meses relevante cuando el histórico crezca.
@@ -27,6 +28,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-14 — Calibración per-game (`sqp/calibration/pergame.py`): candidato beta sólido en dominio per-game (ECE 0.029→0.014, 1.738 eventos val) pero sin mejora en la distribución de servicio (n=10/52, ruido) → staged bajo clave sandbox, NO adoptado. Hallazgo: miscalibración de servicio ~10× la per-game → el daño es selección, no calibración. Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Segundo pase pre-partido (`sqp/pipeline/revalidation.py`): revalida el edge de los picks del día contra el consenso vigente en cada captura horaria y revoca los vencidos (flag `stale_edge_revoked`); bajo shadow es medición (revocados vs mantenidos → CLV). Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Análisis CLV × movimiento previo de línea (`clv_movement.py`): hipótesis del filtro de confirmación NO confirmada (Spearman −0.096, n=116); no se implementa el filtro. Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Pestaña Diagnóstico en el dashboard (estado del monitor de degradación + segmentos flageados; 3ª pieza del loop de autoevaluación). Ver [[Bitácora/2026-07-14]].
