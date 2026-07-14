@@ -1,12 +1,15 @@
 """Self-contained HTML dashboard for the daily run.
 
-Four tabs in one file (no external assets, no network):
+Five tabs in one file (no external assets, no network):
   - Picks del Dia: sortable table with filters (sport / market / min EV) and a
     stats bar (best EV, average EV, average Kelly) recomputed over the filtered
     rows. EV is the estimated edge (p*price-1); Kelly is the fractional-Kelly
     stake pct already capped by the risk engine.
   - Auditoria: realized-ROI segments (overall / per league / per market) plus an
     estimated-vs-realized calibration check, from settled bets.
+  - Diagnostico: current auto-pause state from the degradation monitor plus the
+    flagged rows of the per-segment diagnostics (observability of the
+    self-evaluation loop; both artifacts are produced by the daily run).
   - Patrones: hit-rate / frequency breakdowns from the consolidated pick history
     backtest (by market, situation, home/away, Over/Under, per team) with a
     short data-driven reading.
@@ -76,7 +79,8 @@ def _picks_records(predictions_dir: Path,
     return records
 
 
-def _df_to_html_table(df: pd.DataFrame, *, empty_msg: str) -> str:
+def _df_to_html_table(df: pd.DataFrame, *, empty_msg: str,
+                      table_id: str | None = None) -> str:
     if df is None or df.empty:
         return f'<p class="empty">{html.escape(empty_msg)}</p>'
     head = "".join(f"<th>{html.escape(str(c))}</th>" for c in df.columns)
@@ -84,7 +88,8 @@ def _df_to_html_table(df: pd.DataFrame, *, empty_msg: str) -> str:
     for _, row in df.iterrows():
         cells = "".join(f"<td>{html.escape(_fmt_cell(v))}</td>" for v in row)
         body_rows.append(f"<tr>{cells}</tr>")
-    return (f'<table class="grid"><thead><tr>{head}</tr></thead>'
+    id_attr = f' id="{html.escape(table_id)}"' if table_id else ""
+    return (f'<table class="grid"{id_attr}><thead><tr>{head}</tr></thead>'
             f'<tbody>{"".join(body_rows)}</tbody></table>')
 
 
@@ -119,6 +124,95 @@ def _audit_section(bets_dir: Path) -> str:
         'aproximar <code>hit_rate</code> y <code>mean_est_edge</code> deberia '
         'aproximar <code>realized_roi</code> si el modelo esta bien calibrado.</p>',
     ])
+
+
+_DEGRADATION_COLS: tuple[tuple[str, str], ...] = (
+    ("liga", "Liga"), ("mercado", "Mercado"), ("estado", "Estado"),
+    ("razones", "Razones"), ("n", "n"), ("brier_modelo", "Brier modelo"),
+    ("brier_mercado", "Brier mercado"), ("roi_flat", "ROI flat"),
+    ("desde", "Pausado desde"))
+
+_SEGMENT_COLS: tuple[str, ...] = (
+    "league", "market", "dimension", "segment", "n", "hit_rate",
+    "mean_est_prob", "gap", "brier_model", "brier_market", "roi_flat", "flags")
+
+
+def _diagnostics_section(bets_dir: Path) -> str:
+    """Estado del loop de autoevaluacion: auto-pausas vigentes del monitor de
+    degradacion (degradation_pause.json) + segmentos con desviacion sistematica
+    del diagnostico por segmentos (segment_diagnostics_latest.csv). Solo
+    observabilidad sobre probabilidades estimadas; las pausas ya las aplico el
+    run diario, aqui solo se muestran."""
+    # local imports: sqp.risk.degradation/sqp.audit.segments importan
+    # sqp.audit.report; locales evitan acoplar la carga del modulo
+    from sqp.audit.segments import SEGMENTS_CSV
+    from sqp.risk.degradation import load_degradation_registry
+    parts: list[str] = ["<h3>Monitor de degradacion (auto-pausa por liga/mercado)</h3>"]
+    markets = load_degradation_registry(bets_dir)
+    if not markets:
+        parts.append('<p class="empty">El monitor de degradacion aun no ha '
+                     'corrido (se ejecuta en el run diario y persiste '
+                     '<code>degradation_pause.json</code>).</p>')
+    else:
+        rows = []
+        for key, e in sorted(markets.items()):
+            if "|" not in key or not isinstance(e, dict):
+                continue
+            lg, mk = key.split("|", 1)
+            rows.append({
+                "liga": lg, "mercado": mk,
+                "estado": "PAUSADO" if e.get("paused") else "activo",
+                "razones": ", ".join(e.get("reasons") or []),
+                "n": e.get("n"), "brier_modelo": e.get("brier_model"),
+                "brier_mercado": e.get("brier_market"),
+                "roi_flat": e.get("roi_flat"),
+                "desde": str(e.get("since") or "")[:10],
+            })
+        deg = pd.DataFrame(rows, columns=[k for k, _ in _DEGRADATION_COLS])
+        deg.columns = [h for _, h in _DEGRADATION_COLS]
+        n_paused = sum(r["estado"] == "PAUSADO" for r in rows)
+        parts.extend([
+            '<div class="cards">',
+            _card("Mercados auto-pausados", str(n_paused),
+                  f"de {len(rows)} monitoreados"),
+            "</div>",
+            _df_to_html_table(deg, empty_msg="(sin mercados monitoreados)",
+                              table_id="degradationTable"),
+            '<p class="note">Pausa si el Brier de la probabilidad estimada es '
+            'peor que el del mercado o el ROI a stake plano cae bajo el umbral; '
+            'reanuda solo con histeresis. Un mercado pausado se sigue estimando '
+            'y registrando con stake 0.</p>',
+        ])
+    parts.append("<h3>Segmentos con desviacion sistematica</h3>")
+    seg_path = Path(bets_dir) / SEGMENTS_CSV
+    if not seg_path.exists():
+        parts.append('<p class="empty">Sin diagnostico por segmentos todavia '
+                     '(se genera en el run diario como '
+                     '<code>segment_diagnostics_latest.csv</code>).</p>')
+        return "".join(parts)
+    try:
+        seg = pd.read_csv(seg_path)
+    except Exception:
+        seg = pd.DataFrame()
+    if seg.empty or "flags" not in seg.columns:
+        parts.append('<p class="empty">El diagnostico por segmentos no tiene '
+                     'filas utilizables.</p>')
+        return "".join(parts)
+    flagged = seg[seg["flags"].fillna("") != ""]
+    shown = flagged[[c for c in _SEGMENT_COLS if c in flagged.columns]]
+    parts.extend([
+        '<div class="cards">',
+        _card("Segmentos flageados", str(len(flagged)),
+              f"de {len(seg)} analizados"),
+        "</div>",
+        _df_to_html_table(shown, empty_msg="(ninguna desviacion detectada)",
+                          table_id="segmentsTable"),
+        '<p class="note">gap = frecuencia observada &minus; probabilidad '
+        'estimada media (negativo = sobreconfianza); <code>roi_flat</code> es '
+        'ROI realizado a stake plano de 1 unidad. Solo observabilidad: las '
+        'pausas las decide el monitor por mercado completo.</p>',
+    ])
+    return "".join(parts)
 
 
 _PATTERN_BLOCKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
@@ -314,6 +408,7 @@ def html_dashboard(predictions_dir: Path | None = None,
         day=html.escape(day),
         generated=html.escape(ts),
         audit=_audit_section(bets_dir),
+        diagnostics=_diagnostics_section(bets_dir),
         patterns=_patterns_section(patterns_path),
         history=_history_section(predictions_dir, bets_dir),
         disclaimer=html.escape(DISCLAIMER),
@@ -391,6 +486,7 @@ _TEMPLATE = """<!DOCTYPE html>
 <nav class="tabs">
   <div class="tab active" data-tab="picks">Picks del Dia</div>
   <div class="tab" data-tab="audit">Auditoria</div>
+  <div class="tab" data-tab="diagnostics">Diagnostico</div>
   <div class="tab" data-tab="patterns">Patrones</div>
   <div class="tab" data-tab="history">Historial</div>
 </nav>
@@ -406,6 +502,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <table class="grid" id="picksTable"><thead></thead><tbody></tbody></table>
   </section>
   <section class="panel" id="audit">{audit}</section>
+  <section class="panel" id="diagnostics">{diagnostics}</section>
   <section class="panel" id="patterns">{patterns}</section>
   <section class="panel" id="history">{history}</section>
 </main>

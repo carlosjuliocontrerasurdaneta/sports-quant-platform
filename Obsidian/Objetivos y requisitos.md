@@ -1,7 +1,7 @@
 ---
 tags: [objetivos, requisitos, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-07-14
 ---
 
 # Objetivos y requisitos
@@ -22,7 +22,7 @@ Plataforma Python de analítica cuantitativa deportiva (MLB, NBA/WNBA, NFL, NHL,
 - Run diario orquestado (`DIARIO_COMPLETO.bat`: settle → run encadenado) + captura horaria de cierre + backfill/refresh semanal + OOS mensual. Ver [[Arquitectura/Automatización y operación]].
 - Todo pick se registra aunque no sea accionable (stream servido para calibración sin sesgo de selección).
 - Promoción de calibradores y salida del shadow mode son **decisiones humanas explícitas**, nunca automáticas.
-- Reporte HTML autónomo (sin assets externos) con picks, auditoría, patrones e historial filtrable.
+- Reporte HTML autónomo (sin assets externos) con picks, auditoría, diagnóstico (auto-pausas + segmentos flageados), patrones e historial filtrable.
 
 ## Restricciones y reglas duras
 

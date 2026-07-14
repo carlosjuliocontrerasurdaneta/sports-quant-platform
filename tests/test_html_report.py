@@ -60,12 +60,13 @@ def _write_inputs(tmp_path):
     return pred, bets
 
 
-def test_dashboard_has_four_tabs_and_stats_bar(tmp_path):
+def test_dashboard_has_five_tabs_and_stats_bar(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     path = html_dashboard(pred, bets)
     text = open(path, encoding="utf-8").read()
     assert path.endswith(".html")
-    for tab in ("Picks del Dia", "Auditoria", "Patrones", "Historial"):
+    for tab in ("Picks del Dia", "Auditoria", "Diagnostico", "Patrones",
+                "Historial"):
         assert tab in text
     for stat in ("Mejor EV", "EV promedio", "Kelly promedio"):
         assert stat in text
@@ -189,6 +190,61 @@ def test_dashboard_line_without_point_renders_dash_not_nan(tmp_path):
     assert ">—<" in text                    # h2h history row, Linea column
     assert html_report._fmt_cell(float("nan")) == "—"
     assert html_report._fmt_cell(-2.5) == "-2.5000"
+
+
+def _write_diagnostics_inputs(bets):
+    registry = {
+        "generated_at": "2026-07-14T11:00:00+00:00",
+        "params": {"window_days": 60, "min_n": 30},
+        "markets": {
+            "mlb|spreads": {"paused": True, "since": "2026-07-14T11:00:00+00:00",
+                            "reasons": ["brier_worse_than_market",
+                                        "roi_flat_below_threshold"],
+                            "n": 117, "brier_model": 0.2582,
+                            "brier_market": 0.2478, "roi_flat": -0.308,
+                            "updated_at": "2026-07-14T11:00:00+00:00"},
+            "mlb|h2h": {"paused": False, "since": None, "reasons": [],
+                        "n": 190, "brier_model": 0.2401,
+                        "brier_market": 0.2440, "roi_flat": 0.012,
+                        "updated_at": "2026-07-14T11:00:00+00:00"},
+        },
+    }
+    (bets / "degradation_pause.json").write_text(
+        json.dumps(registry), encoding="utf-8")
+    pd.DataFrame([
+        {"league": "wnba", "market": "totals", "dimension": "lado",
+         "segment": "under", "n": 40, "hit_rate": 0.44, "mean_est_prob": 0.59,
+         "gap": -0.15, "brier_model": 0.2797, "brier_market": 0.25,
+         "roi_flat": -0.19, "flags": "sobreconfianza;peor_que_mercado"},
+        {"league": "mlb", "market": "h2h", "dimension": "favorito",
+         "segment": "favorito", "n": 120, "hit_rate": 0.61,
+         "mean_est_prob": 0.60, "gap": 0.01, "brier_model": 0.2301,
+         "brier_market": 0.2340, "roi_flat": 0.02, "flags": ""},
+    ]).to_csv(bets / "segment_diagnostics_latest.csv", index=False)
+
+
+def test_dashboard_diagnostics_tab_renders_degradation_and_segments(tmp_path):
+    pred, bets = _write_inputs(tmp_path)
+    _write_diagnostics_inputs(bets)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    # degradation state table: paused market with reasons, active market too
+    assert "PAUSADO" in text
+    assert "brier_worse_than_market" in text
+    assert "mlb|spreads" not in text            # key split into league/market cells
+    # flagged segments table shows only rows with flags
+    assert "sobreconfianza" in text
+    assert 'id="segmentsTable"' in text
+    assert 'id="degradationTable"' in text
+    # unflagged segment row (favorito, gap 0.01) is not in the flagged table
+    assert ">favorito<" not in text
+
+
+def test_dashboard_diagnostics_tab_empty_is_safe(tmp_path):
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    assert "Diagnostico" in text
+    assert "monitor de degradacion" in text     # placeholder: not run yet
+    assert "diagnostico por segmentos" in text  # placeholder: no CSV yet
 
 
 def test_dashboard_empty_is_safe(tmp_path):

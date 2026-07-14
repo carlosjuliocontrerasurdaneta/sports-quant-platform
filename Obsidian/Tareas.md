@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-13
+actualizada: 2026-07-14
 ---
 
 # Tareas
@@ -25,6 +25,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-14 — Pestaña Diagnóstico en el dashboard (estado del monitor de degradación + segmentos flageados; 3ª pieza del loop de autoevaluación). Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-13 — Diagnóstico automático por segmentos (`sqp/audit/segments.py`): favorito/underdog, lado, banda de prob., banda de línea; flags de sobre/subconfianza y Brier vs mercado; integrado al run diario. Dry-run: 22/94 segmentos flageados. Ver [[Bitácora/2026-07-13]].
 - [x] 2026-07-13 — Monitor de degradación por (liga, mercado) con auto-pausa gated (`sqp/risk/degradation.py`): Brier vs mercado o ROI plano bajo umbral → pausa; histéresis para reanudar; unión con `paused_markets`. Dry-run: pausaría mlb_spreads, tenis Wimbledon h2h x2 y wnba_totals. Ver [[Bitácora/2026-07-13]].
 - [x] 2026-07-13 — Auditoría full + remediación de los 4 hallazgos menores: gate SESSIONNAME en DIARIO_COMPLETO.bat, helper `rest_days` unificado en features/common.py (+2 tests), docstring de budget.py y comentario de .gitignore al día. 361/361 verdes. Ver [[Bitácora/2026-07-13]].

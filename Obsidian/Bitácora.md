@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-11
+actualizada: 2026-07-14
 ---
 
 # Bitácora — índice
@@ -10,6 +10,9 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-07-14]] — pestaña Diagnóstico en el dashboard (auto-pausas del monitor de degradación + segmentos flageados).
+- [[Bitácora/2026-07-13]] — consolidación de skills; revisión integral de calibración + gate `extreme_ok` (mlb_h2h LIVE); monitor de degradación con auto-pausa; diagnóstico por segmentos; auditoría full + remediación; limpieza de copias legacy.
+- [[Bitácora/2026-07-12]] — filtro de frescura del cierre (≤90 min) en la auditoría CLV; lock del odds store; `stale_void`; retención de artefactos; candidato mlb_spreads obsoleto.
 - [[Bitácora/2026-07-11]] — filtro por condición Home/Away y tarjeta % aciertos en la pestaña Historial del dashboard.
 - [[Bitácora/2026-07-08]] — gate de CLV por mercado; KI-017 y KI-018 cerrados; scheduler final; bóveda Obsidian creada.
 
