@@ -10,11 +10,12 @@ All features are pregame (past games only) — no leakage.
 """
 from __future__ import annotations
 
-from datetime import date as _date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from sqp.features.common import rest_days
 
 ROLLING_WINDOWS = [7, 14, 30]
 EWM_SPAN = 15
@@ -43,16 +44,7 @@ def _get_team_features(team: str, stats: dict, game_date=None) -> dict:
                        if hist_ra else RUN_DEFAULT)
     feats["run_diff_ewm"] = feats["rf_ewm"] - feats["ra_ewm"]
 
-    last = s.get("last_game_date")
-    if last and game_date is not None:
-        try:
-            d1 = _date.fromisoformat(str(last)[:10])
-            d2 = _date.fromisoformat(str(pd.Timestamp(game_date).date()))
-            feats["rest_days"] = max(1, min((d2 - d1).days, 15))
-        except Exception:
-            feats["rest_days"] = 3
-    else:
-        feats["rest_days"] = 3
+    feats["rest_days"] = rest_days(s.get("last_game_date"), game_date, cap=15)
     return feats
 
 

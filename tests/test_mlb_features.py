@@ -52,3 +52,25 @@ def test_mlb_feature_store_joins_starters(tmp_path):
     assert fs._feature_path(tmp_path, "mlb").exists()
     assert (tmp_path / "data" / "feature_store" / "mlb_pitcher_state.csv").exists()
     assert "mlb" in fs.SUPPORTED
+
+
+def test_rest_days_helper_semantics():
+    from sqp.features.common import rest_days
+    assert rest_days("2024-04-01", "2024-04-03") == 2.0
+    assert rest_days("2024-04-01", "2024-04-01") == 1.0  # clamped to >= 1
+    assert rest_days("2024-03-01", "2024-04-30", cap=15) == 15.0  # clamped to cap
+    assert rest_days(None, "2024-04-03") == 3.0  # no prior game -> neutral default
+    assert rest_days("not-a-date", "2024-04-03") == 3.0  # unparseable -> default
+
+
+def test_mlb_rest_days_matches_shared_helper():
+    import pandas as pd
+    df = pd.DataFrame([
+        {"date": "2024-04-01", "game_id": "1", "home_team": "NYY", "away_team": "BOS",
+         "home_score": 5, "away_score": 3},
+        {"date": "2024-04-06", "game_id": "2", "home_team": "NYY", "away_team": "BOS",
+         "home_score": 2, "away_score": 4},
+    ])
+    out, _ = build_mlb_dataset(df)
+    assert out.loc[0, "home_rest_days"] == 3.0  # first game: default
+    assert out.loc[1, "home_rest_days"] == 5.0  # 04-01 -> 04-06

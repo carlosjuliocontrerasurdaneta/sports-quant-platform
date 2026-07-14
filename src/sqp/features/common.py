@@ -23,6 +23,19 @@ def default_team_state(pts_default: float = 4.0) -> dict:
     }
 
 
+def rest_days(last_game_date, game_date, cap: int = 15) -> float:
+    """Days since the team's last game, clamped to [1, cap]; 3.0 when unknown
+    or unparseable (neutral mid-week rest)."""
+    if last_game_date and game_date is not None:
+        try:
+            d1 = _date.fromisoformat(str(last_game_date)[:10])
+            d2 = _date.fromisoformat(str(pd.Timestamp(game_date).date()))
+            return float(max(1, min((d2 - d1).days, cap)))
+        except Exception:
+            return 3.0
+    return 3.0
+
+
 def get_team_features(team: str, stats: dict, windows: list[int], ewm_span: int,
                       pts_default: float, game_date=None, rest_cap: int = 15) -> dict:
     s = stats.get(team, default_team_state(pts_default))
@@ -43,16 +56,7 @@ def get_team_features(team: str, stats: dict, windows: list[int], ewm_span: int,
                        if hist_pa else pts_default)
     feats["diff_ewm"] = feats["pts_ewm"] - feats["pa_ewm"]
 
-    last = s.get("last_game_date")
-    if last and game_date is not None:
-        try:
-            d1 = _date.fromisoformat(str(last)[:10])
-            d2 = _date.fromisoformat(str(pd.Timestamp(game_date).date()))
-            feats["rest_days"] = float(max(1, min((d2 - d1).days, rest_cap)))
-        except Exception:
-            feats["rest_days"] = 3.0
-    else:
-        feats["rest_days"] = 3.0
+    feats["rest_days"] = rest_days(s.get("last_game_date"), game_date, cap=rest_cap)
     return feats
 
 
