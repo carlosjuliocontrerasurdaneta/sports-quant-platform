@@ -506,6 +506,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         h2h_fair = _novig_probs(cons, "h2h")
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
+               # abridores del MOMENTO DEL PICK (None fuera de beisbol): linea
+               # base del guard de cambio de abridor en la revalidacion horaria
+               "home_pitcher": eo.event.home_pitcher,
+               "away_pitcher": eo.event.away_pitcher,
                "data_label": eo.event.data_label, "warning": warn,
                "spread_line": spread, "total_line": total, **est.as_dict(),
                "market_novig_home": h2h_fair.get(eo.event.home),

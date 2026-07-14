@@ -134,6 +134,105 @@ def test_keep_is_reevaluated_on_later_pass(tmp_path):
     assert _read_cands(tmp_path).iloc[0]["reval_action"] == "revoke"
 
 
+def _preds_with_pitchers(home_p="Gerrit Cole", away_p="José Berríos"):
+    return [{"event_id": "e1", "home": "A", "away": "B",
+             "start_time": START_IN_WINDOW,
+             "home_pitcher": home_p, "away_pitcher": away_p}]
+
+
+def _probables(home_p="Gerrit Cole", away_p="José Berríos", home="A", away="B"):
+    """Respuesta estilo MLB Stats API para fetch_probables(day)."""
+    return [{"date": START_IN_WINDOW[:10], "commence": START_IN_WINDOW,
+             "home": home, "away": away,
+             "home_pitcher": home_p, "away_pitcher": away_p}]
+
+
+def test_run_league_persists_pick_time_pitchers():
+    from sqp.config import Settings as S
+    from sqp.pipeline.daily import run_league
+    df = run_league("mlb", S.load(), mode="demo")
+    assert "home_pitcher" in df.columns and "away_pitcher" in df.columns
+
+
+def test_pitcher_change_revokes_with_reason(tmp_path):
+    from sqp.pipeline.revalidation import revalidate_pitchers
+    pred_dir = _write(tmp_path, [_cand_row()], [], preds=_preds_with_pitchers())
+    s = revalidate_pitchers(pred_dir, tmp_path, "test",
+                            fetch_probables=lambda day: _probables(
+                                home_p="Random Guy"), now=NOW)
+    assert s["revoked"] == 1
+    row = _read_cands(tmp_path).iloc[0]
+    assert row["reval_action"] == "revoke"
+    assert "pitcher_changed" in str(row["flags"])
+    assert float(row["stake"]) == 0.0
+    log = pd.read_csv(tmp_path / "data" / "bets" / "revalidation_log.csv")
+    assert log.iloc[0]["reason"] == "pitcher_changed"
+
+
+def test_pitcher_accent_variants_do_not_revoke(tmp_path):
+    from sqp.pipeline.revalidation import revalidate_pitchers
+    pred_dir = _write(tmp_path, [_cand_row()], [], preds=_preds_with_pitchers())
+    s = revalidate_pitchers(pred_dir, tmp_path, "test",
+                            fetch_probables=lambda day: _probables(
+                                away_p="Jose Berrios"), now=NOW)
+    assert s["revoked"] == 0 and s["checked"] == 1
+    row = _read_cands(tmp_path).iloc[0]
+    assert "pitcher_changed" not in str(row.get("flags", ""))
+    assert float(row["stake"]) == 5.0
+
+
+def test_starter_pulled_revokes(tmp_path):
+    from sqp.pipeline.revalidation import revalidate_pitchers
+    pred_dir = _write(tmp_path, [_cand_row()], [], preds=_preds_with_pitchers())
+    s = revalidate_pitchers(pred_dir, tmp_path, "test",
+                            fetch_probables=lambda day: _probables(home_p=None),
+                            now=NOW)
+    assert s["revoked"] == 1
+    row = _read_cands(tmp_path).iloc[0]
+    assert "starter_pulled" in str(row["flags"])
+
+
+def test_unmatched_game_and_fetch_failure_skip(tmp_path):
+    from sqp.pipeline.revalidation import revalidate_pitchers
+    pred_dir = _write(tmp_path, [_cand_row()], [], preds=_preds_with_pitchers())
+    s = revalidate_pitchers(pred_dir, tmp_path, "test",
+                            fetch_probables=lambda day: _probables(
+                                home="X", away="Y"), now=NOW)
+    assert s["revoked"] == 0 and s["skipped_unmatched"] == 1
+    assert (_read_cands(tmp_path)["stake"] == 5.0).all()
+
+    def boom(day):
+        raise RuntimeError("statsapi down")
+    s2 = revalidate_pitchers(pred_dir, tmp_path, "test",
+                             fetch_probables=boom, now=NOW)
+    assert s2["revoked"] == 0                       # fallo de red: sin accion
+    assert (_read_cands(tmp_path)["stake"] == 5.0).all()
+
+
+def test_revalidation_log_reconciles_old_schema(tmp_path):
+    from sqp.pipeline.revalidation import revalidate_pitchers
+    pred_dir = _write(tmp_path, [_cand_row()], [], preds=_preds_with_pitchers())
+    bets = tmp_path / "data" / "bets"
+    bets.mkdir(parents=True, exist_ok=True)
+    # log de esquema viejo (sin columna reason)
+    pd.DataFrame([{"timestamp": "t0", "league": "test", "event_id": "e0",
+                   "market": "h2h", "selection": "A"}]).to_csv(
+        bets / "revalidation_log.csv", index=False)
+    revalidate_pitchers(pred_dir, tmp_path, "test",
+                        fetch_probables=lambda day: _probables(
+                            home_p="Random Guy"), now=NOW)
+    log = pd.read_csv(bets / "revalidation_log.csv")
+    assert len(log) == 2 and "reason" in log.columns
+    assert log.iloc[0]["event_id"] == "e0"          # fila vieja preservada
+
+
+def test_price_revoke_logs_reason(tmp_path):
+    revalidate_candidates(_write(tmp_path, [_cand_row()], [_odds_row()]),
+                          tmp_path, min_edge=0.02, now=NOW)
+    log = pd.read_csv(tmp_path / "data" / "bets" / "revalidation_log.csv")
+    assert log.iloc[0]["reason"] == "edge_below_min"
+
+
 def test_settings_revalidation_defaults_and_validation():
     s = Settings()                          # directo: apagado (tests/demo)
     assert s.revalidation_enabled is False

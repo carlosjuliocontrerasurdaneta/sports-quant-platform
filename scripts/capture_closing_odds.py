@@ -53,6 +53,40 @@ def main() -> int:
                   f"{rv['skipped_no_price']} without fresh price")
         except Exception as exc:
             log.warning("revalidation pass failed (non-fatal): %s", exc)
+        # Guard de abridores (informacion temprana, ligas de beisbol): revoca
+        # picks cuyo abridor anunciado cambio o fue retirado. Statsapi es
+        # gratis; solo eventos inminentes. Best-effort igual que el de precio.
+        try:
+            from sqp.pipeline.daily import _league_meta
+            from sqp.pipeline.revalidation import revalidate_pitchers
+            from sqp.providers.mlb_statsapi import MLBStatsProvider
+            from sqp.sports.registry import get_adapter
+            pred_dir = ROOT / "data" / "predictions"
+            provider = None
+            for cf in sorted(pred_dir.glob("candidates_*.csv")):
+                lg = cf.stem.replace("candidates_", "")
+                try:
+                    meta = _league_meta(lg)
+                except Exception:
+                    continue
+                if meta.get("family") != "baseball":
+                    continue
+                provider = provider or MLBStatsProvider()
+                adapter = get_adapter(lg, "baseball", meta.get("league_params"))
+                rp = revalidate_pitchers(
+                    pred_dir, ROOT, lg,
+                    fetch_probables=provider.fetch_probable_pitchers,
+                    normalize=adapter.normalize,
+                    window_min=settings.revalidation_window_min)
+                if rp["checked"] or rp["revoked"] or rp["skipped_unmatched"]:
+                    log.info("pitcher guard [%s]: checked=%d revoked=%d "
+                             "unmatched=%d", lg, rp["checked"], rp["revoked"],
+                             rp["skipped_unmatched"])
+                    print(f"Pitcher guard [{lg}]: {rp['checked']} checked, "
+                          f"{rp['revoked']} revoked, "
+                          f"{rp['skipped_unmatched']} unmatched")
+        except Exception as exc:
+            log.warning("pitcher guard failed (non-fatal): %s", exc)
     return 0
 
 

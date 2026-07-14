@@ -37,13 +37,66 @@ from sqp.audit.clv import _point
 from sqp.audit.clv_movement import snapshot_consensus_price
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
+from sqp.sports.team_names import normalize_key
 
 log = get_logger("sqp.revalidation")
 
 REVAL_FLAG = "stale_edge_revoked"
+PITCHER_CHANGED_FLAG = "pitcher_changed"
+STARTER_PULLED_FLAG = "starter_pulled"
 REVAL_LOG_FILENAME = "revalidation_log.csv"
 DEFAULT_WINDOW_MIN = 120
 DEFAULT_PRICE_MAX_AGE_MIN = 90.0
+
+
+def _append_log(rows: list[dict], root: Path) -> None:
+    """Append al rastro de revalidacion reconciliando columnas (union), para
+    que un esquema viejo en disco nunca desalinee filas nuevas (patron KI-011)."""
+    if not rows:
+        return
+    bets_dir = Path(root) / "data" / "bets"
+    bets_dir.mkdir(parents=True, exist_ok=True)
+    path = bets_dir / REVAL_LOG_FILENAME
+    new = pd.DataFrame(rows)
+    if path.exists():
+        try:
+            prior = pd.read_csv(path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            prior = pd.DataFrame()
+        if not prior.empty:
+            cols = list(prior.columns) + [c for c in new.columns
+                                          if c not in prior.columns]
+            new = pd.concat([prior.reindex(columns=cols),
+                             new.reindex(columns=cols)], ignore_index=True)
+    tmp = path.with_suffix(".csv.tmp")
+    new.to_csv(tmp, index=False)
+    tmp.replace(path)
+
+
+def _revoke_row(df: pd.DataFrame, idx: int, flag: str, stamp: str) -> None:
+    """Marca la fila como revocada: accion final, flag informativo, stake y
+    kelly a 0 (nunca al reves), sello temporal."""
+    df.loc[df.index[idx], ["reval_action", "revalidated_at"]] = ["revoke", stamp]
+    flags = str(df.loc[df.index[idx], "flags"] or "")
+    flags = "" if flags == "nan" else flags
+    if flag not in flags:
+        df.loc[df.index[idx], "flags"] = f"{flags};{flag}" if flags else flag
+    for col in ("stake", "kelly_stake_pct"):
+        if col in df.columns:
+            df.loc[df.index[idx], col] = 0.0
+
+
+def _prepare_reval_columns(df: pd.DataFrame) -> pd.DataFrame:
+    for col, default in (("reval_action", ""), ("reval_price", float("nan")),
+                         ("reval_edge", float("nan")), ("revalidated_at", "")):
+        if col not in df.columns:
+            df[col] = default
+    # flags llega float64 (todo NaN) cuando ninguna fila tiene flag
+    df["flags"] = (df["flags"].fillna("").astype(str).replace("nan", "")
+                   if "flags" in df.columns else "")
+    df["reval_action"] = df["reval_action"].fillna("").astype(str)
+    df["revalidated_at"] = df["revalidated_at"].fillna("").astype(str)
+    return df
 
 
 def _start_times(predictions_dir: Path, league: str) -> dict[str, str]:
@@ -122,16 +175,7 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
             continue
         by_event = {str(eid): eo for eid, eo in odds.groupby("event_id")}
         changed = False
-        for col, default in (("reval_action", ""), ("reval_price", float("nan")),
-                             ("reval_edge", float("nan")),
-                             ("revalidated_at", "")):
-            if col not in df.columns:
-                df[col] = default
-        # flags llega float64 (todo NaN) cuando ninguna fila tiene flag
-        df["flags"] = (df["flags"].fillna("").astype(str).replace("nan", "")
-                       if "flags" in df.columns else "")
-        df["reval_action"] = df["reval_action"].fillna("").astype(str)
-        df["revalidated_at"] = df["revalidated_at"].fillna("").astype(str)
+        df = _prepare_reval_columns(df)
         for idx, r in enumerate(df.itertuples()):
             gen = str(getattr(r, "generated_at", ""))[:10]
             if gen != today:
@@ -160,15 +204,7 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
                                    "revalidated_at"]] = [price, reval_edge, stamp]
             if reval_edge < min_edge:
                 summary["revoked"] += 1
-                df.loc[df.index[idx], "reval_action"] = "revoke"
-                flags = str(getattr(r, "flags", "") or "")
-                flags = "" if flags == "nan" else flags
-                if REVAL_FLAG not in flags:
-                    df.loc[df.index[idx], "flags"] = (
-                        f"{flags};{REVAL_FLAG}" if flags else REVAL_FLAG)
-                for col in ("stake", "kelly_stake_pct"):
-                    if col in df.columns:
-                        df.loc[df.index[idx], col] = 0.0
+                _revoke_row(df, idx, REVAL_FLAG, stamp)
                 log_rows.append({
                     "timestamp": stamp, "league": league,
                     "event_id": str(r.event_id), "market": str(r.market),
@@ -176,6 +212,7 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
                     "line": getattr(r, "line", ""),
                     "entry_price": getattr(r, "price_decimal", ""),
                     "reval_price": price, "reval_edge": round(reval_edge, 4),
+                    "reason": "edge_below_min",
                 })
                 log.info("[%s] revoked %s %s %s: edge %.4f < %.4f at close %.3f",
                          league, r.event_id, r.market, r.selection,
@@ -189,10 +226,131 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
             df.to_csv(tmp, index=False)
             tmp.replace(cf)
             summary["leagues"].append(league)
-    if log_rows:
-        bets_dir = Path(root) / "data" / "bets"
-        bets_dir.mkdir(parents=True, exist_ok=True)
-        out = bets_dir / REVAL_LOG_FILENAME
-        pd.DataFrame(log_rows).to_csv(out, mode="a",
-                                      header=not out.exists(), index=False)
+    _append_log(log_rows, root)
+    return summary
+
+
+def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
+                        fetch_probables, normalize=None,
+                        now: datetime | None = None,
+                        window_min: int = DEFAULT_WINDOW_MIN) -> dict:
+    """Guard de informacion temprana (beisbol): revoca picks del dia cuyo
+    ABRIDOR anunciado cambio despues de generarse el pick, o fue retirado sin
+    reemplazo anunciado. El estimado quedo condicionado a un abridor que ya no
+    lanza — extension temporal de la regla "Starter unknown" (sin abridor no
+    hay candidatos). La linea base son los home_pitcher/away_pitcher del
+    momento del pick (predictions_<liga>.csv); el estado actual se re-consulta
+    a la MLB Stats API (gratis) en cada pase horario, solo para eventos en
+    (now, now+window_min].
+
+    Conservador como el pase de precio: fallo de fetch o partido no emparejado
+    = sin accion (nunca revoca a ciegas); solo baja stakes; revoke final.
+    ``fetch_probables(day)`` y ``normalize`` son inyectables (tests); nombres
+    de pitcher comparados con normalize_key (acentos/mayusculas)."""
+    from sqp.pipeline.daily import _closest_probable, _parse_iso_utc, _prior_day
+    now = now or datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    nk = normalize or normalize_key
+    summary: dict[str, Any] = {"checked": 0, "revoked": 0,
+                               "skipped_unmatched": 0}
+    cf = Path(predictions_dir) / f"candidates_{league}.csv"
+    pf = Path(predictions_dir) / f"predictions_{league}.csv"
+    if not cf.exists() or not pf.exists():
+        return summary
+    try:
+        df = pd.read_csv(cf)
+        preds = pd.read_csv(pf)
+    except (pd.errors.EmptyDataError, ValueError):
+        return summary
+    if df.empty or "event_id" not in df.columns or preds.empty:
+        return summary
+    if not {"home_pitcher", "away_pitcher"} <= set(preds.columns):
+        return summary                      # sin linea base (picks pre-feature)
+    pred_by_event = {str(p.event_id): p for p in preds.itertuples()}
+
+    # eventos del dia en ventana con linea base de abridores
+    targets: dict[str, tuple] = {}
+    for idx, r in enumerate(df.itertuples()):
+        if str(getattr(r, "generated_at", ""))[:10] != today:
+            continue
+        if str(getattr(r, "reval_action", "")) == "revoke":
+            continue
+        p = pred_by_event.get(str(r.event_id))
+        if p is None:
+            continue
+        st = _parse_utc(str(getattr(p, "start_time", "")))
+        if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
+            continue
+        base_hp = str(getattr(p, "home_pitcher", "") or "")
+        base_ap = str(getattr(p, "away_pitcher", "") or "")
+        if base_hp in ("", "nan") and base_ap in ("", "nan"):
+            continue                        # sin abridores base: nada que vigilar
+        targets.setdefault(str(r.event_id), (p, []))[1].append(idx)
+    if not targets:
+        return summary
+
+    fetch_days: set[str] = set()
+    for p, _idxs in targets.values():
+        day = str(getattr(p, "start_time", ""))[:10]
+        fetch_days.add(day)
+        if (prior := _prior_day(day)) is not None:
+            fetch_days.add(prior)
+    by_pair: dict[tuple, list[dict]] = {}
+    try:
+        for day in sorted(fetch_days):
+            for g in fetch_probables(day):
+                by_pair.setdefault((nk(g["home"]), nk(g["away"])), []).append(g)
+    except Exception as exc:
+        log.warning("[%s] pitcher revalidation fetch failed (no action): %s",
+                    league, exc)
+        return summary
+
+    df = _prepare_reval_columns(df)
+    stamp = now.isoformat()
+    log_rows: list[dict] = []
+    changed = False
+    for eid, (p, idxs) in targets.items():
+        cands = by_pair.get((nk(str(p.home)), nk(str(p.away))), [])
+        g = _closest_probable(cands, _parse_iso_utc(str(p.start_time)))
+        if g is None:
+            summary["skipped_unmatched"] += 1
+            continue
+        summary["checked"] += 1
+        flag = None
+        detail = ""
+        for side, base in (("home", str(getattr(p, "home_pitcher", "") or "")),
+                           ("away", str(getattr(p, "away_pitcher", "") or ""))):
+            if base in ("", "nan"):
+                continue
+            current = g.get(f"{side}_pitcher")
+            if current is None or str(current).strip() == "":
+                flag, detail = STARTER_PULLED_FLAG, f"{side}: {base} -> (none)"
+                break
+            if normalize_key(str(current)) != normalize_key(base):
+                flag = PITCHER_CHANGED_FLAG
+                detail = f"{side}: {base} -> {current}"
+                break
+        if flag is None:
+            continue
+        for idx in idxs:
+            r = df.iloc[idx]
+            _revoke_row(df, idx, flag, stamp)
+            log_rows.append({
+                "timestamp": stamp, "league": league, "event_id": eid,
+                "market": str(r.get("market", "")),
+                "selection": str(r.get("selection", "")),
+                "line": r.get("line", ""), "entry_price": r.get("price_decimal", ""),
+                "reval_price": float("nan"), "reval_edge": float("nan"),
+                "reason": ("pitcher_changed" if flag == PITCHER_CHANGED_FLAG
+                           else "starter_pulled"), "detail": detail,
+            })
+            summary["revoked"] += 1
+        log.info("[%s] %s revoked %d pick(s) for %s (%s)", league, flag,
+                 len(idxs), eid, detail)
+        changed = True
+    if changed:
+        tmp = cf.with_suffix(".csv.tmp")
+        df.to_csv(tmp, index=False)
+        tmp.replace(cf)
+    _append_log(log_rows, root)
     return summary
