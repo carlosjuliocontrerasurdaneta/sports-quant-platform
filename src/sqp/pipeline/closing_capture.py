@@ -95,7 +95,8 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
     day = now.strftime("%Y%m%d")
     odds_dir = ROOT / "data" / "odds"
     targets = leagues_with_imminent_bets(predictions_dir, now, window_min)
-    summary: dict[str, Any] = {"captured": {}, "skipped_budget": [], "credits_spent": 0,
+    summary: dict[str, Any] = {"captured": {}, "bet_events": {},
+                               "skipped_budget": [], "credits_spent": 0,
                                "leagues_considered": list(targets)}
     if not targets:
         return summary
@@ -125,13 +126,18 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
             sport_key = _league_meta(league)["sport_key"]
             events = client.fetch_odds(league, sport_key)
             spent += client.requests_last or 0
-            want = set(bet_ids)
-            keep = [eo for eo in events if str(eo.event.event_id) in want]
-            if keep:
-                n = odds_store.append_snapshot(league, keep)
+            if events:
+                # El fetch ya se pago para TODA la liga: persistir el snapshot
+                # completo (eventos no-pick incluidos) da trayectorias de linea
+                # y cierres para movimiento/analisis intradia sin cuota extra.
+                want = set(bet_ids)
+                n_bets = sum(1 for eo in events
+                             if str(eo.event.event_id) in want)
+                n = odds_store.append_snapshot(league, events)
                 summary["captured"][league] = n
-                log.info("closing: [%s] %d lines snapshotted for %d bet events",
-                         league, n, len(keep))
+                summary["bet_events"][league] = n_bets
+                log.info("closing: [%s] %d lines snapshotted from %d events "
+                         "(%d bet events)", league, n, len(events), n_bets)
         except Exception as exc:
             log.warning("[%s] closing capture failed: %s", league, exc)
     if spent:

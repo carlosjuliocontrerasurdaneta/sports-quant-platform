@@ -49,14 +49,15 @@ DEFAULT_WINDOW_MIN = 120
 DEFAULT_PRICE_MAX_AGE_MIN = 90.0
 
 
-def _append_log(rows: list[dict], root: Path) -> None:
-    """Append al rastro de revalidacion reconciliando columnas (union), para
+def _append_log(rows: list[dict], root: Path,
+                filename: str = REVAL_LOG_FILENAME) -> None:
+    """Append a un rastro CSV en data/bets reconciliando columnas (union), para
     que un esquema viejo en disco nunca desalinee filas nuevas (patron KI-011)."""
     if not rows:
         return
     bets_dir = Path(root) / "data" / "bets"
     bets_dir.mkdir(parents=True, exist_ok=True)
-    path = bets_dir / REVAL_LOG_FILENAME
+    path = bets_dir / filename
     new = pd.DataFrame(rows)
     if path.exists():
         try:

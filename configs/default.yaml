@@ -119,3 +119,11 @@ revalidation:
   enabled: true
   window_min: 120
   price_max_age_min: 90
+
+# Observatorio de edge intradia (2026-07-14): en cada pase de captura loguea
+# el edge h2h de las probabilidades servidas a las 11:00 contra el consenso
+# del snapshot fresco (data/bets/intraday_edge_log.csv). Medicion pura: nunca
+# crea picks ni toca stakes; construye el dataset que decide con evidencia la
+# fase ofensiva de generacion intradia (#4). Env INTRADAY_SCAN_ENABLED gana.
+intraday_scan:
+  enabled: true

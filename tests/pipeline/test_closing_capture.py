@@ -91,15 +91,19 @@ def _seed_mlb(pred_dir):
         pred_dir / "predictions_mlb.csv", index=False)
 
 
-def test_capture_persists_only_bet_events(tmp_path, monkeypatch):
+def test_capture_persists_full_snapshot_and_reports_bet_events(tmp_path, monkeypatch):
+    """El fetch ya se pago para toda la liga: se persiste el snapshot COMPLETO
+    (eventos no-pick incluidos — datos para movimiento/analisis intradia sin
+    cuota extra); los eventos con pick se reportan aparte."""
     monkeypatch.setattr("sqp.pipeline.closing_capture.ROOT", tmp_path)
     _seed_mlb(tmp_path)
     client = _FakeClient([_eo("e1"), _eo("e_other")])  # only e1 is a bet
     store = _FakeStore()
     now = datetime(2026, 6, 26, 22, 0, tzinfo=timezone.utc)
     out = capture_closing(tmp_path, settings=None, now=now, client=client, odds_store=store)
-    assert store.snapshots == [("mlb", ["e1"])]      # e_other filtered out
-    assert out["captured"] == {"mlb": 1}
+    assert store.snapshots == [("mlb", ["e1", "e_other"])]   # full snapshot kept
+    assert out["captured"] == {"mlb": 2}
+    assert out["bet_events"] == {"mlb": 1}
     assert out["credits_spent"] == 12
     assert out["leagues_considered"] == ["mlb"]
 

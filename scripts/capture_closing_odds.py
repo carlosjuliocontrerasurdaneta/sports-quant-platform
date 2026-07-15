@@ -87,6 +87,23 @@ def main() -> int:
                           f"{rp['skipped_unmatched']} unmatched")
         except Exception as exc:
             log.warning("pitcher guard failed (non-fatal): %s", exc)
+    # Observatorio de edge intradia: re-evalua el edge h2h de lo SERVIDO a las
+    # 11:00 contra el consenso recien capturado y lo loguea (medicion pura,
+    # sin picks ni stakes; decide la fase ofensiva #4 con datos). Best-effort.
+    if settings.intraday_scan_enabled:
+        try:
+            from sqp.pipeline.intraday_scan import log_intraday_edges
+            sc = log_intraday_edges(
+                ROOT / "data" / "predictions", ROOT,
+                min_edge=settings.risk.min_edge,
+                window_min=settings.revalidation_window_min,
+                price_max_age_min=settings.revalidation_price_max_age_min)
+            log.info("intraday scan: scanned=%d would_generate=%d leagues=%s",
+                     sc["scanned"], sc["would_generate"], sc["leagues"])
+            print(f"Intraday scan: {sc['scanned']} h2h sides evaluated, "
+                  f"{sc['would_generate']} above min_edge")
+        except Exception as exc:
+            log.warning("intraday scan failed (non-fatal): %s", exc)
     return 0
 
 

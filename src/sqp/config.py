@@ -156,6 +156,14 @@ class Settings:
     revalidation_price_max_age_min: float = field(
         default_factory=lambda: float(
             os.getenv("REVALIDATION_PRICE_MAX_AGE_MIN", "90")))
+    # Observatorio de edge intradia (2026-07-14): tras cada captura loguea el
+    # edge h2h de las probabilidades servidas a las 11:00 contra el consenso
+    # vigente (medicion pura: nunca crea picks ni toca stakes). El dataset
+    # decide la fase ofensiva de generacion intradia. OFF por defecto para
+    # Settings() directo (tests/demo); produccion lo activa via yaml.
+    intraday_scan_enabled: bool = field(
+        default_factory=lambda: os.getenv("INTRADAY_SCAN_ENABLED", "").lower()
+        in ("1", "true", "yes"))
 
     def validate(self) -> "Settings":
         """Fail fast on unsafe or internally inconsistent operator settings."""
@@ -274,6 +282,9 @@ class Settings:
             if ("REVALIDATION_PRICE_MAX_AGE_MIN" not in os.environ
                     and "price_max_age_min" in rv):
                 s.revalidation_price_max_age_min = float(rv["price_max_age_min"])
+            isc = cfg.get("intraday_scan") or {}
+            if "INTRADAY_SCAN_ENABLED" not in os.environ and "enabled" in isc:
+                s.intraday_scan_enabled = bool(isc["enabled"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])
