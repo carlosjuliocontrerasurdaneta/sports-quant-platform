@@ -6,8 +6,9 @@ REM scores). Para SEMBRAR una liga nueva, corre antes scripts\backfill_results.p
 REM
 REM ORDEN IMPORTANTE: corre SETTLE_ALL.bat ANTES que este script cada dia. Este
 REM run SOBRESCRIBE data\predictions\candidates_*.csv, asi que los picks del dia
-REM anterior deben liquidarse primero o se pierden. Cronograma: SETTLE 09:00 ->
-REM RUN 10:00.
+REM anterior deben liquidarse primero o se pierden. En produccion NO se agenda
+REM este bat por separado: DIARIO_COMPLETO.bat (tarea SQP_Diario_Completo_Cdev,
+REM diaria 11:00) encadena SETTLE -> RUN en ese orden.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src

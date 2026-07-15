@@ -5,7 +5,9 @@ REM despues de que terminen los partidos del dia anterior.
 REM
 REM ORDEN IMPORTANTE: ejecutar ANTES que RUN_DIARIO_ALL.bat cada dia. El run
 REM diario SOBRESCRIBE data\predictions\candidates_*.csv; un pick no liquidado
-REM antes de esa sobrescritura se pierde. Cronograma: SETTLE 09:00 -> RUN 10:00.
+REM antes de esa sobrescritura se pierde. En produccion NO se agenda este bat
+REM por separado: DIARIO_COMPLETO.bat (tarea SQP_Diario_Completo_Cdev, diaria
+REM 11:00) encadena SETTLE -> RUN en ese orden.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
