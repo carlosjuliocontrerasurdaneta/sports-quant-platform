@@ -6,7 +6,7 @@ actualizada: 2026-07-14
 
 # Automatización y operación
 
-Producción vive en `C:\dev\sports-quant-platform` (migración desde OneDrive completada; las tareas legacy fueron eliminadas).
+Producción vive en `C:\dev\3\sports-quant-platform` (repunte del scheduler 2026-07-14; antes `C:\dev\sports-quant-platform`, y antes OneDrive — las tareas legacy fueron eliminadas).
 
 ## Task Scheduler — 5 tareas (estado final 2026-07-08)
 
