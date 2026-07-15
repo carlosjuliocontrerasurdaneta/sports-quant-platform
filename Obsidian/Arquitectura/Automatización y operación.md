@@ -13,7 +13,7 @@ Producción vive en `C:\dev\3\sports-quant-platform` (repunte del scheduler 2026
 | Tarea | Frecuencia | Qué hace |
 |---|---|---|
 | `Diario_Completo` | diaria 11:00 | `DIARIO_COMPLETO.bat`: settle → run encadenado (orden obligatorio) |
-| `Capture_Close` | cada hora (a los :30 desde 07-12) | captura líneas de cierre → hace medible el CLV; desde 07-14 encadena el segundo pase de revalidación (revoca picks del día cuyo edge desapareció al consenso vigente) y el guard de abridores en béisbol (revoca si el abridor anunciado cambió/fue retirado; statsapi gratis); `revalidation:` en default.yaml, ver [[Bitácora/2026-07-14]] |
+| `Capture_Close` | **cada 30 min desde 07-14 PM** (antes cada hora; a los :00 y :30) | captura líneas de cierre → hace medible el CLV; desde 07-14 PM persiste el snapshot COMPLETO de la liga (no solo eventos con pick — el fetch ya estaba pagado) y encadena: pase de revalidación de precio (revoca picks cuyo edge desapareció), guard de abridores en béisbol (statsapi gratis) y observatorio de edge intradía (`intraday_edge_log.csv`, medición pura para decidir la #4 ofensiva). Gasto acotado por ligas-con-pick-inminente + cap diario 300 créditos + min_remaining 100. `revalidation:` e `intraday_scan:` en default.yaml, ver [[Bitácora/2026-07-14]] |
 | `Backfill` | lunes 09:00 | resultados históricos (tenis incluido) |
 | `Refresh_ML` | lunes 09:45 | reentreno/refresh de la ruta ML |
 | `Validate_OOS` | mensual, día 1, 12:00 | validación out-of-sample |

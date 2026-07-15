@@ -1,7 +1,7 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-13
+actualizada: 2026-07-14
 ---
 
 # Estado del proyecto — Sports Quant Platform
@@ -46,12 +46,12 @@ actualizada: 2026-07-13
 | Tarea | Frecuencia |
 |---|---|
 | Diario_Completo | diaria 11:00 |
-| Capture_Close (CLV) | cada hora, a los :30 (desfasada del run de las 11:00 el 07-12 para no escribir `data/odds` en paralelo) |
+| Capture_Close (CLV) | cada 30 min desde 07-14 PM (antes cada hora); persiste snapshot completo de liga + revalidación + guard de abridores + observatorio intradía |
 | Backfill (tenis incluido) | lunes 09:00 |
 | Refresh_ML | lunes 09:45 |
 | Validate_OOS | mensual, día 1, 12:00 |
 
-`StartWhenAvailable` debe permanecer en True. Producción vive en `C:\dev` (migración desde OneDrive completada). **2026-07-11**: retirada la copia paralela de `C:\Nueva carpeta (2)` — sus mejoras se portaron a `C:\dev` (ver [[Bitácora/2026-07-11]]), sus 5 tareas `SQP_*_Nc2` se eliminaron y la carpeta quedó respaldada en `C:\ZIP\sports-quant-platform-Nc2-respaldo-20260711.zip`. Ya no existe pipeline paralelo ni gasto doble de cuota del API de odds.
+`StartWhenAvailable` debe permanecer en True. Producción vive en `C:\dev\3\sports-quant-platform` (corte 07-14 PM: scheduler repuntado, datos sincronizados, `.git` movido; copia vieja archivada como `C:\dev\sports-quant-platform_ARCHIVADO_2026-07-14`). **2026-07-11**: retirada la copia paralela de `C:\Nueva carpeta (2)` — sus mejoras se portaron a `C:\dev` (ver [[Bitácora/2026-07-11]]), sus 5 tareas `SQP_*_Nc2` se eliminaron y la carpeta quedó respaldada en `C:\ZIP\sports-quant-platform-Nc2-respaldo-20260711.zip`. Ya no existe pipeline paralelo ni gasto doble de cuota del API de odds.
 
 ## Riesgo
 
