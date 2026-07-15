@@ -31,3 +31,9 @@ Use:
 - odds-market-auditor for market calculations.
 - risk-manager for staking or exposure.
 - qa-engineer before final delivery.
+
+## Autonomous operating system
+
+Before coordinating implementation, read `.claude/ORCHESTRATOR.md`, route through
+`.claude/automation/decision-engine.md`, and use one primary loop from `.claude/loops/`.
+Maintain `.claude/automation/runtime/current-task.md` and enforce all approval gates.

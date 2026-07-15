@@ -48,3 +48,15 @@ NUNCA abrir la raíz del repo como bóveda (solo `Obsidian/`).
 
 - Windows + PowerShell. Tests: `PYTHONPATH=src pytest tests/ -q`.
 - Ejecución diaria orquestada por `RUN_DIARIO_ALL.bat` (multi-liga, reporte consolidado); liquidación/auditoría por `SETTLE_ALL.bat`.
+
+## Sistema operativo autónomo
+
+- Orquestación: `.claude/ORCHESTRATOR.md`.
+- Decisión y límites: `.claude/automation/`.
+- Loops especializados: `.claude/loops/`.
+- Para clasificar una tarea: `/route-task`.
+- Para evaluar salud: `/project-health`.
+- Para mantenimiento autónomo acotado: `/autopilot`.
+- Antes de declarar finalización: `/verification-gate`.
+
+La autonomía siempre está limitada por `.claude/automation/autonomy-policy.md`.
