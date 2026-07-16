@@ -1,7 +1,7 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-14
+actualizada: 2026-07-16
 ---
 
 # Estado del proyecto — Sports Quant Platform
@@ -41,11 +41,12 @@ actualizada: 2026-07-14
 - MLB pitcher (RA+FIP): refutado OOS — no volver a perseguirlo.
 - mypy limpio en `src` (`a22f8a8`).
 
-## Automatización (Task Scheduler, 5 tareas)
+## Automatización (Task Scheduler, 6 tareas)
 
 | Tarea | Frecuencia |
 |---|---|
 | Diario_Completo | diaria 11:00 |
+| Dashboard (interactiva) | disparada por Diario_Completo al terminar + al iniciar sesión (abre `report_latest.html` solo si es de hoy y no se mostró; ver [[Bitácora/2026-07-16]]) |
 | Capture_Close (CLV) | cada 30 min desde 07-14 PM (antes cada hora); persiste snapshot completo de liga + revalidación + guard de abridores + observatorio intradía |
 | Backfill (tenis incluido) | lunes 09:00 |
 | Refresh_ML | lunes 09:45 |

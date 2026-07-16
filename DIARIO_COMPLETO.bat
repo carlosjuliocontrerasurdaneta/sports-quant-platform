@@ -26,14 +26,17 @@ if errorlevel 1 goto :error_run
 
 echo === DIARIO COMPLETO: OK ===
 
-REM Flujo terminado: abre el dashboard SOLO en sesion interactiva (SESSIONNAME
-REM definido, p.ej. "Console"). Bajo el Programador de tareas (sin escritorio)
-REM SESSIONNAME no existe y abrir el navegador podia terminar el proceso con
-REM 0xC000013A, registrando un fallo falso; en ese caso se omite.
+REM Flujo terminado: abre el dashboard automaticamente.
+REM - Sesion interactiva (SESSIONNAME definido): abre directo via open_dashboard.ps1 -Force.
+REM - Bajo el Programador de tareas (sin escritorio): abrir el navegador desde ESTE
+REM   proceso terminaba con 0xC000013A, asi que se dispara la tarea interactiva
+REM   SQP_Dashboard_Cdev (scripts\register_dashboard_task.ps1), que el Programador
+REM   lanza en la sesion del usuario. Si nadie esta logueado, el trigger de logon
+REM   de esa tarea abre el dashboard al iniciar sesion (gateado por frescura+marcador).
 if defined SESSIONNAME (
-    start "" "%~dp0data\predictions\report_latest.html"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\open_dashboard.ps1" -Force
 ) else (
-    echo [INFO] Sesion no interactiva: se omite abrir el dashboard.
+    schtasks /Run /TN SQP_Dashboard_Cdev >nul 2>&1 || echo [INFO] No se pudo disparar SQP_Dashboard_Cdev; el dashboard abrira al iniciar sesion.
 )
 
 endlocal
