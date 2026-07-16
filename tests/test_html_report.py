@@ -60,6 +60,69 @@ def _write_inputs(tmp_path):
     return pred, bets
 
 
+def _write_inputs_with_dates(tmp_path):
+    """Same fixtures but the predictions CSV carries start_time: e1 today,
+    e2 six days out (a soccer matchday within the 7-day event horizon)."""
+    from datetime import datetime, timedelta, timezone
+    pred = tmp_path / "predictions"
+    bets = tmp_path / "bets"
+    pred.mkdir()
+    bets.mkdir()
+    _candidates().to_csv(pred / "candidates_nba.csv", index=False)
+    now = datetime.now(timezone.utc)
+    st1 = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    st2 = (now + timedelta(days=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pd.DataFrame([
+        {"event_id": "e1", "home": "A", "away": "B", "start_time": st1},
+        {"event_id": "e2", "home": "C", "away": "D", "start_time": st2},
+    ]).to_csv(pred / "predictions_nba.csv", index=False)
+    _settled().to_csv(bets / "settled_nba.csv", index=False)
+    return pred, bets, st1, st2
+
+
+def _payload(text: str) -> dict:
+    start = text.index("const DATA = ") + len("const DATA = ")
+    end = text.index(";\nconst COLS", start)
+    return json.loads(text[start:end])
+
+
+def test_dashboard_picks_carry_local_event_date(tmp_path):
+    # fecha = the event's LOCAL calendar date (a west-coast night game commences
+    # after 00:00Z; grouping by the UTC date would file it under "tomorrow")
+    from datetime import datetime
+    pred, bets, st1, st2 = _write_inputs_with_dates(tmp_path)
+    data = _payload(open(html_dashboard(pred, bets), encoding="utf-8").read())
+    def local_date(st):
+        return (datetime.fromisoformat(st.replace("Z", "+00:00"))
+                .astimezone().date().isoformat())
+    got = {p["partido"]: p["fecha"] for p in data["picks"]}
+    assert got["B @ A"] == local_date(st1)
+    assert got["D @ C"] == local_date(st2)
+    # the generation day travels with the payload so "Hoy" is anchored to the
+    # run, not to whenever the file is opened
+    assert data["today"] == datetime.now().date().isoformat()
+    assert any(c["key"] == "fecha" for c in data["columns"])
+
+
+def test_dashboard_has_event_date_pills_defaulting_to_today(tmp_path):
+    pred, bets, _, _ = _write_inputs_with_dates(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    # date pills machinery mirrors the sport pills; default view = today only
+    assert 'id="dateTags"' in text and "buildDateTags()" in text
+    assert "toggleDate(" in text and "activeDates" in text
+    assert "DATA.today" in text
+
+
+def test_dashboard_picks_without_start_time_are_safe(tmp_path):
+    # legacy predictions CSV without start_time: fecha degrades to "" and the
+    # dashboard still renders (the empty date is selectable, never dropped)
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    data = _payload(text)
+    assert all(p["fecha"] == "" for p in data["picks"])
+    assert "Picks del Dia" in text
+
+
 def test_dashboard_has_five_tabs_and_stats_bar(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     path = html_dashboard(pred, bets)

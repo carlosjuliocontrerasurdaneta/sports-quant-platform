@@ -1,10 +1,12 @@
 """Self-contained HTML dashboard for the daily run.
 
 Five tabs in one file (no external assets, no network):
-  - Picks del Dia: sortable table with filters (sport / market / min EV) and a
-    stats bar (best EV, average EV, average Kelly) recomputed over the filtered
-    rows. EV is the estimated edge (p*price-1); Kelly is the fractional-Kelly
-    stake pct already capped by the risk engine.
+  - Picks del Dia: sortable table with filters (event date / sport / market /
+    min EV) and a stats bar (best EV, average EV, average Kelly) recomputed over
+    the filtered rows. The run keeps every event inside the 7-day horizon (early
+    lines feed the CLV audit), so picks are grouped by LOCAL event date behind
+    toggle pills defaulting to "Hoy". EV is the estimated edge (p*price-1);
+    Kelly is the fractional-Kelly stake pct already capped by the risk engine.
   - Auditoria: realized-ROI segments (overall / per league / per market) plus an
     estimated-vs-realized calibration check, from settled bets.
   - Diagnostico: current auto-pause state from the degradation monitor plus the
@@ -37,6 +39,7 @@ from sqp.sports.team_names import normalize_key
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
 # kind drives client-side sorting and formatting: "txt" | "num" | "pct" | "odds".
 _PICK_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("fecha", "Fecha", "txt"),
     ("league", "Deporte", "txt"),
     ("partido", "Partido", "txt"),
     ("market", "Mercado", "txt"),
@@ -66,6 +69,15 @@ def _picks_records(predictions_dir: Path,
             partido=ranked["away"].astype(str) + " @ " + ranked["home"].astype(str))
     else:
         ranked = ranked.assign(partido=ranked.get("event_id", "").astype(str))
+    # Event date in LOCAL time: a US west-coast night game commences after
+    # 00:00Z, so the UTC date would file today's game under "tomorrow".
+    if "start_time" in ranked.columns:
+        st = pd.to_datetime(ranked["start_time"], errors="coerce", utc=True)
+        local_tz = datetime.now(timezone.utc).astimezone().tzinfo
+        ranked = ranked.assign(
+            fecha=st.dt.tz_convert(local_tz).dt.strftime("%Y-%m-%d").fillna(""))
+    else:
+        ranked = ranked.assign(fecha="")
     records: list[dict] = []
     for _, row in ranked.iterrows():
         rec: dict = {}
@@ -401,8 +413,11 @@ def html_dashboard(predictions_dir: Path | None = None,
     picks = _picks_records(predictions_dir, generated_day=generated_day)
     columns_meta = [{"key": k, "header": h, "kind": kind}
                     for k, h, kind in _PICK_COLUMNS]
-    payload = json.dumps({"picks": picks, "columns": columns_meta},
-                         ensure_ascii=False)
+    # Local generation day: anchors the "Hoy" date pill to the run, not to
+    # whenever the file happens to be opened.
+    today_local = datetime.now(timezone.utc).astimezone().date().isoformat()
+    payload = json.dumps({"picks": picks, "columns": columns_meta,
+                          "today": today_local}, ensure_ascii=False)
 
     page = _TEMPLATE.format(
         day=html.escape(day),
@@ -494,6 +509,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <section class="panel active" id="picks">
     <div class="stats" id="statsBar"></div>
     <div class="filters">
+      <label>Fecha del evento<div class="tagfilter" id="dateTags"></div></label>
       <label>Deporte<div class="tagfilter" id="sportTags"></div></label>
       <label>Mercado<select id="fMarket"></select></label>
       <label>EV minimo<input id="fEv" type="number" step="0.01" value="0" style="width:90px"></label>
@@ -513,6 +529,7 @@ const COLS = DATA.columns;
 let rows = DATA.picks.slice();
 let sortKey = "estimated_edge", sortDir = -1;
 let activeSports = new Set();
+let activeDates = new Set();
 
 // Per-sport toggle pills (multi-select). Labels/colors are best-effort; any
 // league not listed falls back to its uppercased id and a palette colour.
@@ -553,6 +570,37 @@ function toggleSport(lg) {{
   refresh();
 }}
 
+// Event-date toggle pills. The run keeps every event inside the 7-day horizon
+// (early lines feed the CLV audit), so the table can hold future matchdays;
+// the default view is today's games only, the rest stay one click away.
+function dateLabel(d) {{
+  if (!d) return "(sin fecha)";
+  if (d === DATA.today) return "Hoy";
+  const wd = new Date(d + "T12:00:00").toLocaleDateString("es", {{ weekday: "short" }});
+  return `${{wd}} ${{d.slice(8, 10)}}-${{d.slice(5, 7)}}`;
+}}
+function buildDateTags() {{
+  const dates = [...new Set(DATA.picks.map(r => r.fecha == null ? "" : r.fecha))].sort();
+  document.getElementById("dateTags").innerHTML = dates.map(d =>
+    `<span class="tag" style="color:${{d === DATA.today ? "var(--accent)" : "var(--ink)"}}" `
+    + `data-date="${{d}}" onclick="toggleDate('${{d}}')">${{dateLabel(d)}}</span>`
+  ).join("");
+  // default: today only when today has picks; otherwise every date (never blank)
+  activeDates = dates.includes(DATA.today) ? new Set([DATA.today]) : new Set(dates);
+  document.querySelectorAll("[data-date]").forEach(e => {{
+    e.classList.toggle("active", activeDates.has(e.dataset.date));
+    e.classList.toggle("inactive", !activeDates.has(e.dataset.date));
+  }});
+}}
+function toggleDate(d) {{
+  if (activeDates.has(d)) activeDates.delete(d); else activeDates.add(d);
+  document.querySelectorAll(`[data-date="${{d}}"]`).forEach(e => {{
+    e.classList.toggle("active", activeDates.has(d));
+    e.classList.toggle("inactive", !activeDates.has(d));
+  }});
+  refresh();
+}}
+
 const fmt = {{
   txt: v => v == null ? "" : v,
   num: v => v == null ? "" : (Math.round(v * 100) / 100).toString(),
@@ -575,7 +623,8 @@ function filtered() {{
   const m = document.getElementById("fMarket").value;
   const ev = parseFloat(document.getElementById("fEv").value) || -Infinity;
   return DATA.picks.filter(r =>
-    activeSports.has(r.league) && (!m || r.market === m) &&
+    activeSports.has(r.league) && activeDates.has(r.fecha == null ? "" : r.fecha) &&
+    (!m || r.market === m) &&
     ((r.estimated_edge == null ? -Infinity : r.estimated_edge) >= ev));
 }}
 
@@ -728,6 +777,7 @@ function init() {{
   initHistory();
   activeSports = new Set(uniq("league"));   // all sports active by default
   buildSportTags();
+  buildDateTags();                          // today-only view by default
   fillSelect(document.getElementById("fMarket"), uniq("market"));
   ["fMarket", "fEv"].forEach(id =>
     document.getElementById(id).addEventListener("input", refresh));
