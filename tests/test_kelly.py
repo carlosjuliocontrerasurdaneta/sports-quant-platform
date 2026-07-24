@@ -12,3 +12,10 @@ def test_fractional_kelly_capped():
 def test_edge_sign():
     assert edge(0.55, 2.0) > 0
     assert edge(0.45, 2.0) < 0
+
+def test_out_of_bounds_probability_no_bet():
+    assert kelly_fraction_stake(0.0, 2.0, 1000) == (0.0, 0.0)
+    assert kelly_fraction_stake(1.0, 2.0, 1000) == (0.0, 0.0)
+
+def test_invalid_price_no_bet():
+    assert kelly_fraction_stake(0.60, 1.0, 1000) == (0.0, 0.0)

@@ -88,6 +88,15 @@ def test_store_legacy_csv_without_game_id_migrates(tmp_path):
     assert loaded[0]["game_id"] == ""  # legacy row preserved with empty id
 
 
+def test_merge_results_tolerates_utc_date_drift():
+    # Auditoria 2026-07-24 (I-3): la fila reciente data por commence_time (fecha
+    # UTC); un juego nocturno de costa oeste cae en el dia UTC siguiente y sin
+    # tolerancia +-1 el mismo juego entraria dos veces al fit de ratings.
+    history = [dict(_row("2026-06-19", hs=1), game_id="745001")]
+    recent = [dict(_row("2026-06-20T02:05:00Z", hs=1), game_id="odds-abc")]
+    assert len(_merge_results(history, recent)) == 1
+
+
 def test_merge_results_keeps_doubleheaders_history_wins_per_day():
     history = [dict(_row("2026-06-19", hs=1), game_id="745001"),
                dict(_row("2026-06-19", hs=2), game_id="745002")]

@@ -9,18 +9,22 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
+from sqp.storage.served_store import ServedStore
 
 log = get_logger(__name__)
 
 ML_LEAGUES = ["mlb", "nba", "nfl", "nhl"]
 STALE_FEATURES_DAYS = 14.0
+# The Odds API /scores only lists ~3 days back: a pending served row older than
+# this will never grade from the daily settlement feed (audit 2026-07-24, M-25/M-26).
+SERVED_EXPIRED_DAYS = 3.0
 
 
 def _rows(path: Path) -> int | None:
@@ -64,10 +68,36 @@ def _live_calibration_markets(models_dir: Path, league: str) -> list[str]:
     return sorted(out)
 
 
+def _served_pending_expired(root: Path) -> dict[str, int]:
+    """league -> count of served rows still pending whose event started more
+    than SERVED_EXPIRED_DAYS ago. Covers EVERY league with a served stream (not
+    just the 4 ML leagues), closing the blind spot where rows rot silently
+    until pending()'s 7-day cutoff drops them."""
+    store = ServedStore(root)
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=SERVED_EXPIRED_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out: dict[str, int] = {}
+    for lg in store.leagues():
+        try:
+            pending = store.pending(lg, now=now)
+            if pending.empty:
+                continue
+            n = int((pending["start_time"].astype(str) < cutoff).sum())
+            if n:
+                out[lg] = n
+        except Exception as exc:
+            log.warning("[%s] could not scan the served pending stream: %s", lg, exc)
+    return out
+
+
 def generate_health_report(root: Path = ROOT) -> dict:
     data = root / "data"
     leagues: dict[str, dict] = {}
     warnings: list[str] = []
+    # Missing artifacts are ERRORS (the pipeline cannot produce estimates
+    # without them); staleness and grading backlogs are WARNINGS. The split
+    # gives scripts/health_check.py a meaningful exit code (audit 2026-07-24, M-1).
+    errors: list[str] = []
 
     for lg in ML_LEAGUES:
         results = data / "historical" / f"results_{lg}.csv"
@@ -93,24 +123,33 @@ def generate_health_report(root: Path = ROOT) -> dict:
         leagues[lg] = info
 
         if results_rows in (None, 0):
-            warnings.append(f"{lg}: no stored results (run scripts/backfill_results.py)")
+            errors.append(f"{lg}: no stored results (run scripts/backfill_results.py)")
         if features_rows in (None, 0):
-            warnings.append(f"{lg}: feature dataset missing/empty (run scripts/build_features.py)")
+            errors.append(f"{lg}: feature dataset missing/empty (run scripts/build_features.py)")
         elif features_age_days is not None and features_age_days > STALE_FEATURES_DAYS:
             warnings.append(f"{lg}: features stale ({features_age_days}d)")
         if not moneyline_exists:
-            warnings.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
+            errors.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
+
+    served_expired = _served_pending_expired(root)
+    for lg, n in sorted(served_expired.items()):
+        warnings.append(f"{lg}: {n} served row(s) pending beyond the scores "
+                        f"window (>{SERVED_EXPIRED_DAYS:.0f}d; will not grade "
+                        f"from the daily feed)")
 
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "leagues": leagues,
         "registry_exists": (data / "models" / "registry.json").exists(),
-        "status": "WARN" if warnings else "OK",
+        "served_pending_expired": served_expired,
+        "status": "ERROR" if errors else ("WARN" if warnings else "OK"),
+        "errors": errors,
         "warnings": warnings,
     }
 
     out = data / "output" / "pipeline_health.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    log.info("Health report: %s (%d warnings)", report["status"], len(warnings))
+    log.info("Health report: %s (%d errors, %d warnings)",
+             report["status"], len(errors), len(warnings))
     return report

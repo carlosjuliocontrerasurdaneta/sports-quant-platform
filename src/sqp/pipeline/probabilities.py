@@ -36,16 +36,25 @@ def _consensus_counts(eo: EventOdds) -> dict:
     return dict(counts)
 
 
-def _novig_probs(cons: dict, market: str, point=None) -> dict:
+def _novig_probs(cons: dict, market: str, point=None,
+                 three_way: bool = False) -> dict:
     """No-vig fair probabilities for h2h and totals. h2h pairs every outcome
-    (2-way, or 1X2 for soccer); totals share a single point (Over/Under at the
-    same line). Spreads need the home/away team identities, so use _spread_novig.
-    """
+    (2-way, or 1X2 for soccer with ``three_way=True``); totals share a single
+    point (Over/Under at the same line). Spreads need the home/away team
+    identities, so use _spread_novig.
+
+    Requires the COMPLETE complementary market (same guard as _spread_novig):
+    a lone quoted side would de-vig to 1.0 (any single implied probability
+    normalizes to certainty) and a 1X2 missing the draw inflates both team
+    probabilities. Incomplete markets return {} so callers flag them instead
+    of blending a fabricated fair probability (audit 2026-07-24, C-1)."""
     if market == "h2h":
         keys = [k for k in cons if k[0] == "h2h"]
+        required = 3 if three_way else 2
     else:
         keys = [k for k in cons if k[0] == market and k[2] == point]
-    if not keys:
+        required = 2
+    if len(keys) < required:
         return {}
     implied = [1.0 / cons[k] for k in keys]
     fair = remove_vig_power(implied)

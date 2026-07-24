@@ -21,6 +21,7 @@ from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.clv_gate import load_clv_gate, market_allowed
+from sqp.storage.lock import locked
 from sqp.risk.kelly import kelly_fraction_stake, edge
 from sqp.sports.registry import get_adapter
 from sqp.storage.odds_store import OddsStore
@@ -82,10 +83,27 @@ def _merge_results(history: list[dict], recent: list[dict],
     history_days = {k[:3] for k in seen}
     for r in recent:
         day = str(r.get("date", ""))[:10]
-        if (day, nk(r["home"]), nk(r["away"])) in history_days:
+        # Recent rows are dated by commence_time (UTC date); history carries the
+        # official local date, which can differ by +-1 day (e.g. west-coast night
+        # games start past midnight UTC). Without this tolerance the same game
+        # enters the ratings fit twice (audit 2026-07-24, I-3). The row's own key
+        # keeps its UTC date: only the drop check is widened.
+        if any((d, nk(r["home"]), nk(r["away"])) in history_days
+               for d in _adjacent_days(day)):
             continue
         seen.setdefault((day, nk(r["home"]), nk(r["away"]), str(r.get("game_id") or "")), r)
     return [seen[k] for k in sorted(seen, key=lambda k: k[0])]
+
+
+def _adjacent_days(day: str) -> tuple[str, ...]:
+    """`day` plus its +-1 calendar neighbors (ISO); just `day` if unparsable."""
+    try:
+        y, m, d = (int(x) for x in day.split("-"))
+        base = datetime(y, m, d, tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return (day,)
+    return (day, (base - timedelta(days=1)).strftime("%Y-%m-%d"),
+            (base + timedelta(days=1)).strftime("%Y-%m-%d"))
 
 
 def _within_horizon(events: list[EventOdds], max_days: int) -> list[EventOdds]:
@@ -239,46 +257,49 @@ def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float,
     no cap was needed)."""
     if cap_pct <= 0 or bankroll <= 0:
         return 1.0
-    frames: dict[Path, tuple[pd.DataFrame, pd.Series]] = {}
-    total = 0.0
-    for f in sorted(pred_dir.glob("candidates_*.csv")):
-        try:
-            df = pd.read_csv(f)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            continue
-        if df.empty or "stake" not in df.columns:
-            continue
-        eligible = df["stake"] > 0
-        if generated_day and "generated_at" in df.columns:
-            days = df["generated_at"].astype(str).str[:10]
-            valid = days.str.fullmatch(r"\d{4}-\d{2}-\d{2}")
-            # Old schemas without a usable timestamp retain the legacy behavior;
-            # current schemas are scoped strictly to this run day so a
-            # budget-skipped league from yesterday is never re-staked/re-scaled.
-            if valid.any():
-                eligible &= days == generated_day
-        if not eligible.any():
-            continue
-        frames[f] = (df, eligible)
-        total += float(df.loc[eligible, "stake"].sum())
-    cap = bankroll * cap_pct
-    if total <= cap or total <= 0:
-        return 1.0
-    factor = cap / total
-    for f, (df, mask) in frames.items():
-        if not mask.any():
-            continue
-        df.loc[mask, "stake"] = (df.loc[mask, "stake"] * factor).round(2)
-        if "kelly_stake_pct" in df.columns:
-            df.loc[mask, "kelly_stake_pct"] = (df.loc[mask, "kelly_stake_pct"] * factor).round(4)
-        # An all-empty flags column round-trips through CSV as float64 NaN; coerce
-        # to string first or the masked string assignment raises on modern pandas.
-        df["flags"] = (df["flags"].fillna("").astype(str)
-                       if "flags" in df.columns else "")
-        prior = df.loc[mask, "flags"]
-        df.loc[mask, "flags"] = [f"{x};global_exposure_scaled" if x else "global_exposure_scaled"
-                                 for x in prior]
-        df.to_csv(f, index=False)
+    # Read-modify-write over every candidates file: hold the shared candidates
+    # lock so an hourly revalidation pass cannot interleave (audit 2026-07-24, I-5).
+    with locked(pred_dir / "candidates"):
+        frames: dict[Path, tuple[pd.DataFrame, pd.Series]] = {}
+        total = 0.0
+        for f in sorted(pred_dir.glob("candidates_*.csv")):
+            try:
+                df = pd.read_csv(f)
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                continue
+            if df.empty or "stake" not in df.columns:
+                continue
+            eligible = df["stake"] > 0
+            if generated_day and "generated_at" in df.columns:
+                days = df["generated_at"].astype(str).str[:10]
+                valid = days.str.fullmatch(r"\d{4}-\d{2}-\d{2}")
+                # Old schemas without a usable timestamp retain the legacy behavior;
+                # current schemas are scoped strictly to this run day so a
+                # budget-skipped league from yesterday is never re-staked/re-scaled.
+                if valid.any():
+                    eligible &= days == generated_day
+            if not eligible.any():
+                continue
+            frames[f] = (df, eligible)
+            total += float(df.loc[eligible, "stake"].sum())
+        cap = bankroll * cap_pct
+        if total <= cap or total <= 0:
+            return 1.0
+        factor = cap / total
+        for f, (df, mask) in frames.items():
+            if not mask.any():
+                continue
+            df.loc[mask, "stake"] = (df.loc[mask, "stake"] * factor).round(2)
+            if "kelly_stake_pct" in df.columns:
+                df.loc[mask, "kelly_stake_pct"] = (df.loc[mask, "kelly_stake_pct"] * factor).round(4)
+            # An all-empty flags column round-trips through CSV as float64 NaN; coerce
+            # to string first or the masked string assignment raises on modern pandas.
+            df["flags"] = (df["flags"].fillna("").astype(str)
+                           if "flags" in df.columns else "")
+            prior = df.loc[mask, "flags"]
+            df.loc[mask, "flags"] = [f"{x};global_exposure_scaled" if x else "global_exposure_scaled"
+                                     for x in prior]
+            df.to_csv(f, index=False)
     return factor
 
 
@@ -325,12 +346,16 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
     # Archive yesterday's files before overwrite so an out-of-order run (RUN before
     # SETTLE) can never destroy un-settled picks; they stay recoverable in archive/.
     _archive_existing(pred_path)
-    _archive_existing(cand_path)
     df.to_csv(pred_path, index=False)
-    if candidates:
-        pd.DataFrame([c.__dict__ for c in candidates]).to_csv(cand_path, index=False)
-    elif cand_path.exists():
-        cand_path.unlink()  # a run with no candidates must not leave stale picks behind
+    # Shared inter-process lock with the hourly revalidation pass (CAPTURE_CLOSE):
+    # serializes candidates_*.csv writers so neither a fresh revocation nor the
+    # just-generated candidates get overwritten (audit 2026-07-24, I-5).
+    with locked(outdir / "candidates"):
+        _archive_existing(cand_path)
+        if candidates:
+            pd.DataFrame([c.__dict__ for c in candidates]).to_csv(cand_path, index=False)
+        elif cand_path.exists():
+            cand_path.unlink()  # a run with no candidates must not leave stale picks behind
     # A zero-stake row is non-actionable (paused / implausible edge); a scaled
     # row still carries a positive stake and stays counted as actionable.
     flagged = sum(1 for c in candidates if c.stake <= 0)
@@ -503,7 +528,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             warn = f"{warn} {started_msg}" if warn else started_msg
         cons = _consensus_lines(eo)
         cons_n = _consensus_counts(eo)
-        h2h_fair = _novig_probs(cons, "h2h")
+        h2h_fair = _novig_probs(cons, "h2h", three_way=three_way)
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
                # abridores del MOMENTO DEL PICK (None fuera de beisbol): linea
@@ -537,7 +562,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             if key[0] == "spreads":
                 fair = _spread_novig(cons, eo.event.home, eo.event.away, spread).get(key[1])
             else:
-                fair = _novig_probs(cons, key[0], key[2]).get(key[1])
+                fair = _novig_probs(cons, key[0], key[2],
+                                    three_way=three_way).get(key[1])
             # A no-vig probability requires the complete complementary market
             # (both sides, or all three 1X2 outcomes). A lone/malformed quote can
             # still be captured in the served stream, but it must never carry

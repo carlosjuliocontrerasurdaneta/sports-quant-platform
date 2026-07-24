@@ -6,10 +6,13 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-load_dotenv()
-
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "configs"
+
+# Ruta explicita: load_dotenv() sin argumento busca desde el CWD, asi que una
+# invocacion fuera de la raiz del repo podia cargar otro .env o ninguno
+# (auditoria 2026-07-24, M-4).
+load_dotenv(ROOT / ".env")
 
 
 def load_yaml(path: Path) -> dict:

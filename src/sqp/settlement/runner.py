@@ -7,6 +7,7 @@ settled in a prior run is never graded twice.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -27,13 +28,20 @@ DEDUP_KEY = ["event_id", "market", "selection", "line", "generated_at"]
 def _scores_map(raw: list[dict]) -> dict[str, tuple[int, int, str]]:
     scores: dict[str, tuple[int, int, str]] = {}
     for s in raw:
-        if not (s.get("completed") and s.get("scores")):
-            continue
-        sc = {x["name"]: x["score"] for x in s["scores"]}
-        home, away = sc.get(s["home_team"]), sc.get(s["away_team"])
-        if home is None or away is None:  # score names don't match teams
-            continue
-        scores[s["id"]] = (int(home), int(away), s["home_team"])
+        # Per-entry guard: one malformed score entry (missing key, non-numeric
+        # score) must skip that game, not abort the whole league's settlement
+        # (audit 2026-07-24, M-10).
+        try:
+            if not (s.get("completed") and s.get("scores")):
+                continue
+            sc = {x["name"]: x["score"] for x in s["scores"]}
+            home, away = sc.get(s["home_team"]), sc.get(s["away_team"])
+            if home is None or away is None:  # score names don't match teams
+                continue
+            scores[s["id"]] = (int(home), int(away), s["home_team"])
+        except (KeyError, TypeError, ValueError) as exc:
+            log.warning("malformed score entry skipped (id=%s): %s",
+                        s.get("id", "?"), exc)
     return scores
 
 
@@ -120,8 +128,12 @@ def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
     if out.exists():
         try:
             prior = pd.read_csv(out)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            prior = None  # empty / corrupt prior: treat as a fresh file
+        except pd.errors.EmptyDataError:
+            prior = None  # empty prior: genuinely a fresh file
+        # ParserError PROPAGATES on purpose: treating a corrupt settled_*.csv as
+        # fresh would rewrite it with only today's rows and wipe the PnL history
+        # feeding the ROI audit, bankroll ledger and calibrators. Fix the file
+        # instead (audit 2026-07-24, M-21).
     if not settled.empty and prior is not None and set(DEDUP_KEY).issubset(prior.columns):
         have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
         keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
@@ -183,10 +195,16 @@ def _with_stale_voids(league: str, cands: pd.DataFrame, settled: pd.DataFrame,
     return pd.concat([settled, stale], ignore_index=True) if not settled.empty else stale
 
 
-def _grade_served(league: str, scores: dict[str, tuple[int, int, str]]) -> int:
+def _grade_served(league: str, scores: dict[str, tuple[int, int, str]],
+                  days_from: int | None = None) -> int:
     """Grade the league's pending served-probability rows (stake-0 calibration
     stream) against final scores and persist them append-only. Idempotent: a
     served row already graded is skipped by the store. Returns rows graded.
+
+    ``days_from``: depth of the scores fetch that produced ``scores``. Pending
+    rows older than that window can never grade from this feed (the API stops
+    listing them), so they are counted and WARNED instead of silently rotting
+    until ``pending``'s 7-day cutoff drops them (audit 2026-07-24, M-25).
 
     Best-effort by design: the served stream is evidence gathering, so a failure
     here must never abort the settlement of real picks."""
@@ -195,6 +213,15 @@ def _grade_served(league: str, scores: dict[str, tuple[int, int, str]]) -> int:
         pending = store.pending(league)
         if pending.empty:
             return 0
+        if days_from is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days_from + 1)
+                      ).strftime("%Y-%m-%dT%H:%M:%SZ")
+            expired = int((pending["start_time"].astype(str) < cutoff).sum())
+            if expired:
+                log.warning("[%s] served stream: %d pending row(s) older than "
+                            "the %d-day scores window; they will not grade from "
+                            "this feed (re-run settlement with a deeper window "
+                            "or accept the gap).", league, expired, days_from)
         graded = store.append_graded(league, settle_candidates(pending, scores))
         if not graded.empty:
             log.info("[%s] served stream: %d probabilities graded for calibration "
@@ -269,7 +296,7 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     # Calibration stream first (stake 0, best-effort): shares this scores fetch,
     # and grades even on days the league produced no candidates.
     if not pending_served.empty:
-        _grade_served(league, scores)
+        _grade_served(league, scores, days_from=days_from)
     if not cand_path.exists():
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)

@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
+from sqp.storage.atomic import atomic_write_csv
+
 
 COLUMNS = ["game_id", "date", "home_starter", "away_starter", "ingested_at"]
 
@@ -36,7 +38,7 @@ class StartersStore:
             self.dir.mkdir(parents=True, exist_ok=True)
             merged = new.drop_duplicates(subset=["game_id"], keep="last")
         merged = merged.sort_values("date", kind="stable")
-        merged.to_csv(p, index=False)
+        atomic_write_csv(merged, p)
         return len(merged)
 
     def attach(self, league: str, results: list[dict]) -> int:

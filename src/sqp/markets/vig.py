@@ -6,6 +6,10 @@
 from __future__ import annotations
 from scipy.optimize import brentq
 
+from sqp.logging_config import get_logger
+
+log = get_logger("sqp.vig")
+
 
 def remove_vig_proportional(implied: list[float]) -> list[float]:
     s = sum(implied)
@@ -15,8 +19,15 @@ def remove_vig_proportional(implied: list[float]) -> list[float]:
 
 
 def remove_vig_power(implied: list[float]) -> list[float]:
-    """Power method: find k such that sum(p_i^k) = 1, return p_i^k."""
+    """Power method: find k such that sum(p_i^k) = 1, return p_i^k.
+
+    Falls back to the proportional method with a WARNING when the power
+    method cannot apply (probabilities at/over 1.0, or no root for k). The
+    fallback was silent and is how a one-element list turns into [1.0]
+    (audit 2026-07-24, M-16); callers must pass complete markets."""
     if any(p <= 0 or p >= 1 for p in implied):
+        log.warning("power de-vig inapplicable (implied out of (0,1): %s); "
+                    "falling back to proportional", implied)
         return remove_vig_proportional(implied)
 
     def f(k: float) -> float:
@@ -26,4 +37,6 @@ def remove_vig_power(implied: list[float]) -> list[float]:
         k = brentq(f, 0.5, 5.0)
         return [p ** k for p in implied]
     except ValueError:
+        log.warning("power de-vig found no root for implied=%s; "
+                    "falling back to proportional", implied)
         return remove_vig_proportional(implied)

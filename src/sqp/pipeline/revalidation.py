@@ -38,6 +38,7 @@ from sqp.audit.clv_movement import snapshot_consensus_price
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
 from sqp.sports.team_names import normalize_key
+from sqp.storage.lock import locked
 
 log = get_logger("sqp.revalidation")
 
@@ -162,71 +163,75 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
     summary: dict[str, Any] = {"evaluated": 0, "revoked": 0, "kept": 0,
                                "skipped_no_price": 0, "leagues": []}
     log_rows: list[dict] = []
-    for cf in sorted(Path(predictions_dir).glob("candidates_*.csv")):
-        league = cf.stem.replace("candidates_", "")
-        try:
-            df = pd.read_csv(cf)
-        except (pd.errors.EmptyDataError, ValueError):
-            continue
-        if df.empty or "event_id" not in df.columns:
-            continue
-        starts = _start_times(Path(predictions_dir), league)
-        odds = _league_odds(root, league)
-        if odds.empty:
-            continue
-        by_event = {str(eid): eo for eid, eo in odds.groupby("event_id")}
-        changed = False
-        df = _prepare_reval_columns(df)
-        for idx, r in enumerate(df.itertuples()):
-            gen = str(getattr(r, "generated_at", ""))[:10]
-            if gen != today:
+    # Lock compartido con los escritores de candidates del run diario: este pase
+    # es read-modify-write y sin serializacion puede pisar candidates recien
+    # generados o ser pisado tras revocar (auditoria 2026-07-24, I-5).
+    with locked(Path(predictions_dir) / "candidates"):
+        for cf in sorted(Path(predictions_dir).glob("candidates_*.csv")):
+            league = cf.stem.replace("candidates_", "")
+            try:
+                df = pd.read_csv(cf)
+            except (pd.errors.EmptyDataError, ValueError):
                 continue
-            if str(getattr(r, "reval_action", "")) == "revoke":
-                continue                       # final: nunca se deshace
-            st = _parse_utc(starts.get(str(r.event_id), ""))
-            if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
+            if df.empty or "event_id" not in df.columns:
                 continue
-            snap = _fresh_snapshot(by_event.get(str(r.event_id), pd.DataFrame()),
-                                   now, price_max_age_min)
-            if snap.empty:
-                summary["skipped_no_price"] += 1
+            starts = _start_times(Path(predictions_dir), league)
+            odds = _league_odds(root, league)
+            if odds.empty:
                 continue
-            price = snapshot_consensus_price(
-                snap, str(r.market), str(r.selection),
-                _point(str(r.market), getattr(r, "line", None)))
-            p = _prob_basis(r)
-            if price is None or p is None:
-                summary["skipped_no_price"] += 1
-                continue
-            reval_edge = p * price - 1.0
-            summary["evaluated"] += 1
-            stamp = now.isoformat()
-            df.loc[df.index[idx], ["reval_price", "reval_edge",
-                                   "revalidated_at"]] = [price, reval_edge, stamp]
-            if reval_edge < min_edge:
-                summary["revoked"] += 1
-                _revoke_row(df, idx, REVAL_FLAG, stamp)
-                log_rows.append({
-                    "timestamp": stamp, "league": league,
-                    "event_id": str(r.event_id), "market": str(r.market),
-                    "selection": str(r.selection),
-                    "line": getattr(r, "line", ""),
-                    "entry_price": getattr(r, "price_decimal", ""),
-                    "reval_price": price, "reval_edge": round(reval_edge, 4),
-                    "reason": "edge_below_min",
-                })
-                log.info("[%s] revoked %s %s %s: edge %.4f < %.4f at close %.3f",
-                         league, r.event_id, r.market, r.selection,
-                         reval_edge, min_edge, price)
-            else:
-                summary["kept"] += 1
-                df.loc[df.index[idx], "reval_action"] = "keep"
-            changed = True
-        if changed:
-            tmp = cf.with_suffix(".csv.tmp")
-            df.to_csv(tmp, index=False)
-            tmp.replace(cf)
-            summary["leagues"].append(league)
+            by_event = {str(eid): eo for eid, eo in odds.groupby("event_id")}
+            changed = False
+            df = _prepare_reval_columns(df)
+            for idx, r in enumerate(df.itertuples()):
+                gen = str(getattr(r, "generated_at", ""))[:10]
+                if gen != today:
+                    continue
+                if str(getattr(r, "reval_action", "")) == "revoke":
+                    continue                       # final: nunca se deshace
+                st = _parse_utc(starts.get(str(r.event_id), ""))
+                if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
+                    continue
+                snap = _fresh_snapshot(by_event.get(str(r.event_id), pd.DataFrame()),
+                                       now, price_max_age_min)
+                if snap.empty:
+                    summary["skipped_no_price"] += 1
+                    continue
+                price = snapshot_consensus_price(
+                    snap, str(r.market), str(r.selection),
+                    _point(str(r.market), getattr(r, "line", None)))
+                p = _prob_basis(r)
+                if price is None or p is None:
+                    summary["skipped_no_price"] += 1
+                    continue
+                reval_edge = p * price - 1.0
+                summary["evaluated"] += 1
+                stamp = now.isoformat()
+                df.loc[df.index[idx], ["reval_price", "reval_edge",
+                                       "revalidated_at"]] = [price, reval_edge, stamp]
+                if reval_edge < min_edge:
+                    summary["revoked"] += 1
+                    _revoke_row(df, idx, REVAL_FLAG, stamp)
+                    log_rows.append({
+                        "timestamp": stamp, "league": league,
+                        "event_id": str(r.event_id), "market": str(r.market),
+                        "selection": str(r.selection),
+                        "line": getattr(r, "line", ""),
+                        "entry_price": getattr(r, "price_decimal", ""),
+                        "reval_price": price, "reval_edge": round(reval_edge, 4),
+                        "reason": "edge_below_min",
+                    })
+                    log.info("[%s] revoked %s %s %s: edge %.4f < %.4f at close %.3f",
+                             league, r.event_id, r.market, r.selection,
+                             reval_edge, min_edge, price)
+                else:
+                    summary["kept"] += 1
+                    df.loc[df.index[idx], "reval_action"] = "keep"
+                changed = True
+            if changed:
+                tmp = cf.with_suffix(".csv.tmp")
+                df.to_csv(tmp, index=False)
+                tmp.replace(cf)
+                summary["leagues"].append(league)
     _append_log(log_rows, root)
     return summary
 
@@ -258,100 +263,105 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
     pf = Path(predictions_dir) / f"predictions_{league}.csv"
     if not cf.exists() or not pf.exists():
         return summary
-    try:
-        df = pd.read_csv(cf)
-        preds = pd.read_csv(pf)
-    except (pd.errors.EmptyDataError, ValueError):
-        return summary
-    if df.empty or "event_id" not in df.columns or preds.empty:
-        return summary
-    if not {"home_pitcher", "away_pitcher"} <= set(preds.columns):
-        return summary                      # sin linea base (picks pre-feature)
-    pred_by_event = {str(p.event_id): p for p in preds.itertuples()}
+    # Mismo lock que el pase de precio y el run diario: read-modify-write sobre
+    # candidates_<liga>.csv (auditoria 2026-07-24, I-5). Se mantiene durante el
+    # fetch (MLB Stats API, 1-2 dias) — breve; si otro proceso espera >30 s,
+    # degrada con warning (semantica de sqp.storage.lock).
+    with locked(Path(predictions_dir) / "candidates"):
+        try:
+            df = pd.read_csv(cf)
+            preds = pd.read_csv(pf)
+        except (pd.errors.EmptyDataError, ValueError):
+            return summary
+        if df.empty or "event_id" not in df.columns or preds.empty:
+            return summary
+        if not {"home_pitcher", "away_pitcher"} <= set(preds.columns):
+            return summary                      # sin linea base (picks pre-feature)
+        pred_by_event = {str(p.event_id): p for p in preds.itertuples()}
 
-    # eventos del dia en ventana con linea base de abridores
-    targets: dict[str, tuple] = {}
-    for idx, r in enumerate(df.itertuples()):
-        if str(getattr(r, "generated_at", ""))[:10] != today:
-            continue
-        if str(getattr(r, "reval_action", "")) == "revoke":
-            continue
-        p = pred_by_event.get(str(r.event_id))
-        if p is None:
-            continue
-        st = _parse_utc(str(getattr(p, "start_time", "")))
-        if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
-            continue
-        base_hp = str(getattr(p, "home_pitcher", "") or "")
-        base_ap = str(getattr(p, "away_pitcher", "") or "")
-        if base_hp in ("", "nan") and base_ap in ("", "nan"):
-            continue                        # sin abridores base: nada que vigilar
-        targets.setdefault(str(r.event_id), (p, []))[1].append(idx)
-    if not targets:
-        return summary
-
-    fetch_days: set[str] = set()
-    for p, _idxs in targets.values():
-        day = str(getattr(p, "start_time", ""))[:10]
-        fetch_days.add(day)
-        if (prior := _prior_day(day)) is not None:
-            fetch_days.add(prior)
-    by_pair: dict[tuple, list[dict]] = {}
-    try:
-        for day in sorted(fetch_days):
-            for g in fetch_probables(day):
-                by_pair.setdefault((nk(g["home"]), nk(g["away"])), []).append(g)
-    except Exception as exc:
-        log.warning("[%s] pitcher revalidation fetch failed (no action): %s",
-                    league, exc)
-        return summary
-
-    df = _prepare_reval_columns(df)
-    stamp = now.isoformat()
-    log_rows: list[dict] = []
-    changed = False
-    for eid, (p, idxs) in targets.items():
-        cands = by_pair.get((nk(str(p.home)), nk(str(p.away))), [])
-        g = _closest_probable(cands, _parse_iso_utc(str(p.start_time)))
-        if g is None:
-            summary["skipped_unmatched"] += 1
-            continue
-        summary["checked"] += 1
-        flag = None
-        detail = ""
-        for side, base in (("home", str(getattr(p, "home_pitcher", "") or "")),
-                           ("away", str(getattr(p, "away_pitcher", "") or ""))):
-            if base in ("", "nan"):
+        # eventos del dia en ventana con linea base de abridores
+        targets: dict[str, tuple] = {}
+        for idx, r in enumerate(df.itertuples()):
+            if str(getattr(r, "generated_at", ""))[:10] != today:
                 continue
-            current = g.get(f"{side}_pitcher")
-            if current is None or str(current).strip() == "":
-                flag, detail = STARTER_PULLED_FLAG, f"{side}: {base} -> (none)"
-                break
-            if normalize_key(str(current)) != normalize_key(base):
-                flag = PITCHER_CHANGED_FLAG
-                detail = f"{side}: {base} -> {current}"
-                break
-        if flag is None:
-            continue
-        for idx in idxs:
-            r = df.iloc[idx]
-            _revoke_row(df, idx, flag, stamp)
-            log_rows.append({
-                "timestamp": stamp, "league": league, "event_id": eid,
-                "market": str(r.get("market", "")),
-                "selection": str(r.get("selection", "")),
-                "line": r.get("line", ""), "entry_price": r.get("price_decimal", ""),
-                "reval_price": float("nan"), "reval_edge": float("nan"),
-                "reason": ("pitcher_changed" if flag == PITCHER_CHANGED_FLAG
-                           else "starter_pulled"), "detail": detail,
-            })
-            summary["revoked"] += 1
-        log.info("[%s] %s revoked %d pick(s) for %s (%s)", league, flag,
-                 len(idxs), eid, detail)
-        changed = True
-    if changed:
-        tmp = cf.with_suffix(".csv.tmp")
-        df.to_csv(tmp, index=False)
-        tmp.replace(cf)
+            if str(getattr(r, "reval_action", "")) == "revoke":
+                continue
+            p = pred_by_event.get(str(r.event_id))
+            if p is None:
+                continue
+            st = _parse_utc(str(getattr(p, "start_time", "")))
+            if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
+                continue
+            base_hp = str(getattr(p, "home_pitcher", "") or "")
+            base_ap = str(getattr(p, "away_pitcher", "") or "")
+            if base_hp in ("", "nan") and base_ap in ("", "nan"):
+                continue                        # sin abridores base: nada que vigilar
+            targets.setdefault(str(r.event_id), (p, []))[1].append(idx)
+        if not targets:
+            return summary
+
+        fetch_days: set[str] = set()
+        for p, _idxs in targets.values():
+            day = str(getattr(p, "start_time", ""))[:10]
+            fetch_days.add(day)
+            if (prior := _prior_day(day)) is not None:
+                fetch_days.add(prior)
+        by_pair: dict[tuple, list[dict]] = {}
+        try:
+            for day in sorted(fetch_days):
+                for g in fetch_probables(day):
+                    by_pair.setdefault((nk(g["home"]), nk(g["away"])), []).append(g)
+        except Exception as exc:
+            log.warning("[%s] pitcher revalidation fetch failed (no action): %s",
+                        league, exc)
+            return summary
+
+        df = _prepare_reval_columns(df)
+        stamp = now.isoformat()
+        log_rows: list[dict] = []
+        changed = False
+        for eid, (p, idxs) in targets.items():
+            cands = by_pair.get((nk(str(p.home)), nk(str(p.away))), [])
+            g = _closest_probable(cands, _parse_iso_utc(str(p.start_time)))
+            if g is None:
+                summary["skipped_unmatched"] += 1
+                continue
+            summary["checked"] += 1
+            flag = None
+            detail = ""
+            for side, base in (("home", str(getattr(p, "home_pitcher", "") or "")),
+                               ("away", str(getattr(p, "away_pitcher", "") or ""))):
+                if base in ("", "nan"):
+                    continue
+                current = g.get(f"{side}_pitcher")
+                if current is None or str(current).strip() == "":
+                    flag, detail = STARTER_PULLED_FLAG, f"{side}: {base} -> (none)"
+                    break
+                if normalize_key(str(current)) != normalize_key(base):
+                    flag = PITCHER_CHANGED_FLAG
+                    detail = f"{side}: {base} -> {current}"
+                    break
+            if flag is None:
+                continue
+            for idx in idxs:
+                r = df.iloc[idx]
+                _revoke_row(df, idx, flag, stamp)
+                log_rows.append({
+                    "timestamp": stamp, "league": league, "event_id": eid,
+                    "market": str(r.get("market", "")),
+                    "selection": str(r.get("selection", "")),
+                    "line": r.get("line", ""), "entry_price": r.get("price_decimal", ""),
+                    "reval_price": float("nan"), "reval_edge": float("nan"),
+                    "reason": ("pitcher_changed" if flag == PITCHER_CHANGED_FLAG
+                               else "starter_pulled"), "detail": detail,
+                })
+                summary["revoked"] += 1
+            log.info("[%s] %s revoked %d pick(s) for %s (%s)", league, flag,
+                     len(idxs), eid, detail)
+            changed = True
+        if changed:
+            tmp = cf.with_suffix(".csv.tmp")
+            df.to_csv(tmp, index=False)
+            tmp.replace(cf)
     _append_log(log_rows, root)
     return summary

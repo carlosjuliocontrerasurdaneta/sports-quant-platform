@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
+from sqp.storage.atomic import atomic_write_csv
+
 
 COLUMNS = ["date", "home", "away", "game_id", "home_score", "away_score", "neutral", "ingested_at"]
 KEY = ["date", "home", "away", "game_id"]  # game_id keeps doubleheaders distinct
@@ -56,5 +58,5 @@ class ResultsStore:
         else:
             self.dir.mkdir(parents=True, exist_ok=True)
             merged, added = new, len(new)
-        merged.sort_values("date", kind="stable").to_csv(p, index=False)
+        atomic_write_csv(merged.sort_values("date", kind="stable"), p)
         return added

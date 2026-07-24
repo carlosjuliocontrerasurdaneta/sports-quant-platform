@@ -24,6 +24,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from sqp.logging_config import get_logger
+
+log = get_logger("sqp.served_store")
+
 COLUMNS = ["league", "event_id", "home", "away", "start_time", "game_date",
            "market", "selection", "line", "price_decimal", "bookmaker",
            "model_probability", "estimated_probability", "calibrated_probability",
@@ -84,7 +88,14 @@ class ServedStore:
             return pd.DataFrame(columns=COLUMNS)
         try:
             return pd.read_csv(path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame(columns=COLUMNS)
+        except pd.errors.ParserError as exc:
+            # A corrupt CSV silently disabled dedup and pending(); keep the
+            # best-effort behavior but make it visible so the file gets fixed
+            # (audit 2026-07-24, M-21).
+            log.warning("corrupt CSV at %s treated as empty (dedup/pending "
+                        "degraded until repaired): %s", path, exc)
             return pd.DataFrame(columns=COLUMNS)
 
     def append_served(self, league: str, rows: list[dict]) -> int:

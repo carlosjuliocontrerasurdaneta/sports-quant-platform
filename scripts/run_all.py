@@ -237,12 +237,13 @@ def main() -> int:
             return 1 if failures else 0
         # Refresh the realized-result artifacts the dashboard reads. Both are
         # best-effort: a failure here must never sink the daily run, which has
-        # already produced the picks and the markdown report.
+        # already produced the picks and the markdown report. These blocks log
+        # WITHOUT touching `failures` (audit 2026-07-24, M-2: incrementing it
+        # contradicted this comment and sank the exit code / BAT chain).
         try:
             audit_md = settlement_audit_report(ROOT / "data" / "bets")
             log.info("Auditoria de liquidacion (md) -> %s", audit_md)
         except Exception as exc:
-            failures += 1
             log.warning("No se pudo generar la auditoria de liquidacion: %s", exc)
         # Diagnóstico por segmentos (2026-07-13): localiza DENTRO de cada
         # (liga, mercado) dónde vive una desviación sistemática (favorito/
@@ -280,7 +281,6 @@ def main() -> int:
                      ", ".join(allowed) if allowed
                      else "ninguno (default-deny)")
         except Exception as exc:
-            failures += 1
             log.warning("No se pudo generar el analisis CLV: %s", exc)
         try:
             hist = build_pick_history(settings, write=True)
@@ -316,7 +316,6 @@ def main() -> int:
                     log.info("Auto-promoción OFF: candidatos en staging; usa "
                              "scripts/promote_calibration.py para revisar y promover")
         except Exception as exc:
-            failures += 1
             log.warning("No se pudo construir el historial / recalibrar: %s", exc)
         if not args.no_html:
             html_path = html_dashboard(pred_dir, ROOT / "data" / "bets")

@@ -67,19 +67,23 @@ def load_closing_odds(root: Path, league: str,
     out: dict[str, EventOdds] = {}
     for eid, g in df.groupby("event_id"):
         commence = str(g["commence_time"].iloc[0])
-        pre = g[g["captured_at"].astype(str) < commence]
+        # Compare as timestamps, not strings: captured_at mixes '+00:00' and 'Z'
+        # suffixes across files and lexicographic order is not temporal order
+        # (audit 2026-07-24, M-30).
+        commence_ts = pd.to_datetime(commence, utc=True, errors="coerce")
+        cap_ts = pd.to_datetime(g["captured_at"], utc=True, errors="coerce")
+        if pd.isna(commence_ts):
+            continue
+        pre_mask = cap_ts < commence_ts
+        pre = g[pre_mask]
         if pre.empty:
             continue
+        last = cap_ts[pre_mask].max()
         if max_age_min is not None:
-            try:
-                age_min = (pd.Timestamp(commence)
-                           - pd.Timestamp(str(pre["captured_at"].max()))
-                           ).total_seconds() / 60.0
-            except (ValueError, TypeError):
-                continue
+            age_min = (commence_ts - last).total_seconds() / 60.0
             if age_min > max_age_min:
                 continue
-        snap = pre[pre["captured_at"] == pre["captured_at"].max()]
+        snap = pre[cap_ts[pre_mask] == last]
         lines = [MarketLine(market=str(r.market), bookmaker=str(r.bookmaker),
                             outcome=str(r.outcome), price_decimal=float(r.price_decimal),
                             point=(None if pd.isna(r.point) else float(r.point)))
@@ -111,18 +115,27 @@ def _match_result(r: dict, idx: dict, used: set[str],
                   order_insensitive: bool = False) -> EventOdds | None:
     """Match a result row to its odds event by normalized players/teams and a
     commence date within +-1 day (UTC vs local date drift). Each odds event is
-    consumed at most once. Tennis matches order-insensitively (no home/away)."""
+    consumed at most once. Tennis matches order-insensitively (no home/away).
+
+    Picks the candidate with the SMALLEST day distance (exact date first),
+    breaking ties by commence_time: taking the first candidate within the
+    window could pair a bet's odds with the score of the adjacent day's game
+    in consecutive-day series and doubleheaders (audit 2026-07-24, I-4)."""
     cands = idx.get(_pair_key(r["home"], r["away"], order_insensitive))
     if not cands:
         return None
     rday = str(r.get("date", ""))[:10]
     best = None
+    best_rank: tuple[int, str] | None = None
     for day, eo in cands:
         if eo.event.event_id in used:
             continue
-        if abs(_day_diff(day, rday)) <= 1:
-            best = eo
-            break
+        dist = abs(_day_diff(day, rday))
+        if dist > 1:
+            continue
+        rank = (dist, str(eo.event.start_time))
+        if best_rank is None or rank < best_rank:
+            best, best_rank = eo, rank
     if best is not None:
         used.add(best.event.event_id)
     return best
@@ -212,7 +225,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                     if key[0] == "spreads":
                         fair = _spread_novig(cons, ev.home, ev.away, spread).get(key[1])
                     else:
-                        fair = _novig_probs(cons, key[0], key[2]).get(key[1])
+                        fair = _novig_probs(cons, key[0], key[2],
+                                            three_way=(family == "soccer")).get(key[1])
                     if fair is None:
                         continue  # incomplete market: the live pipeline cannot remove vig
                     s = risk.market_shrink

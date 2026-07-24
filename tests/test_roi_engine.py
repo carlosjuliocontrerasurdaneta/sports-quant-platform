@@ -58,6 +58,22 @@ def test_match_result_by_name_and_date_window():
     assert _match_result(r, idx, used) is None   # already consumed
 
 
+def test_match_result_prefers_exact_date_over_first_in_window():
+    # Auditoria 2026-07-24 (I-4): tomar el PRIMER candidato dentro de +-1 dia
+    # podia cruzar las cuotas de un partido con el marcador del partido del dia
+    # adyacente en series de dias consecutivos; ahora gana la distancia minima.
+    def _eo(eid, start):
+        return EventOdds(event=Event(event_id=eid, sport_key="bt", league="test",
+                                     home="Boston Red Sox", away="Tampa Bay Rays",
+                                     start_time=start, data_label="real"),
+                         lines=[MarketLine("h2h", "dk", "Boston Red Sox", 1.9, None)])
+    eo_next = _eo("e_next", "2026-06-11T23:00:00Z")     # indexado primero
+    eo_exact = _eo("e_exact", "2026-06-10T23:00:00Z")
+    idx = _match_index({"a": eo_next, "b": eo_exact})
+    r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
+    assert _match_result(r, idx, set()) is eo_exact
+
+
 def test_summarize_computes_realized_roi_and_by_market():
     settled = pd.DataFrame([
         {"market": "h2h", "selection": "A", "stake": 10.0, "price_decimal": 2.0,

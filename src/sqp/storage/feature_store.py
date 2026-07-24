@@ -18,6 +18,7 @@ from sqp.features import mlb as mlb_features
 from sqp.features.builders import CONFIGS, build_team_rolling_dataset
 from sqp.features.common import write_state_csv
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.results_store import ResultsStore
 from sqp.storage.starters import StartersStore
 
@@ -116,7 +117,7 @@ def build_training_dataset(league: str, force: bool = False, root: Path = ROOT) 
                             cfg.pts_default, _state_dir(root))
 
     _features_dir(root).mkdir(parents=True, exist_ok=True)
-    out.to_csv(_feature_path(root, league), index=False)
+    atomic_write_csv(out, _feature_path(root, league))
     _write_state()
 
     _manifest_path(root, league).parent.mkdir(parents=True, exist_ok=True)

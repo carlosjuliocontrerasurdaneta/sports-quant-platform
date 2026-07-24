@@ -6,11 +6,13 @@ import pandas as pd
 from sqp.monitoring.health import ML_LEAGUES, generate_health_report
 
 
-def test_empty_root_warns(tmp_path):
+def test_empty_root_errors(tmp_path):
+    # Missing artifacts are ERRORS since the 2026-07-24 audit (M-1): they make
+    # the pipeline inoperative and must trip the BAT errorlevel guards.
     r = generate_health_report(root=tmp_path)
-    assert r["status"] == "WARN"
+    assert r["status"] == "ERROR"
     assert set(r["leagues"]) == set(ML_LEAGUES)
-    assert any("no stored results" in w for w in r["warnings"])
+    assert any("no stored results" in e for e in r["errors"])
     assert (tmp_path / "data" / "output" / "pipeline_health.json").exists()
 
 
@@ -29,10 +31,10 @@ def test_present_artifacts_reduce_warnings(tmp_path):
     r = generate_health_report(root=tmp_path)
     assert r["leagues"]["nba"]["results_rows"] == 1
     assert r["leagues"]["nba"]["moneyline_model"] is True
-    # nba no longer warns about missing results/model; other leagues still do
-    assert not any(w.startswith("nba: no stored results") for w in r["warnings"])
-    assert any(w.startswith("mlb:") for w in r["warnings"])
-    assert r["status"] == "WARN"  # still WARN because mlb/nfl/nhl incomplete
+    # nba no longer errors about missing results/model; other leagues still do
+    assert not any(e.startswith("nba: no stored results") for e in r["errors"])
+    assert any(e.startswith("mlb:") for e in r["errors"])
+    assert r["status"] == "ERROR"  # still ERROR because mlb/nfl/nhl incomplete
 
 
 def test_health_detects_per_market_calibration_registry(tmp_path):

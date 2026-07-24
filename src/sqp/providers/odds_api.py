@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 import os
+import time
 from pathlib import Path
 from typing import cast
 
@@ -17,6 +18,13 @@ from sqp.domain.models import Event, EventOdds, MarketLine
 from sqp.providers.odds_cache import FileCache
 
 BASE = "https://api.the-odds-api.com/v4"
+
+# Transient upstream errors: retried with linear backoff, like the ESPN
+# providers (audit 2026-07-24, M-11). A failed call returns no data, so one
+# 5xx no longer loses the whole day's fetch.
+_RETRY_STATUS = frozenset({500, 502, 503, 504})
+_MAX_ATTEMPTS = 3
+_BACKOFF_SECONDS = 2.0  # multiplied by attempt number (linear backoff)
 
 _TRUTHY = ("1", "true", "yes", "on")
 
@@ -96,8 +104,36 @@ class OddsAPIClient:
                 f"OFFLINE_MODE active and no cached response for {path}.")
         self._require_key()
         params["apiKey"] = self.api_key
-        r = self.session.get(f"{BASE}{path}", params=params, timeout=30)
-        r.raise_for_status()
+        r = None
+        last_error = ""
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                r = self.session.get(f"{BASE}{path}", params=params, timeout=30)
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                # Class name only: requests exception messages carry the full
+                # URL including apiKey= (audit 2026-07-24, I-1).
+                r, last_error = None, exc.__class__.__name__
+            # getattr: test fakes/sessions may omit status_code; treat as final.
+            if r is not None and getattr(r, "status_code", None) not in _RETRY_STATUS:
+                break
+            if r is not None:
+                last_error = f"{r.status_code} {getattr(r, 'reason', '')}"
+            if attempt < _MAX_ATTEMPTS:
+                time.sleep(_BACKOFF_SECONDS * attempt)
+        if r is None:
+            raise requests.ConnectionError(
+                f"could not reach {BASE}{path} after {_MAX_ATTEMPTS} attempts "
+                f"({last_error}; query redacted)")
+        try:
+            r.raise_for_status()
+        except requests.HTTPError as exc:
+            # The HTTPError message carries the full URL including apiKey=...;
+            # callers log the exception, which would persist the credential in
+            # logs/. Re-raise with the query string redacted (audit 2026-07-24, I-1).
+            status = exc.response.status_code if exc.response is not None else "?"
+            raise requests.HTTPError(
+                f"{status} error for {BASE}{path} (query redacted)",
+                response=exc.response) from None
         self._capture_quota(getattr(r, "headers", {}) or {})
         data = r.json()
         if ckey is not None:
