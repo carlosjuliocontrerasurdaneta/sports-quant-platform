@@ -19,3 +19,8 @@ def test_out_of_bounds_probability_no_bet():
 
 def test_invalid_price_no_bet():
     assert kelly_fraction_stake(0.60, 1.0, 1000) == (0.0, 0.0)
+
+def test_nonpositive_bankroll_no_bet():
+    # banca dinamica agotada (M-17): jamas un stake negativo
+    assert kelly_fraction_stake(0.60, 2.0, 0.0) == (0.0, 0.0)
+    assert kelly_fraction_stake(0.60, 2.0, -50.0) == (0.0, 0.0)

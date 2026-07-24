@@ -49,6 +49,11 @@ class BankrollLedger:
         out = pd.concat(frames, ignore_index=True)
         if "data_label" in out.columns:
             out = out[out["data_label"].astype(str) == "real"]
+        else:
+            # Esquema legacy sin data_label: se asume real (los settled demo
+            # viven en data/bets/demo/, fuera de este glob). Visible en logs
+            # por si algun dia se mezclaran (auditoria 2026-07-24, M-18).
+            log.warning("settled_*.csv sin columna data_label: filas asumidas reales")
         return out
 
     def realized_pnl(self) -> float:
@@ -80,7 +85,11 @@ class BankrollLedger:
             return pd.DataFrame(columns=["settled_at", "pnl", "balance"])
         d = df.copy()
         d["pnl"] = pd.to_numeric(d["pnl"], errors="coerce").fillna(0.0)
-        d = d.sort_values("settled_at")
+        # Orden temporal real: settled_at es string y puede mezclar formatos
+        # ISO ('+00:00' vs 'Z'); el orden lexicografico no es cronologico
+        # (auditoria 2026-07-24, M-18).
+        d = (d.assign(_ts=pd.to_datetime(d["settled_at"], errors="coerce", utc=True))
+             .sort_values("_ts", kind="stable").drop(columns="_ts"))
         base = self.initial + self.adjustments_total()
         d["balance"] = base + d["pnl"].cumsum()
         return d[["settled_at", "pnl", "balance"]].reset_index(drop=True)

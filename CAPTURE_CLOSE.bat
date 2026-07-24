@@ -5,13 +5,17 @@ REM de creditos). Anade un segundo snapshot de cuotas para que el CLV sea medibl
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
+REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
+REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
+if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 set ODDS_API_REGIONS=us,us2,uk,eu,au
 
 if not exist logs mkdir logs
 
 call scripts\rotate_log.cmd logs\capture_close.log
 echo === SQP - CAPTURA CIERRE (%DATE% %TIME%) === >> logs\capture_close.log
-python scripts\capture_closing_odds.py >> logs\capture_close.log 2>&1
+"%SQP_PYTHON%" scripts\capture_closing_odds.py >> logs\capture_close.log 2>&1
 if errorlevel 1 goto :error
 
 endlocal

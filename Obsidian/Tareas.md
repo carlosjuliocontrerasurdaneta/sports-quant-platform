@@ -15,7 +15,8 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
-- [ ] Grupo 4 de la auditoría 07-24 (opcionales): ruta absoluta de Python en BATs, sleep en loops ESPN, Dockerfile con lock o retiro, contratos defensivos kelly/bankroll, M-22/23/24/27/28/29/31, correr `VALIDATE_OOS` una vez a mano. Ver [[Bitácora/2026-07-24]].
+- [ ] M-7 (auditoría 07-24, manual): recortar permisos amplios de `.claude/settings.local.json` (`pip install *`, `python -`) — archivo local del usuario, no se toca automáticamente. Ver [[Bitácora/2026-07-24]].
+- [ ] M-24 (decisión de gasto): alinear `--regions` del backfill histórico con las regiones del run vivo (us,us2,uk,eu,au) quintuplica el costo por llamada; hoy el default sigue en `us` y la discrepancia está documentada en el help. Ver [[Bitácora/2026-07-24]].
 - [ ] Re-evaluar el candidato per-game `mlb_h2h_pergame` (staged) cuando la cola de settled h2h MLB llegue a n≥50: `python scripts/train_pergame_calibration.py --leagues mlb`; adoptar solo si mejora ECE y Brier sobre la distribución de servicio.
 - [ ] Evaluar el segundo pase de revalidación cuando haya muestra: comparar CLV/ROI de picks `reval_action=revoke` vs `keep` en settled (la etiqueta viaja vía unión de columnas); si los revocados tienen peor CLV, el pase queda validado para el post-shadow. Incluir el desglose por `reason` (`edge_below_min` vs `pitcher_changed`/`starter_pulled`).
 - [ ] #4 fase ofensiva (decisión de alcance pendiente): generación/re-precio intradía cuando rompe una noticia (abridor confirmado, lineup) antes de que el mercado la precie — requiere re-estimar y re-escanear edges fuera del run de las 11:00. Portero NHL: retomar en octubre con la temporada.
@@ -31,6 +32,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-24 — Grupo 4 de la auditoría completo (M-5/8/12/14/17/18/22/23/27/28/29/31 + primer run de VALIDATE_OOS); quedan como decisiones manuales M-7 (settings.local.json) y el default de regiones del backfill (M-24). 428 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-24 — M-9: empate en h2h 2-way grada push (three_way propagado a settle/runner/roi_engine); escaneo del served stream por `novig==1.0`: 0 filas corruptas (script `clean_corrupt_novig.py` queda como verificador). 426 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-24 — Auditoría full orquestada + remediación Grupos 1–3: fix crítico C-1 (no-vig sobre mercado incompleto → prob. implícita 1.0), redacción de apiKey en errores HTTP, escrituras atómicas en 4 stores, dedup ±1 día MLB, matching exacto en backtest ROI, lock compartido para candidates, lockfile único + mypy, y 12 ítems de deuda técnica. 424 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-14 — Guard de abridores (#4 pieza 1, `revalidate_pitchers`): revoca picks cuyo abridor anunciado cambió o fue retirado tras generarse el pick; línea base persistida en predictions; log con `reason`. Ofensiva intradía y portero NHL quedan como decisiones aparte. Ver [[Bitácora/2026-07-14]].

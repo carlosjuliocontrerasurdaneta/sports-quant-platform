@@ -15,7 +15,8 @@ def kelly_fraction_stake(estimated_probability: float, price_decimal: float,
                          bankroll: float, fraction: float = 0.25,
                          max_stake_pct: float = 0.02, min_edge: float = 0.02) -> tuple[float, float]:
     """Return (stake_amount, kelly_pct_applied). 0 if below min edge."""
-    if not (0.0 < estimated_probability < 1.0) or price_decimal <= 1.0:
+    # bankroll <= 0 (banca dinamica agotada) devolveria stake negativo (M-17).
+    if not (0.0 < estimated_probability < 1.0) or price_decimal <= 1.0 or bankroll <= 0:
         return 0.0, 0.0
     e = edge(estimated_probability, price_decimal)
     if e < min_edge:

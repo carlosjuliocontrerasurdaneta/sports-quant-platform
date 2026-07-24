@@ -413,7 +413,11 @@ def promote_calibrators(keys: list[str] | None = None) -> list[str]:
     return promoted
 
 
-AUTO_PROMOTE_MIN_N_VAL = 15
+# 15 -> 30 (auditoria 2026-07-24, M-28): el gate elige best_method sobre el
+# mismo split que reporta como OOS, asi que un n_val delgado sobreestima al
+# candidato; exigir mas eventos independientes compensa ese optimismo de
+# seleccion sin rediseñar el split.
+AUTO_PROMOTE_MIN_N_VAL = 30
 
 
 def auto_promote_calibrators(results: list[dict], *,

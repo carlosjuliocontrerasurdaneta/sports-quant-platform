@@ -5,6 +5,7 @@ only; load_closing_odds / clv_analysis already use the latest pre-commence one.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
+from sqp.storage.lock import locked
 
 log = get_logger("sqp.closing_capture")
 
@@ -70,11 +72,18 @@ def spent_today(odds_dir: Path, day: str) -> int:
 
 
 def add_spent(odds_dir: Path, day: str, credits: int) -> int:
-    """Add credits (negative ignored) to today's total and persist. Returns total."""
-    total = spent_today(odds_dir, day) + max(0, int(credits))
+    """Add credits (negative ignored) to today's total and persist. Returns total.
+
+    Lock + tmp/replace: el contador es read-modify-write compartido entre pases
+    horarios; sin serializar, dos escrituras concurrentes o un crash a mitad
+    podian perder gasto acumulado (auditoria 2026-07-24, M-23)."""
     p = _credits_file(odds_dir, day)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(str(total))
+    with locked(p):
+        total = spent_today(odds_dir, day) + max(0, int(credits))
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(str(total))
+        os.replace(tmp, p)
     return total
 
 
@@ -125,7 +134,12 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
         try:
             sport_key = _league_meta(league)["sport_key"]
             events = client.fetch_odds(league, sport_key)
-            spent += client.requests_last or 0
+            delta = client.requests_last or 0
+            if delta:
+                # Persistencia incremental por liga: un crash a mitad del loop
+                # ya no pierde el gasto acumulado (auditoria 2026-07-24, M-23).
+                add_spent(odds_dir, day, delta)
+            spent += delta
             if events:
                 # El fetch ya se pago para TODA la liga: persistir el snapshot
                 # completo (eventos no-pick incluidos) da trayectorias de linea
@@ -140,7 +154,5 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
                          "(%d bet events)", league, n, len(events), n_bets)
         except Exception as exc:
             log.warning("[%s] closing capture failed: %s", league, exc)
-    if spent:
-        add_spent(odds_dir, day, spent)
     summary["credits_spent"] = spent
     return summary

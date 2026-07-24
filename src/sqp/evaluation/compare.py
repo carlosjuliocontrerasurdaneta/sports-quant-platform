@@ -1,8 +1,10 @@
 """Head-to-head comparison of the simulation model vs the trained ML model, on
 the SAME out-of-sample holdout, per league. This is the evidence gate for the
 blend decision (option B): it reports calibration for simulation, ML and a grid
-of blends, and recommends the ML blend weight that minimises holdout log loss
-(ties favour LESS ML, i.e. the smaller weight).
+of blends, and recommends the ML blend weight that minimises log loss on the
+FIRST half of the holdout (ties favour LESS ML, i.e. the smaller weight); the
+recommendation's honest metric is then reported on the disjoint second half
+(audit 2026-07-24, M-27: selecting and scoring on the same slice inflated it).
 
 Simulation probability is the Elo baseline (the core of the moneyline estimate),
 walk-forward over the same ordered games as the ML holdout — so both models are
@@ -72,9 +74,27 @@ def compare_league(league: str, val_fraction: float = 0.20, root: Path = ROOT) -
         rep = calibration_report(blend_probabilities(sim_hold, ml_hold, w), y)
         out[f"blend_{w}"] = rep
         grid[w] = rep["log_loss"]
-
-    # Recommended ML weight = min holdout log loss; ties favour less ML.
-    best = min(grid.items(), key=lambda kv: (kv[1], kv[0]))[0]
     out["grid_log_loss"] = grid
+
+    # Weight SELECTION on the first half of the holdout, honest evaluation on
+    # the disjoint second half; ties favour less ML.
+    mid = max(1, len(y) // 2)
+
+    def _ll(p, yy) -> float:
+        return calibration_report(p, yy)["log_loss"]
+
+    sel = {0.0: _ll(sim_hold[:mid], y[:mid]), 1.0: _ll(ml_hold[:mid], y[:mid])}
+    for w in BLEND_GRID:
+        sel[w] = _ll(blend_probabilities(sim_hold[:mid], ml_hold[:mid], w), y[:mid])
+    best = min(sel.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    if best == 0.0:
+        eval_p = sim_hold[mid:]
+    elif best == 1.0:
+        eval_p = ml_hold[mid:]
+    else:
+        eval_p = blend_probabilities(sim_hold[mid:], ml_hold[mid:], best)
+    out["selection_log_loss"] = sel
     out["recommended_ml_weight"] = best
+    out["recommended_oos_log_loss"] = (_ll(eval_p, y[mid:])
+                                       if mid < len(y) else float("nan"))
     return out

@@ -12,6 +12,10 @@ REM diaria 11:00) encadena SETTLE -> RUN en ese orden.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
+REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
+REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
+if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 REM Plan de pago 20,000 creditos/mes; el guard de presupuesto raciona la cuota real.
 set ODDS_API_REGIONS=us,us2,uk,eu,au
 
@@ -23,7 +27,7 @@ echo === SQP - RUN DIARIO MULTI-LIGA (%DATE% %TIME%) === >> logs\run_diario.log
 REM --open-dashboard se omite a proposito: bajo el Programador de tareas la
 REM apertura del navegador terminaba el proceso con 0xC000013A. El reporte HTML
 REM se escribe igual; abrir data\predictions\report_latest.html como bookmark.
-python scripts\run_all.py --mode live >> logs\run_diario.log 2>&1
+"%SQP_PYTHON%" scripts\run_all.py --mode live >> logs\run_diario.log 2>&1
 if errorlevel 1 goto :error
 
 echo === DONE ===

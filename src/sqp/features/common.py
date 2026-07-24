@@ -83,6 +83,10 @@ def write_state_csv(sport: str, team_stats: dict, windows: list[int], ewm_span: 
     rows = []
     for team, state in team_stats.items():
         f = get_team_features(team, team_stats, windows, ewm_span, pts_default)
+        # Sin game_date el rest_days queda congelado en 3.0 y persistirlo
+        # introduce skew train/serve (auditoria 2026-07-24, M-31): se omite del
+        # estado; el consumidor debe recomputarlo desde last_game_date.
+        f.pop("rest_days", None)
         rows.append({"team": team, **f, "last_game_date": state.get("last_game_date")})
     path = out_dir / f"{sport}_team_state.csv"
     pd.DataFrame(rows).to_csv(path, index=False)

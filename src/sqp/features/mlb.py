@@ -143,6 +143,9 @@ def write_mlb_state(stats: dict, out_dir: Path) -> None:
                 pitcher_rows.append({"pitcher": pitcher, **_get_pitcher_features(pitcher, stats)})
         else:
             f = _get_team_features(key, stats)
+            # rest_days congelado (3.0 sin game_date): fuera del estado; se
+            # recomputa desde last_game_date al servir (auditoria 2026-07-24, M-31).
+            f.pop("rest_days", None)
             team_rows.append({"team": key, **f, "last_game_date": state.get("last_game_date")})
     pd.DataFrame(team_rows).to_csv(out_dir / "mlb_team_state.csv", index=False)
     pd.DataFrame(pitcher_rows).to_csv(out_dir / "mlb_pitcher_state.csv", index=False)

@@ -271,16 +271,21 @@ def _summarize(league: str, settled: pd.DataFrame, n_matched: int) -> dict:
     if settled.empty:
         return {"league": league, "n_events_matched": n_matched, "n_bets": 0,
                 "by_market": pd.DataFrame(), "note": "no graded bets"}
-    graded = settled[settled["result"].isin(["win", "loss"])]
+    graded_mask = settled["result"].isin(["win", "loss"])
+    graded = settled[graded_mask]
     staked = float(graded["stake"].sum())
     pnl = float(settled["pnl"].sum())
-    by_market = (settled.assign(graded=settled["result"].isin(["win", "loss"]))
+    # Denominador por mercado = stake REALMENTE arriesgado (win/loss), igual
+    # que el ROI global: incluir stakes de push/void deflactaba el ROI de los
+    # mercados con empates/cancelados (auditoria 2026-07-24, M-29).
+    by_market = (settled.assign(stake_graded=settled["stake"].where(graded_mask, 0.0))
                  .groupby("market")
                  .agg(n=("result", "size"),
                       wins=("result", lambda s: (s == "win").sum()),
-                      staked=("stake", "sum"), pnl=("pnl", "sum"),
+                      staked=("stake_graded", "sum"), pnl=("pnl", "sum"),
                       mean_edge=("estimated_edge", "mean")).reset_index())
-    by_market["realized_roi"] = (by_market["pnl"] / by_market["staked"]).round(4)
+    by_market["realized_roi"] = (by_market["pnl"]
+                                 / by_market["staked"].where(by_market["staked"] > 0)).round(4)
     by_market["mean_edge"] = by_market["mean_edge"].round(4)
     return {"league": league, "n_events_matched": n_matched, "n_bets": int(len(settled)),
             "n_graded": int(len(graded)), "staked": round(staked, 2),

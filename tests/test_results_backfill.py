@@ -88,6 +88,18 @@ def test_store_legacy_csv_without_game_id_migrates(tmp_path):
     assert loaded[0]["game_id"] == ""  # legacy row preserved with empty id
 
 
+def test_upsert_legacy_row_blocks_same_game_with_real_id(tmp_path):
+    # M-22 (auditoria 2026-07-24): una fila legacy (game_id "") ya cubre ese
+    # (date, home, away); re-ingerir el mismo juego con game_id real no debe
+    # duplicarlo dentro del store.
+    store = ResultsStore(tmp_path)
+    legacy = dict(_row("2026-02-01"))
+    legacy.pop("game_id", None)
+    assert store.upsert("nhl", [legacy]) == 1          # migra a game_id ""
+    assert store.upsert("nhl", [dict(_row("2026-02-01"), game_id="401999")]) == 0
+    assert len(store.load("nhl")) == 1
+
+
 def test_merge_results_tolerates_utc_date_drift():
     # Auditoria 2026-07-24 (I-3): la fila reciente data por commence_time (fecha
     # UTC); un juego nocturno de costa oeste cae en el dia UTC siguiente y sin

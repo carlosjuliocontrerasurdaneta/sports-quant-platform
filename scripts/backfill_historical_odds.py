@@ -29,19 +29,23 @@ from sqp.storage.odds_store import OddsStore
 log = get_logger("sqp.hist_odds")
 
 
-def _captured_dates(league: str) -> set[str]:
+def _captured_dates(league: str) -> set[str] | None:
     """Snapshot dates (YYYY-MM-DD) already stored for the league, so re-runs skip
-    them instead of re-paying for the same window."""
+    them instead of re-paying for the same window.
+
+    None when ANY monthly file is unreadable: with a partial view, its days
+    look uncaptured and the run would re-pay credits and append duplicate
+    snapshots. The league must be repaired first (audit 2026-07-24, M-24)."""
     days: set[str] = set()
     for f in sorted((ROOT / "data" / "odds").glob(f"odds_{league}_*.csv")):
         try:
             col = pd.read_csv(f, usecols=["captured_at"])["captured_at"].astype(str)
             days.update(col.str[:10].unique())
         except (OSError, ValueError, pd.errors.ParserError) as exc:
-            # A corrupt/partial snapshot must be visible: treating its date as
-            # uncaptured can trigger another paid API call on the next backfill.
-            log.warning("[%s] cannot read captured dates from %s: %s",
-                        league, f, exc)
+            log.error("[%s] cannot read captured dates from %s: %s -> league "
+                      "skipped this run (repair the file to resume).",
+                      league, f, exc)
+            return None
     return days
 
 
@@ -60,7 +64,10 @@ def main() -> int:
     ap.add_argument("--days", type=int, default=180, help="Days back to snapshot")
     ap.add_argument("--hour", type=int, default=22, help="UTC hour for the daily snapshot")
     ap.add_argument("--budget", type=int, default=3000, help="Max credits to spend")
-    ap.add_argument("--regions", default="us", help="Comma list (cost scales with count)")
+    ap.add_argument("--regions", default="us",
+                    help="Comma list (cost scales with count). OJO: el run vivo usa "
+                         "ODDS_API_REGIONS (us,us2,uk,eu,au); 'us' abarata el backfill "
+                         "pero el consenso historico difiere del vivo (M-24)")
     ap.add_argument("--markets", default="h2h,spreads,totals")
     ap.add_argument("--dry-run", action="store_true", help="Estimate cost, make no calls")
     args = ap.parse_args()
@@ -84,7 +91,13 @@ def main() -> int:
     client = OddsAPIClient(settings.odds_api_key, args.regions, settings.odds_format)
     store = OddsStore(ROOT)
     existing = {lg: _captured_dates(lg) for lg in args.leagues}
-    log.info("Already captured: %s", {lg: len(d) for lg, d in existing.items()})
+    broken = sorted(lg for lg, d in existing.items() if d is None)
+    if broken:
+        log.error("Ligas omitidas por store ilegible (repara antes de backfillear): %s",
+                  ", ".join(broken))
+    leagues = [lg for lg in args.leagues if existing[lg] is not None]
+    log.info("Already captured: %s",
+             {lg: len(existing[lg]) for lg in leagues})
     spent = 0
     snapshots = 0
     rows_total = 0
@@ -93,7 +106,7 @@ def main() -> int:
     for date_iso in dates:                       # most recent first
         if stop:
             break
-        for league in args.leagues:
+        for league in leagues:
             if date_iso[:10] in existing[league]:
                 skipped += 1
                 continue                         # idempotent: don't re-pay for a stored day

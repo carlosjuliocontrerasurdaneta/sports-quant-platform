@@ -74,6 +74,10 @@ class ESPNResultsProvider(ResultsProvider):
             while day <= end:
                 out.extend(self._fetch(cfg, f"{day:%Y%m%d}"))
                 day += timedelta(days=1)
+                # Pausa de cortesia: el backfill anual dispara ~365 requests
+                # seguidos contra un endpoint no oficial (auditoria 2026-07-24, M-12).
+                if day <= end:
+                    time.sleep(0.3)
         else:
             chunk_start = start
             while chunk_start <= end:

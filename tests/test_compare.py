@@ -38,6 +38,9 @@ def test_compare_league_reports_sim_ml_and_weight(tmp_path):
     # grid covers 0.0, 0.25, 0.5, 0.75, 1.0 and the recommendation is one of them
     assert set(r["grid_log_loss"]) == {0.0, 0.25, 0.5, 0.75, 1.0}
     assert r["recommended_ml_weight"] in r["grid_log_loss"]
-    # the recommended weight must be the grid argmin (ties -> smaller weight)
-    best = min(r["grid_log_loss"].items(), key=lambda kv: (kv[1], kv[0]))[0]
+    # M-27 (auditoria 2026-07-24): la recomendacion es el argmin del corte de
+    # SELECCION (primera mitad del holdout); su metrica honesta se reporta
+    # aparte sobre la segunda mitad, disjunta de la seleccion.
+    best = min(r["selection_log_loss"].items(), key=lambda kv: (kv[1], kv[0]))[0]
     assert r["recommended_ml_weight"] == best
+    assert r["recommended_oos_log_loss"] > 0

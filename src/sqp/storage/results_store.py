@@ -53,6 +53,16 @@ class ResultsStore:
         p = self.path(league)
         if p.exists():
             cur = self._migrate(pd.read_csv(p, dtype={"date": str, "game_id": str}))
+            # Una fila legacy (game_id == "") ya cubre ese (date, home, away):
+            # re-ingerir el mismo juego con game_id real crearia un duplicado
+            # dentro del store (auditoria 2026-07-24, M-22). Los doubleheaders
+            # genuinos llegan del mismo vendor con ambos game_id no vacios.
+            legacy = set(map(tuple, cur.loc[cur["game_id"] == "",
+                                            ["date", "home", "away"]]
+                             .itertuples(index=False, name=None)))
+            if legacy:
+                new = new[[(dy, h, a) not in legacy for dy, h, a in
+                           new[["date", "home", "away"]].itertuples(index=False, name=None)]]
             merged = pd.concat([cur, new], ignore_index=True).drop_duplicates(subset=KEY, keep="first")
             added = len(merged) - len(cur)
         else:

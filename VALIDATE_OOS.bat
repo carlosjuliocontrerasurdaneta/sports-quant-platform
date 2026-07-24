@@ -8,13 +8,17 @@ REM API: trabaja sobre datos ya almacenados.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
+REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
+REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
+if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 if not exist logs mkdir logs
 
 echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\validate_oos.log
 echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) === >> logs\validate_oos.log
-python scripts\validate_oos.py >> logs\validate_oos.log 2>&1
+"%SQP_PYTHON%" scripts\validate_oos.py >> logs\validate_oos.log 2>&1
 if errorlevel 1 goto :error
 
 echo === DONE ===
