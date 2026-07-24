@@ -35,6 +35,10 @@ six==1.17.0
 # --- dev ---
 pytest==9.0.3
 ruff==0.15.14
+# mypy: [tool.mypy] estaba configurado sin que mypy fuera instalable desde el
+# proyecto; pin absorbido del extinto requirements.lock.txt (auditoria
+# 2026-07-24, I-6/M-13).
+mypy==2.1.0
 iniconfig==2.3.0
 packaging==26.2
 pluggy==1.6.0

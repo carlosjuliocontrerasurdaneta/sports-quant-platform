@@ -2,7 +2,9 @@
 name = "sqp"
 version = "1.0.0"
 description = "Sports Quant Platform: calibrated estimated probabilities for moneyline, spread/handicap and totals across team sports and tennis."
-requires-python = ">=3.10"
+# El lock exige >=3.11 (numpy 2.4 / pandas 3.0); CI corre 3.11-3.13
+# (auditoria 2026-07-24, M-15).
+requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.24",
   "pandas>=2.0",
@@ -15,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff"]
+dev = ["pytest>=7.0", "ruff", "mypy"]
 
 [build-system]
 requires = ["setuptools>=68"]
