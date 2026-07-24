@@ -15,6 +15,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
+- [ ] Hallazgo del primer run OOS (07-24): snapshots históricos con cuotas degeneradas `price_decimal = 1.0` (visibles por los warnings de vig M-16); decidir guard que descarte líneas con precio ≤ 1.0 en ingestión (`odds_api._parse_events`) o lectura (`load_closing_odds`). Ver [[Bitácora/2026-07-24]].
 - [ ] M-7 (auditoría 07-24, manual): recortar permisos amplios de `.claude/settings.local.json` (`pip install *`, `python -`) — archivo local del usuario, no se toca automáticamente. Ver [[Bitácora/2026-07-24]].
 - [ ] M-24 (decisión de gasto): alinear `--regions` del backfill histórico con las regiones del run vivo (us,us2,uk,eu,au) quintuplica el costo por llamada; hoy el default sigue en `us` y la discrepancia está documentada en el help. Ver [[Bitácora/2026-07-24]].
 - [ ] Re-evaluar el candidato per-game `mlb_h2h_pergame` (staged) cuando la cola de settled h2h MLB llegue a n≥50: `python scripts/train_pergame_calibration.py --leagues mlb`; adoptar solo si mejora ECE y Brier sobre la distribución de servicio.
