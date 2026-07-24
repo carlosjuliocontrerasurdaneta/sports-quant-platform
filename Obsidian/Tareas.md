@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-14
+actualizada: 2026-07-24
 ---
 
 # Tareas
@@ -15,6 +15,9 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Backlog
 
+- [ ] Decidir M-9 (auditoría 07-24): empate con marcador igualado en h2h 2-way se grada "loss"; los books gradan push. Cambiarlo afecta etiquetas de calibración y ROI realizado (sesgo pesimista actual). Ver [[Bitácora/2026-07-24]].
+- [ ] Decidir limpieza de filas served históricas con `implied_probability_novig == 1.0` (corrupción previa al fix C-1 del 07-24); mientras tanto contaminan el baseline `brier_market` del monitor de degradación. Ver [[Bitácora/2026-07-24]].
+- [ ] Grupo 4 de la auditoría 07-24 (opcionales): ruta absoluta de Python en BATs, sleep en loops ESPN, Dockerfile con lock o retiro, contratos defensivos kelly/bankroll, M-22/23/24/27/28/29/31, correr `VALIDATE_OOS` una vez a mano. Ver [[Bitácora/2026-07-24]].
 - [ ] Re-evaluar el candidato per-game `mlb_h2h_pergame` (staged) cuando la cola de settled h2h MLB llegue a n≥50: `python scripts/train_pergame_calibration.py --leagues mlb`; adoptar solo si mejora ECE y Brier sobre la distribución de servicio.
 - [ ] Evaluar el segundo pase de revalidación cuando haya muestra: comparar CLV/ROI de picks `reval_action=revoke` vs `keep` en settled (la etiqueta viaja vía unión de columnas); si los revocados tienen peor CLV, el pase queda validado para el post-shadow. Incluir el desglose por `reason` (`edge_below_min` vs `pitcher_changed`/`starter_pulled`).
 - [ ] #4 fase ofensiva (decisión de alcance pendiente): generación/re-precio intradía cuando rompe una noticia (abridor confirmado, lineup) antes de que el mercado la precie — requiere re-estimar y re-escanear edges fuera del run de las 11:00. Portero NHL: retomar en octubre con la temporada.
@@ -30,6 +33,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-24 — Auditoría full orquestada + remediación Grupos 1–3: fix crítico C-1 (no-vig sobre mercado incompleto → prob. implícita 1.0), redacción de apiKey en errores HTTP, escrituras atómicas en 4 stores, dedup ±1 día MLB, matching exacto en backtest ROI, lock compartido para candidates, lockfile único + mypy, y 12 ítems de deuda técnica. 424 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-14 — Guard de abridores (#4 pieza 1, `revalidate_pitchers`): revoca picks cuyo abridor anunciado cambió o fue retirado tras generarse el pick; línea base persistida en predictions; log con `reason`. Ofensiva intradía y portero NHL quedan como decisiones aparte. Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Calibración per-game (`sqp/calibration/pergame.py`): candidato beta sólido en dominio per-game (ECE 0.029→0.014, 1.738 eventos val) pero sin mejora en la distribución de servicio (n=10/52, ruido) → staged bajo clave sandbox, NO adoptado. Hallazgo: miscalibración de servicio ~10× la per-game → el daño es selección, no calibración. Ver [[Bitácora/2026-07-14]].
 - [x] 2026-07-14 — Segundo pase pre-partido (`sqp/pipeline/revalidation.py`): revalida el edge de los picks del día contra el consenso vigente en cada captura horaria y revoca los vencidos (flag `stale_edge_revoked`); bajo shadow es medición (revocados vs mantenidos → CLV). Ver [[Bitácora/2026-07-14]].
