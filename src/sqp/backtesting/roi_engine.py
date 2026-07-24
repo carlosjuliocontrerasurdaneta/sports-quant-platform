@@ -260,7 +260,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     if not cands.empty:
         cands = _apply_backtest_daily_cap(
             cands, bankroll, getattr(risk, "max_daily_exposure_pct", 0.0))
-    settled = settle_candidates(cands, scores) if not cands.empty else pd.DataFrame()
+    settled = (settle_candidates(cands, scores, three_way=(family == "soccer"))
+               if not cands.empty else pd.DataFrame())
     out = _summarize(league, settled, n_matched)
     out["settled"] = settled  # per-bet detail (team, side, result) for history/audit
     return out

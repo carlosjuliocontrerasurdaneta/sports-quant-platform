@@ -18,7 +18,8 @@ from sqp.sports.team_names import normalize_key
 STALE_VOID_DAYS = 3
 
 
-def _grade(row: pd.Series, hs: int, as_: int, home: str) -> str:
+def _grade(row: pd.Series, hs: int, as_: int, home: str,
+           three_way: bool = False) -> str:
     m, sel, line = row["market"], row["selection"], row["line"]
     margin, total = hs - as_, hs + as_
     # Compare side identity (selection vs home) by normalized key, not raw string:
@@ -27,8 +28,13 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str) -> str:
     # home-side bet (2026-06-28 WTA Wimbledon review).
     sel_is_home = normalize_key(sel) == normalize_key(home)
     if m == "h2h":
-        if margin == 0 and sel == "Draw": return "win"
-        if margin == 0: return "loss"
+        if margin == 0:
+            if sel == "Draw": return "win"
+            # 2-way (el empate no se cotiza): los books gradan PUSH y devuelven
+            # el stake; gradarlo "loss" sesgaba las etiquetas de calibracion y
+            # el ROI realizado (auditoria 2026-07-24, M-9). En 1X2 (three_way)
+            # el empate solo lo gana la seleccion Draw.
+            return "loss" if three_way else "push"
         return "win" if sel_is_home == (margin > 0) and sel != "Draw" else "loss"
     if m == "spreads":
         adj = margin + line if sel_is_home else -margin + line
@@ -39,15 +45,18 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str) -> str:
     return "void"
 
 
-def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int, str]]) -> pd.DataFrame:
-    """scores: event_id -> (home_score, away_score, home_team_name)."""
+def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int, str]],
+                      three_way: bool = False) -> pd.DataFrame:
+    """scores: event_id -> (home_score, away_score, home_team_name).
+    ``three_way``: liga con mercado 1X2 (empate cotizado); gobierna el grading
+    de empates en h2h (push en 2-way, loss para equipos en 1X2)."""
     rows = []
     for _, row in candidates.iterrows():
         sc = scores.get(row["event_id"])
         if sc is None:
             continue
         hs, as_, home = sc
-        result = _grade(row, hs, as_, home)
+        result = _grade(row, hs, as_, home, three_way)
         pnl = {"win": row["stake"] * (row["price_decimal"] - 1),
                "loss": -row["stake"], "push": 0.0, "void": 0.0}[result]
         rows.append({**row.to_dict(), "result": result, "pnl": round(pnl, 2),

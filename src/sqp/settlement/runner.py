@@ -196,7 +196,7 @@ def _with_stale_voids(league: str, cands: pd.DataFrame, settled: pd.DataFrame,
 
 
 def _grade_served(league: str, scores: dict[str, tuple[int, int, str]],
-                  days_from: int | None = None) -> int:
+                  days_from: int | None = None, three_way: bool = False) -> int:
     """Grade the league's pending served-probability rows (stake-0 calibration
     stream) against final scores and persist them append-only. Idempotent: a
     served row already graded is skipped by the store. Returns rows graded.
@@ -222,7 +222,8 @@ def _grade_served(league: str, scores: dict[str, tuple[int, int, str]],
                             "the %d-day scores window; they will not grade from "
                             "this feed (re-run settlement with a deeper window "
                             "or accept the gap).", league, expired, days_from)
-        graded = store.append_graded(league, settle_candidates(pending, scores))
+        graded = store.append_graded(league,
+                                     settle_candidates(pending, scores, three_way))
         if not graded.empty:
             log.info("[%s] served stream: %d probabilities graded for calibration "
                      "(%d still pending scores).", league, len(graded),
@@ -293,14 +294,15 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     client = client or OddsAPIClient(settings.odds_api_key, settings.regions)
     raw = client.fetch_scores(meta["sport_key"], days_from=days_from)
     scores = _scores_map(raw)
+    three_way = bool(meta.get("three_way"))
     # Calibration stream first (stake 0, best-effort): shares this scores fetch,
     # and grades even on days the league produced no candidates.
     if not pending_served.empty:
-        _grade_served(league, scores, days_from=days_from)
+        _grade_served(league, scores, days_from=days_from, three_way=three_way)
     if not cand_path.exists():
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)
-    settled = settle_candidates(cands, scores)
+    settled = settle_candidates(cands, scores, three_way)
     settled = _with_stale_voids(league, cands, settled, scores,
                                 _prediction_start_times(league))
     settled = _attach_event_meta(settled, _event_meta_map(raw))
