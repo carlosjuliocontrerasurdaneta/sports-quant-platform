@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-24
+actualizada: 2026-07-27
 ---
 
 # Tareas
@@ -10,7 +10,8 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## En curso (fase shadow — el sistema trabaja solo)
 
-- [ ] **Evaluar la regla de salida del shadow** (CLV mediano + Brier). Volumen cumplido (n=191 con cierre genuino al 07-12, tras el filtro de frescura ≤90 min); falta que algún (liga, mercado) logre mediana > 0 con n≥30 (el más cercano: WTA Wimbledon h2h, n=21) y que un calibrador pase el gate de Brier. El run diario + captura horaria lo hacen automáticamente; revisar la auditoría CLV periódicamente.
+- [ ] **PRIORIDAD — Implementar el "modo precisión"** (decisión de Carlos 07-27: el objetivo del proyecto pasa a ser MAXIMIZAR EL % DE ACIERTOS, no ROI/CLV). Diseño propuesto: `pick_mode: accuracy` en config conviviendo con el modo edge; selección por probabilidad estimada calibrada (blend modelo + no-vig del consenso) sobre umbral configurable (inicio 0.70); SOLO moneyline/ganador (fuera spreads/totals/1X2 crudo); priorizar ligas mejor calibradas (WNCAAB/NCAAB, MLB ml); KPI = hit rate por liga y banda de probabilidad; Brier/ECE como control de cumplimiento del umbral. Ver [[Bitácora/2026-07-27]].
+- [ ] **Evaluar la regla de salida del shadow** (CLV mediano + Brier). Actualización 07-27 (`clv_20260727.md`): n=300 emparejadas (348 sin cierre), mediana +0.00%, batió el cierre 40.7%; gate por (liga,mercado) VACÍO; el único positivo (WTA Wimbledon h2h +0.46%, n=21/30) quedó con muestra congelada al terminar el torneo. Falla señal, no volumen. Hipótesis abierta: masa de CLV=0.00 exactos → entrada al precio de cierre (analizar timing de entrada). NOTA: bajo el objetivo nuevo (modo precisión) este gate deja de ser la regla rectora; pendiente definir el gate del modo precisión.
 - [x] 2026-07-12 — ~~Revisar/promover el candidato de calibración MLB spreads~~. Obsoleto: staging está vacío — el candidato del 07-01 no se regenera con los gates vigentes (iso mejora ECE 0.1461→0.1076 pero empeora Brier OOS; beta falla Brier+monotonía). Nada que promover; ver [[Bitácora/2026-07-12]].
 
 ## Backlog
