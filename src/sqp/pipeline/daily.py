@@ -388,6 +388,16 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
     return None
 
 
+def _accuracy_selected(market: str, p_decision: float, threshold: float,
+                       incomplete_market: bool) -> bool:
+    """Seleccion del modo precision (pick_mode: accuracy, decision 2026-07-27:
+    el objetivo es maximizar el porcentaje de aciertos). SOLO moneyline (h2h)
+    y solo si la probabilidad de decision calibrada (blend modelo + no-vig)
+    alcanza el umbral, inclusive. Un mercado incompleto no tiene ancla no-vig
+    valida, asi que nunca produce pick de precision."""
+    return market == "h2h" and not incomplete_market and p_decision >= threshold
+
+
 def _fetch_recent_scores(client, sport_key: str, league: str) -> list[dict]:
     """Recent completed games from The Odds API /scores (has_scores leagues).
     Best-effort: returns [] on failure (logged). Rows whose score names do not
@@ -611,11 +621,25 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # do not stake it.
             suspect = e > settings.risk.max_plausible_edge
             paused = key[0] in settings.paused_markets.get(league, ())
+            accuracy = settings.pick_mode == "accuracy"
+            if accuracy:
+                # Modo precision: la seleccion es por probabilidad de decision,
+                # no por edge (el selector por edge favorece underdogs y
+                # discrepancias con el mercado, trabajando CONTRA el % de
+                # aciertos). Stake plano en lugar de Kelly: sin objetivo de EV
+                # no hay fraccion optima que dimensionar. La cadena de stake 0
+                # (paused / suspect / shadow / clv gate) aplica igual abajo.
+                if not _accuracy_selected(key[0], p_decision,
+                                          settings.accuracy_threshold,
+                                          incomplete_market):
+                    continue
+                stake = round(settings.bankroll * settings.risk.max_stake_pct, 2)
+                pct = settings.risk.max_stake_pct
             # Only record a candidate that would otherwise be staked (or is an
             # implausible-edge outlier): below-min-edge lines are ignored whether
             # or not the market is paused, so a paused market does not flood the
             # picks file with non-actionable rows.
-            if stake <= 0 and not suspect:
+            elif stake <= 0 and not suspect:
                 continue
             # A paused market is suspended from staking but kept in the audit trail
             # (stake 0, flagged). Pausing takes precedence over the plausibility cap;
@@ -628,6 +652,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 incomplete_market=incomplete_market) or ""
             if flag:
                 stake, pct = 0.0, 0.0
+            if accuracy:
+                # Marca de origen para el KPI (hit rate por liga y banda) y para
+                # que la revocacion por edge del segundo pase salte estos picks.
+                flag = f"{flag};accuracy_mode" if flag else "accuracy_mode"
             candidates.append(BetCandidate(
                 event_id=eo.event.event_id, league=league, market=key[0],
                 selection=key[1], line=key[2], price_decimal=price,

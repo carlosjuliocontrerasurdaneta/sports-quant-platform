@@ -1,13 +1,34 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-16
+actualizada: 2026-07-28
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-07-13. Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-07-28. Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
+
+## Objetivo del proyecto: % DE ACIERTOS (desde 2026-07-27)
+
+Decisión de Carlos: el fin último es **maximizar el porcentaje de aciertos de
+los picks**; bankroll, ROI y CLV se calculan pero dejan de ser rectores.
+Implementado el 2026-07-28: **modo precisión ACTIVO en producción**
+(`picks: {mode: accuracy, accuracy_threshold: 0.70}` en `configs/default.yaml`).
+
+- Selección por **probabilidad de decisión calibrada** (blend modelo + no-vig
+  del consenso) ≥ 0.70, SOLO moneyline; nada de Kelly (stake plano
+  `bankroll * max_stake_pct`, hoy 0 por shadow).
+- Cada pick lleva el flag `accuracy_mode`; la revocación por edge del segundo
+  pase los salta (el guard de cambio de abridor sí aplica).
+- **KPI**: hit rate por (liga, banda de probabilidad) sobre la probabilidad
+  calibrada — bandas finas ≥0.70 en `sqp/audit/segments.py`, visible en
+  `segment_diagnostics_latest.csv` y la pestaña Diagnóstico. El `gap`
+  (observado − estimado medio) de las bandas altas ES el control de
+  cumplimiento del umbral.
+- El modo edge queda conmutable vía `picks.mode: edge` o env `PICK_MODE`.
+- Pendiente: definir el gate de salida del shadow propio del modo precisión
+  (ver [[Tareas]]).
 
 ## Modo operativo: SHADOW MODE
 

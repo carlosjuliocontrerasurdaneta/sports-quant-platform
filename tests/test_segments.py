@@ -33,13 +33,31 @@ def test_dimensions_favorite_venue_and_prob_band():
         _rows(1, market="totals", selection="Over", line=8.5),       # over
         _rows(1, market="totals", selection="Under", line=8.5),      # under
         _rows(1, selection="Draw", implied=float("nan")),            # empate, sin implied
+        _rows(1, selection="NYY", implied=0.80, est=0.85),           # banda alta (KPI precision)
     ], ignore_index=True)
     dims = dict(segment_dimensions(df))
     assert list(dims["favorito"])[:4] == ["favorito", "underdog", "favorito",
                                           "favorito"]
     assert pd.isna(dims["favorito"].iloc[4])  # sin implied: fuera de la dimension
-    assert list(dims["lado"]) == ["local", "visita", "over", "under", "empate"]
-    assert list(dims["banda_prob"])[:2] == [">0.70", "<0.40"]
+    assert list(dims["lado"])[:5] == ["local", "visita", "over", "under", "empate"]
+    # La region >=0.70 se parte en bandas finas: es donde vive el modo precision
+    # y el KPI de cumplimiento del umbral (hit rate por banda, decision 2026-07-27).
+    assert list(dims["banda_prob"])[:2] == ["0.70-0.80", "<0.40"]
+    assert dims["banda_prob"].iloc[5] == "0.80-0.90"
+
+
+def test_prob_band_prefers_calibrated_probability():
+    # El umbral del modo precision se aplica sobre la probabilidad de decision
+    # CALIBRADA; el control de cumplimiento por banda debe medir esa misma
+    # probabilidad. Sin columna calibrada (o NaN) cae a la estimada.
+    df = _rows(2, est=0.75)
+    df.loc[0, "calibrated_probability"] = 0.85   # banda por la calibrada
+    df.loc[1, "calibrated_probability"] = float("nan")  # fallback a estimada
+    dims = dict(segment_dimensions(df))
+    assert list(dims["banda_prob"]) == ["0.80-0.90", "0.70-0.80"]
+    # Sin la columna: comportamiento previo intacto
+    dims2 = dict(segment_dimensions(_rows(1, est=0.75)))
+    assert list(dims2["banda_prob"]) == ["0.70-0.80"]
 
 
 def test_line_bands_are_per_league_market_terciles():

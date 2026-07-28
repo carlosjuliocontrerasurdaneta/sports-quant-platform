@@ -134,6 +134,23 @@ def test_keep_is_reevaluated_on_later_pass(tmp_path):
     assert _read_cands(tmp_path).iloc[0]["reval_action"] == "revoke"
 
 
+def test_accuracy_picks_are_not_revoked_by_edge(tmp_path):
+    # Un pick del modo precision (flag accuracy_mode) se selecciona por
+    # probabilidad, no por edge: los favoritos suelen tener edge negativo al
+    # precio vigente, asi que la revocacion por edge lo eliminaria siempre.
+    # El pase de edge lo salta por completo (el guard de cambio de abridor,
+    # que si invalida la probabilidad, se mantiene aparte).
+    pred_dir = _write(tmp_path,
+                      [_cand_row(flags="shadow_mode;accuracy_mode")],
+                      [_odds_row()])   # consenso 1.70: edge actual negativo
+    s = revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=NOW)
+    assert s["revoked"] == 0 and s["kept"] == 0 and s["evaluated"] == 0
+    row = _read_cands(tmp_path).iloc[0]
+    assert "stale_edge_revoked" not in str(row["flags"])
+    assert float(row["stake"]) == 5.0
+    assert not (tmp_path / "data" / "bets" / "revalidation_log.csv").exists()
+
+
 def _preds_with_pitchers(home_p="Gerrit Cole", away_p="José Berríos"):
     return [{"event_id": "e1", "home": "A", "away": "B",
              "start_time": START_IN_WINDOW,

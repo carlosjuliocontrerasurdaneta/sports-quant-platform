@@ -43,6 +43,21 @@ odds:
 simulation:
   n_sims: 20000
   seed: 42
+# Modo de seleccion de picks (decision 2026-07-27): el objetivo del proyecto
+# es MAXIMIZAR EL PORCENTAJE DE ACIERTOS, no ROI/CLV. "accuracy" selecciona
+# por probabilidad de decision calibrada (blend modelo + no-vig del consenso)
+# >= accuracy_threshold, SOLO moneyline (spreads/totals tienen techo
+# estructural ~50-55% de acierto por diseno de la linea), con stake plano
+# (bankroll * max_stake_pct) en lugar de Kelly. La cadena de stake 0
+# (paused / shadow / clv_gate) sigue aplicando; cada pick lleva el flag
+# "accuracy_mode" y el KPI es hit rate por liga y banda de probabilidad
+# (sqp.audit.segments, banda_prob). La revocacion por edge del segundo pase
+# salta estos picks (el guard de cambio de abridor si aplica). "edge"
+# restaura la seleccion clasica por valor esperado. Env vars PICK_MODE /
+# ACCURACY_THRESHOLD (cuando estan) ganan sobre yaml.
+picks:
+  mode: accuracy
+  accuracy_threshold: 0.70
 # Per-(league, market) probability calibration applied to live estimates before
 # edge/stake. OFF by default: enable only after train_calibration.py shows the
 # out-of-sample ECE improves. The retraining target stays uncalibrated.

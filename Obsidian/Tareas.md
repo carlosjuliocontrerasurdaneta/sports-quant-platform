@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-27
+actualizada: 2026-07-28
 ---
 
 # Tareas
@@ -10,7 +10,8 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## En curso (fase shadow — el sistema trabaja solo)
 
-- [ ] **PRIORIDAD — Implementar el "modo precisión"** (decisión de Carlos 07-27: el objetivo del proyecto pasa a ser MAXIMIZAR EL % DE ACIERTOS, no ROI/CLV). Diseño propuesto: `pick_mode: accuracy` en config conviviendo con el modo edge; selección por probabilidad estimada calibrada (blend modelo + no-vig del consenso) sobre umbral configurable (inicio 0.70); SOLO moneyline/ganador (fuera spreads/totals/1X2 crudo); priorizar ligas mejor calibradas (WNCAAB/NCAAB, MLB ml); KPI = hit rate por liga y banda de probabilidad; Brier/ECE como control de cumplimiento del umbral. Ver [[Bitácora/2026-07-27]].
+- [ ] **Definir el gate de salida del shadow para el MODO PRECISIÓN** (abierto por la implementación del 07-28): propuesta = cumplimiento del umbral por banda (hit rate observado ≥ prometido con n suficiente, medible ya en `segment_diagnostics_latest.csv` bandas ≥0.70). El gate de CLV sigue como capa pero deja de ser la regla rectora. Ver [[Bitácora/2026-07-28]].
+- [ ] Vigilar los primeros días del modo precisión: volumen de picks `accuracy_mode` con umbral 0.70 (si sale casi vacío, decidir si el umbral inicial baja o se espera a ligas mejor calibradas), y hit rate por banda en el dashboard/Diagnóstico.
 - [ ] **Evaluar la regla de salida del shadow** (CLV mediano + Brier). Actualización 07-27 (`clv_20260727.md`): n=300 emparejadas (348 sin cierre), mediana +0.00%, batió el cierre 40.7%; gate por (liga,mercado) VACÍO; el único positivo (WTA Wimbledon h2h +0.46%, n=21/30) quedó con muestra congelada al terminar el torneo. Falla señal, no volumen. Hipótesis abierta: masa de CLV=0.00 exactos → entrada al precio de cierre (analizar timing de entrada). NOTA: bajo el objetivo nuevo (modo precisión) este gate deja de ser la regla rectora; pendiente definir el gate del modo precisión.
 - [x] 2026-07-12 — ~~Revisar/promover el candidato de calibración MLB spreads~~. Obsoleto: staging está vacío — el candidato del 07-01 no se regenera con los gates vigentes (iso mejora ECE 0.1461→0.1076 pero empeora Brier OOS; beta falla Brier+monotonía). Nada que promover; ver [[Bitácora/2026-07-12]].
 
@@ -34,6 +35,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-07-28 — **Modo precisión implementado y ACTIVADO** (`pick_mode: accuracy`, umbral 0.70, solo moneyline, stake plano, flag `accuracy_mode`, skip de la revocación por edge, KPI por banda sobre probabilidad calibrada). TDD, 436 tests verdes. Ver [[Bitácora/2026-07-28]].
 - [x] 2026-07-24 — Grupo 4 de la auditoría completo (M-5/8/12/14/17/18/22/23/27/28/29/31 + primer run de VALIDATE_OOS); quedan como decisiones manuales M-7 (settings.local.json) y el default de regiones del backfill (M-24). 428 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-24 — M-9: empate en h2h 2-way grada push (three_way propagado a settle/runner/roi_engine); escaneo del served stream por `novig==1.0`: 0 filas corruptas (script `clean_corrupt_novig.py` queda como verificador). 426 tests verdes. Ver [[Bitácora/2026-07-24]].
 - [x] 2026-07-24 — Auditoría full orquestada + remediación Grupos 1–3: fix crítico C-1 (no-vig sobre mercado incompleto → prob. implícita 1.0), redacción de apiKey en errores HTTP, escrituras atómicas en 4 stores, dedup ±1 día MLB, matching exacto en backtest ROI, lock compartido para candidates, lockfile único + mypy, y 12 ítems de deuda técnica. 424 tests verdes. Ver [[Bitácora/2026-07-24]].

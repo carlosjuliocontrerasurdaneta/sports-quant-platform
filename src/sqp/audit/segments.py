@@ -36,8 +36,13 @@ SEGMENTS_MIN_N = 15
 GAP_THRESHOLD = 0.07     # |frecuencia observada - probabilidad estimada media|
 BRIER_MARGIN = 0.01      # mismo margen vs mercado que el monitor de degradacion
 
-_PROB_BINS = [0.0, 0.4, 0.5, 0.6, 0.7, 1.0]
-_PROB_LABELS = ["<0.40", "0.40-0.50", "0.50-0.60", "0.60-0.70", ">0.70"]
+# La region >= 0.70 va en bandas finas: es donde vive el modo precision
+# (pick_mode: accuracy, umbral 0.70) y su KPI de cumplimiento del umbral es
+# hit rate observado vs probabilidad estimada media POR BANDA (decision
+# 2026-07-27); una sola banda ">0.70" no distinguiria 0.72 de 0.88.
+_PROB_BINS = [0.0, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+_PROB_LABELS = ["<0.40", "0.40-0.50", "0.50-0.60", "0.60-0.70",
+                "0.70-0.80", "0.80-0.90", ">0.90"]
 _LINE_LABELS = ["linea_baja", "linea_media", "linea_alta"]
 _TABLE_COLS = ["league", "market", "dimension", "segment", "n", "hit_rate",
                "mean_est_prob", "gap", "brier_model", "brier_market",
@@ -55,6 +60,16 @@ def _text(df: pd.DataFrame, col: str) -> pd.Series:
     if col in df.columns:
         return df[col].fillna("").astype(str)
     return pd.Series("", index=df.index)
+
+
+def _decision_prob(df: pd.DataFrame) -> pd.Series:
+    """Probabilidad de decision del pick: la CALIBRADA cuando existe (es la que
+    el modo precision compara contra su umbral), con fallback por fila a la
+    estimada. Medir el cumplimiento por banda sobre otra probabilidad que la
+    que decidio el pick distorsionaria el control (decision 2026-07-27)."""
+    est = _num(df, "estimated_probability")
+    cal = _num(df, "calibrated_probability")
+    return cal.fillna(est)
 
 
 def _line_bands(line: pd.Series, league: pd.Series, market: pd.Series) -> pd.Series:
@@ -78,7 +93,7 @@ def _line_bands(line: pd.Series, league: pd.Series, market: pd.Series) -> pd.Ser
 def segment_dimensions(df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
     """Las series de segmento por fila (None = fila fuera de la dimension)."""
     implied = _num(df, "implied_probability_novig")
-    est = _num(df, "estimated_probability")
+    est = _decision_prob(df)
     sel = _text(df, "selection")
     home, away = _text(df, "home"), _text(df, "away")
     sel_low = sel.str.lower()
@@ -115,7 +130,9 @@ def segment_table(settled: pd.DataFrame, *,
     if df.empty:
         return pd.DataFrame(columns=_TABLE_COLS)
     y = (df["result"] == "win").astype(float)
-    est = _num(df, "estimated_probability")
+    # Misma base que banda_prob: gap y Brier del modelo se miden sobre la
+    # probabilidad que decidio el pick (calibrada si existe).
+    est = _decision_prob(df)
     implied = _num(df, "implied_probability_novig")
     price = _num(df, "price_decimal")
     base = df.assign(_y=y, _est=est, _se_model=(est - y) ** 2,

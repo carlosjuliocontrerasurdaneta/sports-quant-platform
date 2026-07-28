@@ -148,3 +148,15 @@ Format:
 **Cambio:** `RestModel` ajusta el margen esperado del local por `points_per_day*(descanso_local − descanso_visita)` (acotado, leakage-safe, last-game-date por equipo); NormalMarginAdapter lo actualiza en observe y suma el ajuste a mu_margin en estimate (mueve moneyline/spread, no el total). Gated por `rest_points_per_day` (0.0 = no-op). NO activado en ninguna liga.
 **Razón:** apuntaba a WNBA spreads (OOS −11.3%, el mercado débil restante).
 **Validación:** OOS NEGATIVO — la ventana completa lucía bien (spreads −6%→+18%) pero no generaliza en held-out (rppd 1.0 empeora −38%→−48%; no-monótono) sobre muestras minúsculas (22-25 ALL, 7-10 held-out). Mismo patrón de ruido de WNBA. Queda como infra dormida (no-op) para re-validar con más cobertura OOS. 192 passed (+5). Producción byte-idéntica.
+
+## 2026-07-28 — Modo de selección de picks conmutable (edge | accuracy)
+
+La selección de candidatos en `run_league` deja de ser única (Kelly sobre
+min_edge) y pasa a un modo configurable (`Settings.pick_mode`): "accuracy"
+selecciona por probabilidad de decisión calibrada >= umbral, solo h2h, stake
+plano; "edge" conserva el camino clásico intacto. El helper puro
+`_accuracy_selected` (daily.py) encapsula la regla. La revalidación por edge
+reconoce el flag `accuracy_mode` y salta esos picks. `segments.py` gana
+`_decision_prob` (calibrada con fallback a estimada) como base única de
+banda/gap/Brier del modelo. Sin módulos nuevos; el served stream y la
+liquidación no cambian.

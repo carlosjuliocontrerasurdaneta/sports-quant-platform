@@ -188,6 +188,13 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
                     continue
                 if str(getattr(r, "reval_action", "")) == "revoke":
                     continue                       # final: nunca se deshace
+                if "accuracy_mode" in str(getattr(r, "flags", "")):
+                    # Pick del modo precision: seleccionado por probabilidad, no
+                    # por edge; un favorito suele tener edge negativo al precio
+                    # vigente y la revocacion por edge lo eliminaria siempre. El
+                    # guard de cambio de abridor (que si invalida la probabilidad)
+                    # vive aparte en revalidate_pitchers y sigue aplicando.
+                    continue
                 st = _parse_utc(starts.get(str(r.event_id), ""))
                 if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
                     continue

@@ -79,6 +79,15 @@ class Settings:
     # horizon those flood the picks with games that won't play for weeks.
     event_horizon_days: int = field(default_factory=lambda: int(os.getenv("MAX_EVENT_HORIZON_DAYS", "7")))
     risk: RiskConfig = field(default_factory=RiskConfig)
+    # Modo de seleccion de picks (decision 2026-07-27: el objetivo del proyecto
+    # es maximizar el porcentaje de aciertos). "edge": seleccion clasica por
+    # valor esperado (Kelly sobre min_edge). "accuracy": seleccion por
+    # probabilidad de decision calibrada (blend modelo + no-vig) >= umbral,
+    # SOLO moneyline, stake plano. Default "edge": Settings() directo
+    # (tests/demo) queda byte-identico; produccion activa accuracy via yaml.
+    pick_mode: str = field(default_factory=lambda: os.getenv("PICK_MODE", "edge"))
+    accuracy_threshold: float = field(
+        default_factory=lambda: float(os.getenv("ACCURACY_THRESHOLD", "0.70")))
     # Shadow mode: the pipeline selects picks exactly as in real mode (selection
     # still requires a would-be-staked candidate) but records every pick with
     # stake 0, flagged "shadow_mode". Evidence (settlement, CLV vs closing,
@@ -219,6 +228,14 @@ class Settings:
         if self.calibration_method not in ("isotonic", "beta", "auto"):
             raise ValueError(
                 "CALIBRATION_METHOD must be isotonic, beta or auto")
+        if self.pick_mode not in ("edge", "accuracy"):
+            raise ValueError(
+                f"PICK_MODE must be 'edge' or 'accuracy', got {self.pick_mode!r}")
+        if not 0.5 <= self.accuracy_threshold < 1.0:
+            # < 0.5 seleccionaria perdedores esperados; 1.0 afirmaria certeza,
+            # prohibido por las reglas de lenguaje del proyecto.
+            raise ValueError("ACCURACY_THRESHOLD must be in [0.5, 1.0), got "
+                             f"{self.accuracy_threshold}")
         return self
 
     @classmethod
@@ -285,6 +302,11 @@ class Settings:
             if ("REVALIDATION_PRICE_MAX_AGE_MIN" not in os.environ
                     and "price_max_age_min" in rv):
                 s.revalidation_price_max_age_min = float(rv["price_max_age_min"])
+            pk = cfg.get("picks") or {}
+            if "PICK_MODE" not in os.environ and "mode" in pk:
+                s.pick_mode = str(pk["mode"])
+            if "ACCURACY_THRESHOLD" not in os.environ and "accuracy_threshold" in pk:
+                s.accuracy_threshold = float(pk["accuracy_threshold"])
             isc = cfg.get("intraday_scan") or {}
             if "INTRADAY_SCAN_ENABLED" not in os.environ and "enabled" in isc:
                 s.intraday_scan_enabled = bool(isc["enabled"])

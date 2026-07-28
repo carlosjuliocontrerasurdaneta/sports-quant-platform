@@ -123,6 +123,7 @@ def test_demo_pipeline_calibrated_equals_estimated_when_disabled():
     # probability: enabling the flag is the only thing that diverges them.
     settings = Settings.load()
     settings.calibration_enabled = False  # force off regardless of shipped config
+    settings.pick_mode = "edge"  # la mecanica probada es del selector por edge
     run_league("nba", settings, mode="demo")
     f = ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv"
     c = pd.read_csv(f)

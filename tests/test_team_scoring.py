@@ -121,6 +121,7 @@ def test_risk_config_has_plausibility_cap_default():
 def test_edge_cap_flags_and_unstakes_implausible_candidates():
     settings = Settings.load()
     settings.risk.market_shrink = 0.0  # isolate the cap from the shrink dampener
+    settings.pick_mode = "edge"  # el cap de plausibilidad es mecanica del modo edge
     run_league("nba", settings, mode="demo")
     f = ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv"
     c = pd.read_csv(f)
@@ -139,6 +140,7 @@ def test_market_shrink_blends_model_toward_market():
     settings = Settings.load()
     s = settings.risk.market_shrink
     assert 0.0 <= s <= 1.0
+    settings.pick_mode = "edge"  # necesita candidatos multi-mercado del selector por edge
     run_league("nba", settings, mode="demo")
     c = pd.read_csv(ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv")
     # Where a market anchor exists, the used probability is the convex blend
