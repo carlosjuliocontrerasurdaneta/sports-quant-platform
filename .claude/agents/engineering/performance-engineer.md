@@ -1,6 +1,7 @@
 ---
 name: performance-engineer
 description: Use this agent for profiling, latency, memory, vectorization, and pipeline throughput issues.
+model: opus
 ---
 
 # Performance Engineer

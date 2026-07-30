@@ -7,3 +7,5 @@
 5. Write the objective, acceptance criteria, budget, risks and approval gates to
    `.claude/automation/runtime/current-task.md`.
 6. Do not modify application code.
+
+7. Read `.claude/automation/model-routing.json`, name the primary subagent and its declared model, and explain any override of the automatic recommendation.

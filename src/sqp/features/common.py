@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from sqp.storage.atomic import atomic_write_csv
+
 
 def default_team_state(pts_default: float = 4.0) -> dict:
     return {
@@ -89,5 +91,7 @@ def write_state_csv(sport: str, team_stats: dict, windows: list[int], ewm_span: 
         f.pop("rest_days", None)
         rows.append({"team": team, **f, "last_game_date": state.get("last_game_date")})
     path = out_dir / f"{sport}_team_state.csv"
-    pd.DataFrame(rows).to_csv(path, index=False)
+    # Atomico: es un artefacto de INFERENCIA; un truncado deja equipos sin
+    # estado sin error visible (auditoria 2026-07-29, D-09).
+    atomic_write_csv(pd.DataFrame(rows), path)
     return path

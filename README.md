@@ -58,7 +58,7 @@ YAML por liga / defaults de código): ver [`docs/CONFIG-PRECEDENCE.md`](docs/CON
 ```bash
 pip install -e ".[dev]"
 cp .env.example .env       # poner ODDS_API_KEY para modo live
-pytest -q                  # 198 tests
+pytest -q
 ```
 
 ## Ejecución
@@ -105,8 +105,41 @@ python scripts/settle_all.py --days-from 2                  # liquidación multi
 python scripts/list_sports.py                               # cobertura activa (incl. tenis)
 ```
 
-Salidas: `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`
-(solo candidatos con edge ≥ mínimo y stake por Kelly fraccional con tope).
+Salidas: `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`.
+El criterio de selección depende de `pick_mode` (ver la sección siguiente): en
+`edge`, candidatos con edge ≥ mínimo y stake por Kelly fraccional con tope; en
+`accuracy` (el modo activo en producción), moneyline con probabilidad de decisión
+≥ umbral y stake plano.
+
+## Modo precisión (`pick_mode: accuracy`) — activo en producción desde 2026-07-28
+
+El objetivo del proyecto pasó de maximizar ROI/edge a **maximizar el porcentaje de
+aciertos (hit rate)** (decisión 2026-07-27). En `configs/default.yaml`:
+
+- `pick_mode: accuracy` selecciona por **probabilidad de decisión** (blend modelo +
+  no-vig del consenso) `>= accuracy_threshold` (0.70), **solo moneyline (h2h)**.
+- El stake es **plano** (`max_stake_pct`), no Kelly: sin objetivo de valor esperado
+  no hay fracción óptima que dimensionar.
+- No aplica `min_edge` ni la revocación por edge de la revalidación.
+- `shadow_mode: true` sigue activo: **todos los picks se registran con stake 0**.
+
+Advertencias verificadas en la auditoría 2026-07-29, necesarias para leer las
+métricas sin engañarse:
+
+1. **El umbral no se aplica hoy a una probabilidad calibrada.** No existe
+   calibrador promovido para `(liga, h2h)`, así que `calibrate_probability` es un
+   no-op y el umbral recae sobre el blend crudo modelo + mercado. El pipeline
+   ahora emite un WARNING cuando esto ocurre. La columna conserva el nombre
+   `calibrated_probability` por compatibilidad de esquema.
+2. **Un hit rate alto no implica rentabilidad.** La selección favorece favoritos
+   claros; con cuota 1.07 el punto de equilibrio está en 93.5%. Hit rate y ROI se
+   leen por separado, nunca uno como proxy del otro.
+3. **La política vigente no tiene backtest propio.** `VALIDATE_OOS.bat` y
+   `scripts/backtest_roi.py` evalúan la regla por edge/Kelly, no esta. El −5.32%
+   de ROI out-of-sample conocido **no** describe el modo precisión.
+
+El KPI a vigilar es el `gap` = hit rate observado − prometido, por banda de
+probabilidad, en `data/bets/segment_diagnostics_latest.csv`.
 
 ## Subsistema ML (experimental, NO en producción)
 

@@ -35,7 +35,9 @@ files = ["src"]
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py310"
+# Coherente con requires-python (>=3.11): con py310 Ruff no aplicaba los lints
+# de 3.11+ que el proyecto si puede usar (auditoria 2026-07-29, S-10).
+target-version = "py311"
 
 [tool.ruff.lint]
 # The default rule set (E4/E7/E9 + pyflakes F) is kept, EXCEPT the compact-style

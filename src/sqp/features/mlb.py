@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from sqp.features.common import rest_days
+from sqp.storage.atomic import atomic_write_csv
 
 ROLLING_WINDOWS = [7, 14, 30]
 EWM_SPAN = 15
@@ -147,5 +148,6 @@ def write_mlb_state(stats: dict, out_dir: Path) -> None:
             # recomputa desde last_game_date al servir (auditoria 2026-07-24, M-31).
             f.pop("rest_days", None)
             team_rows.append({"team": key, **f, "last_game_date": state.get("last_game_date")})
-    pd.DataFrame(team_rows).to_csv(out_dir / "mlb_team_state.csv", index=False)
-    pd.DataFrame(pitcher_rows).to_csv(out_dir / "mlb_pitcher_state.csv", index=False)
+    # Atomico: artefactos de INFERENCIA (auditoria 2026-07-29, D-09).
+    atomic_write_csv(pd.DataFrame(team_rows), out_dir / "mlb_team_state.csv")
+    atomic_write_csv(pd.DataFrame(pitcher_rows), out_dir / "mlb_pitcher_state.csv")

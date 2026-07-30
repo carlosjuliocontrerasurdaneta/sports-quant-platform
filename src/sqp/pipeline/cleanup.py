@@ -32,13 +32,26 @@ log = get_logger("sqp.cleanup")
 PURGE_RETENTION_DAYS = 90
 
 
+# Markers that describe HOW a pick was selected, not a reason to block it.
+# `flags` used to hold at most one blocking reason, so `_actionable` tested it
+# for emptiness. `pick_mode: accuracy` (2026-07-28) stamps every pick with
+# `accuracy_mode`, which would make the emptiness test drop all of them once
+# shadow mode is lifted -- pruning candidate files whose picks are still
+# pending settlement (audit 2026-07-29, B-01 class).
+INFORMATIONAL_FLAGS = frozenset({"accuracy_mode"})
+
+
 def _actionable(cands: pd.DataFrame) -> pd.DataFrame:
-    """Stakeable, unflagged rows -- the only ones that get settled and that the
-    picks report ranks."""
+    """Stakeable rows carrying no blocking flag -- the only ones that get settled
+    and that the picks report ranks."""
     if "stake" not in cands.columns:
         return cands.iloc[0:0]
-    flags = cands["flags"].fillna("") if "flags" in cands.columns else ""
-    return cands[(cands["stake"] > 0) & (flags == "")]
+    if "flags" not in cands.columns:
+        return cands[cands["stake"] > 0]
+    blocking = cands["flags"].fillna("").astype(str).apply(
+        lambda f: [t for t in (x.strip() for x in f.split(";"))
+                   if t and t not in INFORMATIONAL_FLAGS])
+    return cands[(cands["stake"] > 0) & (blocking.str.len() == 0)]
 
 
 def _all_actionable_settled(cands: pd.DataFrame, settled_path: Path) -> bool:

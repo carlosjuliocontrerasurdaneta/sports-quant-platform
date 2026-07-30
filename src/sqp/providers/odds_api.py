@@ -22,7 +22,10 @@ BASE = "https://api.the-odds-api.com/v4"
 # Transient upstream errors: retried with linear backoff, like the ESPN
 # providers (audit 2026-07-24, M-11). A failed call returns no data, so one
 # 5xx no longer loses the whole day's fetch.
-_RETRY_STATUS = frozenset({500, 502, 503, 504})
+# 429 incluido: un rate limit propagaba HTTPError y perdia el fetch completo de
+# la liga, cuando es exactamente el caso que el backoff resuelve (auditoria
+# 2026-07-29, D-05).
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
 _BACKOFF_SECONDS = 2.0  # multiplied by attempt number (linear backoff)
 
@@ -92,6 +95,11 @@ class OddsAPIClient:
 
     def _get(self, path: str, *, cache: bool = False, **params) -> list | dict:
         self.last_response_cached = False
+        # Reset por llamada: _capture_quota solo asigna cuando el header viene
+        # presente, asi que una respuesta sin headers heredaba el costo de la
+        # llamada ANTERIOR y lo volvia a sumar al contador diario de creditos en
+        # closing_capture (auditoria 2026-07-29, D-06).
+        self.requests_last = None
         ckey = self._cache.key(path, params) if cache else None
         if ckey is not None and not self.force_refresh:
             ttl = float("inf") if self.offline_mode else self.cache_ttl

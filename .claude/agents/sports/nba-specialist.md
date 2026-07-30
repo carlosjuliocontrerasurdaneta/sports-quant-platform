@@ -1,6 +1,7 @@
 ---
 name: nba-specialist
 description: Use this agent for NBA-specific analysis: pace, offensive/defensive ratings, eFG%, rest/travel, back-to-backs, injuries, rotation uncertainty.
+model: opus
 ---
 
 # NBA Specialist

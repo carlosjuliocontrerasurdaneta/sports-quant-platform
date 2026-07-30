@@ -1,45 +1,46 @@
 # Current Task
 
-Status: done
-Loop: feature
-Iteration: 6 / 8
+Status: in-progress
+Loop: full-audit (Fase 4-5) → ver `.claude/loops/quant/STATES.md`
+Iteration: 1 / 8
 Owner: principal-orchestrator
 
 ## Objective
 
-Palanca de velocidad de información contra la selección adversa (autorización
-total del operador, 2026-07-14 PM): snapshot completo de liga en la captura,
-observatorio de edge intradía (medición pura) y captura cada 30 min.
+Auditoría integral del repositorio (código, datos, cuantitativo, seguridad,
+Claude Code y Quant Loops) con corrección autónoma acotada y entregables en
+`audit/latest/`. Solicitada por el operador el 2026-07-29.
 
 ## Acceptance criteria
 
-- [x] Captura persiste snapshot completo y reporta bet_events (test RED→GREEN).
-- [x] `log_intraday_edges` loguea edge h2h servido-vs-consenso fresco sin crear
-      picks ni tocar stakes (4 tests nuevos).
-- [x] Flag `intraday_scan_enabled`: OFF en Settings() directo, ON via yaml,
-      env gana.
-- [x] Suite completa verde + ruff + mypy.
-- [x] Trigger PT30M con StartWhenAvailable y duración indefinida intactos.
+- [x] Línea base medida antes de modificar (tests, ruff, mypy, pip check).
+- [x] Hallazgos con evidencia `file:line` y severidad.
+- [x] Correcciones seguras aplicadas con prueba de regresión cada una.
+- [x] Suite completa verde tras las correcciones.
+- [ ] Entregables escritos en `audit/latest/`.
+- [ ] Bitácora Obsidian del día actualizada.
 
 ## Evidence log
 
-- pytest: 407/407 (antes 403; +4 intradía, contrato de captura actualizado).
-- ruff: All checks passed. mypy: 84 archivos sin issues.
-- Scheduler verificado: Interval=PT30M, StartWhenAvailable=True, NextRun 21:30.
-- Gasto de cuota acotado sin cambios: ligas-con-pick-inminente + cap 300/día
-  + min_remaining 100 (el fetch de liga completa ya se pagaba; solo se dejó
-  de descartar su contenido).
+- Línea base (2026-07-29): pytest 439 passed; ruff check limpio salvo 1×E401 en
+  un script no versionado; mypy 86 archivos sin issues; pip check OK.
+- Correcciones con prueba: B-01, B-05, B-06, B-08, B-13, D-01, D-04, D-05, D-06,
+  D-08, D-09, Q-01, K-004, K-015.
+- `ruff format --check` reporta 173 archivos, pero el proyecto NO usa
+  `ruff format` (el Makefile solo hace `ruff check`): NO es un hallazgo.
 
 ## Risks and approvals
 
-- Cuota: pases 2× en ventanas con eventos inminentes; cap diario inalterado.
-- Experimentos en curso no contaminados: no se crean picks; el log intradía
-  es archivo nuevo, aparte del flujo settle/gate.
-- Autorización del operador: total (sesión 2026-07-14 PM), incluye commit,
-  push y cambio de scheduler.
+- **Sin autorización vigente para commit ni push.** La autorización "total" del
+  2026-07-14 PM que este archivo arrastraba estaba caducada de facto y fue
+  retirada en la auditoría 2026-07-29 (K-006): una autorización sin fecha de
+  caducidad no puede tratarse como permanente.
+- `shadow_mode: true` intacto. Ningún parámetro productivo de riesgo, umbral ni
+  bankroll fue modificado.
+- Pendiente de decisión humana: ver `audit/latest/BACKLOG.md`.
 
 ## Next decision
 
-Acumular 2–4 semanas de `intraday_edge_log.csv` y del snapshot completo;
-luego: (a) análisis CLV intradía vs 11:00 (decide #4 ofensiva), (b) re-correr
-`clv_by_line_movement.py` con trayectorias densas.
+Revisar `audit/latest/EXECUTIVE_SUMMARY.md` y decidir sobre los ítems que
+requieren autorización (commit, política del umbral de precisión frente a
+`market_shrink`, destino de `superpowers-main`, alerta del run diario fallido).

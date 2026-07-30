@@ -21,6 +21,7 @@ from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.clv_gate import load_clv_gate, market_allowed
+from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.lock import locked
 from sqp.risk.kelly import kelly_fraction_stake, edge
 from sqp.sports.registry import get_adapter
@@ -299,7 +300,7 @@ def apply_global_exposure_cap(pred_dir: Path, bankroll: float, cap_pct: float,
             prior = df.loc[mask, "flags"]
             df.loc[mask, "flags"] = [f"{x};global_exposure_scaled" if x else "global_exposure_scaled"
                                      for x in prior]
-            df.to_csv(f, index=False)
+            atomic_write_csv(df, f)
     return factor
 
 
@@ -346,14 +347,18 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
     # Archive yesterday's files before overwrite so an out-of-order run (RUN before
     # SETTLE) can never destroy un-settled picks; they stay recoverable in archive/.
     _archive_existing(pred_path)
-    df.to_csv(pred_path, index=False)
+    # Atomico: predictions_*.csv es la fuente de start_time para cleanup,
+    # revalidacion y roi_engine, y un truncado parcial NO lanza error (read_csv
+    # devuelve las filas que sobrevivieron), asi que picks vigentes desaparecen
+    # del calculo de riesgo sin aviso (auditoria 2026-07-29, D-04).
+    atomic_write_csv(df, pred_path)
     # Shared inter-process lock with the hourly revalidation pass (CAPTURE_CLOSE):
     # serializes candidates_*.csv writers so neither a fresh revocation nor the
     # just-generated candidates get overwritten (audit 2026-07-24, I-5).
     with locked(outdir / "candidates"):
         _archive_existing(cand_path)
         if candidates:
-            pd.DataFrame([c.__dict__ for c in candidates]).to_csv(cand_path, index=False)
+            atomic_write_csv(pd.DataFrame([c.__dict__ for c in candidates]), cand_path)
         elif cand_path.exists():
             cand_path.unlink()  # a run with no candidates must not leave stale picks behind
     # A zero-stake row is non-actionable (paused / implausible edge); a scaled
@@ -389,13 +394,46 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
 
 
 def _accuracy_selected(market: str, p_decision: float, threshold: float,
-                       incomplete_market: bool) -> bool:
+                       incomplete_market: bool,
+                       price_decimal: float | None = None) -> bool:
     """Seleccion del modo precision (pick_mode: accuracy, decision 2026-07-27:
     el objetivo es maximizar el porcentaje de aciertos). SOLO moneyline (h2h)
     y solo si la probabilidad de decision calibrada (blend modelo + no-vig)
     alcanza el umbral, inclusive. Un mercado incompleto no tiene ancla no-vig
-    valida, asi que nunca produce pick de precision."""
+    valida, asi que nunca produce pick de precision.
+
+    Exige tambien una cuota pagable (``price_decimal > 1.0``). El modo precision
+    dimensiona con stake plano y NO pasa por ``kelly_fraction_stake``, que era el
+    unico punto del pipeline que rechazaba cuotas degeneradas; sin este guard una
+    cuota corrupta de 1.0 (presente en el historico capturado) producia pick
+    (auditoria 2026-07-29, B-05)."""
+    if price_decimal is not None and price_decimal <= 1.0:
+        return False
     return market == "h2h" and not incomplete_market and p_decision >= threshold
+
+
+def _warn_if_uncalibrated_accuracy(league: str, settings: Settings) -> bool:
+    """Avisa cuando el modo precision corre SIN calibrador h2h promovido.
+
+    Devuelve True si falta el calibrador (es decir, si el umbral se esta
+    aplicando a una probabilidad no calibrada). Solo observa y registra: NO
+    suprime picks, porque dejar de emitirlos es un cambio de politica de
+    produccion que requiere decision humana (auditoria 2026-07-29, Q-01)."""
+    from sqp.calibration.calibrator import _load_method_registry, calibration_key
+    if not settings.calibration_enabled:
+        log.warning("[%s] pick_mode=accuracy con calibration_enabled=false: el umbral "
+                    "%.2f se aplica a una probabilidad NO calibrada (blend crudo "
+                    "modelo + no-vig).", league, settings.accuracy_threshold)
+        return True
+    key = calibration_key(league, "h2h")
+    if _load_method_registry().get(key) is None:
+        log.warning("[%s] pick_mode=accuracy sin calibrador promovido para '%s': "
+                    "calibrate_probability es un no-op y el umbral %.2f se aplica a "
+                    "una probabilidad NO calibrada. El hit rate por banda debe "
+                    "juzgarse contra la frecuencia observada, no contra el umbral.",
+                    league, key, settings.accuracy_threshold)
+        return True
+    return False
 
 
 def _fetch_recent_scores(client, sport_key: str, league: str) -> list[dict]:
@@ -446,6 +484,14 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # llevar stake real (registro escrito por la auditoria CLV diaria). Solo
     # live: el demo sintetico no debe filtrarse por historial real. None =
     # gate apagado; {} = registro ausente/ilegible -> default-deny.
+    # Modo precision: el umbral se aplica a `p_decision`, que solo es una
+    # probabilidad CALIBRADA si existe calibrador promovido para (liga, h2h).
+    # Sin el, `calibrate_probability(..., "auto")` es un no-op y el umbral 0.70
+    # recae sobre el blend crudo modelo+no-vig, que el propio nombre de columna
+    # (`calibrated_probability`) contradice (auditoria 2026-07-29, Q-01).
+    if settings.pick_mode == "accuracy" and mode != "demo":
+        _warn_if_uncalibrated_accuracy(league, settings)
+
     clv_gate: dict[str, dict] | None = None
     if settings.clv_gate_enabled and mode != "demo":
         clv_gate = load_clv_gate(ROOT / "data" / "bets")
@@ -631,10 +677,16 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 # (paused / suspect / shadow / clv gate) aplica igual abajo.
                 if not _accuracy_selected(key[0], p_decision,
                                           settings.accuracy_threshold,
-                                          incomplete_market):
+                                          incomplete_market, price):
                     continue
                 stake = round(settings.bankroll * settings.risk.max_stake_pct, 2)
                 pct = settings.risk.max_stake_pct
+                # Banca <= 0 produce stake negativo, y settle.py grada una perdida
+                # como pnl = -stake, es decir POSITIVO. La rama por edge queda
+                # cubierta por kelly_fraction_stake (devuelve 0); el stake plano no
+                # pasa por ahi (auditoria 2026-07-29, B-06).
+                if stake <= 0:
+                    continue
             # Only record a candidate that would otherwise be staked (or is an
             # implausible-edge outlier): below-min-edge lines are ignored whether
             # or not the market is paused, so a paused market does not flood the

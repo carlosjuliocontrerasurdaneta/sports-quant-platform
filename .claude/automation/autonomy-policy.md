@@ -17,6 +17,12 @@
 - Paid API calls or large remote downloads.
 - Deleting data, migrations with destructive potential, secret rotation.
 - Increasing risk/staking/exposure limits.
+- Disabling `shadow_mode`, or moving any stake from 0 to a real amount. This was
+  covered only by the generic "production configuration" clause; it is now
+  literal, because it is the single change that turns a paper pick into money at
+  risk (audit 2026-07-29, K-009).
+- Changing `bankroll`, `pick_mode`, `accuracy_threshold` or any threshold that
+  decides which picks are emitted, without out-of-sample evidence.
 - Broad changes outside the approved scope.
 
 ## Bounded operation

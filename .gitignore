@@ -39,3 +39,6 @@ graphify-out/
 .obsidian/
 # Centinela del hook de tests (mark-tests-pending -> run-tests-on-stop)
 .claude/.tests-pending
+# Bytecode de los hooks: tests/test_claude_model_routing.py carga
+# route-model.py via importlib y genera el __pycache__ (auditoria 2026-07-29).
+.claude/hooks/__pycache__/

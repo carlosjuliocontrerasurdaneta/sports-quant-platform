@@ -29,6 +29,17 @@ This file complements `CLAUDE.md`; permanent repository rules always have preced
 | Release | `release.md` | qa-engineer, security-reviewer, devops-engineer |
 | Incident | `incident.md` | principal-orchestrator, relevant owner, qa-engineer |
 | Documentation only | `documentation.md` | documentation-writer |
+| Quantitative operation | `quant/00-quant-operations-router.md` | principal-orchestrator, sports-quant-auditor, relevant specialist |
+
+## Quantitative operations
+
+For prediction generation, pregame updates, settlement, daily auditing, loss diagnosis, calibration monitoring, drift monitoring, data-quality recovery, champion-challenger evaluation, controlled recalibration, season transitions, quantitative incidents, and weekly quantitative reviews:
+
+1. Read `.claude/loops/quant/00-quant-operations-router.md`.
+2. Select exactly one primary quantitative loop.
+3. Record the selected loop in `.claude/automation/runtime/current-task.md`.
+4. Follow all repository guardrails and human approval gates.
+5. Never promote a model or calibration artifact automatically.
 
 ## Iteration contract
 
@@ -62,6 +73,9 @@ Stop and request approval before:
 - production configuration changes;
 - paid/external API consumption beyond an existing approved test;
 - changes to staking/risk limits;
+- disabling `shadow_mode`, or moving any stake from 0 to a real amount;
+- changing `pick_mode`, `accuracy_threshold` or `bankroll`, or any threshold that
+  decides which picks are emitted, without out-of-sample evidence;
 - promotion of a model or calibration artifact;
 - handling real credentials or secrets.
 
@@ -75,3 +89,7 @@ After three materially different failed attempts, create a blocker report in
 
 Run `/verification-gate`, then `/memoria-guardar`.
 Report changed files, commands executed, outcomes, residual risks, and recommended next action.
+
+## Model routing
+
+Before delegation, use `.claude/automation/model-routing.json` and the context injected by `.claude/hooks/route-model.py`. The model policy itself lives in `.claude/automation/MODEL_ROUTING.md` (single source). Delegate to the named primary subagent when its specialization matches the request. The subagent's `model` frontmatter controls the execution model. Permanent rules, safety gates, and the decision engine take precedence over keyword routing.

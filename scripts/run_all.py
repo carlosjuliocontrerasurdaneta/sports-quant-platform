@@ -127,7 +127,10 @@ def main() -> int:
                  settings.bankroll, bal)
         if bal <= 0:
             log.warning("Balance de banca <= 0 (%.2f): no se dimensionará ninguna apuesta.", bal)
-        settings.bankroll = bal
+        # Piso en 0: una banca negativa propagaba stakes NEGATIVOS al stake plano
+        # del modo precision, y settle.py grada una perdida como pnl = -stake, es
+        # decir POSITIVO, realimentando el ledger (auditoria 2026-07-29, B-06).
+        settings.bankroll = max(0.0, bal)
     supported = _supported_leagues()
     if args.mode == "demo":
         selected = [lg for lg in DEFAULT_PRIORITY if lg in supported]

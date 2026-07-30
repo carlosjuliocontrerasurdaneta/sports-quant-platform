@@ -1,6 +1,7 @@
 ---
 name: leakage-detector
 description: Use this agent before any modeling change to detect future-information leaks: postgame stats in features, future aggregates, random split misuse, closing odds misuse, join timestamp errors, label contamination.
+model: opus
 ---
 
 # Leakage Detector

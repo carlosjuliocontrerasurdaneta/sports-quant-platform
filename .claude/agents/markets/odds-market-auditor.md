@@ -1,6 +1,7 @@
 ---
 name: odds-market-auditor
 description: Use this agent to audit odds and market math: American/decimal conversion, implied probability, no-vig (vig removal), market timestamps, and edge formulas.
+model: opus
 ---
 
 # Odds Market Auditor

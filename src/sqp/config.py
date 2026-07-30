@@ -20,6 +20,37 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(f) or {}
 
 
+_TRUE = ("1", "true", "yes", "on")
+_FALSE = ("0", "false", "no", "off")
+
+
+def _env_flag(name: str) -> bool | None:
+    """Tri-state boolean environment flag: True / False / None (not configured).
+
+    The previous idiom was ``os.getenv(NAME, "").lower() in ("1","true","yes")``
+    paired with ``if NAME not in os.environ`` to decide whether the yaml wins.
+    That combination FAILS OPEN: a variable that exists but is not recognized
+    (``SHADOW_MODE=``, ``SHADOW_MODE=on``, a trailing space) suppressed the yaml
+    branch AND evaluated to False, so ``shadow_mode: true`` in default.yaml was
+    silently ignored and stakes would have gone live (audit 2026-07-29, B-08).
+
+    An unrecognized value now returns None -- indistinguishable from unset -- so
+    the yaml keeps control, and the anomaly is logged instead of swallowed.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    v = raw.strip().lower()
+    if v in _TRUE:
+        return True
+    if v in _FALSE:
+        return False
+    from sqp.logging_config import get_logger
+    get_logger("sqp.config").warning(
+        "Valor no reconocido para %s (se ignora y manda la configuracion yaml).", name)
+    return None
+
+
 @dataclass
 class RiskConfig:
     kelly_fraction: float = 0.25
@@ -60,8 +91,12 @@ class Settings:
     # Accept THE_ODDS_API_KEY too: that is The Odds API's own env-var name and
     # the one used in this project's .env. ODDS_API_KEY (e.g. a stale OS-level
     # var) still wins when set, for backward compatibility.
+    # repr=False: sin esto un futuro log.info(f"{settings}") volcaria la clave a
+    # logs/sqp.log (auditoria 2026-07-29, S-13). Hoy nadie loguea el objeto
+    # completo; el campo queda excluido del repr por defensa en profundidad.
     odds_api_key: str | None = field(
-        default_factory=lambda: os.getenv("ODDS_API_KEY") or os.getenv("THE_ODDS_API_KEY"))
+        default_factory=lambda: os.getenv("ODDS_API_KEY") or os.getenv("THE_ODDS_API_KEY"),
+        repr=False)
     regions: str = field(default_factory=lambda: os.getenv("ODDS_API_REGIONS", "us,eu"))
     odds_format: str = field(default_factory=lambda: os.getenv("ODDS_API_ODDS_FORMAT", "decimal"))
     bankroll: float = field(default_factory=lambda: float(os.getenv("BANKROLL", "1000")))
@@ -72,8 +107,7 @@ class Settings:
     # demo and direct run_league calls keep the static initial. See
     # sqp.risk.bankroll.
     bankroll_dynamic: bool = field(
-        default_factory=lambda: os.getenv("BANKROLL_DYNAMIC", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("BANKROLL_DYNAMIC") is True)
     # Only estimate events commencing within this many days. The Odds API posts
     # next-season opener lines months early (e.g. NFL Week 1 in June); without a
     # horizon those flood the picks with games that won't play for weeks.
@@ -95,8 +129,7 @@ class Settings:
     # paused_markets this is global, so it also covers leagues discovered
     # dynamically. Env var SHADOW_MODE (when set) wins over the yaml key.
     shadow_mode: bool = field(
-        default_factory=lambda: os.getenv("SHADOW_MODE", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("SHADOW_MODE") is True)
     # league_id -> markets paused from staking (e.g. {"mlb": ["totals"]}). A paused
     # market is still estimated, but candidates are recorded flagged "market_paused"
     # with stake 0 instead of being bet. Used to suspend a market whose realized ROI
@@ -109,8 +142,7 @@ class Settings:
     # probability stored for retraining stays UNCALIBRATED, so enabling this can
     # never create a calibrate-on-already-calibrated feedback loop.
     calibration_enabled: bool = field(
-        default_factory=lambda: os.getenv("CALIBRATION_ENABLED", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("CALIBRATION_ENABLED") is True)
     calibration_method: str = field(
         default_factory=lambda: os.getenv("CALIBRATION_METHOD", "isotonic"))
     # Auto-correction (2026-07-08): after the daily staging retrain, promote
@@ -119,8 +151,7 @@ class Settings:
     # demote what the retrain no longer recommends. OFF by default: with the flag unset the
     # promotion stays a deliberate human step (scripts/promote_calibration.py).
     calibration_auto_promote: bool = field(
-        default_factory=lambda: os.getenv("CALIBRATION_AUTO_PROMOTE", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("CALIBRATION_AUTO_PROMOTE") is True)
     # CLV gate (2026-07-08): per-(league, market) ALLOW-LIST for real staking.
     # A market may carry stake only if its median CLV over >= clv_gate_min_n
     # settled bets matched to a captured close is positive, per the registry
@@ -130,8 +161,7 @@ class Settings:
     # rule when shadow mode is lifted. OFF by default so direct Settings()
     # (tests/demo) is unaffected; production enables it via yaml.
     clv_gate_enabled: bool = field(
-        default_factory=lambda: os.getenv("CLV_GATE_ENABLED", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("CLV_GATE_ENABLED") is True)
     clv_gate_min_n: int = field(
         default_factory=lambda: int(os.getenv("CLV_GATE_MIN_N", "30")))
     # Monitor de degradacion por (liga, mercado) (2026-07-13): auto-pausa gated.
@@ -142,8 +172,7 @@ class Settings:
     # "market_paused" via paused_markets); nunca sube stakes. OFF por defecto
     # para Settings() directo (tests/demo); produccion lo activa via yaml.
     degradation_enabled: bool = field(
-        default_factory=lambda: os.getenv("DEGRADATION_ENABLED", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("DEGRADATION_ENABLED") is True)
     degradation_window_days: int = field(
         default_factory=lambda: int(os.getenv("DEGRADATION_WINDOW_DAYS", "60")))
     degradation_min_n: int = field(
@@ -161,8 +190,7 @@ class Settings:
     # baja stakes; sin snapshot fresco no actua. OFF por defecto para
     # Settings() directo (tests/demo); produccion lo activa via yaml.
     revalidation_enabled: bool = field(
-        default_factory=lambda: os.getenv("REVALIDATION_ENABLED", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("REVALIDATION_ENABLED") is True)
     revalidation_window_min: int = field(
         default_factory=lambda: int(os.getenv("REVALIDATION_WINDOW_MIN", "120")))
     revalidation_price_max_age_min: float = field(
@@ -174,8 +202,7 @@ class Settings:
     # decide la fase ofensiva de generacion intradia. OFF por defecto para
     # Settings() directo (tests/demo); produccion lo activa via yaml.
     intraday_scan_enabled: bool = field(
-        default_factory=lambda: os.getenv("INTRADAY_SCAN_ENABLED", "").lower()
-        in ("1", "true", "yes"))
+        default_factory=lambda: _env_flag("INTRADAY_SCAN_ENABLED") is True)
 
     def validate(self) -> "Settings":
         """Fail fast on unsafe or internally inconsistent operator settings."""
@@ -266,23 +293,23 @@ class Settings:
             )
             s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                                 for lg, mk in (cfg.get("paused_markets") or {}).items()}
-            if "SHADOW_MODE" not in os.environ and "shadow_mode" in cfg:
+            if _env_flag("SHADOW_MODE") is None and "shadow_mode" in cfg:
                 s.shadow_mode = bool(cfg["shadow_mode"])
             cal = cfg.get("calibration") or {}
             # env var (if set) wins over yaml; otherwise yaml, else the dataclass default
-            if "CALIBRATION_ENABLED" not in os.environ and "enabled" in cal:
+            if _env_flag("CALIBRATION_ENABLED") is None and "enabled" in cal:
                 s.calibration_enabled = bool(cal["enabled"])
             if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
                 s.calibration_method = str(cal["method"])
-            if "CALIBRATION_AUTO_PROMOTE" not in os.environ and "auto_promote" in cal:
+            if _env_flag("CALIBRATION_AUTO_PROMOTE") is None and "auto_promote" in cal:
                 s.calibration_auto_promote = bool(cal["auto_promote"])
             cg = cfg.get("clv_gate") or {}
-            if "CLV_GATE_ENABLED" not in os.environ and "enabled" in cg:
+            if _env_flag("CLV_GATE_ENABLED") is None and "enabled" in cg:
                 s.clv_gate_enabled = bool(cg["enabled"])
             if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
                 s.clv_gate_min_n = int(cg["min_n"])
             dm = cfg.get("degradation_monitor") or {}
-            if "DEGRADATION_ENABLED" not in os.environ and "enabled" in dm:
+            if _env_flag("DEGRADATION_ENABLED") is None and "enabled" in dm:
                 s.degradation_enabled = bool(dm["enabled"])
             if "DEGRADATION_WINDOW_DAYS" not in os.environ and "window_days" in dm:
                 s.degradation_window_days = int(dm["window_days"])
@@ -295,7 +322,7 @@ class Settings:
             if "DEGRADATION_ROI_RESUME" not in os.environ and "roi_resume" in dm:
                 s.degradation_roi_resume = float(dm["roi_resume"])
             rv = cfg.get("revalidation") or {}
-            if "REVALIDATION_ENABLED" not in os.environ and "enabled" in rv:
+            if _env_flag("REVALIDATION_ENABLED") is None and "enabled" in rv:
                 s.revalidation_enabled = bool(rv["enabled"])
             if "REVALIDATION_WINDOW_MIN" not in os.environ and "window_min" in rv:
                 s.revalidation_window_min = int(rv["window_min"])
@@ -308,11 +335,11 @@ class Settings:
             if "ACCURACY_THRESHOLD" not in os.environ and "accuracy_threshold" in pk:
                 s.accuracy_threshold = float(pk["accuracy_threshold"])
             isc = cfg.get("intraday_scan") or {}
-            if "INTRADAY_SCAN_ENABLED" not in os.environ and "enabled" in isc:
+            if _env_flag("INTRADAY_SCAN_ENABLED") is None and "enabled" in isc:
                 s.intraday_scan_enabled = bool(isc["enabled"])
             bk = cfg.get("bankroll") or {}
             if not os.getenv("BANKROLL") and "initial" in bk:
                 s.bankroll = float(bk["initial"])
-            if "BANKROLL_DYNAMIC" not in os.environ and "dynamic" in bk:
+            if _env_flag("BANKROLL_DYNAMIC") is None and "dynamic" in bk:
                 s.bankroll_dynamic = bool(bk["dynamic"])
         return s.validate()

@@ -23,7 +23,8 @@ archivos ya analizados en la sesión salvo que hayan cambiado.
 ## Lenguaje obligatorio en outputs de apuestas
 
 - Siempre "probabilidad estimada", nunca certezas ni profit garantizado.
-- Separar: probabilidad estimada, probabilidad implícita, edge, ROI esperado estimado y ROI realizado.
+- Separar: probabilidad estimada, probabilidad implícita, edge, hit rate observado
+  vs. prometido (métrica rectora desde 2026-07-27), ROI esperado estimado y ROI realizado.
 
 ## Memoria persistente
 
@@ -47,7 +48,10 @@ NUNCA abrir la raíz del repo como bóveda (solo `Obsidian/`).
 ## Entorno
 
 - Windows + PowerShell. Tests: `PYTHONPATH=src pytest tests/ -q`.
-- Ejecución diaria orquestada por `RUN_DIARIO_ALL.bat` (multi-liga, reporte consolidado); liquidación/auditoría por `SETTLE_ALL.bat`.
+- Ejecución diaria orquestada por `DIARIO_COMPLETO.bat`, que encadena
+  `SETTLE_ALL.bat` → `RUN_DIARIO_ALL.bat` en ese orden. **El orden importa: el run
+  diario sobrescribe `data/predictions/candidates_*.csv`, así que la liquidación
+  va primero** (auditoría 2026-07-29, K-001).
 
 ## Sistema operativo autónomo
 

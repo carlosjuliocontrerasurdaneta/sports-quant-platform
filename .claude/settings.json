@@ -1,5 +1,5 @@
 {
-  "model": "claude-fable-5",
+  "model": "claude-opus-5",
   "permissions": {
     "allow": [
       "PowerShell($env:PYTHONPATH='src'; pytest *)",
@@ -88,6 +88,17 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-tests-on-stop.sh\"",
             "timeout": 300
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/route-model.py\"",
+            "timeout": 10
           }
         ]
       }

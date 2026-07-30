@@ -19,6 +19,13 @@ def _consensus_lines(eo: EventOdds) -> dict:
     no-vig probability per market used as the fair benchmark."""
     groups: dict[tuple, list[float]] = defaultdict(list)
     for ln in eo.lines:
+        # Degenerate quotes (price_decimal <= 1.0 means "no payout") corrupt the
+        # fair benchmark: 1/1.0 = 1.0 is an implied CERTAINTY, and remove_vig_power
+        # then normalizes the whole market around it. Such rows exist in the
+        # captured history (audit 2026-07-24) and `clv_movement._consensus` already
+        # filters them; the live consensus did not (audit 2026-07-29, B-13).
+        if ln.price_decimal is None or ln.price_decimal <= 1.0:
+            continue
         groups[(ln.market, ln.outcome, ln.point)].append(ln.price_decimal)
     # ``statistics.median`` averages the two central values for an even number
     # of books. Picking ``sorted(v)[len(v)//2]`` was the *upper* median and

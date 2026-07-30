@@ -1,6 +1,7 @@
 ---
 name: provider-integrator
 description: Use this agent for external data/odds provider integrations: contracts, credentials, timeouts, retries, schema validation, mock/demo modes, and rate limits.
+model: opus
 ---
 
 # Provider Integrator

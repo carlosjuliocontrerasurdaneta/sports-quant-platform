@@ -1,6 +1,7 @@
 ---
 name: line-movement-analyst
 description: Use this agent to analyze line movement and market timing: opening vs current vs closing lines, movement direction, book differences, and timestamp consistency.
+model: opus
 ---
 
 # Line Movement Analyst

@@ -7,8 +7,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
+from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_csv
 
+log = get_logger("sqp.storage.starters")
 
 COLUMNS = ["game_id", "date", "home_starter", "away_starter", "ingested_at"]
 
@@ -21,7 +23,16 @@ class StartersStore:
         return self.dir / f"starters_{league}.csv"
 
     def save(self, league: str, rows: list[dict]) -> int:
-        """Upsert by game_id; newest ingestion wins. Returns total rows stored."""
+        """Upsert by game_id; newest ingestion wins. Returns total rows stored.
+
+        A row with BOTH starters missing carries no information and is dropped
+        before the upsert: ``fetch_starters`` emits one row per scheduled game
+        even when the MLB Stats API does not hydrate ``probablePitcher``, so
+        ``keep="last"`` used to overwrite an already-stored starter with NaN on
+        every re-run of the backfill. That silently degrades the dominant MLB
+        signal and makes the event non-bettable via ``reliability_warning``
+        (audit 2026-07-29, D-01).
+        """
         if not rows:
             return 0
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -29,6 +40,16 @@ class StartersStore:
         new["game_id"] = new["game_id"].astype(str)
         new["ingested_at"] = now
         new = new[COLUMNS]
+        informative = (new[["home_starter", "away_starter"]].notna()
+                       & (new[["home_starter", "away_starter"]].astype(str) != ""))
+        dropped = int((~informative.any(axis=1)).sum())
+        if dropped:
+            new = new[informative.any(axis=1)]
+            log.info("[%s] %d fila(s) de abridores sin ningun nombre: no sobrescriben "
+                     "lo ya almacenado.", league, dropped)
+        if new.empty:
+            p = self.path(league)
+            return len(pd.read_csv(p, dtype={"game_id": str})) if p.exists() else 0
         p = self.path(league)
         if p.exists():
             cur = pd.read_csv(p, dtype={"game_id": str})

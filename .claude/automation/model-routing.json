@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "default": {
+    "loop": "feature.md",
+    "primary_agent": "python-engineer",
+    "model": "opus"
+  },
+  "routes": [
+    {
+      "id": "full-audit",
+      "priority": 100,
+      "keywords": [
+        "auditoría completa",
+        "auditoria completa",
+        "análisis exhaustivo",
+        "analisis exhaustivo",
+        "revisión integral",
+        "revision integral",
+        "todo el repositorio",
+        "full audit"
+      ],
+      "loop": "refactor.md",
+      "primary_agent": "principal-orchestrator",
+      "model": "opus",
+      "support_agents": [
+        "repository-cartographer",
+        "backend-architect",
+        "sports-quant-auditor",
+        "qa-engineer",
+        "security-reviewer"
+      ]
+    },
+    {
+      "id": "incident",
+      "priority": 95,
+      "keywords": [
+        "incidente",
+        "producción caída",
+        "produccion caida",
+        "outage",
+        "emergencia"
+      ],
+      "loop": "incident.md",
+      "primary_agent": "principal-orchestrator",
+      "model": "opus",
+      "support_agents": [
+        "qa-engineer",
+        "security-reviewer",
+        "devops-engineer"
+      ]
+    },
+    {
+      "id": "modeling",
+      "priority": 90,
+      "keywords": [
+        "modelo",
+        "calibración",
+        "calibracion",
+        "probabilidad",
+        "feature selection",
+        "machine learning",
+        "entrenamiento",
+        "drift"
+      ],
+      "loop": "model.md",
+      "primary_agent": "ml-engineer",
+      "model": "opus",
+      "support_agents": [
+        "feature-engineer",
+        "leakage-detector",
+        "calibration-auditor",
+        "backtest-reviewer",
+        "risk-manager"
+      ]
+    },
+    {
+      "id": "backtest",
+      "priority": 88,
+      "keywords": [
+        "backtest",
+        "walk-forward",
+        "lookahead",
+        "leakage",
+        "sesgo",
+        "roi histórico",
+        "roi historico"
+      ],
+      "loop": "backtest.md",
+      "primary_agent": "backtest-reviewer",
+      "model": "opus",
+      "support_agents": [
+        "leakage-detector",
+        "sports-quant-auditor"
+      ]
+    },
+    {
+      "id": "architecture",
+      "priority": 85,
+      "keywords": [
+        "arquitectura",
+        "refactor",
+        "dependencias",
+        "modularidad",
+        "acoplamiento"
+      ],
+      "loop": "refactor.md",
+      "primary_agent": "backend-architect",
+      "model": "opus",
+      "support_agents": [
+        "repository-cartographer",
+        "python-engineer",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "provider",
+      "priority": 80,
+      "keywords": [
+        "provider",
+        "api externa",
+        "etl",
+        "ingesta",
+        "parser",
+        "fuente de datos"
+      ],
+      "loop": "provider.md",
+      "primary_agent": "provider-integrator",
+      "model": "opus",
+      "support_agents": [
+        "data-engineer",
+        "leakage-detector",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "bugfix",
+      "priority": 75,
+      "keywords": [
+        "bug",
+        "error",
+        "falla",
+        "failing test",
+        "corrige",
+        "no funciona",
+        "traceback"
+      ],
+      "loop": "bugfix.md",
+      "primary_agent": "python-engineer",
+      "model": "opus",
+      "support_agents": [
+        "repository-cartographer",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "security",
+      "priority": 74,
+      "keywords": [
+        "seguridad",
+        "secreto",
+        "credencial",
+        "vulnerabilidad",
+        "inyección",
+        "inyeccion"
+      ],
+      "loop": "refactor.md",
+      "primary_agent": "security-reviewer",
+      "model": "opus",
+      "support_agents": [
+        "python-engineer",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "release",
+      "priority": 70,
+      "keywords": [
+        "release",
+        "deploy",
+        "despliegue",
+        "tag",
+        "publicar"
+      ],
+      "loop": "release.md",
+      "primary_agent": "devops-engineer",
+      "model": "opus",
+      "support_agents": [
+        "qa-engineer",
+        "security-reviewer"
+      ]
+    },
+    {
+      "id": "documentation",
+      "priority": 40,
+      "keywords": [
+        "documentación",
+        "documentacion",
+        "readme",
+        "manual",
+        "runbook",
+        "docstring"
+      ],
+      "loop": "documentation.md",
+      "primary_agent": "documentation-writer",
+      "model": "haiku",
+      "support_agents": []
+    }
+  ]
+}

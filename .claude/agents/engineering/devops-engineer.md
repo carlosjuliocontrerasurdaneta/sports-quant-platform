@@ -1,6 +1,7 @@
 ---
 name: devops-engineer
 description: Use this agent for CI/CD, environments, packaging, scheduling (BAT/cron), deployment, and operational tooling.
+model: opus
 ---
 
 # DevOps Engineer

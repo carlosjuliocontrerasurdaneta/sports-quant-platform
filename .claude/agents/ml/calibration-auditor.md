@@ -1,6 +1,7 @@
 ---
 name: calibration-auditor
 description: Use this agent to audit probability calibration: Brier score, log loss, reliability tables, calibration curves, segment calibration, and probability bounds.
+model: opus
 ---
 
 # Calibration Auditor

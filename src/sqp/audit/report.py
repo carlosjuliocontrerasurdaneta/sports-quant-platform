@@ -10,6 +10,20 @@ DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
 
 
+def has_flag(flags: pd.Series, flag: str) -> pd.Series:
+    """Token-wise membership test over the `;`-separated ``flags`` column.
+
+    ``flags`` started as a single token, so the reports compared it with `==`.
+    Since `pick_mode: accuracy` (2026-07-28) daily.py concatenates markers
+    (``"shadow_mode;accuracy_mode"``), and the equality test silently stopped
+    matching: every production pick vanished from the ranking, the consolidated
+    report and the dashboard (audit 2026-07-29, B-01). Match tokens, not the
+    whole string, so any future marker composes without breaking visibility.
+    """
+    s = flags.fillna("").astype(str)
+    return s.str.split(";").apply(lambda toks: flag in [t.strip() for t in toks])
+
+
 def write_calibration_report(backtest_result: dict) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     outdir = ROOT / "data" / "processed"
@@ -49,7 +63,7 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     stake>0-only filter blanked the whole dashboard on the first shadow day)."""
     d = df.copy()
     flags = d["flags"].fillna("") if "flags" in d.columns else pd.Series("", index=d.index)
-    visible = d[(d["stake"] > 0) | (flags == "shadow_mode")]
+    visible = d[(d["stake"] > 0) | has_flag(flags, "shadow_mode")]
     return visible.sort_values("estimated_edge", ascending=False)
 
 
@@ -101,7 +115,7 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
         df["flags"] = df["flags"].fillna("") if "flags" in df.columns else ""
         # Visible = stake>0 or shadow (see rank_candidates): blocking flags zero
         # the stake AND hide the row; shadow zeroes the stake but stays visible.
-        visible_mask = (df["stake"] > 0) | (df["flags"] == "shadow_mode")
+        visible_mask = (df["stake"] > 0) | has_flag(df["flags"], "shadow_mode")
         summary = (df.assign(actionable=visible_mask)
                    .groupby("league")
                    .agg(candidatos=("selection", "size"),

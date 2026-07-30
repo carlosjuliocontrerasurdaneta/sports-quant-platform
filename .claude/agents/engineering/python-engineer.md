@@ -1,6 +1,7 @@
 ---
 name: python-engineer
 description: Use this agent for Python implementation quality: type hints, error handling, idiomatic code, small functions, and testability.
+model: opus
 ---
 
 # Python Engineer
