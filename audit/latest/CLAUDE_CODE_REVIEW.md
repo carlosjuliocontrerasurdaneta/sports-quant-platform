@@ -254,10 +254,13 @@ que es una decisión estadística del operador, no una corrección mecánica.
 
 ## 7. Otros hallazgos de configuración
 
-- **K-013:** `MODEL_ROUTER_INTEGRATION.json` en la **raíz del repositorio** contiene
-  `{"version":1,"changed_files":[33 rutas]}` y tiene **0 referencias** en todo el
-  repo. Su contenido es equivalente a `git status`. Es una nota de trabajo con
-  extensión `.json`. No lo borré (no lo creé yo); se señala.
+- **K-013 (resuelto 2026-07-30):** `MODEL_ROUTER_INTEGRATION.json` en la **raíz del repositorio** contenía
+  `{"version":1,"changed_files":[33 rutas]}` y tenía **0 referencias** en todo el
+  repo: era una nota de trabajo con extensión `.json`, equivalente a
+  `git diff --name-only` de aquella sesión. Se señaló en lugar de borrarlo por no
+  haberlo creado esta auditoría; **el operador autorizó su eliminación el
+  2026-07-30** y se borró tras verificar que ningún código, config ni script lo
+  consumía. Los 33 archivos que listaba quedan registrados en el commit 4fdf671.
 - **K-025:** `automation/backlog.md:7` está vacío (`No approved autonomous task`) y
   `decision-engine.md:43` hace que el canal autónomo se detenga siempre, mientras
   `Obsidian/Tareas.md` tiene 17 pendientes. No es un bug —el default-deny es correcto

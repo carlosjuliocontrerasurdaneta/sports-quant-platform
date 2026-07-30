@@ -85,9 +85,9 @@
     "INFORMATIVO": 4
   },
   "findings_by_status": {
-    "corregido": 24,
+    "corregido": 25,
     "parcial": 5,
-    "requiere_decision_humana": 23,
+    "requiere_decision_humana": 22,
     "pendiente": 29,
     "no_confirmado": 2
   },
@@ -156,7 +156,6 @@
     ".claude/automation/model-routing.json",
     ".claude/hooks/route-model.py",
     ".claude/loops/quant/",
-    "MODEL_ROUTER_INTEGRATION.json",
     "audit/",
     "scripts/validate_claude_model_routing.py",
     "tests/test_audit_2026_07_29.py",
@@ -186,5 +185,19 @@
     "data_files_modified": false
   },
   "result": "DONE",
-  "result_note": "DONE para el alcance de correccion: linea base medida, 24 hallazgos corregidos con prueba, validacion final en verde (466 pruebas, ruff, mypy, pip check, smoke demo, health check) y entregables escritos. 23 items requieren autorizacion humana y quedan en BACKLOG.md. Ninguna verificacion critica queda en rojo. La calidad de software no es evidencia de validez predictiva."
+  "result_note": "DONE para el alcance de correccion: linea base medida, 24 hallazgos corregidos con prueba, validacion final en verde (466 pruebas, ruff, mypy, pip check, smoke demo, health check) y entregables escritos. 23 items requieren autorizacion humana y quedan en BACKLOG.md. Ninguna verificacion critica queda en rojo. La calidad de software no es evidencia de validez predictiva.",
+  "post_audit_resolutions": [
+    {
+      "id": "K-013",
+      "date": "2026-07-30",
+      "action": "MODEL_ROUTER_INTEGRATION.json eliminado con autorizacion del operador; 0 consumidores verificados",
+      "authorized_by": "operador"
+    },
+    {
+      "id": "S-1",
+      "date": "2026-07-30",
+      "action": "Causa raiz del fallo del run 2026-07-29 identificada leyendo logs/run_diario.log: SSLError intermitente (handshake TLS cortado) contra api.the-odds-api.com y site.api.espn.com durante 2h22m. 3 ligas (wnba, seriea, bundesliga) agotaron reintentos en /odds -> failures=3 -> exit 1. Origen local, no caida de proveedor. Run del 2026-07-30: 0 errores SSL, exit 0. La ALERTA sigue pendiente.",
+      "authorized_by": "operador (deny de logs levantado temporalmente y restaurado)"
+    }
+  ]
 }

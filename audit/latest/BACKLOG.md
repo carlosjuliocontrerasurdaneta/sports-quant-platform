@@ -71,7 +71,7 @@ Esfuerzo: S (< 1 h) · M (1–4 h) · L (> 4 h).
 | — | Completar los 10 loops quant no diarios (05, 06, 07, 08, 09, 11, 12, 13 y el 00) con precondiciones, comandos concretos y artefactos, usando el 10 como plantilla y `STATES.md` para los estados. | M | No |
 | K-012 | Decidir un solo clasificador (`decision-engine.md` como tabla loop→tarea, y el JSON solo agente/modelo); anclar keywords a límites de palabra; corregir `full-audit → refactor.md`. | S | **Sí — decisión de diseño.** |
 | K-023 | Resolver `superpowers-main`: borrar los 172 archivos, o actualizar `.gitignore:27-29` y KI-015 explicando la re-vendorización. **No puedo confirmar** si fue intencional. | S | **Sí.** |
-| K-013 | Borrar `MODEL_ROUTER_INTEGRATION.json` de la raíz o moverlo a `automation/runtime/`. No lo creé yo. | S | **Sí.** |
+| ~~K-013~~ | ~~Borrar `MODEL_ROUTER_INTEGRATION.json` de la raíz.~~ **RESUELTO 2026-07-30:** el operador autorizó borrarlo; era un manifiesto de andamiaje sin consumidor. | — | Hecho |
 | K-026 | Borrar `.claude/settings.local.json.backup-audit-20260623` (36 días). Cerrar M-7 (permisos amplios de `settings.local.json`). | S | **Sí.** |
 | K-025 | Promover 1-2 ítems de `Tareas.md` a `backlog.md` con status `ready`, o documentar que el backlog autónomo es intencionalmente manual. | S | **Sí.** |
 | Q-05 | Revalidar OOS y activar `pitcher_bound` (>0), **o** corregir el docstring de `adapters.py` que afirma que el abridor es "the largest single factor" cuando es un no-op. Registrar cuál antes de juzgar el hit rate de MLB. | M | **Sí — parámetro de modelo.** |

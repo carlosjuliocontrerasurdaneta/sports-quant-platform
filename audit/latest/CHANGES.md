@@ -92,7 +92,7 @@ modelo, sin commitear). Se marcan con † los que esta auditoría además tocó.
   bankroll ni `shadow_mode` fue tocado.
 - `.claude/settings.json` deny de `.env.*` (S-14): relajar un control de secretos es
   la dirección equivocada; queda como decisión humana.
-- `MODEL_ROUTER_INTEGRATION.json`, `.claude/settings.local.json.backup-audit-20260623`,
+- `.claude/settings.local.json.backup-audit-20260623`,
   `.claude/skills/superpowers-main/`: no los creé yo; se señalan en `BACKLOG.md` en
   lugar de borrarlos.
 - Datos históricos: ningún archivo de `data/` fue modificado.
