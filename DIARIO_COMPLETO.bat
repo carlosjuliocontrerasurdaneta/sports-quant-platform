@@ -13,6 +13,9 @@ REM
 REM Usar ESTE bat en el programador de tareas en vez de los dos por separado.
 setlocal
 cd /d %~dp0
+REM Mismo interprete fijo que los BAT que encadena (auditoria 2026-07-24, M-5).
+if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 echo === SQP - DIARIO COMPLETO (%DATE% %TIME%) ===
 
@@ -23,6 +26,10 @@ if errorlevel 1 goto :error_settle
 echo [2/2] Ejecutando run diario multi-liga...
 call "%~dp0RUN_DIARIO_ALL.bat"
 if errorlevel 1 goto :error_run
+
+REM Run correcto: limpia el centinela para que el health check deje de
+REM reportar ERROR (auditoria 2026-07-29, S-1).
+"%SQP_PYTHON%" scripts\run_status.py --clear
 
 echo === DIARIO COMPLETO: OK ===
 
@@ -44,6 +51,7 @@ goto :eof
 
 :error_settle
 echo.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage settle --exit-code 1
 echo *** ERROR EN LA LIQUIDACION: se ABORTA el run diario para no perder picks. ***
 echo *** Revisa logs\settle_all.log, corrige y vuelve a ejecutar este bat.     ***
 endlocal
@@ -51,6 +59,7 @@ exit /b 1
 
 :error_run
 echo.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage run --exit-code 1
 echo *** ERROR EN EL RUN DIARIO (la liquidacion si termino). ***
 echo *** Revisa logs\run_diario.log.                          ***
 endlocal

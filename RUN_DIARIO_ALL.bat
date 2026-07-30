@@ -37,5 +37,6 @@ goto :eof
 :error
 echo.
 echo *** ERROR EN LA EJECUCION ***
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage run --exit-code 1
 endlocal
 exit /b 1

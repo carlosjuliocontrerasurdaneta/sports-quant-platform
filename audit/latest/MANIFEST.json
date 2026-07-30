@@ -19,8 +19,8 @@
   },
   "tests": {
     "initial": 439,
-    "final": 466,
-    "added": 27,
+    "final": 485,
+    "added": 46,
     "failing_initial": 0,
     "failing_final": 0
   },
@@ -85,9 +85,9 @@
     "INFORMATIVO": 4
   },
   "findings_by_status": {
-    "corregido": 25,
+    "corregido": 26,
     "parcial": 5,
-    "requiere_decision_humana": 22,
+    "requiere_decision_humana": 21,
     "pendiente": 29,
     "no_confirmado": 2
   },
@@ -198,6 +198,12 @@
       "date": "2026-07-30",
       "action": "Causa raiz del fallo del run 2026-07-29 identificada leyendo logs/run_diario.log: SSLError intermitente (handshake TLS cortado) contra api.the-odds-api.com y site.api.espn.com durante 2h22m. 3 ligas (wnba, seriea, bundesliga) agotaron reintentos en /odds -> failures=3 -> exit 1. Origen local, no caida de proveedor. Run del 2026-07-30: 0 errores SSL, exit 0. La ALERTA sigue pendiente.",
       "authorized_by": "operador (deny de logs levantado temporalmente y restaurado)"
+    },
+    {
+      "id": "S-1",
+      "date": "2026-07-30",
+      "action": "Alerta implementada: centinela logs/last_run_status.json escrito por los 3 BAT, elevado a ERROR por health_check (exit 1) y mostrado como banner en el dashboard. 19 pruebas TDD. Verificado end-to-end. Exit code sin cambios por decision del operador.",
+      "authorized_by": "operador"
     }
   ]
 }

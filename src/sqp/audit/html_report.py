@@ -34,6 +34,7 @@ from sqp.audit.patterns import (conclusions, load_pick_history,
 from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled, rank_candidates)
 from sqp.config import ROOT
+from sqp.monitoring.run_status import read_run_status
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -395,6 +396,29 @@ def open_in_browser(path: str | Path) -> bool:
         return False
 
 
+def _run_alert_banner(root: Path | None = None) -> str:
+    """Banner rojo cuando el ultimo run diario fallo; cadena vacia si no.
+
+    El dashboard se abre solo al terminar el run, asi que es donde el operador
+    mira de todos modos. Sin esto, un fallo del pipeline solo era visible
+    entrando al Programador de tareas (auditoria 2026-07-29, S-1).
+    """
+    st = read_run_status(root if root is not None else ROOT)
+    if not st or not st.get("failed"):
+        return ""
+    stage = html.escape(str(st.get("stage", "?")))
+    code = html.escape(str(st.get("exit_code", "?")))
+    when = html.escape(str(st.get("failed_at", "fecha desconocida")))
+    return (
+        '<div class="runalert">'
+        f"<strong>El ultimo run diario FALLO</strong> en la etapa "
+        f"<code>{stage}</code> (exit {code}) el {when}. "
+        "Los picks mostrados pueden estar incompletos o ser de un dia anterior. "
+        "Revisar <code>logs/run_diario.log</code> y re-ejecutar "
+        "<code>DIARIO_COMPLETO.bat</code>."
+        "</div>")
+
+
 def html_dashboard(predictions_dir: Path | None = None,
                    bets_dir: Path | None = None,
                    *, make_latest: bool = True,
@@ -420,6 +444,7 @@ def html_dashboard(predictions_dir: Path | None = None,
                           "today": today_local}, ensure_ascii=False)
 
     page = _TEMPLATE.format(
+        run_alert=_run_alert_banner(),
         day=html.escape(day),
         generated=html.escape(ts),
         audit=_audit_section(bets_dir),
@@ -491,6 +516,9 @@ _TEMPLATE = """<!DOCTYPE html>
   h3 {{ margin:18px 0 8px; font-size:14px; }}
   ul.reading {{ margin:6px 0 0; padding-left:18px; }}
   ul.reading li {{ margin:3px 0; }}
+.runalert {{ background:#7f1d1d; color:#fee2e2; border:1px solid #ef4444;
+  border-radius:6px; padding:10px 14px; margin:10px 0; font-size:14px; }}
+.runalert code {{ background:#450a0a; padding:1px 4px; border-radius:3px; }}
 </style>
 </head>
 <body>
@@ -498,6 +526,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <h1>Sports Quant Platform &mdash; Reporte diario {day}</h1>
   <div class="gen">Generado (UTC): {generated}</div>
 </header>
+{run_alert}
 <nav class="tabs">
   <div class="tab active" data-tab="picks">Picks del Dia</div>
   <div class="tab" data-tab="audit">Auditoria</div>

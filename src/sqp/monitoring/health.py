@@ -16,6 +16,7 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
+from sqp.monitoring.run_status import read_run_status
 from sqp.storage.served_store import ServedStore
 
 log = get_logger(__name__)
@@ -130,6 +131,17 @@ def generate_health_report(root: Path = ROOT) -> dict:
             warnings.append(f"{lg}: features stale ({features_age_days}d)")
         if not moneyline_exists:
             errors.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
+
+    # Fallo del ultimo run diario: es un ERROR porque significa que el pipeline
+    # de produccion no completo, y sin esto el fallo es invisible -- el del
+    # 2026-07-29 estuvo 24 h sin detectar (auditoria 2026-07-29, S-1).
+    run_status = read_run_status(root)
+    if run_status and run_status.get("failed"):
+        errors.append(
+            f"run diario FALLIDO en la etapa '{run_status.get('stage', '?')}' "
+            f"(exit {run_status.get('exit_code', '?')}, "
+            f"{run_status.get('failed_at', 'fecha desconocida')}); "
+            f"revisar logs/ y re-ejecutar DIARIO_COMPLETO.bat")
 
     served_expired = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):

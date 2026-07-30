@@ -32,5 +32,6 @@ goto :eof
 :error
 echo.
 echo *** ERROR EN LA LIQUIDACION ***
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage settle --exit-code 1
 endlocal
 exit /b 1
