@@ -60,3 +60,40 @@ def test_a_wider_sigma_moves_probabilities_toward_one_half():
     estrecha = normal_total_probs(171.0, 15.0, 178.0)["over"]
     ancha = normal_total_probs(171.0, 19.0, 178.0)["over"]
     assert estrecha < ancha < 0.5, "la mas ancha debe quedar mas cerca de 0.5"
+
+
+# --- margin_sigma: gobierna los spreads ---------------------------------------
+#
+# Medido con el camino REAL del modelo (elo.rating_diff -> elo_diff_to_margin +
+# ajuste por descanso), walk-forward sobre el historico completo. La NFL salio
+# exacta (13.5 = 13.5), lo que confirma el metodo; las tres ligas universitarias
+# heredaban los sigmas de las profesionales y estan muy por debajo: el deporte
+# universitario tiene mucha mas varianza (palizas, disparidad de talento, sin
+# draft igualador).
+MARGIN_RESIDUAL = {"nba": 13.1, "wnba": 13.6, "ncaab": 15.6,
+                   "wncaab": 18.2, "nfl": 13.5, "ncaaf": 20.2}
+_FAMILIA = {"nba": "basketball", "wnba": "basketball", "ncaab": "basketball",
+            "wncaab": "basketball", "nfl": "football", "ncaaf": "football"}
+
+
+@pytest.mark.parametrize("liga,residual", sorted(MARGIN_RESIDUAL.items()))
+def test_margin_sigma_matches_the_measured_residual(liga, residual):
+    from sqp.config import CONFIG_DIR, load_yaml
+    lp = (load_yaml(CONFIG_DIR / "leagues" / "ratings.yaml").get("leagues") or {}).get(liga)
+    sigma = get_adapter(liga, _FAMILIA[liga], lp).params["margin_sigma"]
+    assert abs(sigma - residual) <= TOLERANCIA, (
+        f"{liga}: margin_sigma={sigma} se aparta del residual medido {residual}. "
+        "Volver a medirlo walk-forward antes de cambiarlo.")
+
+
+def test_college_leagues_are_wider_than_their_pro_counterparts():
+    """Guard conceptual: el deporte universitario tiene mas varianza que el
+    profesional. Si alguien vuelve a igualarlos, este test lo detiene."""
+    from sqp.config import CONFIG_DIR, load_yaml
+    rt = load_yaml(CONFIG_DIR / "leagues" / "ratings.yaml").get("leagues") or {}
+    def g(lg):
+        return get_adapter(lg, _FAMILIA[lg], rt.get(lg)).params["margin_sigma"]
+
+    assert g("ncaab") > g("nba"), "NCAAB debe ser mas disperso que la NBA"
+    assert g("wncaab") > g("wnba"), "WNCAAB debe ser mas disperso que la WNBA"
+    assert g("ncaaf") > g("nfl"), "NCAAF debe ser mas disperso que la NFL"
