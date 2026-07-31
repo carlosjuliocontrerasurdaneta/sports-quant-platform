@@ -31,15 +31,25 @@ def test_pick_mode_defaults_and_env(monkeypatch):
     assert Settings().accuracy_threshold == pytest.approx(0.75)
 
 
-def test_production_yaml_activates_accuracy_mode(monkeypatch):
-    # configs/default.yaml activa el modo precision (objetivo 2026-07-27);
-    # el env var (cuando esta) gana sobre el yaml, como el resto de flags.
+def test_production_yaml_uses_edge_mode(monkeypatch):
+    """configs/default.yaml corre en modo EDGE.
+
+    Este guard apuntaba a `accuracy` desde el 2026-07-28. Se invirtio el
+    2026-07-31 por decision explicita del operador: el modo accuracy elegia
+    favoritos extremos (cuotas reales 1.07-1.16) cuyo punto de equilibrio
+    (1/precio = 93.5% a cuota 1.07) esta por encima de cualquier hit rate
+    alcanzable, asi que subia el porcentaje de aciertos perdiendo dinero por
+    construccion, y ademas recortaba el sistema a 1 de sus 3 mercados.
+
+    El modo accuracy sigue implementado y cubierto por el resto de este archivo;
+    reactivarlo exige evidencia fuera de muestra de que supera su propio punto de
+    equilibrio, no solo un hit rate alto (ver `breakeven_probability`).
+    """
     _clean_pick_env(monkeypatch)
     s = Settings.load()
-    assert s.pick_mode == "accuracy"
-    assert s.accuracy_threshold == pytest.approx(0.70)
-    monkeypatch.setenv("PICK_MODE", "edge")
-    assert Settings.load().pick_mode == "edge"
+    assert s.pick_mode == "edge"
+    monkeypatch.setenv("PICK_MODE", "accuracy")
+    assert Settings.load().pick_mode == "accuracy"  # el env var sigue mandando
 
 
 def test_validate_rejects_bad_pick_mode_and_threshold():

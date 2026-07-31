@@ -43,20 +43,33 @@ odds:
 simulation:
   n_sims: 20000
   seed: 42
-# Modo de seleccion de picks (decision 2026-07-27): el objetivo del proyecto
-# es MAXIMIZAR EL PORCENTAJE DE ACIERTOS, no ROI/CLV. "accuracy" selecciona
-# por probabilidad de decision calibrada (blend modelo + no-vig del consenso)
-# >= accuracy_threshold, SOLO moneyline (spreads/totals tienen techo
-# estructural ~50-55% de acierto por diseno de la linea), con stake plano
-# (bankroll * max_stake_pct) en lugar de Kelly. La cadena de stake 0
-# (paused / shadow / clv_gate) sigue aplicando; cada pick lleva el flag
-# "accuracy_mode" y el KPI es hit rate por liga y banda de probabilidad
-# (sqp.audit.segments, banda_prob). La revocacion por edge del segundo pase
-# salta estos picks (el guard de cambio de abridor si aplica). "edge"
-# restaura la seleccion clasica por valor esperado. Env vars PICK_MODE /
-# ACCURACY_THRESHOLD (cuando estan) ganan sobre yaml.
+# Modo de seleccion de picks. ACTIVO: "edge" -- seleccion clasica por valor
+# esperado (Kelly fraccional sobre min_edge, los tres mercados).
+#
+# REVERTIDO a "edge" el 2026-07-31 por decision explicita del operador. La
+# historia corta, porque explica por que no conviene volver a cambiarlo sin
+# evidencia:
+#
+#   2026-07-27  El objetivo se cambio a "maximizar % de aciertos" porque los
+#               picks por valor acertaban poco.
+#   2026-07-28  Se activo "accuracy": probabilidad >= 0.70, SOLO moneyline,
+#               stake plano.
+#   2026-07-31  Revertido. El modo accuracy elegia favoritos extremos (cuotas
+#               reales observadas en produccion: 1.07, 1.10, 1.16). A cuota 1.07
+#               el punto de equilibrio es 1/1.07 = 93.5% de aciertos: el modo
+#               subia el hit rate y perdia dinero POR CONSTRUCCION. Ademas
+#               recortaba el sistema a 1 de sus 3 mercados.
+#
+# La leccion: el hit rate no se juzga contra un umbral fijo, sino contra el
+# punto de equilibrio que fija la cuota de cada pick (1/price_decimal). Un 45%
+# a cuota 2.50 gana dinero; un 88% a cuota 1.07 lo pierde. Los reportes ahora
+# muestran esa comparacion ("necesitabas X%, acertaste Y%").
+#
+# "accuracy" sigue implementado y probado; reactivarlo exige evidencia fuera de
+# muestra de que su seleccion supera su propio punto de equilibrio.
+# Env vars PICK_MODE / ACCURACY_THRESHOLD (cuando estan) ganan sobre yaml.
 picks:
-  mode: accuracy
+  mode: edge
   accuracy_threshold: 0.70
 # Per-(league, market) probability calibration applied to live estimates before
 # edge/stake. OFF by default: enable only after train_calibration.py shows the

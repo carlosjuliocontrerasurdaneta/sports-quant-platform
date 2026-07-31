@@ -178,19 +178,57 @@ def graded_in_window(settled: pd.DataFrame, *, window_days: int,
     return df[fecha >= cutoff]
 
 
+def breakeven_probability(price_decimal: float | None) -> float | None:
+    """Fraccion de aciertos necesaria para no perder dinero a esa cuota: 1/price.
+
+    Es la vara con la que hay que medir un hit rate. A 2.50 basta 40%; a 1.07
+    hacen falta 93.5%. Juzgar los picks contra un umbral fijo en vez de contra su
+    propia cuota fue lo que llevo al modo accuracy a subir el porcentaje de
+    aciertos perdiendo dinero (decision 2026-07-31).
+
+    Devuelve None si la cuota no paga nada (<= 1.0): no hay equilibrio posible.
+    """
+    if price_decimal is None:
+        return None
+    try:
+        p = float(price_decimal)
+    except (TypeError, ValueError):
+        return None
+    if not p > 1.0 or p != p:  # <=1.0 o NaN
+        return None
+    return 1.0 / p
+
+
 def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     graded = df[df["result"].isin(["win", "loss"])].copy()
     if graded.empty:
         return pd.DataFrame()
+    # Punto de equilibrio por pick, promediado por segmento: cuanto habria que
+    # acertar para quedar en tablas con las cuotas realmente tomadas.
+    if "price_decimal" in graded.columns:
+        graded["_breakeven"] = graded["price_decimal"].map(breakeven_probability)
+    else:
+        graded["_breakeven"] = float("nan")  # historico antiguo sin la columna
     g = graded.groupby(by)
     out = g.agg(n=("result", "size"),
                 wins=("result", lambda r: (r == "win").sum()),
                 staked=("stake", "sum"),
                 pnl=("pnl", "sum"),
                 mean_est_edge=("estimated_edge", "mean"),
-                mean_est_prob=("estimated_probability", "mean")).reset_index()
+                mean_est_prob=("estimated_probability", "mean"),
+                breakeven_hit_rate=("_breakeven", "mean")).reset_index()
     out["hit_rate"] = (out["wins"] / out["n"]).round(4)
     out["realized_roi"] = (out["pnl"] / out["staked"]).round(4)
+    # La lectura de una sola cifra: positivo = se acerto MAS de lo que las cuotas
+    # exigian; negativo = menos, por alto que parezca el hit rate absoluto.
+    #
+    # LIMITACION: `mean(1/precio)` es el equilibrio exacto solo si los aciertos se
+    # reparten uniformemente entre cuotas. Si se concentran en las cuotas largas,
+    # el gap puede salir negativo con ROI positivo -- verificado en datos reales
+    # (totals: gap -2.0% con ROI +4.7%). El gap es la lectura interpretable; el
+    # ROI realizado es la cifra autoritativa.
+    out["hit_rate_vs_breakeven"] = (out["hit_rate"] - out["breakeven_hit_rate"]).round(4)
+    out["breakeven_hit_rate"] = out["breakeven_hit_rate"].round(4)
     out["mean_est_edge"] = out["mean_est_edge"].round(4)
     out["mean_est_prob"] = out["mean_est_prob"].round(4)
     return out
