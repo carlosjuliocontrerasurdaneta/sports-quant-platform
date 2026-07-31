@@ -18,8 +18,13 @@ from .adapters import (BasketballAdapter, FootballAdapter, BaseballAdapter,
 from .base import SportAdapter
 
 FAMILY_PARAMS: dict[str, dict] = {
+    # total_sigma = desviacion RESIDUAL medida walk-forward sobre el historico
+    # (total real - total esperado por el modelo), no la dispersion
+    # incondicional: el modelo ya varia mu por partido via scoring.expected_total.
+    # Subida 19.0 -> 22.0 el 2026-07-31; el valor previo hacia el modelo
+    # sobreconfiado en totals (ver tests/test_total_sigma_basketball.py).
     "basketball": {"points_per_elo": 0.028, "margin_sigma": 12.0,
-                   "avg_total": 224.0, "total_sigma": 19.0,
+                   "avg_total": 224.0, "total_sigma": 22.0,
                    "elo_k": 20, "elo_home_adv": 70, "elo_mov": True},
     "football":   {"points_per_elo": 0.025, "margin_sigma": 13.5,
                    "avg_total": 44.0, "total_sigma": 13.5,
@@ -44,10 +49,12 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
     # media vida de ~media temporada para seguir la era actual (el store 2023->
     # 2026 sin decaimiento proyectaba ~165 contra lineas 2026 de ~175 y volcaba
     # todos los totals al Under). Ver test_team_scoring y team_scoring.py.
-    "wnba":   {"avg_total": 171.0, "total_sigma": 15.0, "points_per_elo": 0.024,
+    # 15.0 -> 19.0 (residual medido 18.6). Era la causa del peor segmento del
+    # marcador: wnba/totals con Brier 0.336 frente a 0.250 del mercado.
+    "wnba":   {"avg_total": 171.0, "total_sigma": 19.0, "points_per_elo": 0.024,
                "scoring_half_life_days": 180.0},
-    "ncaab":  {"avg_total": 145.0, "total_sigma": 15.0, "margin_sigma": 10.5},
-    "wncaab": {"avg_total": 132.0, "total_sigma": 14.0, "margin_sigma": 10.5},
+    "ncaab":  {"avg_total": 145.0, "total_sigma": 18.0, "margin_sigma": 10.5},  # residual 17.7
+    "wncaab": {"avg_total": 132.0, "total_sigma": 17.0, "margin_sigma": 10.5},  # residual 17.0
     "ncaaf":  {"avg_total": 55.0, "total_sigma": 15.5, "margin_sigma": 15.5},
 }
 
