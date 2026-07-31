@@ -97,6 +97,29 @@ def test_gap_and_roi_can_diverge_with_heterogeneous_odds():
     assert roi > 0, "y aun asi gano dinero, por acertar en las cuotas largas"
 
 
+def test_segment_audit_separates_graded_from_staked_sample():
+    """`hit_rate` se mide sobre TODAS las liquidadas; `realized_roi` solo sobre
+    las que llevaron stake. Bajo shadow mode son 658 vs 150, y sus hit rates
+    difieren hasta 19 puntos: sin `n_staked` a la vista, el ROI se lee como si
+    aplicara a toda la muestra (auditoria 2026-07-31)."""
+    df = _settled([("win", 2.0), ("loss", 2.0), ("win", 2.0), ("loss", 2.0)])
+    df.loc[2:, "stake"] = 0.0          # las 2 ultimas en shadow
+    df.loc[2:, "pnl"] = 0.0
+    out = _segment_audit(df, ["league"])
+    assert out["n"].iloc[0] == 4          # liquidadas
+    assert out["n_staked"].iloc[0] == 2   # con dinero detras
+
+
+def test_n_staked_is_zero_under_full_shadow_mode():
+    df = _settled([("win", 2.0), ("loss", 2.0)])
+    df["stake"] = 0.0
+    df["pnl"] = 0.0
+    out = _segment_audit(df, ["league"])
+    assert out["n"].iloc[0] == 2
+    assert out["n_staked"].iloc[0] == 0
+    assert pd.isna(out["realized_roi"].iloc[0]), "ROI sin stake debe ser n/a, no 0.0"
+
+
 def test_segment_audit_without_price_column_still_works():
     """Historico antiguo sin price_decimal: no debe reventar el reporte."""
     df = _settled([("win", 2.0), ("loss", 2.0)]).drop(columns=["price_decimal"])

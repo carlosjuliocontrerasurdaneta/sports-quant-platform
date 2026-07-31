@@ -209,8 +209,15 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
         graded["_breakeven"] = graded["price_decimal"].map(breakeven_probability)
     else:
         graded["_breakeven"] = float("nan")  # historico antiguo sin la columna
+    # `hit_rate` se mide sobre TODAS las liquidadas; `realized_roi` solo sobre las
+    # que llevaron stake. Bajo shadow mode esas dos muestras divergen fuertemente
+    # (658 vs 150 el 2026-07-31) y sus hit rates difieren hasta 19 puntos, asi que
+    # `n_staked` se expone junto a `n`: sin el, el ROI se lee como si aplicara a
+    # toda la muestra y las contradicciones gap/ROI parecen inexplicables.
+    graded["_staked"] = (graded["stake"] > 0).astype(int)
     g = graded.groupby(by)
     out = g.agg(n=("result", "size"),
+                n_staked=("_staked", "sum"),
                 wins=("result", lambda r: (r == "win").sum()),
                 staked=("stake", "sum"),
                 pnl=("pnl", "sum"),
@@ -218,7 +225,9 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
                 mean_est_prob=("estimated_probability", "mean"),
                 breakeven_hit_rate=("_breakeven", "mean")).reset_index()
     out["hit_rate"] = (out["wins"] / out["n"]).round(4)
-    out["realized_roi"] = (out["pnl"] / out["staked"]).round(4)
+    # Sin stake no hay ROI: 0.0 se leia como "equilibrio" cuando significa "no se
+    # arriesgo nada" (auditoria 2026-07-29, B-10).
+    out["realized_roi"] = (out["pnl"] / out["staked"].where(out["staked"] > 0)).round(4)
     # La lectura de una sola cifra: positivo = se acerto MAS de lo que las cuotas
     # exigian; negativo = menos, por alto que parezca el hit rate absoluto.
     #
