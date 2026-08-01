@@ -32,7 +32,13 @@ FAMILY_PARAMS: dict[str, dict] = {
     "football":   {"points_per_elo": 0.025, "margin_sigma": 13.5,
                    "avg_total": 44.0, "total_sigma": 13.5,
                    "elo_k": 24, "elo_home_adv": 55, "elo_mov": True},
+    # dispersion_k: el beisbol anota a rachas y Var(y|lambda)/lambda = 2.21
+    # (medido walk-forward sobre 14.223 equipos-partido), cuando Poisson exige 1.0.
+    # k = mu^2/(Var-mu) = 3.8. Sin esto el modelo subestimaba las colas y se
+    # volvia sobreconfiado en totals y runline (auditoria 2026-07-31).
+    # Hockey mide 1.01 -> se queda en Poisson puro, sin k.
     "baseball":   {"avg_total": 8.7, "tilt_scale": 0.8, "max_score": 25,
+                   "dispersion_k": 3.8,
                    "home_scoring_bonus": 0.10, "elo_k": 6, "elo_home_adv": 25},
     "hockey":     {"avg_total": 6.1, "tilt_scale": 0.9, "max_score": 15,
                    "home_scoring_bonus": 0.10, "elo_k": 10, "elo_home_adv": 33},

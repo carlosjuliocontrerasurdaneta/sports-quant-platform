@@ -6,7 +6,7 @@
 Every function returns *estimated probabilities*.
 """
 from __future__ import annotations
-from scipy.stats import norm, poisson
+from scipy.stats import nbinom, norm, poisson
 
 
 def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | None):
@@ -58,9 +58,30 @@ def _dixon_coles_tau(i: int, j: int, lam_home: float, lam_away: float, rho: floa
     return 1.0
 
 
+def score_pmf(lam: float, max_goals: int = 15, k: float | None = None) -> list[float]:
+    """Distribucion del marcador de un equipo: Poisson, o binomial negativa si `k`.
+
+    Poisson exige Var(y|lambda) = lambda. Medido walk-forward sobre el historico,
+    eso se cumple en hockey (dispersion 1.01 sobre 52.540 equipos-partido) pero NO
+    en beisbol (2.21 sobre 14.223): el beisbol anota a rachas y su varianza dobla
+    la que Poisson admite, asi que el modelo subestimaba las colas y se volvia
+    sobreconfiado en totals y runline (auditoria 2026-07-31).
+
+    La binomial negativa anade dispersion manteniendo la media:
+        Var = mu + mu^2/k        (k -> infinito recupera Poisson exacto)
+    Se parametriza con n=k, p=k/(k+mu), que es la forma de scipy.
+
+    `k=None` devuelve Poisson puro: hockey y futbol quedan byte-identicos.
+    """
+    if k is None or k <= 0:
+        return [poisson.pmf(i, lam) for i in range(max_goals + 1)]
+    return [nbinom.pmf(i, k, k / (k + lam)) for i in range(max_goals + 1)]
+
+
 def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | None,
                         total_line: float | None, three_way: bool = False,
-                        max_goals: int = 15, dc_rho: float = 0.0):
+                        max_goals: int = 15, dc_rho: float = 0.0,
+                        dispersion_k: float | None = None):
     """Exact probabilities from independent Poisson scoring (hockey/soccer base).
 
     Returns home/away win (+draw if three_way), spread cover and total O/U.
@@ -68,8 +89,8 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
     unless the adapter overrides with an OT model. dc_rho != 0 applies the
     Dixon-Coles low-score adjustment (the grid is renormalized afterwards).
     """
-    p_home = [poisson.pmf(i, lam_home) for i in range(max_goals + 1)]
-    p_away = [poisson.pmf(j, lam_away) for j in range(max_goals + 1)]
+    p_home = score_pmf(lam_home, max_goals, dispersion_k)
+    p_away = score_pmf(lam_away, max_goals, dispersion_k)
     win = draw = loss = 0.0
     cover = push = 0.0
     over = total_push = 0.0
