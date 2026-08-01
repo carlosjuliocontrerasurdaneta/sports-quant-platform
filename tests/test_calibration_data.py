@@ -99,6 +99,75 @@ def test_empty_or_missing_dir_is_empty_frame(tmp_path):
     assert list(out.columns) == TRAINING_COLS
 
 
+def test_non_iso_game_date_falls_back_to_generated_at(tmp_path):
+    # game_date presente pero NO-ISO (dd/mm/yyyy mide 10 chars igual que ISO):
+    # una fecha asi ordenaria lexicograficamente distinto que las ISO y rompe la
+    # guarda anti-leakage del split temporal -> debe caer a generated_at.
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "model_probability": 0.55, "estimated_probability": 0.55, "result": "win",
+         "game_date": "20/06/2026", "generated_at": "2026-06-22T09:30:00Z"},
+        {"market": "h2h", "model_probability": 0.60, "estimated_probability": 0.60, "result": "loss",
+         "game_date": "2026-13-45", "generated_at": "2026-06-23T09:30:00Z"},  # ISO-shaped, fecha imposible
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert list(out["date"]) == ["2026-06-22", "2026-06-23"]
+
+
+def test_row_with_no_iso_date_anywhere_is_dropped(tmp_path):
+    # Ambas fechas presentes y >=10 chars pero ninguna ISO: la fila cae (una
+    # fecha basura ordenaria antes/despues que las reales arbitrariamente).
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "model_probability": 0.55, "estimated_probability": 0.55, "result": "win",
+         "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
+        {"market": "h2h", "model_probability": 0.61, "estimated_probability": 0.61, "result": "loss",
+         "game_date": "junio 21, 2026", "generated_at": "ayer por la tarde"},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert len(out) == 1
+    assert out.loc[0, "date"] == "2026-06-20"
+
+
+def test_market_with_exactly_min_n_trains_and_push_rows_do_not_count(tmp_path, monkeypatch):
+    # Frontera exacta del gate de muestra: n graded == min_n entrena; las filas
+    # push/void NO cuentan para min_n (39 graded + 3 push = 42 filas no entrena).
+    import numpy as np
+    from sqp.calibration import calibrator as cal
+
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    rng = np.random.default_rng(2)
+
+    def rows(market, n_graded, n_push=0):
+        graded = [{"market": market, "model_probability": round(0.35 + 0.3 * rng.random(), 3),
+                   "estimated_probability": 0.55, "result": "win" if rng.random() < 0.5 else "loss",
+                   "game_date": f"2026-05-{1 + i % 28:02d}", "generated_at": ""}
+                  for i in range(n_graded)]
+        push = [{"market": market, "model_probability": 0.55, "estimated_probability": 0.55,
+                 "result": "push", "game_date": "2026-05-15", "generated_at": ""}
+                for _ in range(n_push)]
+        return graded + push
+
+    _write_settled(tmp_path, "mlb", rows("h2h", 40) + rows("spreads", 39, n_push=3))
+    hist = load_settled_training_history(tmp_path)
+    results = cal.train_market_calibrators(hist, min_n=40, prob_col="model_probability")
+    by_market = {r["market"]: r for r in results}
+    assert by_market["h2h"]["trained"] is True and by_market["h2h"]["n"] == 40
+    assert by_market["spreads"]["trained"] is False and by_market["spreads"]["n"] == 39
+
+
+def test_projection_ignores_extra_columns(tmp_path):
+    # Un settled con columnas extra (stake, odds, lo que sea) proyecta limpio:
+    # solo TRAINING_COLS en el orden canonico, valores intactos.
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "model_probability": 0.62, "estimated_probability": 0.58, "result": "win",
+         "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z",
+         "stake": 12.5, "odds": 1.91, "clv": 0.02, "columna_inesperada": "x"},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert list(out.columns) == TRAINING_COLS
+    assert len(out) == 1
+    assert out.loc[0, "model_probability"] == pytest.approx(0.62)
+
+
 def test_overconfident_settled_feeds_trainable_history(tmp_path, monkeypatch):
     # An overconfident MLB h2h market (est ~0.70, wins ~40%) projected from
     # settled must feed train_market_calibrators and produce a STAGED candidate,

@@ -32,6 +32,14 @@ TRAINING_COLS = ["league", "market", "event_id", "date",
 _KEY_COL = "_dedup_key"
 
 
+def _iso_day(s: pd.Series) -> pd.Series:
+    """First 10 chars of each value when they form a valid ISO day
+    (YYYY-MM-DD, real calendar date), else NA."""
+    day = s.str[:10]
+    ok = pd.to_datetime(day, format="%Y-%m-%d", errors="coerce").notna()
+    return day.where(ok, other=pd.NA)
+
+
 def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFrame:
     """Project graded rows (settled bets or served stream) onto TRAINING_COLS.
 
@@ -47,8 +55,9 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     ``generated_at``) truncated to YYYY-MM-DD, so the temporal split in
     ``train_calibration`` orders by when the game happened -- never by row order,
     which could otherwise place a validation game before its training games and
-    leak. Rows with no usable date are dropped (an empty date would sort before
-    all real ISO dates, undermining the leakage guard), as are rows without a
+    leak. Rows with no usable date -- empty OR not a valid ISO day in either
+    field -- are dropped (a non-ISO date would sort apart from the real ISO
+    dates, undermining the leakage guard), as are rows without a
     ``model_probability`` (nothing to calibrate); push/void rows are kept and
     filtered downstream by ``train_market_calibrators``.
 
@@ -66,14 +75,18 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
           else pd.Series("", index=frame.index))
     gen = (frame["generated_at"].astype(str) if "generated_at" in frame
            else pd.Series("", index=frame.index))
-    out["date"] = gd.where(gd.str.len() >= 10, gen).str[:10]
+    # A length check is not enough: a non-ISO date ("20/06/2026") is also 10
+    # chars but sorts lexicographically apart from ISO dates, silently breaking
+    # the temporal ordering the leakage guard depends on -- only a real
+    # YYYY-MM-DD day may become `date`.
+    gd_day = _iso_day(gd)
+    out["date"] = gd_day.where(gd_day.notna(), _iso_day(gen))
     if "model_probability" in frame:
         out["model_probability"] = pd.to_numeric(
             frame["model_probability"], errors="coerce")
     else:
         out["model_probability"] = pd.Series(float("nan"), index=frame.index)
     out["result"] = frame["result"].astype(str) if "result" in frame else ""
-    out["date"] = out["date"].where(out["date"].str.len() >= 10, other=pd.NA)
     if with_key:
         empty = pd.Series("", index=frame.index)
         eid = out["event_id"]
