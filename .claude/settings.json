@@ -54,7 +54,6 @@
       "Edit(./logs/**)",
       "Write(./exports/**)",
       "Edit(./exports/**)",
-      "Bash(git push:*)",
       "Bash(git reset --hard:*)"
     ]
   },
