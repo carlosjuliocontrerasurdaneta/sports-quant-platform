@@ -202,7 +202,13 @@ class SoccerAdapter(PoissonAdapter):
     three_way = True
 
 class TennisAdapter(SportAdapter):
-    """Tennis (ATP/WTA main tour). Player-vs-player Elo, surface-aware.
+    """Tennis (ATP/WTA main tour). Elo por jugador, de tour completo.
+
+    NO modela la superficie. Se afirmaba "surface-aware" en este docstring y no
+    existe ninguna linea de codigo que la maneje (auditoria 2026-07-31); la
+    superficie es probablemente el factor mas determinante del tenis, asi que
+    esa ausencia acota lo que el modelo puede explicar: log loss 0.656 frente a
+    0.693 de una moneda.
 
     Markets: match winner now; game handicap / total games require a
     game-level model (phase 3 extension). The Odds API tennis keys carry no

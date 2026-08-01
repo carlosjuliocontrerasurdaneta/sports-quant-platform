@@ -45,7 +45,11 @@ FAMILY_PARAMS: dict[str, dict] = {
     "soccer":     {"avg_total": 2.7, "tilt_scale": 1.0, "max_score": 10,
                    "home_scoring_bonus": 0.15, "elo_k": 18, "elo_home_adv": 48,
                    "dc_rho": 0.0},  # Dixon-Coles: tune per league (scripts/tune_ratings.py)
-    "tennis":     {"elo_k": 24, "elo_home_adv": 0},
+        # elo_k medido walk-forward sobre 16.663 partidos (ATP+WTA) con la
+    # orientacion aleatorizada (el historico guarda home = ganador, asi que
+    # evaluarlo tal cual no mide nada). Curva en U con minimo claro en 40:
+    # log loss 0.6563 vs 0.6597 con 24 (moneda = 0.6931). Auditoria 2026-07-31.
+"tennis":     {"elo_k": 40, "elo_home_adv": 0},
 }
 
 LEAGUE_OVERRIDES: dict[str, dict] = {
