@@ -13,9 +13,10 @@ CLV. Este módulo la hace repetible y le fija criterios exactos:
 
 El CLV de cada hipotético usa el precio de su PRIMER aviso (cuando el sistema
 habría apostado); el de un pick de las 11:00 usa su precio de entrada. Filas
-sin cierre fresco emparejable se excluyen (no cuentan como CLV 0). Solo h2h
-(el observatorio v1 solo escanea h2h). Probabilidades estimadas, nunca
-certezas; un PASS habilita CONSTRUIR la fase, no apostar dinero real.
+sin cierre fresco emparejable se excluyen (no cuentan como CLV 0). Mercados:
+h2h desde el v1 del observatorio; spreads/totals desde el v2 (2026-08-02),
+emparejados por línea EXACTA. Probabilidades estimadas, nunca certezas; un
+PASS habilita CONSTRUIR la fase, no apostar dinero real.
 """
 from __future__ import annotations
 
@@ -27,9 +28,17 @@ import pandas as pd
 # clv_gate_min_n) y los umbrales de STATES.md: no decidir con menos.
 GATE_MIN_N = 30
 
-_KEY = ["league", "event_id", "market", "selection"]
+_KEY = ["league", "event_id", "market", "selection", "line"]
 
-CloseLookup = Callable[[str, str, str, str], float | None]
+# (league, event_id, market, selection, line) -> precio de cierre o None.
+CloseLookup = Callable[[str, str, str, str, "float | None"], "float | None"]
+
+
+def _norm_line(market: str, line) -> float | None:
+    if market == "h2h":
+        return None
+    pt = pd.to_numeric(pd.Series([line]), errors="coerce").iloc[0]
+    return None if pd.isna(pt) else float(pt)
 
 
 def first_detections(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -43,6 +52,9 @@ def first_detections(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         empty = df.iloc[0:0]
         return empty, empty
     d = df.copy()
+    if "line" not in d.columns:  # log anterior al v2 del observatorio
+        d["line"] = float("nan")
+    d["line"] = [_norm_line(str(m), ln) for m, ln in zip(d["market"], d["line"])]
     d["_ts"] = pd.to_datetime(d["timestamp"], utc=True, errors="coerce")
     d["_k"] = list(map(tuple, d[_KEY].astype(str).values))
     cand_keys = set(d.loc[d["is_candidate"].astype(bool), "_k"])
@@ -57,8 +69,8 @@ def _clv_frame(rows: pd.DataFrame, price_col: str,
                close_for: CloseLookup) -> pd.DataFrame:
     out = []
     for r in rows.itertuples():
-        close = close_for(str(r.league), str(r.event_id),
-                          str(r.market), str(r.selection))
+        close = close_for(str(r.league), str(r.event_id), str(r.market),
+                          str(r.selection), _norm_line(str(r.market), r.line))
         if close is None or close <= 1.0:
             continue
         entry = pd.to_numeric(pd.Series([getattr(r, price_col)]),

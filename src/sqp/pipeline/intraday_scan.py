@@ -16,7 +16,10 @@ el mercado moviendose por informacion que el modelo no tiene? La respuesta
 decide la #4 ofensiva con datos, no con especulacion.
 
 Reglas:
-- Solo h2h en v1 (sin linea movil; unico mercado con calibrador live).
+- v2 (2026-08-02): h2h + spreads + totals. En mercados con linea el re-precio
+  exige la MISMA linea en el snapshot fresco (match exacto de point): si la
+  linea se movio, la probabilidad servida ya no aplica y la fila se omite.
+  (v1 era solo h2h; la ampliacion acelera la muestra del gate de la #4.)
 - NUNCA crea candidates, no toca stakes ni archivos del pipeline: solo log.
 - Mismo criterio de frescura que la revalidacion (sin snapshot fresco, nada).
 - La probabilidad NO se re-estima: se aisla la variable timing (mismo modelo,
@@ -39,9 +42,23 @@ log = get_logger("sqp.intraday_scan")
 
 INTRADAY_LOG_FILENAME = "intraday_edge_log.csv"
 
+SCAN_MARKETS = ("h2h", "spreads", "totals")
 
-def _candidate_keys(predictions_dir: Path, league: str) -> set[tuple[str, str, str]]:
-    """(event_id, market, selection) de los picks vigentes de la liga."""
+
+def _norm_point(market: str, line) -> float | None:
+    """Linea normalizada para claves y re-precio: None en h2h (sin linea) y
+    ante valores no numericos; float en spreads/totals."""
+    if market == "h2h":
+        return None
+    pt = pd.to_numeric(pd.Series([line]), errors="coerce").iloc[0]
+    return None if pd.isna(pt) else float(pt)
+
+
+def _candidate_keys(predictions_dir: Path,
+                    league: str) -> set[tuple[str, str, str, float | None]]:
+    """(event_id, market, selection, linea normalizada) de los picks vigentes.
+    La linea forma parte de la clave: el Over 160.5 pick de las 11:00 no
+    convierte en candidato al Over 158.5 servido."""
     cf = Path(predictions_dir) / f"candidates_{league}.csv"
     if not cf.exists():
         return set()
@@ -51,7 +68,8 @@ def _candidate_keys(predictions_dir: Path, league: str) -> set[tuple[str, str, s
         return set()
     if df.empty or not {"event_id", "market", "selection"} <= set(df.columns):
         return set()
-    return {(str(r.event_id), str(r.market), str(r.selection))
+    return {(str(r.event_id), str(r.market), str(r.selection),
+             _norm_point(str(r.market), getattr(r, "line", None)))
             for r in df.itertuples()}
 
 
@@ -78,7 +96,7 @@ def log_intraday_edges(predictions_dir: Path, root: Path, *,
         if served.empty or not need <= set(served.columns):
             continue
         mask = ((served["generated_at"].astype(str).str[:10] == today)
-                & (served["market"].astype(str) == "h2h"))
+                & (served["market"].astype(str).isin(SCAN_MARKETS)))
         if not mask.any():
             continue
         odds = _league_odds(root, league)
@@ -99,7 +117,11 @@ def log_intraday_edges(predictions_dir: Path, root: Path, *,
             snap = snap_cache[eid]
             if snap.empty:
                 continue
-            price = snapshot_consensus_price(snap, "h2h", str(r.selection), None)
+            market = str(r.market)
+            point = _norm_point(market, getattr(r, "line", None))
+            # Match de linea EXACTA: si el snapshot fresco ya no cotiza este
+            # point, la probabilidad servida no aplica al precio nuevo.
+            price = snapshot_consensus_price(snap, market, str(r.selection), point)
             p = pd.to_numeric(pd.Series(
                 [getattr(r, "calibrated_probability", None)]),
                 errors="coerce").iloc[0]
@@ -116,17 +138,17 @@ def log_intraday_edges(predictions_dir: Path, root: Path, *,
             n_league += 1
             rows.append({
                 "timestamp": stamp, "league": league, "event_id": eid,
-                "market": "h2h", "selection": str(r.selection),
+                "market": market, "selection": str(r.selection), "line": point,
                 "minutes_to_start": round((st - now).total_seconds() / 60.0, 1),
                 "prob_basis": round(float(p), 4),
                 "entry_price": getattr(r, "price_decimal", float("nan")),
                 "entry_edge": getattr(r, "estimated_edge", float("nan")),
                 "price_now": price, "edge_now": round(edge_now, 4),
                 "would_generate": would,
-                "is_candidate": (eid, "h2h", str(r.selection)) in picks,
+                "is_candidate": (eid, market, str(r.selection), point) in picks,
             })
         if n_league:
             summary["leagues"].append(league)
-            log.info("[%s] intraday scan: %d h2h sides evaluated", league, n_league)
+            log.info("[%s] intraday scan: %d market sides evaluated", league, n_league)
     _append_log(rows, root, filename=INTRADAY_LOG_FILENAME)
     return summary

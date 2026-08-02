@@ -38,9 +38,23 @@ def test_first_detections_dedups_and_excludes_ever_candidates():
 
 
 def _close_lookup(closes):
-    def lookup(league, event_id, market, selection):
+    def lookup(league, event_id, market, selection, line=None):
         return closes.get((league, str(event_id), market, str(selection)))
     return lookup
+
+
+def test_evaluate_gate_matches_lined_markets_by_exact_line():
+    row = _log_row()
+    row.update(market="spreads", line=-3.5, price_now=2.10)
+    seen = {}
+
+    def lookup(league, event_id, market, selection, line=None):
+        seen["line"] = line
+        return 2.00 if line == -3.5 else None
+
+    rep = evaluate_gate(pd.DataFrame([row]), lookup)
+    assert seen["line"] == -3.5      # la línea viaja hasta el cierre
+    assert rep["n_intraday"] == 1    # y matchea por línea exacta
 
 
 def test_evaluate_gate_insufficient_sample():

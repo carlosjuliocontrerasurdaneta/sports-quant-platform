@@ -31,16 +31,18 @@ def main() -> int:
 
     cons_cache: dict[str, dict] = {}
 
-    def close_for(league: str, event_id: str, market: str, selection: str):
+    def close_for(league: str, event_id: str, market: str, selection: str,
+                  line: float | None):
         if league not in cons_cache:
             cons_cache[league] = {
                 eid: _consensus_lines(eo) for eid, eo in
                 load_closing_odds(ROOT, league,
                                   max_age_min=CLOSE_MAX_AGE_MIN).items()}
         cons = cons_cache[league].get(str(event_id))
-        if not cons or market != "h2h":
+        if not cons:
             return None
-        return cons.get(("h2h", str(selection), None))
+        # h2h sin linea; spreads/totals por linea EXACTA (v2 del observatorio).
+        return cons.get((market, str(selection), line))
 
     rep = evaluate_gate(df, close_for)
     print("# Gate fase ofensiva intradía (#4) — regla 2026-07-14")
