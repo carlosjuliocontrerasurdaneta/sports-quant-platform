@@ -1,46 +1,42 @@
 # Current Task
 
-Status: in-progress
-Loop: full-audit (Fase 4-5) → ver `.claude/loops/quant/STATES.md`
+Status: closed (PASS)
+Loop: full-audit (auditoría integral 2026-08-02) → ver `.claude/loops/quant/STATES.md`
 Iteration: 1 / 8
 Owner: principal-orchestrator
 
+## Historial inmediato
+
+La tarea anterior (auditoría 2026-07-29) quedó registrada aquí como
+"in-progress" pero se cerró de hecho el 2026-07-31 (entregables en
+`audit/latest/`, merge a main, bitácora 2026-07-31). Este archivo estaba
+desactualizado; corregido por la auditoría 2026-08-02.
+
 ## Objective
 
-Auditoría integral del repositorio (código, datos, cuantitativo, seguridad,
-Claude Code y Quant Loops) con corrección autónoma acotada y entregables en
-`audit/latest/`. Solicitada por el operador el 2026-07-29.
+Auditoría integral del repositorio (2026-08-02) con línea base, corrección
+autónoma acotada y entregables regenerados en `audit/latest/`.
 
 ## Acceptance criteria
 
-- [x] Línea base medida antes de modificar (tests, ruff, mypy, pip check).
-- [x] Hallazgos con evidencia `file:line` y severidad.
-- [x] Correcciones seguras aplicadas con prueba de regresión cada una.
+- [x] Línea base medida antes de modificar (581 tests, ruff, mypy, pip check, health check).
+- [x] Hallazgos con evidencia y severidad.
+- [x] Correcciones seguras aplicadas (registry backup con TDD; sincronización documental del revert a edge; referencias muertas; current-task).
 - [x] Suite completa verde tras las correcciones.
-- [ ] Entregables escritos en `audit/latest/`.
-- [ ] Bitácora Obsidian del día actualizada.
-
-## Evidence log
-
-- Línea base (2026-07-29): pytest 439 passed; ruff check limpio salvo 1×E401 en
-  un script no versionado; mypy 86 archivos sin issues; pip check OK.
-- Correcciones con prueba: B-01, B-05, B-06, B-08, B-13, D-01, D-04, D-05, D-06,
-  D-08, D-09, Q-01, K-004, K-015.
-- `ruff format --check` reporta 173 archivos, pero el proyecto NO usa
-  `ruff format` (el Makefile solo hace `ruff check`): NO es un hallazgo.
+- [x] Entregables escritos en `audit/latest/`.
+- [x] Bitácora Obsidian del día actualizada (`Obsidian/Bitácora/2026-08-02.md`).
 
 ## Risks and approvals
 
-- **Sin autorización vigente para commit ni push.** La autorización "total" del
-  2026-07-14 PM que este archivo arrastraba estaba caducada de facto y fue
-  retirada en la auditoría 2026-07-29 (K-006): una autorización sin fecha de
-  caducidad no puede tratarse como permanente.
-- `shadow_mode: true` intacto. Ningún parámetro productivo de riesgo, umbral ni
-  bankroll fue modificado.
-- Pendiente de decisión humana: ver `audit/latest/BACKLOG.md`.
+- **Sin autorización vigente para commit ni push**: los cambios quedan en el
+  working tree para revisión del operador.
+- `shadow_mode: true` intacto; ningún parámetro de riesgo, umbral, modo de
+  picks ni bankroll fue modificado.
+- Pendiente de decisión humana: liquidación de 87 filas servidas fuera de la
+  ventana de scores (backfill gratis + settle con cuota API); ver
+  `audit/latest/BACKLOG.md`.
 
 ## Next decision
 
-Revisar `audit/latest/EXECUTIVE_SUMMARY.md` y decidir sobre los ítems que
-requieren autorización (commit, política del umbral de precisión frente a
-`market_shrink`, destino de `superpowers-main`, alerta del run diario fallido).
+Revisar `audit/latest/EXECUTIVE_SUMMARY.md` y decidir sobre el commit y la
+liquidación pendiente.

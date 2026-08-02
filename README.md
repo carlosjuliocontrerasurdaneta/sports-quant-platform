@@ -107,14 +107,23 @@ python scripts/list_sports.py                               # cobertura activa (
 
 Salidas: `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`.
 El criterio de selección depende de `pick_mode` (ver la sección siguiente): en
-`edge`, candidatos con edge ≥ mínimo y stake por Kelly fraccional con tope; en
-`accuracy` (el modo activo en producción), moneyline con probabilidad de decisión
-≥ umbral y stake plano.
+`edge` (el modo activo en producción desde 2026-07-31), candidatos con edge ≥
+mínimo y stake por Kelly fraccional con tope; en `accuracy`, moneyline con
+probabilidad de decisión ≥ umbral y stake plano.
 
-## Modo precisión (`pick_mode: accuracy`) — activo en producción desde 2026-07-28
+## Modo precisión (`pick_mode: accuracy`) — disponible, NO activo (revertido 2026-07-31)
 
-El objetivo del proyecto pasó de maximizar ROI/edge a **maximizar el porcentaje de
-aciertos (hit rate)** (decisión 2026-07-27). En `configs/default.yaml`:
+Estuvo activo en producción del 2026-07-28 al 2026-07-31. Se revirtió a `edge`
+por decisión explícita del operador (commit `f6c2130`): seleccionar por
+probabilidad ≥ 0.70 elegía favoritos extremos con cuotas 1.07–1.16, cuyo punto
+de equilibrio (1/1.07 = 93.5% de aciertos) supera el hit rate alcanzable — el
+modo subía el acierto y perdía dinero **por construcción**, además de recortar
+el sistema a 1 de sus 3 mercados. Ese mismo commit añadió al reporte por
+segmento las columnas `breakeven_hit_rate` y `hit_rate_margin` para juzgar
+cualquier hit rate contra lo que la cuota exige.
+
+Cómo funciona si se reactiva (`picks.mode: accuracy` o env `PICK_MODE`), en
+`configs/default.yaml`:
 
 - `pick_mode: accuracy` selecciona por **probabilidad de decisión** (blend modelo +
   no-vig del consenso) `>= accuracy_threshold` (0.70), **solo moneyline (h2h)**.
@@ -123,8 +132,8 @@ aciertos (hit rate)** (decisión 2026-07-27). En `configs/default.yaml`:
 - No aplica `min_edge` ni la revocación por edge de la revalidación.
 - `shadow_mode: true` sigue activo: **todos los picks se registran con stake 0**.
 
-Advertencias verificadas en la auditoría 2026-07-29, necesarias para leer las
-métricas sin engañarse:
+Advertencias verificadas en la auditoría 2026-07-29 (vigentes si se reactiva),
+necesarias para leer las métricas sin engañarse:
 
 1. **El umbral no se aplica hoy a una probabilidad calibrada.** No existe
    calibrador promovido para `(liga, h2h)`, así que `calibrate_probability` es un

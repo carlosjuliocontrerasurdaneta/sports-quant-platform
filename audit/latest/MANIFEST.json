@@ -1,209 +1,60 @@
 {
-  "audit_id": "audit-2026-07-29",
-  "started_utc": "2026-07-29T21:40:00Z",
-  "finished_utc": "2026-07-30T21:07:14Z",
+  "audit_id": "audit-2026-08-02",
+  "started_utc": "2026-08-02T12:50:00Z",
+  "finished_utc": "2026-08-02T13:35:00Z",
   "branch": "main",
-  "base_commit": "4036fea598b97dbe397a47f9d4318619be33a08e",
+  "base_commit": "1dba6b0474a148ea3c49c449518f5a7f341f902c",
   "commit_created": false,
   "python_version": "3.14.4",
   "git_state_initial": {
-    "modified": 28,
-    "untracked": 15,
-    "total_entries": 43
+    "modified": 1,
+    "untracked": 0,
+    "note": ".claude/settings.json preexistente (renombre de modelo del harness)"
   },
   "git_state_final": {
-    "modified": 58,
-    "untracked": 9,
-    "shortstat": "58 files changed, 484 insertions(+), 142 deletions(-)",
-    "deleted_verified_duplicates": 17
+    "modified": 17,
+    "untracked": 1,
+    "diff_stat": "17 files changed, 444 insertions(+), 1222 deletions(-)",
+    "note": "las eliminaciones netas provienen de regenerar audit/latest/ (entregables anteriores conservados en git)"
   },
-  "tests": {
-    "initial": 439,
-    "final": 485,
-    "added": 46,
-    "failing_initial": 0,
-    "failing_final": 0
-  },
-  "commands": [
-    {
-      "cmd": "python -m compileall -q src scripts",
-      "baseline": "exit 0",
-      "final": "exit 0"
-    },
-    {
-      "cmd": "PYTHONPATH=src pytest tests/ -q",
-      "baseline": "439 passed",
-      "final": "466 passed"
-    },
-    {
-      "cmd": "ruff check .",
-      "baseline": "1 error (E401)",
-      "final": "All checks passed!"
-    },
-    {
-      "cmd": "ruff format --check .",
-      "baseline": "173 would be reformatted",
-      "final": "no ejecutado como puerta: el proyecto no usa ruff format"
-    },
-    {
-      "cmd": "mypy src",
-      "baseline": "Success: 86 files",
-      "final": "Success: 86 files"
-    },
-    {
-      "cmd": "pip check",
-      "baseline": "No broken requirements found.",
-      "final": "No broken requirements found."
-    },
-    {
-      "cmd": "python scripts/validate_claude_model_routing.py",
-      "baseline": "n/a",
-      "final": "OK"
-    },
-    {
-      "cmd": "python scripts/run_daily.py --sports mlb nba --mode demo",
-      "baseline": "n/a",
-      "final": "exit 0"
-    },
-    {
-      "cmd": "python scripts/health_check.py",
-      "baseline": "n/a",
-      "final": "WARN (0 errors, 2 warnings preexistentes)"
-    }
-  ],
-  "not_run": [
-    "pip-audit -r requirements.lock",
-    "cobertura por modulo",
-    "lectura de logs/ (prohibida por reglas del repo)",
-    "auditoria sistematica de arquitectura/codigo muerto (subagente agoto limite de sesion)"
+  "tests_initial": {"passed": 581, "failed": 0, "duration_s": 191.5},
+  "tests_final": {"passed": 582, "failed": 0, "duration_s": 100.3},
+  "commands_executed": [
+    "git status --short / git log / git show",
+    "python --version",
+    "python -m compileall -q src scripts (x2)",
+    "PYTHONPATH=src pytest tests/ -q (x2 suite completa + 1 focalizada)",
+    "ruff check . (x2)",
+    "ruff format --check . (informativo; el proyecto no usa ruff format)",
+    "mypy src (x2)",
+    "pip check (x2)",
+    "python scripts/health_check.py",
+    "escaneo de secretos (git grep patrones api_key/secret/token/password)",
+    "verificacion de rutas de loops/agentes/comandos .claude"
   ],
   "findings_by_severity": {
-    "CRITICO": 2,
-    "ALTO": 22,
-    "MEDIO": 34,
-    "BAJO": 21,
-    "INFORMATIVO": 4
+    "critico": 0,
+    "alto": 1,
+    "medio": 2,
+    "bajo": 3,
+    "informativo": 8
   },
-  "findings_by_status": {
-    "corregido": 26,
-    "parcial": 5,
-    "requiere_decision_humana": 21,
-    "pendiente": 29,
-    "no_confirmado": 2
-  },
-  "changed_files": [
-    ".claude/CLAUDE.md",
-    ".claude/ORCHESTRATOR.md",
-    ".claude/agents/core/00-principal-orchestrator.md",
-    ".claude/agents/core/01-repository-cartographer.md",
-    ".claude/agents/data/data-engineer.md",
-    ".claude/agents/data/feature-engineer.md",
-    ".claude/agents/data/provider-integrator.md",
-    ".claude/agents/engineering/backend-architect.md",
-    ".claude/agents/engineering/devops-engineer.md",
-    ".claude/agents/engineering/performance-engineer.md",
-    ".claude/agents/engineering/python-engineer.md",
-    ".claude/agents/markets/line-movement-analyst.md",
-    ".claude/agents/markets/odds-market-auditor.md",
-    ".claude/agents/ml/backtest-reviewer.md",
-    ".claude/agents/ml/calibration-auditor.md",
-    ".claude/agents/ml/leakage-detector.md",
-    ".claude/agents/ml/ml-engineer.md",
-    ".claude/agents/quality/documentation-writer.md",
-    ".claude/agents/quality/qa-engineer.md",
-    ".claude/agents/quality/security-reviewer.md",
-    ".claude/agents/risk/risk-manager.md",
-    ".claude/agents/sports/mlb-specialist.md",
-    ".claude/agents/sports/nba-specialist.md",
-    ".claude/agents/sports/nfl-specialist.md",
-    ".claude/agents/sports/nhl-specialist.md",
-    ".claude/agents/sports/sports-quant-auditor.md",
-    ".claude/automation/autonomy-policy.md",
-    ".claude/automation/decision-engine.md",
-    ".claude/automation/runtime/current-task.md",
-    ".claude/commands/route-task.md",
-    ".claude/hooks/check-secrets.sh",
-    ".claude/rules/betting-output-rules.md",
-    ".claude/settings.json",
-    ".claude/skills/memoria-persistente/SKILL.md",
-    ".claude/skills/memoria-persistente/active-context.md",
-    ".claude/skills/memoria-persistente/architecture-log.md",
-    ".claude/skills/memoria-persistente/known-issues.md",
-    ".claude/skills/memoria-persistente/memory-index.md",
-    ".claude/skills/memoria-persistente/project-decisions.md",
-    ".claude/skills/memoria-persistente/project-state.md",
-    ".claude/skills/memoria-persistente/roadmap.md",
-    ".claude/skills/memoria-persistente/session-summaries.md",
-    ".github/workflows/ci.yml",
-    ".gitignore",
-    "Dockerfile",
-    "Makefile",
+  "findings_fixed": ["A-01", "M-02", "B-01", "B-02", "B-03"],
+  "findings_pending_human": ["M-01 (87 filas sin liquidar: backfill gratis + settle con cuota API)", "commit de los cambios"],
+  "files_modified": [
+    "src/sqp/models/ml_train.py",
+    "tests/test_ml_models.py",
     "README.md",
-    "pyproject.toml",
-    "scripts/run_all.py",
-    "src/sqp/audit/report.py",
-    "src/sqp/config.py",
-    "src/sqp/features/common.py",
-    "src/sqp/features/mlb.py",
-    "src/sqp/pipeline/cleanup.py",
-    "src/sqp/pipeline/daily.py",
-    "src/sqp/pipeline/probabilities.py",
-    "src/sqp/providers/odds_api.py",
-    "src/sqp/storage/starters.py"
+    "Obsidian/Estado del proyecto.md",
+    "Obsidian/Tareas.md",
+    "Obsidian/Bitacora/2026-08-02.md (nuevo)",
+    ".claude/memory/project-decisions.md",
+    ".claude/memory/roadmap.md",
+    ".claude/automation/runtime/current-task.md",
+    ".github/workflows/ci.yml",
+    "audit/latest/* (8 entregables regenerados)"
   ],
-  "untracked_files": [
-    ".claude/automation/MODEL_ROUTING.md",
-    ".claude/automation/model-routing.json",
-    ".claude/hooks/route-model.py",
-    ".claude/loops/quant/",
-    "audit/",
-    "scripts/validate_claude_model_routing.py",
-    "tests/test_audit_2026_07_29.py",
-    "tests/test_claude_model_routing.py"
-  ],
-  "guarded_actions_not_taken": [
-    "git commit",
-    "git push",
-    "pull request",
-    "merge",
-    "deploy",
-    "llamadas a APIs de pago",
-    "rotacion de credenciales",
-    "borrado de datos historicos",
-    "migraciones destructivas",
-    "habilitar apuestas reales",
-    "cambiar bankroll o stakes",
-    "desactivar shadow_mode",
-    "promover modelos o calibradores",
-    "modificar tareas programadas de Windows"
-  ],
-  "production_config_untouched": {
-    "shadow_mode": true,
-    "pick_mode": "accuracy",
-    "accuracy_threshold": 0.7,
-    "risk_params_modified": false,
-    "data_files_modified": false
-  },
-  "result": "DONE",
-  "result_note": "DONE para el alcance de correccion: linea base medida, 24 hallazgos corregidos con prueba, validacion final en verde (466 pruebas, ruff, mypy, pip check, smoke demo, health check) y entregables escritos. 23 items requieren autorizacion humana y quedan en BACKLOG.md. Ninguna verificacion critica queda en rojo. La calidad de software no es evidencia de validez predictiva.",
-  "post_audit_resolutions": [
-    {
-      "id": "K-013",
-      "date": "2026-07-30",
-      "action": "MODEL_ROUTER_INTEGRATION.json eliminado con autorizacion del operador; 0 consumidores verificados",
-      "authorized_by": "operador"
-    },
-    {
-      "id": "S-1",
-      "date": "2026-07-30",
-      "action": "Causa raiz del fallo del run 2026-07-29 identificada leyendo logs/run_diario.log: SSLError intermitente (handshake TLS cortado) contra api.the-odds-api.com y site.api.espn.com durante 2h22m. 3 ligas (wnba, seriea, bundesliga) agotaron reintentos en /odds -> failures=3 -> exit 1. Origen local, no caida de proveedor. Run del 2026-07-30: 0 errores SSL, exit 0. La ALERTA sigue pendiente.",
-      "authorized_by": "operador (deny de logs levantado temporalmente y restaurado)"
-    },
-    {
-      "id": "S-1",
-      "date": "2026-07-30",
-      "action": "Alerta implementada: centinela logs/last_run_status.json escrito por los 3 BAT, elevado a ERROR por health_check (exit 1) y mostrado como banner en el dashboard. 19 pruebas TDD. Verificado end-to-end. Exit code sin cambios por decision del operador.",
-      "authorized_by": "operador"
-    }
-  ]
+  "operator_directive": "2026-08-02: el fin del sistema es GANAR DINERO (sacrosanto); registrado en project-decisions, Estado del proyecto, bitacora y memoria persistente. No es afirmacion de rentabilidad lograda.",
+  "final_state": "PASS",
+  "final_state_rationale": "todas las validaciones ejecutadas y en verde; correcciones con prueba; sin acciones que requirieran autorizacion; pendientes M-01 y commit son decisiones humanas, no bloqueos tecnicos"
 }

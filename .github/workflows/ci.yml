@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         # 3.13 added to narrow the gap with the dev runtime (3.14); pyproject
-        # requires >=3.10. Bump to 3.14 here once setup-python ships it stably.
+        # requires >=3.11. Bump to 3.14 here once setup-python ships it stably.
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4

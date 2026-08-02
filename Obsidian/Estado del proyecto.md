@@ -1,34 +1,42 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-07-28
+actualizada: 2026-08-02
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-07-28. Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-08-02. Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
 
-## Objetivo del proyecto: % DE ACIERTOS (desde 2026-07-27)
+## Objetivo sacrosanto: GANAR DINERO (directiva 2026-08-02)
 
-Decisión de Carlos: el fin último es **maximizar el porcentaje de aciertos de
-los picks**; bankroll, ROI y CLV se calculan pero dejan de ser rectores.
-Implementado el 2026-07-28: **modo precisión ACTIVO en producción**
-(`picks: {mode: accuracy, accuracy_threshold: 0.70}` en `configs/default.yaml`).
+Directiva de Carlos, textual: **"El fin del sistema es ganar dinero, eso
+escríbelo sobre piedra. Es sacrosanto."** La rentabilidad realizada es el fin
+último; supersede el pivot a hit rate del 2026-07-27. El hit rate se reporta
+siempre contra el breakeven por cuota, nunca en absoluto. (Objetivo ≠ logro:
+a esta fecha no hay edge demostrado — shadow activo, gate de CLV vacío.)
 
-- Selección por **probabilidad de decisión calibrada** (blend modelo + no-vig
-  del consenso) ≥ 0.70, SOLO moneyline; nada de Kelly (stake plano
-  `bankroll * max_stake_pct`, hoy 0 por shadow).
-- Cada pick lleva el flag `accuracy_mode`; la revocación por edge del segundo
-  pase los salta (el guard de cambio de abridor sí aplica).
-- **KPI**: hit rate por (liga, banda de probabilidad) sobre la probabilidad
-  calibrada — bandas finas ≥0.70 en `sqp/audit/segments.py`, visible en
-  `segment_diagnostics_latest.csv` y la pestaña Diagnóstico. El `gap`
-  (observado − estimado medio) de las bandas altas ES el control de
-  cumplimiento del umbral.
-- El modo edge queda conmutable vía `picks.mode: edge` o env `PICK_MODE`.
-- Pendiente: definir el gate de salida del shadow propio del modo precisión
-  (ver [[Tareas]]).
+## Modo de selección: EDGE (revertido el 2026-07-31)
+
+**`pick_mode: edge` es el modo activo en producción** desde el 2026-07-31
+(commit `f6c2130`, decisión explícita del operador). El modo precisión
+(`accuracy`, activo del 07-28 al 07-31) se revirtió porque seleccionar por
+probabilidad ≥ 0.70 elegía favoritos extremos con cuotas observadas 1.07–1.16:
+a cuota 1.07 el punto de equilibrio es 93.5% de aciertos, así que el modo subía
+el hit rate y perdía dinero **por construcción**, además de recortar el sistema
+a 1 de sus 3 mercados (solo h2h).
+
+- El mismo commit añadió `breakeven_probability(price) = 1/price` y las
+  columnas `breakeven_hit_rate` / `hit_rate_margin` al reporte por segmento:
+  todo hit rate se juzga contra lo que la cuota exige, nunca en absoluto.
+- El modo accuracy queda **disponible y conmutable** (`picks.mode: accuracy` o
+  env `PICK_MODE`, umbral 0.70, solo moneyline, stake plano); sus advertencias
+  (umbral sobre blend no calibrado, sin backtest propio) siguen vigentes si se
+  reactiva. Ver [[Bitácora/2026-07-28]] y [[Bitácora/2026-08-02]].
+- La redefinición de objetivo del 2026-07-27 (hit rate como métrica rectora de
+  REPORTE: observado vs prometido por banda) se mantiene; lo que se revirtió es
+  usarla como criterio de SELECCIÓN.
 
 ## Modo operativo: SHADOW MODE
 
