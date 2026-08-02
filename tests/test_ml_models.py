@@ -69,3 +69,20 @@ def test_blend_weights():
 def test_predict_missing_model_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         ml_predict.predict_moneyline(pd.DataFrame({"home_feat": [0.1]}), "nfl", root=tmp_path)
+
+
+def test_register_corrupt_registry_backed_up_not_silently_discarded(tmp_path, caplog):
+    reg_path = tmp_path / "data" / "models" / "registry.json"
+    reg_path.parent.mkdir(parents=True)
+    reg_path.write_text("{corrupto, no es json", encoding="utf-8")
+    with caplog.at_level("WARNING", logger="sqp.models.ml_train"):
+        ml_train._register(tmp_path, {"sport": "nba", "model": "moneyline"})
+    # El contenido corrupto queda preservado en un backup, no descartado.
+    backups = list(reg_path.parent.glob("registry.json.corrupt-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "{corrupto, no es json"
+    assert any("registry" in r.message.lower() for r in caplog.records)
+    # El registro nuevo arranca limpio con la entrada agregada.
+    import json as _json
+    assert _json.loads(reg_path.read_text(encoding="utf-8")) == [
+        {"sport": "nba", "model": "moneyline"}]

@@ -77,6 +77,12 @@ def _register(root: Path, entry: dict) -> None:
         try:
             reg = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
+            # Never discard a corrupt registry silently: keep the bytes for
+            # forensics and start a fresh list (data-integrity rule).
+            backup = path.with_name(
+                f"{path.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}")
+            path.replace(backup)
+            log.warning("registry.json ilegible; respaldado en %s y reiniciado", backup.name)
             reg = []
     reg.append(entry)
     path.write_text(json.dumps(reg, indent=2, ensure_ascii=False), encoding="utf-8")
