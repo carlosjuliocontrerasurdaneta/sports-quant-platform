@@ -15,8 +15,8 @@ from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
 from sqp.providers.odds_api import OddsAPIClient
-from sqp.settlement.settle import (STALE_VOID_DAYS, settle_candidates,
-                                   void_stale_candidates)
+from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start,
+                                   settle_candidates, void_stale_candidates)
 from sqp.sports.team_names import normalize_key
 from sqp.storage.served_store import ServedStore
 
@@ -109,6 +109,101 @@ def tennis_scores_map(predictions: pd.DataFrame, results: list[dict],
         elif winner == normalize_key(away):
             scores[eid] = (0, 1, home)
     return scores
+
+
+def history_scores_map(pending: pd.DataFrame, results: list[dict],
+                       tol_days: int = 1) -> dict[str, tuple[int, int, str]]:
+    """event_id -> (home_score, away_score, home) matching served rows to the
+    historical ResultsStore by ORDERED normalized (home, away) + date within
+    ``tol_days``. Ordered on purpose: home/away identity decides h2h sides and
+    spreads in team sports (tennis has its own order-insensitive map). No
+    event_id correspondence exists between The Odds API and ESPN/statsapi.
+
+    An ambiguous match (two results for the same pair within tolerance, e.g. an
+    MLB doubleheader) is SKIPPED: grading with the wrong game's score would
+    corrupt the calibration evidence, so ambiguity never grades."""
+    keyed: dict[tuple[str, str], list[tuple[str, int, int]]] = {}
+    for m in results:
+        try:
+            k = (normalize_key(str(m["home"])), normalize_key(str(m["away"])))
+            keyed.setdefault(k, []).append(
+                (str(m.get("date", ""))[:10], int(m["home_score"]), int(m["away_score"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    scores: dict[str, tuple[int, int, str]] = {}
+    for r in pending.itertuples():
+        eid, home, away = str(r.event_id), str(r.home), str(r.away)
+        day = (str(getattr(r, "game_date", "")) or str(getattr(r, "start_time", "")))[:10]
+        hits = [(hs, as_) for (md, hs, as_)
+                in keyed.get((normalize_key(home), normalize_key(away)), [])
+                if _day_diff(md, day) <= tol_days]
+        if len(hits) == 1:
+            scores[eid] = (hits[0][0], hits[0][1], home)
+    return scores
+
+
+def _grade_served_from_history(league: str, three_way: bool = False) -> int:
+    """Fallback for served rows the daily scores feed can never grade (older
+    than The Odds API 3-day window; audit 2026-08-02, M-01): match them against
+    data/historical/ by ordered names + date. Best-effort: a failure here must
+    never abort the settlement of real picks."""
+    try:
+        from sqp.storage.results_store import ResultsStore
+        still = ServedStore(ROOT).pending(league)
+        if still.empty:
+            return 0
+        results = ResultsStore(ROOT).load(league)
+        if not results:
+            return 0
+        scores = history_scores_map(still, results)
+        if not scores:
+            return 0
+        return _grade_served(league, scores, three_way=three_way)
+    except Exception as exc:
+        log.warning("[%s] history fallback for the served stream failed: %s",
+                    league, exc)
+        return 0
+
+
+def _void_stale_served(league: str, stale_days: int = STALE_VOID_DAYS,
+                       now: datetime | None = None) -> int:
+    """Void served rows still pending ``stale_days`` after their start, once
+    the daily feed AND the historical fallback both failed to grade them.
+
+    Mirrors the candidates' stale_void policy (decision 2026-07-12): a
+    postponed game is a void by betting convention (grading it against its
+    doubleheader replay is undecidable), and a fixture with no results vendor
+    (e.g. a cup game priced under a league key) would otherwise rot until
+    ``pending``'s cutoff silently drops it (audit 2026-08-02, M-01). Void rows
+    are excluded downstream by ``train_market_calibrators``, so they never
+    contaminate calibration. Idempotent via ``append_graded``. Best-effort."""
+    try:
+        store = ServedStore(ROOT)
+        pending = store.pending(league)
+        if pending.empty:
+            return 0
+        now = now or datetime.now(timezone.utc)
+        stale_mask = []
+        for s in pending["start_time"]:
+            dt = _parse_start(s)
+            stale_mask.append(dt is not None and (now - dt).days >= stale_days)
+        voided = pending[stale_mask].copy()
+        if voided.empty:
+            return 0
+        voided["result"] = "void"
+        voided["pnl"] = 0.0
+        voided["settled_at"] = now.isoformat()
+        flags = (voided["flags"].fillna("").astype(str)
+                 if "flags" in voided.columns else pd.Series("", index=voided.index))
+        voided["flags"] = (flags + ";stale_void").str.lstrip(";")
+        n = len(store.append_graded(league, voided))
+        if n:
+            log.info("[%s] served stream: %d stale row(s) voided (no gradable "
+                     "result %d+ days after start).", league, n, stale_days)
+        return n
+    except Exception as exc:
+        log.warning("[%s] could not void the stale served rows: %s", league, exc)
+        return 0
 
 
 def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
@@ -257,6 +352,7 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     # even when there were no candidates that day.
     if not pending_served.empty:
         _grade_served(league, tennis_scores_map(pending_served, results))
+        _void_stale_served(league)
     if not cand_path.exists():
         return pd.DataFrame()
     if not pred_path.exists() or pred_path.stat().st_size <= 1:
@@ -299,6 +395,11 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     # and grades even on days the league produced no candidates.
     if not pending_served.empty:
         _grade_served(league, scores, days_from=days_from, three_way=three_way)
+        # What the 3-day feed could not grade may still grade from the
+        # historical store (backfilled daily); whatever remains ungradable
+        # past the stale window is voided (audit 2026-08-02, M-01).
+        _grade_served_from_history(league, three_way=three_way)
+        _void_stale_served(league)
     if not cand_path.exists():
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)
