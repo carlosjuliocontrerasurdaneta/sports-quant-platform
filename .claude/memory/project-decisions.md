@@ -224,3 +224,15 @@ Format:
 - Reason: decisión estratégica del 2026-07-27 (objetivo = % de aciertos); el selector por edge favorece underdogs/discrepancias y trabaja contra el acierto; los favoritos calibrados de alta probabilidad son la parte validada de la plataforma.
 - Alternatives: mantener Kelly en modo accuracy (rechazado: dimensiona por edge, sin sentido bajo el objetivo nuevo); permitir spreads/totals sobre umbral (rechazado: techo estructural ~50-55% por diseño de línea); que la revalidación re-chequee el umbral en vez de saltar (pospuesto a v2: requiere recomputar la probabilidad con el snapshot, no solo el precio); activar por defecto en el dataclass (rechazado: rompería demo/tests byte-idénticos con Settings() directo).
 - Consequences: el run diario genera picks por probabilidad (con shadow todos a stake 0); modo edge conmutable (PICK_MODE=edge); el gate de CLV deja de ser la regla rectora de salida — PENDIENTE definir el gate del modo precisión (propuesta: cumplimiento del umbral por banda). 3 tests de mecánica edge fijados a pick_mode="edge". 436 tests verdes.
+
+- Date: 2026-08-04
+- Decision: Autorizar `claude-fable-5` como modelo de la conversación principal de Claude Code y mantener Opus/Haiku como modelos de subagentes; completar el routing con rutas explícitas para los 13 loops cuantitativos.
+- Reason: la configuración principal ya seleccionaba Fable 5 por decisión del operador, mientras la política y las pruebas lo declaraban no disponible; el hook de palabras clave no representaba el decision engine cuantitativo.
+- Alternatives: sustituir Fable 5 por Opus (rechazado por decisión explícita del operador); dejar el hook como recomendación parcial (rechazado: inyectaba loops incorrectos).
+- Consequences: política principal/subagentes separada; 24 rutas validadas contra loops y agentes existentes; incidente cuantitativo tiene prioridad sobre el incidente general.
+
+- Date: 2026-08-04
+- Decision: Restablecer promoción humana por defecto para calibradores (`calibration.auto_promote: false`) y conservar la función automática únicamente como opt-in explícitamente aprobado.
+- Reason: `ORCHESTRATOR.md`, `autonomy-policy.md` y los loops prohíben promoción automática; el YAML activo contradecía esa fuente autoritativa.
+- Alternatives: reescribir todas las políticas para permitir promoción automática (rechazado: ampliaría riesgo y contradecía la regla vigente Train ≠ promote).
+- Consequences: el run diario deja candidatos en staging; el registro live solo cambia por una acción aprobada. Los gates de la función opcional y su log permanecen probados.

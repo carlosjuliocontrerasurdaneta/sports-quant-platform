@@ -9,7 +9,7 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Medir rendimiento y calidad probabilística de la cohorte liquidada.
@@ -20,10 +20,11 @@ Medir rendimiento y calidad probabilística de la cohorte liquidada.
 3. Calcular `n`, hit rate, Brier, Log Loss y ECE.
 4. Separar liga, mercado, modelo y banda probabilística.
 5. **El objetivo vigente es el hit rate** (decisión 2026-07-27). Reportar por
-   banda el hit rate observado y el `gap` = observado − prometido. ROI realizado,
-   yield y CLV son métricas SECUNDARIAS y solo válidas con `staked > 0`: bajo
-   `shadow_mode` el ROI sale `0.0` por no haberse arriesgado nada, lo que NO es
-   equilibrio (auditoría 2026-07-29, B-10).
+   banda el hit rate observado y el `gap` = observado − prometido. ROI realizado
+   y yield son métricas SECUNDARIAS y requieren `staked > 0`; bajo `shadow_mode`
+   salen `0.0` porque no se arriesgó capital, lo que no implica equilibrio. CLV
+   requiere una cuota de entrada y una cuota de cierre emparejables, pero no
+   requiere stake real y debe seguir calculándose en shadow.
 6. Comparar con baseline y ventanas móviles.
 7. Derivar pérdidas relevantes al loop 05.
 

@@ -9,10 +9,13 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Adaptar priors, ventanas y disponibilidad de features al inicio o cambio de temporada.
+
+## Criterio previo obligatorio
+Pre-registrar qué evidencia y umbrales separan `NORMAL`, `CONSERVATIVE`, `SHADOW` y `BLOCKED`, incluyendo muestra mínima y disponibilidad de features. Si no existen en código, configuración o decisión humana previa, el resultado es `BLOCKED`.
 
 ## Flujo
 1. Identificar cambios de reglas, calendario, roster, proveedores y mercado.

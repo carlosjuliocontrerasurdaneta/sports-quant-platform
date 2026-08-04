@@ -41,6 +41,25 @@ For prediction generation, pregame updates, settlement, daily auditing, loss dia
 4. Follow all repository guardrails and human approval gates.
 5. Never promote a model or calibration artifact automatically.
 
+## Supporting loops and handoffs
+
+Exactly one loop remains the primary owner of a task. When that loop needs work
+from another loop:
+
+1. Record the supporting loop, scope, inputs and expected evidence under a
+   `Supporting loops` subsection in `current-task.md`.
+2. The supporting loop must append its evidence under that subsection and must
+   not replace the task header, primary loop, lifecycle status or acceptance
+   criteria.
+3. The primary loop aggregates supporting results using the quantitative state
+   precedence when applicable: required `BLOCKED` evidence blocks the parent;
+   otherwise `DEGRADED` propagates and `PASS` permits continuation.
+4. Only the primary loop runs the final `/verification-gate`, updates the final
+   task result and closes the task.
+5. If ownership must change rather than remain supportive, close the current
+   task and create an explicit handoff with the next loop and acceptance
+   criteria; never silently overwrite `current-task.md`.
+
 ## Iteration contract
 
 Each iteration must produce:

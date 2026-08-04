@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-08-02
+actualizada: 2026-08-04
 ---
 
 # Tareas
@@ -18,7 +18,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Backlog
 
 - [ ] Hallazgo del primer run OOS (07-24): snapshots históricos con cuotas degeneradas `price_decimal = 1.0` (visibles por los warnings de vig M-16); decidir guard que descarte líneas con precio ≤ 1.0 en ingestión (`odds_api._parse_events`) o lectura (`load_closing_odds`). Ver [[Bitácora/2026-07-24]].
-- [ ] M-7 (auditoría 07-24, manual): recortar permisos amplios de `.claude/settings.local.json` (`pip install *`, `python -`) — archivo local del usuario, no se toca automáticamente. Ver [[Bitácora/2026-07-24]].
+- [x] 2026-08-04 — M-7: `.claude/settings.local.json` saneado; retirados `pip install *`, ejecución arbitraria, commit/add, comandos live/write y accesos fuera del repositorio. Ver [[Bitácora/2026-08-04]].
 - [ ] M-24 (decisión de gasto): alinear `--regions` del backfill histórico con las regiones del run vivo (us,us2,uk,eu,au) quintuplica el costo por llamada; hoy el default sigue en `us` y la discrepancia está documentada en el help. Ver [[Bitácora/2026-07-24]].
 - [ ] Re-evaluar el candidato per-game `mlb_h2h_pergame` (staged) cuando la cola de settled h2h MLB llegue a n≥50: `python scripts/train_pergame_calibration.py --leagues mlb`; adoptar solo si mejora ECE y Brier sobre la distribución de servicio.
 - [ ] Evaluar el segundo pase de revalidación cuando haya muestra: comparar CLV/ROI de picks `reval_action=revoke` vs `keep` en settled (la etiqueta viaja vía unión de columnas); si los revocados tienen peor CLV, el pase queda validado para el post-shadow. Incluir el desglose por `reason` (`edge_below_min` vs `pitcher_changed`/`starter_pulled`).
@@ -34,6 +34,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-08-04 — Auditoría integrada y remediación de `.claude`: routing de los 13 loops cuantitativos, Fable 5 principal, estados/handoffs, health check, promoción humana por defecto, permisos locales y tests de regresión. Ver [[Bitácora/2026-08-04]].
 - [x] 2026-07-31 — **Revert a `pick_mode: edge`** (`f6c2130`) + `breakeven_hit_rate`/`hit_rate_margin` en el reporte por segmento. Documentado retroactivamente en la auditoría del 2026-08-02 (la sesión del 07-31 no actualizó la bóveda). Ver [[Bitácora/2026-08-02]].
 - [x] 2026-07-28 — **Modo precisión implementado y ACTIVADO** (`pick_mode: accuracy`, umbral 0.70, solo moneyline, stake plano, flag `accuracy_mode`, skip de la revocación por edge, KPI por banda sobre probabilidad calibrada). TDD, 436 tests verdes. Ver [[Bitácora/2026-07-28]].
 - [x] 2026-07-24 — Grupo 4 de la auditoría completo (M-5/8/12/14/17/18/22/23/27/28/29/31 + primer run de VALIDATE_OOS); quedan como decisiones manuales M-7 (settings.local.json) y el default de regiones del backfill (M-24). 428 tests verdes. Ver [[Bitácora/2026-07-24]].

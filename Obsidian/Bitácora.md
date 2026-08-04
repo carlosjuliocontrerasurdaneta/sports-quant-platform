@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-14
+actualizada: 2026-08-04
 ---
 
 # Bitácora — índice
@@ -10,6 +10,8 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-08-04]] — auditoría y remediación integrada de `.claude`: routing, Fable 5, estados, permisos, health check y promoción humana por defecto.
+- [[Bitácora/2026-08-02]] — auditoría integral, cierre de filas servidas pendientes y observatorio intradía v2.
 - [[Bitácora/2026-07-14]] — pestaña Diagnóstico en el dashboard (auto-pausas del monitor de degradación + segmentos flageados).
 - [[Bitácora/2026-07-13]] — consolidación de skills; revisión integral de calibración + gate `extreme_ok` (mlb_h2h LIVE); monitor de degradación con auto-pausa; diagnóstico por segmentos; auditoría full + remediación; limpieza de copias legacy.
 - [[Bitácora/2026-07-12]] — filtro de frescura del cierre (≤90 min) en la auditoría CLV; lock del odds store; `stale_void`; retención de artefactos; candidato mlb_spreads obsoleto.

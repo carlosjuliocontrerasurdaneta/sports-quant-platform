@@ -294,10 +294,10 @@ def main() -> int:
             # (opening-anchored), NOT the closing-anchored backtest above. Today's
             # picks were already generated with the prior LIVE
             # models, so this cannot leak the current day into its own calibrator.
-            # With calibration.auto_promote (2026-07-08) the gated staging
-            # recommendation is then adopted into the LIVE registry (OOS gates +
-            # independent-event guard, see auto_promote_calibrators); improvements apply from
-            # the NEXT run. Flag off = staging only, human promotion.
+            # By default the gated recommendation remains in STAGING for human
+            # review. ``calibration.auto_promote`` is an explicit, approval-gated
+            # opt-in; when enabled it adopts only candidates that pass the OOS and
+            # independent-event guards, effective from the NEXT run.
             cal = stage_calibrators_from_settled(settings)
             if cal:
                 n_ok = sum(1 for r in cal if r.get("trained"))

@@ -2,24 +2,32 @@
 
 Fuente única de verdad para `PASS`, `DEGRADED`, `BLOCKED` y `DONE`. Todos los
 loops de `.claude/loops/quant/` referencian este archivo en lugar de redefinir su
-propio vocabulario (auditoría 2026-07-29, K-003: los 14 loops usaban cinco
-vocabularios distintos y ninguno definía los cuatro estados).
+vocabulario.
 
-Un loop **debe** cerrar declarando exactamente uno de estos estados, con la
-evidencia que lo justifica, en `.claude/automation/runtime/current-task.md`.
+Un loop debe cerrar declarando exactamente un resultado en
+`.claude/automation/runtime/current-task.md`. El ciclo de vida de la tarea se
+registra por separado como `Status: idle | active | closed`; el resultado se
+registra como `Result: PASS | DEGRADED | BLOCKED | DONE`.
 
 ## Regla general
 
-El estado se decide por condiciones **observables**, no por juicio. Si el estado
-no puede determinarse a partir de un artefacto o de la salida de un comando, el
-estado es `BLOCKED`, nunca `PASS`.
+El resultado se decide por condiciones observables, no por juicio. Si no puede
+determinarse a partir de un artefacto o de la salida de un comando, el resultado
+es `BLOCKED`, nunca `PASS`.
 
-| Estado | Significado | Condición exacta |
+| Resultado | Significado | Condición exacta |
 |---|---|---|
-| `PASS` | El objetivo del loop se cumplió y quedó evidencia verificable. | (a) Todos los comandos del loop terminaron con código de salida 0; **y** (b) todas las validaciones del loop se ejecutaron y ninguna falló; **y** (c) los artefactos que el loop declara se escribieron y son legibles; **y** (d) ninguna acción quedó pendiente de aprobación humana. |
-| `DEGRADED` | El objetivo se cumplió parcialmente con una limitación acotada, identificada y registrada. | Se cumple (a) y (c), pero una validación no aplica por **muestra insuficiente** o una fuente no crítica no estaba fresca. Exige nombrar la limitación y el `n` disponible. Nunca se usa para ocultar un fallo. |
-| `BLOCKED` | El loop no puede continuar sin intervención. | Cualquiera de: comando con código de salida ≠ 0; artefacto declarado ausente o ilegible; validación crítica fallida; evidencia insuficiente para decidir; o la siguiente acción requiere aprobación humana (ver `.claude/automation/autonomy-policy.md`). |
-| `DONE` | El trabajo asociado a la tarea se cerró por completo, no solo esta iteración. | `PASS` **y** `/verification-gate` ejecutado y aprobado **y** documentación actualizada (bitácora Obsidian del día) **y** sin ítems abiertos en `current-task.md`. Un loop periódico (01–04, 06, 07, 13) termina en `PASS`/`DEGRADED`/`BLOCKED`; solo un loop de trabajo cerrado (08, 09, 10, 12) llega a `DONE`. |
+| `PASS` | El objetivo de la iteración o del loop se cumplió y quedó evidencia verificable. | (a) Todos los comandos requeridos terminaron con código 0; (b) todas las validaciones requeridas se ejecutaron y ninguna falló; (c) los artefactos obligatorios se escribieron y son legibles. Una acción posterior opcional o sujeta a aprobación puede quedar registrada sin convertir este resultado en `BLOCKED`. |
+| `DEGRADED` | El objetivo se cumplió con una limitación no crítica, acotada y registrada. | Se cumplen (a) y (c), pero una validación no aplica por muestra insuficiente o una fuente no crítica no estaba fresca. Exige nombrar la limitación y el `n` disponible. Nunca se usa para ocultar un fallo. |
+| `BLOCKED` | El objetivo actual no puede completarse sin intervención. | Cualquiera de: comando requerido con código distinto de 0; artefacto obligatorio ausente o ilegible; validación crítica fallida; evidencia insuficiente para decidir; o una acción necesaria para completar el objetivo actual requiere aprobación humana. |
+| `DONE` | La tarea finita asociada al loop quedó cerrada por completo. | Se cumplen las condiciones de `PASS`, `/verification-gate` fue ejecutado y aprobado, la documentación obligatoria está actualizada y no quedan ítems necesarios abiertos en `current-task.md`. Cualquier loop puede alcanzar `DONE` cuando el alcance de la tarea es finito; las ejecuciones recurrentes normalmente terminan en `PASS`, `DEGRADED` o `BLOCKED`. |
+
+## Precedencia
+
+1. `BLOCKED` prevalece si existe cualquier bloqueo necesario para completar el objetivo actual.
+2. En ausencia de bloqueo, `DEGRADED` prevalece sobre `PASS` cuando queda una limitación no crítica.
+3. `DONE` es una elevación de `PASS` que solo se declara después del cierre documental y del verification gate.
+4. Una aprobación para una acción posterior no bloquea el loop ya completado; debe registrarse como siguiente decisión.
 
 ## Umbrales de muestra (definidos en el código, no aquí)
 
@@ -29,28 +37,32 @@ configuración y el código. No inventar umbrales nuevos en un loop:
 | Ámbito | Umbral | Origen |
 |---|---|---|
 | Diagnóstico por segmento | `n >= 15` | `src/sqp/audit/segments.py` |
-| Monitor de degradación | `degradation_min_n` (30) | `configs/default.yaml` |
-| Gate de CLV | `clv_gate_min_n` (30) | `configs/default.yaml` |
-| Auto-promoción de calibrador | `AUTO_PROMOTE_MIN_N_VAL` (30) eventos independientes | `src/sqp/calibration/calibrator.py` |
+| Monitor de degradación | `degradation_monitor.min_n` (30) | `configs/default.yaml` |
+| Gate de CLV | `clv_gate.min_n` (30) | `configs/default.yaml` |
+| Promoción opcional de calibrador | `AUTO_PROMOTE_MIN_N_VAL` (30) eventos independientes | `src/sqp/calibration/calibrator.py` |
 | Sintonización de ratings | 200 / 80 | `src/sqp/backtesting/tuning.py` |
 
-Si un loop necesita un umbral que no existe en el código, el estado correcto es
-`BLOCKED` con una propuesta de umbral, no un `PASS` con un número improvisado.
+Si un loop necesita un umbral que no existe en el código, la configuración o una
+decisión humana registrada antes de evaluar, el resultado correcto es `BLOCKED`
+con una propuesta de umbral; no se improvisa un número después de ver los datos.
 
 ## Registro de evidencia
 
-Para cada estado, `current-task.md` debe contener:
+`current-task.md` debe contener:
 
-1. Comandos ejecutados y su código de salida.
-2. Rutas de los artefactos producidos o leídos.
-3. Métricas observadas con su `n` (nunca una métrica sin tamaño de muestra).
-4. La limitación concreta, si el estado es `DEGRADED`.
-5. La acción bloqueante y quién debe aprobarla, si el estado es `BLOCKED`.
+1. `Status` y `Result` como campos separados.
+2. Loop primario, skill y subloops de apoyo, si aplica.
+3. Comandos ejecutados y sus códigos de salida.
+4. Rutas de los artefactos producidos o leídos.
+5. Métricas observadas con su `n`.
+6. La limitación concreta si el resultado es `DEGRADED`.
+7. La acción necesaria y quién debe aprobarla si el resultado es `BLOCKED`.
+8. Acciones posteriores opcionales o sujetas a aprobación bajo `Next decision`.
 
 ## Lenguaje obligatorio
 
 Se aplican `.claude/rules/betting-output-rules.md` y `.claude/CLAUDE.md`: siempre
 "probabilidad estimada"; separar probabilidad estimada, probabilidad implícita,
-edge, hit rate observado vs. prometido, ROI esperado estimado y ROI realizado.
-Un `PASS` **nunca** significa que el sistema sea rentable: significa que el loop
-se ejecutó y dejó evidencia.
+edge, hit rate observado frente a prometido, ROI esperado estimado y ROI
+realizado. Un `PASS` nunca significa que el sistema sea rentable: significa que
+el loop se ejecutó y dejó evidencia.

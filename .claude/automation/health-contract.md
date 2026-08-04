@@ -12,3 +12,15 @@ A full health assessment consists of:
 
 The static scan is not proof that the application is correct. It is a routing signal.
 Results must be copied into `automation/runtime/current-task.md` when they affect decisions.
+
+
+## Current task lifecycle
+
+`current-task.md` uses separate fields:
+
+- `Status: idle | active | closed` controls whether work is in progress.
+- `Result: PASS | DEGRADED | BLOCKED | DONE | N/A` records the outcome.
+
+The static health scan warns only for an active or unknown lifecycle state. A
+closed task may retain a result and a subsequent human decision without being
+reported as actively running.

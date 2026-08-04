@@ -7,6 +7,7 @@ It returns non-zero only for structural errors; warnings are routing signals.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -43,6 +44,29 @@ def git_output(*args: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+_ACTIVE_TASK_STATES = {"active", "in-progress", "in_progress", "running"}
+_TERMINAL_TASK_STATES = {"idle", "closed"}
+
+
+def current_task_is_active(text: str) -> bool:
+    """Return whether ``current-task.md`` describes work still in progress.
+
+    The canonical lifecycle is ``idle | active | closed``. Legacy terminal
+    records such as ``Status: closed (PASS)`` remain accepted. Missing or
+    unknown status is treated as active so the health scan fails safe.
+    """
+    match = re.search(r"^Status:\s*([^\n]+)", text, flags=re.IGNORECASE | re.MULTILINE)
+    if not match:
+        return True
+    raw = match.group(1).strip().casefold()
+    state = raw.split(maxsplit=1)[0].rstrip(":")
+    if state in _TERMINAL_TASK_STATES:
+        return False
+    if state in _ACTIVE_TASK_STATES:
+        return True
+    return True
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -71,7 +95,9 @@ def main() -> int:
         warnings.append("No test_*.py files found")
 
     current_task = ROOT / ".claude/automation/runtime/current-task.md"
-    if current_task.exists() and "Status: idle" not in current_task.read_text(encoding="utf-8"):
+    if current_task.exists() and current_task_is_active(
+        current_task.read_text(encoding="utf-8")
+    ):
         warnings.append("An autonomous task appears active; inspect current-task.md")
 
     report = {

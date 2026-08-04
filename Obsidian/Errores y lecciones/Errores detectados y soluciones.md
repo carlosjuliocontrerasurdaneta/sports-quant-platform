@@ -1,7 +1,7 @@
 ---
 tags: [errores, bugs, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-08-04
 ---
 
 # Errores detectados y soluciones
@@ -32,3 +32,10 @@ Fuente canónica: `.claude/memory/known-issues.md` (KI-001…KI-018, con estado)
 - **KI-017**: liquidación de tenis sin test e2e → `tests/settlement/test_settle_tennis_e2e.py`, 4 tests (`7471ce4`).
 
 Relacionado: [[Errores y lecciones/Lecciones aprendidas]].
+
+## Automatización Claude Code (cerrado 2026-08-04)
+
+- **Routing cuantitativo incompleto**: el hook enviaba operaciones especializadas a `feature.md` o `model.md`. Fix: 13 rutas cuantitativas explícitas, prioridad del incidente cuantitativo y pruebas representativas.
+- **Estados contradictorios**: `DONE` dependía de IDs de loops y una aprobación posterior podía volver inalcanzable un `PASS`. Fix: ciclo de vida y resultado separados, precedencia explícita y `DONE` basado en cierre de tarea finita.
+- **Health check con falso positivo**: `closed (PASS)` se interpretaba como tarea activa. Fix: parser de `Status: idle | active | closed` con compatibilidad legacy.
+- **Permisos locales fuera de alcance**: se retiraron ejecución arbitraria, instalación de paquetes, commit/add, comandos productivos y accesos personales de `settings.local.json`.

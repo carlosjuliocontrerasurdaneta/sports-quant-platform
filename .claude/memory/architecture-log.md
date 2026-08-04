@@ -160,3 +160,12 @@ reconoce el flag `accuracy_mode` y salta esos picks. `segments.py` gana
 `_decision_prob` (calibrada con fallback a estimada) como base única de
 banda/gap/Brier del modelo. Sin módulos nuevos; el served stream y la
 liquidación no cambian.
+
+## 2026-08-04 — Remediación integrada del sistema de loops de Claude Code
+
+**Tipo:** arquitectura operativa / seguridad / documentación
+**Módulos afectados:** `CLAUDE.md`, `.claude/automation/`, `.claude/loops/`, `.claude/hooks/route-model.py`, `.claude/settings.local.json`, `scripts/claude_project_health.py`, `configs/default.yaml`, tests y bóveda Obsidian.
+**Cambio:** Fable 5 queda como modelo principal autorizado y separado de los modelos de subagentes; routing explícito para los 13 loops cuantitativos; protocolo de loops de apoyo; máquina de estados sin contradicción por IDs; lifecycle/result separados en `current-task.md`; promoción de calibradores humana por defecto; permisos locales saneados; NUL bytes eliminados del `CLAUDE.md` raíz.
+**Razón:** la auditoría integrada encontró divergencias entre configuración ejecutable, decision engine, hooks, estados y políticas de aprobación.
+**Validación:** compilación Python, validación JSON/YAML/rutas/NUL, pruebas focalizadas y suite completa. Ruff y Mypy no estaban disponibles en el entorno de remediación.
+**Riesgo:** no se verificó la disponibilidad externa del identificador Fable 5 contra una instalación real de Claude Code; la coherencia del repositorio sí queda probada.

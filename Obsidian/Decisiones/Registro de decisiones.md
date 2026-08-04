@@ -1,7 +1,7 @@
 ---
 tags: [decisiones, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-13
+actualizada: 2026-08-04
 ---
 
 # Registro de decisiones
@@ -25,7 +25,7 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Calibración
 
-- **Train ≠ promote** (2026-06-30): staging automático, promoción humana. Ver [[Conocimiento/Calibración]].
+- **Train ≠ promote** (2026-06-30; reafirmado 2026-08-04): staging automático y promoción humana por defecto (`auto_promote: false`). La función automática queda disponible solo como opt-in aprobado. Ver [[Conocimiento/Calibración]].
 - **Entrenar sobre distribución de servicio** (2026-07-01, `d39f975`): `settled_*.csv`, no pick_history anclado a cierre.
 - **Método por grupo `auto`** (2026-06-23): cada (liga, mercado) usa su mejor calibrador validado OOS.
 
@@ -37,5 +37,7 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Documentación
 
+- **Modelo principal de Claude Code** (2026-08-04): `claude-fable-5` autorizado por decisión humana para la conversación principal; los subagentes permanecen en Opus/Haiku y se prueban por separado.
+- **Routing y loops de apoyo** (2026-08-04): el hook cubre los 13 loops cuantitativos; un solo loop conserva la propiedad de la tarea y los loops de apoyo anexan evidencia sin sobrescribir `current-task.md`.
 - **Obsidian como segundo cerebro** (2026-07-08): esta bóveda es la fuente central de conocimiento; cada cambio relevante se refleja aquí (regla en `CLAUDE.md`). Ver [[Metodología de documentación]].
 - **Skills de Claude Code consolidados** (2026-07-13): un solo meta-skill acotado a arquitectura; análisis por deporte → `quant-*`; multi-rol → `sports-analytical-system` solo explícito; operaciones sensibles con skill propio (`review-calibration`, `clv-shadow-exit`) para que promoción de calibradores y evaluación shadow-exit usen siempre los mismos criterios. Ver [[Bitácora/2026-07-13]].

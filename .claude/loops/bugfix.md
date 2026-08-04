@@ -12,7 +12,9 @@
 2. Trace the root cause; do not patch symptoms.
 3. Record the hypothesis and affected invariant.
 4. Apply the smallest correction.
-5. Prove the regression test fails before and passes after when practical.
+5. Prove the regression test fails before the correction and passes after. If
+   that cannot be demonstrated safely, record the concrete reason and provide
+   equivalent deterministic evidence.
 6. Run adjacent regression tests.
 7. Check whether historical outputs, settlement, odds, or probabilities are affected.
 8. Finish through `/verification-gate`.

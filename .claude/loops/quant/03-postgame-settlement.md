@@ -9,13 +9,15 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Liquidar picks de forma determinista contra el snapshot original.
 
 ## Precondiciones
-- Existen `data/predictions/candidates_<liga>.csv` de la cohorte a liquidar.
+- Existe el snapshot de la cohorte. Un archivo de candidatos vacío es un caso
+  válido y debe cerrar con evidencia de `n_emitidos = 0`; un snapshot ausente es
+  `BLOCKED`.
 - Debe correr ANTES del run diario del día (ver loop 01, orden crítico).
 
 ## Comandos
@@ -24,7 +26,7 @@ Liquidar picks de forma determinista contra el snapshot original.
 2. Verificar resultado oficial y reglas del mercado.
 3. Clasificar `WIN`, `LOSS`, `PUSH`, `VOID` o `PENDING`.
 4. Evitar doble liquidación (dedup en `sqp.settlement.runner`).
-5. Reconciliar emitidos = resueltos + pendientes + voids.
+5. Reconciliar `emitidos = WIN + LOSS + PUSH + VOID + PENDING`.
 6. Guardar score, proveedor y regla aplicada.
 
 ## Artefactos
@@ -37,5 +39,7 @@ Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos:
   ausente, o la reconciliación no cuadra.
 - `DEGRADED`: quedan `PENDING` por resultados aún no publicados; registrar cuántos
   y de qué liga.
-- `PASS`: reconciliación cuadrada y `settled_<liga>.csv` legible.
-- `DONE`: además, la cohorte queda cerrada sin pendientes.
+- `PASS`: reconciliación cuadrada y `settled_<liga>.csv` legible; también aplica
+  a una cohorte válida con `n_emitidos = 0`.
+- `DONE`: además, la cohorte finita queda cerrada sin pendientes y se cumplen las
+  condiciones generales de `DONE`.

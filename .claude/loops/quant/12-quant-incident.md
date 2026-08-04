@@ -9,7 +9,7 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Contener incidentes como leakage, picks posteriores al inicio, liquidación incorrecta, duplicación o modelo equivocado.
@@ -20,6 +20,6 @@ Contener incidentes como leakage, picks posteriores al inicio, liquidación inco
 3. Preservar logs, snapshots, hashes y configuración.
 4. Identificar última ejecución correcta.
 5. Reconciliar picks y resultados afectados.
-6. Corregir con el loop técnico correspondiente.
+6. Ejecutar el loop técnico correspondiente como loop de apoyo conforme al protocolo del `ORCHESTRATOR.md`.
 7. Añadir regresión y postmortem.
 8. Reanudar solo tras verificación y aprobación cuando aplique.

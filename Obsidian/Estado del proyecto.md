@@ -1,12 +1,12 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-08-02
+actualizada: 2026-08-04
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-08-02. Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-08-04. Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
 
 ## Objetivo sacrosanto: GANAR DINERO (directiva 2026-08-02)
@@ -57,7 +57,7 @@ a 1 de sus 3 mercados (solo h2h).
 
 ## Calibración: estado del pipeline
 
-- **Train ≠ promote**: el reentreno diario *presenta candidatos* (staging); desde el 2026-07-08 la **auto-promoción gated** está activa (`auto_promote: true`): promueve a live solo candidatos que pasan los gates OOS (ECE + Brier + monotonía + **no-inflación a extremos**, este último desde el 2026-07-13) y, desde el 2026-07-11, con **≥15 eventos independientes** de validación (no lados correlacionados del mismo partido — port del linaje Nc2, commit `a2027b9`). `scripts/promote_calibration.py` sigue como vía manual.
+- **Train ≠ promote**: el reentreno diario presenta candidatos en staging. Desde el 2026-08-04 `calibration.auto_promote: false` vuelve a ser el default autoritativo: ningún calibrador cambia el registro live sin aprobación humana explícita. La función opcional de auto-promoción conserva gates OOS y exige ≥30 eventos independientes, pero solo puede activarse deliberadamente; la vía normal es `scripts/promote_calibration.py`.
 - **Fix del mismatch train/serve** (2026-07-01, `d39f975`): se entrenaba con historial anclado al cierre pero se servía anclado a apertura; ahora entrena sobre `data/bets/settled_*.csv` (distribución de servicio).
 - **Stream de probabilidades servidas** (2026-07-05/07, `578ace6`): `ServedStore` captura la distribución completa de probabilidades servidas (no solo los picks apostados) para entrenar calibradores sin sesgo de selección. Liquidación del stream integrada para todas las ligas no-tenis.
 - **Staging vacío al 2026-07-12**: el candidato MLB spreads del 07-01 (ECE OOS +0.0524) dejó de regenerarse — con los datos actuales y los gates vigentes (Brier OOS desde 06-30, monotonía, ≥15 eventos independientes desde 07-11), los 8 mercados con muestra suficiente fallan al menos un gate. Ej.: mlb_spreads iso mejora ECE (0.1461→0.1076) pero empeora Brier OOS → descartado. No hay nada que promover; el sistema sigue sirviendo probabilidades crudas por diseño.

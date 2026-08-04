@@ -9,7 +9,9 @@
 - Stop at the iteration budget or any human approval gate.
 
 1. Freeze the evaluation period, source probabilities, baseline, and sample inclusion rules.
-2. Check leakage and ensure calibration data predates evaluated outcomes correctly.
+2. Verify every source probability was generated before its event started using
+   only information available at that timestamp, and ensure the calibration
+   training period strictly precedes the evaluation period.
 3. Evaluate reliability curves/bins, ECE, Brier and Log Loss with sample counts.
 4. Compare global and segmented behavior; flag sparse bins.
 5. Test stability across time and relevant leagues/markets.

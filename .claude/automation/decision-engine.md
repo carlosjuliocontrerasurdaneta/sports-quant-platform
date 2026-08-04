@@ -2,21 +2,21 @@
 
 Use this order; the first matching condition wins.
 
-1. Active incident or production outage -> `incident.md`.
-2. Release/deploy/tag request -> `release.md`.
-3. Failing test or reproducible incorrect behavior -> `bugfix.md`.
-4. Daily prediction generation -> `quant/01-daily-prediction.md`.
-5. Material pregame information update -> `quant/02-pregame-refresh.md`.
-6. Completed-game settlement -> `quant/03-postgame-settlement.md`.
-7. Daily quantitative performance audit -> `quant/04-daily-audit.md`.
-8. Diagnosis of failed picks -> `quant/05-loss-diagnosis.md`.
-9. Calibration monitoring without artifact modification -> `quant/06-calibration-monitor.md`.
-10. Data or performance drift monitoring -> `quant/07-drift-monitor.md`.
-11. Quantitative data-quality recovery -> `quant/08-data-quality-recovery.md`.
-12. Champion-versus-challenger evaluation -> `quant/09-champion-challenger.md`.
-13. Controlled recalibration request -> `quant/10-controlled-recalibration.md`.
-14. Season-transition analysis -> `quant/11-season-transition.md`.
-15. Quantitative production incident -> `quant/12-quant-incident.md`.
+1. Quantitative production incident -> `quant/12-quant-incident.md`.
+2. Active non-quantitative incident or production outage -> `incident.md`.
+3. Release/deploy/tag request -> `release.md`.
+4. Failing test or reproducible incorrect behavior -> `bugfix.md`.
+5. Daily prediction generation -> `quant/01-daily-prediction.md`.
+6. Material pregame information update -> `quant/02-pregame-refresh.md`.
+7. Completed-game settlement -> `quant/03-postgame-settlement.md`.
+8. Daily quantitative performance audit -> `quant/04-daily-audit.md`.
+9. Diagnosis of failed picks -> `quant/05-loss-diagnosis.md`.
+10. Calibration monitoring without artifact modification -> `quant/06-calibration-monitor.md`.
+11. Data or performance drift monitoring -> `quant/07-drift-monitor.md`.
+12. Quantitative data-quality recovery -> `quant/08-data-quality-recovery.md`.
+13. Champion-versus-challenger evaluation -> `quant/09-champion-challenger.md`.
+14. Controlled recalibration request -> `quant/10-controlled-recalibration.md`.
+15. Season-transition analysis -> `quant/11-season-transition.md`.
 16. Weekly quantitative continuous-improvement review -> `quant/13-weekly-continuous-improvement.md`.
 17. Probability/model/calibrator/feature-selection change -> `model.md`.
 18. Evaluation-only or historical simulation change -> `backtest.md`.

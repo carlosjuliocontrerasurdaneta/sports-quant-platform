@@ -9,10 +9,13 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Distinguir drift de datos, concepto, mercado, pipeline o simple varianza.
+
+## Criterio previo obligatorio
+Antes de comparar, registrar referencia, pruebas, nivel de significación o límites de distancia, muestra mínima y regla que separa cada clase de drift. Deben provenir del código, la configuración o una decisión humana anterior a la evaluación; si faltan, el resultado es `BLOCKED`.
 
 ## Flujo
 1. Definir referencia y período actual.

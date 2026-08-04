@@ -13,4 +13,5 @@
 3. Review configuration precedence, migrations, secrets, rollback and operational runbooks.
 4. Complete `.claude/checklists/pre-release.md`.
 5. Produce release notes and unresolved-risk list.
-6. Stop for human approval before commit/tag/release/deployment.
+6. Finish through `/verification-gate`.
+7. Stop for human approval before commit/tag/release/deployment.

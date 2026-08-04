@@ -1,10 +1,8 @@
-"""Auto-promoción de calibradores con gates (decisión 2026-07-08).
+"""Gates de la promoción opcional de calibradores.
 
-El ciclo diario se autocorrige promoviendo a LIVE exactamente lo que pasó los
-gates OOS en staging (ECE + Brier + monotonía) Y validó sobre una muestra
-mínima (n_val >= min_n_val, el guard que habría dejado fuera al candidato
-escalón de n_val=9 del 2026-07-02). Lo que el retrain deja de recomendar se
-demota (self-healing). Cada acción queda auditada en promotion_log.csv.
+La función de auto-promoción sigue disponible para una ejecución expresamente
+autorizada, pero la configuración de producción permanece desactivada por
+defecto. Cada acción conserva su rastro en promotion_log.csv.
 """
 import numpy as np
 import pandas as pd
@@ -93,11 +91,11 @@ def test_auto_promote_setting_defaults_off(monkeypatch):
     assert Settings().calibration_auto_promote is False
 
 
-def test_auto_promote_enabled_in_default_config(monkeypatch):
-    # Pin del estado de producción (decisión 2026-07-08): default.yaml activa
-    # la autocorrección; el env var (si está) le gana al yaml.
+def test_auto_promote_disabled_in_default_config(monkeypatch):
+    # La política autoritativa exige promoción humana; el env var explícito
+    # conserva precedencia para una ejecución aprobada.
     from sqp.config import Settings
     monkeypatch.delenv("CALIBRATION_AUTO_PROMOTE", raising=False)
-    assert Settings.load().calibration_auto_promote is True
-    monkeypatch.setenv("CALIBRATION_AUTO_PROMOTE", "false")
     assert Settings.load().calibration_auto_promote is False
+    monkeypatch.setenv("CALIBRATION_AUTO_PROMOTE", "true")
+    assert Settings.load().calibration_auto_promote is True

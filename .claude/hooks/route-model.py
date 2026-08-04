@@ -7,17 +7,34 @@ import sys
 
 def classify(prompt: str, config: dict) -> dict:
     normalized = prompt.casefold()
-    routes = sorted(config.get("routes", []), key=lambda r: r.get("priority", 0), reverse=True)
+    routes = sorted(
+        config.get("routes", []),
+        key=lambda route: route.get("priority", 0),
+        reverse=True,
+    )
     for route in routes:
         if any(term.casefold() in normalized for term in route.get("keywords", [])):
             return route
     return config["default"] | {"id": "default", "support_agents": []}
 
+
+def find_config_path(cwd: Path) -> Path:
+    """Find model-routing.json from the project root or a nested cwd."""
+    start = cwd.resolve()
+    for candidate in (start, *start.parents):
+        path = candidate / ".claude" / "automation" / "model-routing.json"
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        f".claude/automation/model-routing.json not found from {start}"
+    )
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
         project = Path(payload.get("cwd") or ".")
-        cfg_path = project / ".claude" / "automation" / "model-routing.json"
+        cfg_path = find_config_path(project)
         config = json.loads(cfg_path.read_text(encoding="utf-8"))
         route = classify(str(payload.get("prompt", "")), config)
         support = ", ".join(route.get("support_agents", [])) or "ninguno"

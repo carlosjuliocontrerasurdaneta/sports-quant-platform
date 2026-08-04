@@ -1,14 +1,18 @@
 {
-  "version": 1,
+  "version": 2,
   "default": {
     "loop": "feature.md",
     "primary_agent": "python-engineer",
-    "model": "opus"
+    "model": "opus",
+    "support_agents": [
+      "repository-cartographer",
+      "qa-engineer"
+    ]
   },
   "routes": [
     {
       "id": "full-audit",
-      "priority": 100,
+      "priority": 120,
       "keywords": [
         "auditoría completa",
         "auditoria completa",
@@ -31,8 +35,29 @@
       ]
     },
     {
+      "id": "quant-incident",
+      "priority": 116,
+      "keywords": [
+        "incidente cuantitativo",
+        "quantitative incident",
+        "leakage en producción",
+        "leakage en produccion",
+        "picks posteriores al inicio",
+        "liquidación incorrecta",
+        "liquidacion incorrecta"
+      ],
+      "loop": "quant/12-quant-incident.md",
+      "primary_agent": "principal-orchestrator",
+      "model": "opus",
+      "support_agents": [
+        "sports-quant-auditor",
+        "leakage-detector",
+        "qa-engineer"
+      ]
+    },
+    {
       "id": "incident",
-      "priority": 95,
+      "priority": 115,
       "keywords": [
         "incidente",
         "producción caída",
@@ -50,6 +75,244 @@
       ]
     },
     {
+      "id": "quant-daily-prediction",
+      "priority": 114,
+      "keywords": [
+        "predicción diaria",
+        "prediccion diaria",
+        "predicciones diarias",
+        "generar picks diarios",
+        "daily prediction"
+      ],
+      "loop": "quant/01-daily-prediction.md",
+      "primary_agent": "sports-quant-auditor",
+      "model": "opus",
+      "support_agents": [
+        "provider-integrator",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "quant-pregame-refresh",
+      "priority": 113,
+      "keywords": [
+        "cambio prepartido material",
+        "actualización prepartido",
+        "actualizacion prepartido",
+        "pregame refresh",
+        "refresh pregame"
+      ],
+      "loop": "quant/02-pregame-refresh.md",
+      "primary_agent": "line-movement-analyst",
+      "model": "opus",
+      "support_agents": [
+        "odds-market-auditor",
+        "sports-quant-auditor"
+      ]
+    },
+    {
+      "id": "quant-settlement",
+      "priority": 112,
+      "keywords": [
+        "liquida los resultados",
+        "liquidar resultados",
+        "liquidación de resultados",
+        "liquidacion de resultados",
+        "partidos terminados",
+        "postgame settlement"
+      ],
+      "loop": "quant/03-postgame-settlement.md",
+      "primary_agent": "sports-quant-auditor",
+      "model": "opus",
+      "support_agents": [
+        "data-engineer",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "quant-daily-audit",
+      "priority": 111,
+      "keywords": [
+        "auditoría cuantitativa diaria",
+        "auditoria cuantitativa diaria",
+        "auditoría diaria cuantitativa",
+        "auditoria diaria cuantitativa",
+        "daily quant audit"
+      ],
+      "loop": "quant/04-daily-audit.md",
+      "primary_agent": "sports-quant-auditor",
+      "model": "opus",
+      "support_agents": [
+        "calibration-auditor",
+        "backtest-reviewer"
+      ]
+    },
+    {
+      "id": "quant-loss-diagnosis",
+      "priority": 110,
+      "keywords": [
+        "diagnostica las pérdidas",
+        "diagnosticar pérdidas",
+        "diagnosticar perdidas",
+        "pérdidas de los picks",
+        "perdidas de los picks",
+        "loss diagnosis"
+      ],
+      "loop": "quant/05-loss-diagnosis.md",
+      "primary_agent": "sports-quant-auditor",
+      "model": "opus",
+      "support_agents": [
+        "leakage-detector",
+        "odds-market-auditor"
+      ]
+    },
+    {
+      "id": "quant-calibration-monitor",
+      "priority": 109,
+      "keywords": [
+        "monitorea la calibración",
+        "monitorear calibración",
+        "monitorear calibracion",
+        "calibration monitoring",
+        "descalibración persistente",
+        "descalibracion persistente"
+      ],
+      "loop": "quant/06-calibration-monitor.md",
+      "primary_agent": "calibration-auditor",
+      "model": "opus",
+      "support_agents": [
+        "backtest-reviewer",
+        "risk-manager"
+      ]
+    },
+    {
+      "id": "quant-drift-monitor",
+      "priority": 108,
+      "keywords": [
+        "drift de datos y rendimiento",
+        "revisa el drift",
+        "monitorear drift",
+        "drift monitoring",
+        "performance drift"
+      ],
+      "loop": "quant/07-drift-monitor.md",
+      "primary_agent": "ml-engineer",
+      "model": "opus",
+      "support_agents": [
+        "data-engineer",
+        "sports-quant-auditor"
+      ]
+    },
+    {
+      "id": "quant-data-recovery",
+      "priority": 107,
+      "keywords": [
+        "calidad de datos cuantitativos",
+        "recuperación de calidad de datos",
+        "recuperacion de calidad de datos",
+        "data quality recovery"
+      ],
+      "loop": "quant/08-data-quality-recovery.md",
+      "primary_agent": "data-engineer",
+      "model": "opus",
+      "support_agents": [
+        "provider-integrator",
+        "qa-engineer"
+      ]
+    },
+    {
+      "id": "quant-champion-challenger",
+      "priority": 106,
+      "keywords": [
+        "champion versus challenger",
+        "champion vs challenger",
+        "campeón versus candidato",
+        "campeon versus candidato",
+        "candidato y campeón",
+        "candidato y campeon"
+      ],
+      "loop": "quant/09-champion-challenger.md",
+      "primary_agent": "backtest-reviewer",
+      "model": "opus",
+      "support_agents": [
+        "calibration-auditor",
+        "leakage-detector",
+        "risk-manager"
+      ]
+    },
+    {
+      "id": "quant-controlled-recalibration",
+      "priority": 105,
+      "keywords": [
+        "recalibración controlada",
+        "recalibracion controlada",
+        "controlled recalibration"
+      ],
+      "loop": "quant/10-controlled-recalibration.md",
+      "primary_agent": "calibration-auditor",
+      "model": "opus",
+      "support_agents": [
+        "backtest-reviewer",
+        "risk-manager"
+      ]
+    },
+    {
+      "id": "quant-season-transition",
+      "priority": 104,
+      "keywords": [
+        "transición de temporada",
+        "transicion de temporada",
+        "season transition",
+        "inicio de temporada"
+      ],
+      "loop": "quant/11-season-transition.md",
+      "primary_agent": "sports-quant-auditor",
+      "model": "opus",
+      "support_agents": [
+        "feature-engineer",
+        "ml-engineer"
+      ]
+    },
+    {
+      "id": "quant-weekly-improvement",
+      "priority": 103,
+      "keywords": [
+        "mejora continua semanal cuantitativa",
+        "mejora continua semanal",
+        "revisión cuantitativa semanal",
+        "revision cuantitativa semanal",
+        "weekly continuous improvement"
+      ],
+      "loop": "quant/13-weekly-continuous-improvement.md",
+      "primary_agent": "principal-orchestrator",
+      "model": "opus",
+      "support_agents": [
+        "sports-quant-auditor",
+        "calibration-auditor",
+        "ml-engineer"
+      ]
+    },
+    {
+      "id": "calibration-only",
+      "priority": 92,
+      "keywords": [
+        "exclusivamente la calibración",
+        "exclusivamente la calibracion",
+        "análisis de calibración solamente",
+        "analisis de calibracion solamente",
+        "revisión de calibración",
+        "revision de calibracion",
+        "calibration-only"
+      ],
+      "loop": "calibration.md",
+      "primary_agent": "calibration-auditor",
+      "model": "opus",
+      "support_agents": [
+        "backtest-reviewer",
+        "risk-manager"
+      ]
+    },
+    {
       "id": "modeling",
       "priority": 90,
       "keywords": [
@@ -60,7 +323,10 @@
         "feature selection",
         "machine learning",
         "entrenamiento",
-        "drift"
+        "drift",
+        "calibrador",
+        "cambiar probabilidades",
+        "cambio de probabilidad"
       ],
       "loop": "model.md",
       "primary_agent": "ml-engineer",

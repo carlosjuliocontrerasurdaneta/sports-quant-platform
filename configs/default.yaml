@@ -77,16 +77,12 @@ picks:
 calibration:
   enabled: true
   method: auto   # isotonic | beta | auto (auto = per-(league,market) best, from calibration_methods.json)
-  # Auto-correccion (ACTIVADA 2026-07-08, directiva del usuario: loop unificado
-  # de autoevaluacion): tras el retrain diario a staging, el ciclo promueve a
-  # LIVE los calibradores que pasan los gates OOS (ECE + Brier + monotonia) con
-  # n_val_events >= 15 EVENTOS INDEPENDIENTES (no lados correlacionados del mismo
-  # partido), y demota lo que el retrain ya no recomienda. Rastro auditable
-  # en data/models/promotion_log.csv. Revierte la regla de promocion solo-humana
-  # del 2026-06-30: el gate de Brier que falto en aquel incidente ya existe y
-  # esta testeado; el guard de n_val_events cubre el caso escalon (n_val=9) del
-  # 2026-07-02. false = staging + promocion humana (scripts/promote_calibration.py).
-  auto_promote: true
+  # Promoción humana por defecto: el retrain diario escribe candidatos en
+  # STAGING y nunca cambia el registro LIVE sin una aprobación explícita. La
+  # función auto_promote_calibrators conserva sus gates OOS y el mínimo de 30
+  # eventos independientes para usos deliberadamente autorizados, pero este
+  # archivo no la activa. Promoción manual: scripts/promote_calibration.py.
+  auto_promote: false
 # Markets suspended from staking (still estimated; picks recorded flagged
 # "market_paused", stake 0). MLB totals was paused 2026-06-14 (realized ROI
 # negative vs positive estimated edge); UN-PAUSED 2026-06-22 after the ballpark

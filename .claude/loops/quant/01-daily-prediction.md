@@ -9,16 +9,18 @@
 - Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
 - Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
 - Finalizar con `/verification-gate` y `/memoria-guardar`.
-- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` segun las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
 Generar probabilidades estimadas reproducibles y congelar snapshots antes del inicio de cada evento.
 
 ## Precondiciones
-- La liquidación del día anterior ya corrió. **El run diario SOBRESCRIBE
-  `data/predictions/candidates_*.csv`**, así que ejecutarlo antes de liquidar
-  destruye la cohorte pendiente (queda recuperable en `data/predictions/archive/`,
-  pero el orden correcto es el inverso). Ver `README.md`, "Orden crítico".
+- La cohorte anterior debe liquidarse antes de generar la nueva. **El run diario
+  SOBRESCRIBE `data/predictions/candidates_*.csv`**, así que ejecutarlo antes de
+  liquidar destruye la cohorte pendiente (queda recuperable en
+  `data/predictions/archive/`, pero el orden correcto es el inverso). Ver
+  `README.md`, "Orden crítico".
+- Registrar si la liquidación ya se ejecutó para evitar repetirla.
 - `configs/default.yaml` legible y `Settings.validate()` sin error.
 
 ## Inputs
@@ -28,12 +30,13 @@ Generar probabilidades estimadas reproducibles y congelar snapshots antes del in
 ## Comandos
 1. `python scripts/claude_project_health.py` y `python scripts/health_check.py`.
 2. Verificar frescura de datos, cuotas, lesiones y alineaciones.
-3. `DIARIO_COMPLETO.bat` — encadena SETTLE → RUN en el orden seguro (auditoría
-   2026-07-29, K-001: este loop indicaba `RUN_DIARIO_ALL.bat`, que invierte el
-   orden crítico documentado en el README). **Consume cuota de API de pago:
-   requiere aprobación humana salvo que corra como la tarea programada ya
-   aprobada** (`.claude/automation/autonomy-policy.md`). Usar
-   `RUN_DIARIO_ALL.bat` por separado solo si la liquidación ya se ejecutó.
+3. Elegir exactamente una ruta:
+   - Si la liquidación todavía no se ejecutó, usar `DIARIO_COMPLETO.bat`, que
+     encadena SETTLE → RUN en el orden seguro.
+   - Si la liquidación ya se ejecutó y quedó evidencia, usar únicamente
+     `RUN_DIARIO_ALL.bat`; no repetir settlement.
+   Ambas rutas consumen cuota de API de pago y requieren aprobación humana salvo
+   que corran como una tarea programada ya aprobada.
 4. Validar probabilidades `[0,1]`, duplicados, signos y timestamps.
 5. Congelar event_id, mercado, línea, cuota, probabilidad, edge, fuentes y versiones.
 
