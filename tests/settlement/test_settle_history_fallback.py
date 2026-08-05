@@ -179,3 +179,75 @@ def test_gradable_row_is_graded_not_voided(tmp_path, monkeypatch):
     graded = pd.read_csv(store.graded_path("wnba"))
     # El fallback histórico gradúa ANTES de que el void toque la fila.
     assert list(graded["result"]) == ["win"]
+
+
+# ---------------------------------------------------------------------------
+# Tenis: la clave del histórico es el TOUR, no la liga (auditoría 2026-08-05)
+# ---------------------------------------------------------------------------
+
+def _tennis_served_row(**kw):
+    return _served_row(league="tennis_atp_canadian_open", event_id="t1",
+                       home="Carlos Alcaraz", away="Jannik Sinner",
+                       selection="Carlos Alcaraz", **kw)
+
+
+def test_history_fallback_resolves_the_tour_key_for_tennis(tmp_path, monkeypatch):
+    # El stream servido de tenis se guarda bajo la liga de The Odds API
+    # ('tennis_atp_canadian_open') pero el histórico se backfillea por TOUR
+    # ('atp'). Buscar el histórico con el nombre de la liga devuelve 0 filas, así
+    # que el fallback de M-01 nunca graduaba una sola fila servida de tenis: se
+    # quedaban pendientes hasta caducar por stale_void, perdiendo evidencia de
+    # calibración que ya estaba descargada en data/historical/.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _freeze_served_clock(monkeypatch)
+    store = ServedStore(tmp_path)
+    store.append_served("tennis_atp_canadian_open", [_tennis_served_row()])
+    ResultsStore(tmp_path).upsert("atp", [_result(home="Carlos Alcaraz",
+                                                  away="Jannik Sinner",
+                                                  hs=2, as_=1, game_id="m1")])
+
+    graded_rows = runner._grade_served_from_history("tennis_atp_canadian_open")
+
+    assert graded_rows == 1, "el fallback debe resolver 'atp' desde la liga"
+    graded = pd.read_csv(store.graded_path("tennis_atp_canadian_open"))
+    assert graded.loc[0, "result"] == "win"
+    assert store.pending("tennis_atp_canadian_open", now=_FIXED_NOW).empty
+
+
+def test_history_fallback_keeps_using_the_league_key_for_non_tennis(tmp_path,
+                                                                   monkeypatch):
+    # Guardrail: resolver el tour no debe alterar las ligas normales.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _freeze_served_clock(monkeypatch)
+    store = ServedStore(tmp_path)
+    store.append_served("wnba", [_served_row()])
+    ResultsStore(tmp_path).upsert("wnba", [_result()])
+
+    assert runner._grade_served_from_history("wnba") == 1
+    assert store.pending("wnba", now=_FIXED_NOW).empty
+
+
+class _NoTennisResultsProvider:
+    """ESPN responde sin resultados: el feed vivo no puede graduar nada."""
+    def fetch_results(self, league, days_back=5):
+        return []
+
+
+def test_tennis_settlement_runs_the_history_fallback(tmp_path, monkeypatch):
+    # _settle_tennis nunca llamaba a _grade_served_from_history, así que la
+    # ruta de tenis no tenía fallback histórico AUNQUE el histórico estuviera
+    # backfilleado: las filas servidas caducaban por stale_void.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _freeze_served_clock(monkeypatch)
+    store = ServedStore(tmp_path)
+    store.append_served("tennis_atp_canadian_open", [_tennis_served_row()])
+    ResultsStore(tmp_path).upsert("atp", [_result(home="Carlos Alcaraz",
+                                                  away="Jannik Sinner",
+                                                  hs=2, as_=1, game_id="m1")])
+
+    runner._settle_tennis("tennis_atp_canadian_open", days_from=2,
+                          provider=_NoTennisResultsProvider())
+
+    graded = pd.read_csv(store.graded_path("tennis_atp_canadian_open"))
+    assert len(graded) == 1, "la fila debe graduarse desde el histórico"
+    assert graded.loc[0, "result"] == "win"

@@ -148,11 +148,19 @@ def _grade_served_from_history(league: str, three_way: bool = False) -> int:
     data/historical/ by ordered names + date. Best-effort: a failure here must
     never abort the settlement of real picks."""
     try:
+        from sqp.providers.espn_tennis import tour_from_league
         from sqp.storage.results_store import ResultsStore
         still = ServedStore(ROOT).pending(league)
         if still.empty:
             return 0
-        results = ResultsStore(ROOT).load(league)
+        # El stream servido se guarda bajo la liga de The Odds API
+        # ('tennis_atp_canadian_open'), pero el histórico de tenis se backfillea
+        # por TOUR ('atp'/'wta'). Buscarlo con el nombre de la liga devolvía 0
+        # filas, así que ninguna fila servida de tenis se graduó nunca por esta
+        # vía: caducaban por stale_void con la evidencia ya descargada en
+        # data/historical/ (auditoría 2026-08-05).
+        history_key = tour_from_league(league) or league
+        results = ResultsStore(ROOT).load(history_key)
         if not results:
             return 0
         scores = history_scores_map(still, results)
@@ -352,6 +360,11 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     # even when there were no candidates that day.
     if not pending_served.empty:
         _grade_served(league, tennis_scores_map(pending_served, results))
+        # Igual que en la ruta general (M-01): lo que el feed vivo no gradúa aún
+        # puede graduarse contra data/historical/. Sin esta llamada, una fila de
+        # tenis con resultado ya descargado se ANULABA por stale_void, destruyendo
+        # evidencia de calibración recuperable (auditoría 2026-08-05).
+        _grade_served_from_history(league)
         _void_stale_served(league)
     if not cand_path.exists():
         return pd.DataFrame()
