@@ -8,8 +8,12 @@ El enrutamiento tiene dos capas independientes:
 
 ## Política autorizada
 
-- **Conversación principal:** `claude-fable-5`, por decisión humana explícita del
-  2026-08-04. El hook no debe afirmar que cambia este modelo.
+- **Conversación principal:** `claude-opus-5`, por decisión humana explícita del
+  2026-08-04. Supersede la autorización de `claude-fable-5` tomada ese mismo día:
+  se registró con el riesgo abierto de no haber verificado el identificador contra
+  una instalación real (`architecture-log.md`), y el precedente del 2026-07-30 era
+  que la cuenta no tenía créditos de Fable 5. El hook no debe afirmar que cambia
+  este modelo.
 - **Subagentes Opus:** auditorías, arquitectura, modelado, calibración, leakage,
   backtesting, riesgo, implementación, datos, providers, QA, seguridad, DevOps y
   especialistas deportivos.

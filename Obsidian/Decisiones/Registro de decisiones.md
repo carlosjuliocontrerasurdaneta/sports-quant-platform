@@ -37,7 +37,7 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Documentación
 
-- **Modelo principal de Claude Code** (2026-08-04): `claude-fable-5` autorizado por decisión humana para la conversación principal; los subagentes permanecen en Opus/Haiku y se prueban por separado.
+- **Modelo principal de Claude Code** (2026-08-04, revisado el mismo día): `claude-opus-5` autorizado por decisión humana para la conversación principal; supersede la autorización de `claude-fable-5` de horas antes, que se registró con el riesgo abierto de no haber verificado el identificador contra una instalación real y contra el precedente del 07-30 (la cuenta sin créditos de Fable 5). Los subagentes permanecen en Opus/Haiku y se prueban por separado.
 - **Routing y loops de apoyo** (2026-08-04): el hook cubre los 13 loops cuantitativos; un solo loop conserva la propiedad de la tarea y los loops de apoyo anexan evidencia sin sobrescribir `current-task.md`.
 - **Obsidian como segundo cerebro** (2026-07-08): esta bóveda es la fuente central de conocimiento; cada cambio relevante se refleja aquí (regla en `CLAUDE.md`). Ver [[Metodología de documentación]].
 - **Skills de Claude Code consolidados** (2026-07-13): un solo meta-skill acotado a arquitectura; análisis por deporte → `quant-*`; multi-rol → `sports-analytical-system` solo explícito; operaciones sensibles con skill propio (`review-calibration`, `clv-shadow-exit`) para que promoción de calibradores y evaluación shadow-exit usen siempre los mismos criterios. Ver [[Bitácora/2026-07-13]].

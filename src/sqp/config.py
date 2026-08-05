@@ -269,77 +269,88 @@ class Settings:
     def load(cls) -> "Settings":
         s = cls()
         cfg_path = CONFIG_DIR / "default.yaml"
-        if cfg_path.exists():
-            cfg = load_yaml(cfg_path)
-            r = cfg.get("risk", {})
-            s.risk = RiskConfig(
-                kelly_fraction=float(os.getenv("KELLY_FRACTION", r.get("kelly_fraction", 0.25))),
-                min_edge=float(os.getenv("MIN_EDGE", r.get("min_edge", 0.02))),
-                max_stake_pct=float(os.getenv("MAX_STAKE_PCT", r.get("max_stake_pct", 0.02))),
-                max_daily_exposure_pct=float(os.getenv("MAX_DAILY_EXPOSURE_PCT",
-                                             r.get("max_daily_exposure_pct", 0.10))),
-                max_total_exposure_pct=float(os.getenv("MAX_TOTAL_EXPOSURE_PCT",
-                                             r.get("max_total_exposure_pct", 0.10))),
-                max_plausible_edge=float(os.getenv("MAX_PLAUSIBLE_EDGE",
-                                                   r.get("max_plausible_edge", 0.15))),
-                market_shrink=float(os.getenv("MARKET_SHRINK",
-                                              r.get("market_shrink", 0.5))),
-                uncertainty_penalty=float(os.getenv("UNCERTAINTY_PENALTY",
-                                          r.get("uncertainty_penalty", 0.0))),
-                anomaly_edge_gap=float(r.get("anomaly_edge_gap", 0.0)),
-                anomaly_extra_penalty=float(r.get("anomaly_extra_penalty", 0.0)),
-                low_book_penalty=float(r.get("low_book_penalty", 0.0)),
-                min_books_for_consensus=int(r.get("min_books_for_consensus", 0)),
-            )
-            s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
-                                for lg, mk in (cfg.get("paused_markets") or {}).items()}
-            if _env_flag("SHADOW_MODE") is None and "shadow_mode" in cfg:
-                s.shadow_mode = bool(cfg["shadow_mode"])
-            cal = cfg.get("calibration") or {}
-            # env var (if set) wins over yaml; otherwise yaml, else the dataclass default
-            if _env_flag("CALIBRATION_ENABLED") is None and "enabled" in cal:
-                s.calibration_enabled = bool(cal["enabled"])
-            if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
-                s.calibration_method = str(cal["method"])
-            if _env_flag("CALIBRATION_AUTO_PROMOTE") is None and "auto_promote" in cal:
-                s.calibration_auto_promote = bool(cal["auto_promote"])
-            cg = cfg.get("clv_gate") or {}
-            if _env_flag("CLV_GATE_ENABLED") is None and "enabled" in cg:
-                s.clv_gate_enabled = bool(cg["enabled"])
-            if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
-                s.clv_gate_min_n = int(cg["min_n"])
-            dm = cfg.get("degradation_monitor") or {}
-            if _env_flag("DEGRADATION_ENABLED") is None and "enabled" in dm:
-                s.degradation_enabled = bool(dm["enabled"])
-            if "DEGRADATION_WINDOW_DAYS" not in os.environ and "window_days" in dm:
-                s.degradation_window_days = int(dm["window_days"])
-            if "DEGRADATION_MIN_N" not in os.environ and "min_n" in dm:
-                s.degradation_min_n = int(dm["min_n"])
-            if "DEGRADATION_BRIER_MARGIN" not in os.environ and "brier_margin" in dm:
-                s.degradation_brier_margin = float(dm["brier_margin"])
-            if "DEGRADATION_ROI_PAUSE" not in os.environ and "roi_pause" in dm:
-                s.degradation_roi_pause = float(dm["roi_pause"])
-            if "DEGRADATION_ROI_RESUME" not in os.environ and "roi_resume" in dm:
-                s.degradation_roi_resume = float(dm["roi_resume"])
-            rv = cfg.get("revalidation") or {}
-            if _env_flag("REVALIDATION_ENABLED") is None and "enabled" in rv:
-                s.revalidation_enabled = bool(rv["enabled"])
-            if "REVALIDATION_WINDOW_MIN" not in os.environ and "window_min" in rv:
-                s.revalidation_window_min = int(rv["window_min"])
-            if ("REVALIDATION_PRICE_MAX_AGE_MIN" not in os.environ
-                    and "price_max_age_min" in rv):
-                s.revalidation_price_max_age_min = float(rv["price_max_age_min"])
-            pk = cfg.get("picks") or {}
-            if "PICK_MODE" not in os.environ and "mode" in pk:
-                s.pick_mode = str(pk["mode"])
-            if "ACCURACY_THRESHOLD" not in os.environ and "accuracy_threshold" in pk:
-                s.accuracy_threshold = float(pk["accuracy_threshold"])
-            isc = cfg.get("intraday_scan") or {}
-            if _env_flag("INTRADAY_SCAN_ENABLED") is None and "enabled" in isc:
-                s.intraday_scan_enabled = bool(isc["enabled"])
-            bk = cfg.get("bankroll") or {}
-            if not os.getenv("BANKROLL") and "initial" in bk:
-                s.bankroll = float(bk["initial"])
-            if _env_flag("BANKROLL_DYNAMIC") is None and "dynamic" in bk:
-                s.bankroll_dynamic = bool(bk["dynamic"])
+        if not cfg_path.exists():
+            # Fail fast, never fail open. The whole risk stack lives ONLY in this
+            # file: shadow_mode, the CLV gate and the degradation monitor all
+            # default to False on the dataclass and max_plausible_edge defaults to
+            # 0.15 (twice the shipped 0.075). Skipping a missing file silently
+            # turned `shadow_mode: true` into real stakes with no control layer and
+            # no warning -- the same fail-open class as B-08 (audit 2026-07-29),
+            # here on the file path instead of the env flags.
+            raise FileNotFoundError(
+                f"Config no encontrado: {cfg_path}. Sin el, todo el stack de riesgo "
+                "(shadow_mode, gate de CLV, pausas, max_plausible_edge) caeria a "
+                "defaults inseguros en silencio.")
+        cfg = load_yaml(cfg_path)
+        r = cfg.get("risk", {})
+        s.risk = RiskConfig(
+            kelly_fraction=float(os.getenv("KELLY_FRACTION", r.get("kelly_fraction", 0.25))),
+            min_edge=float(os.getenv("MIN_EDGE", r.get("min_edge", 0.02))),
+            max_stake_pct=float(os.getenv("MAX_STAKE_PCT", r.get("max_stake_pct", 0.02))),
+            max_daily_exposure_pct=float(os.getenv("MAX_DAILY_EXPOSURE_PCT",
+                                         r.get("max_daily_exposure_pct", 0.10))),
+            max_total_exposure_pct=float(os.getenv("MAX_TOTAL_EXPOSURE_PCT",
+                                         r.get("max_total_exposure_pct", 0.10))),
+            max_plausible_edge=float(os.getenv("MAX_PLAUSIBLE_EDGE",
+                                               r.get("max_plausible_edge", 0.15))),
+            market_shrink=float(os.getenv("MARKET_SHRINK",
+                                          r.get("market_shrink", 0.5))),
+            uncertainty_penalty=float(os.getenv("UNCERTAINTY_PENALTY",
+                                      r.get("uncertainty_penalty", 0.0))),
+            anomaly_edge_gap=float(r.get("anomaly_edge_gap", 0.0)),
+            anomaly_extra_penalty=float(r.get("anomaly_extra_penalty", 0.0)),
+            low_book_penalty=float(r.get("low_book_penalty", 0.0)),
+            min_books_for_consensus=int(r.get("min_books_for_consensus", 0)),
+        )
+        s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
+                            for lg, mk in (cfg.get("paused_markets") or {}).items()}
+        if _env_flag("SHADOW_MODE") is None and "shadow_mode" in cfg:
+            s.shadow_mode = bool(cfg["shadow_mode"])
+        cal = cfg.get("calibration") or {}
+        # env var (if set) wins over yaml; otherwise yaml, else the dataclass default
+        if _env_flag("CALIBRATION_ENABLED") is None and "enabled" in cal:
+            s.calibration_enabled = bool(cal["enabled"])
+        if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
+            s.calibration_method = str(cal["method"])
+        if _env_flag("CALIBRATION_AUTO_PROMOTE") is None and "auto_promote" in cal:
+            s.calibration_auto_promote = bool(cal["auto_promote"])
+        cg = cfg.get("clv_gate") or {}
+        if _env_flag("CLV_GATE_ENABLED") is None and "enabled" in cg:
+            s.clv_gate_enabled = bool(cg["enabled"])
+        if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
+            s.clv_gate_min_n = int(cg["min_n"])
+        dm = cfg.get("degradation_monitor") or {}
+        if _env_flag("DEGRADATION_ENABLED") is None and "enabled" in dm:
+            s.degradation_enabled = bool(dm["enabled"])
+        if "DEGRADATION_WINDOW_DAYS" not in os.environ and "window_days" in dm:
+            s.degradation_window_days = int(dm["window_days"])
+        if "DEGRADATION_MIN_N" not in os.environ and "min_n" in dm:
+            s.degradation_min_n = int(dm["min_n"])
+        if "DEGRADATION_BRIER_MARGIN" not in os.environ and "brier_margin" in dm:
+            s.degradation_brier_margin = float(dm["brier_margin"])
+        if "DEGRADATION_ROI_PAUSE" not in os.environ and "roi_pause" in dm:
+            s.degradation_roi_pause = float(dm["roi_pause"])
+        if "DEGRADATION_ROI_RESUME" not in os.environ and "roi_resume" in dm:
+            s.degradation_roi_resume = float(dm["roi_resume"])
+        rv = cfg.get("revalidation") or {}
+        if _env_flag("REVALIDATION_ENABLED") is None and "enabled" in rv:
+            s.revalidation_enabled = bool(rv["enabled"])
+        if "REVALIDATION_WINDOW_MIN" not in os.environ and "window_min" in rv:
+            s.revalidation_window_min = int(rv["window_min"])
+        if ("REVALIDATION_PRICE_MAX_AGE_MIN" not in os.environ
+                and "price_max_age_min" in rv):
+            s.revalidation_price_max_age_min = float(rv["price_max_age_min"])
+        pk = cfg.get("picks") or {}
+        if "PICK_MODE" not in os.environ and "mode" in pk:
+            s.pick_mode = str(pk["mode"])
+        if "ACCURACY_THRESHOLD" not in os.environ and "accuracy_threshold" in pk:
+            s.accuracy_threshold = float(pk["accuracy_threshold"])
+        isc = cfg.get("intraday_scan") or {}
+        if _env_flag("INTRADAY_SCAN_ENABLED") is None and "enabled" in isc:
+            s.intraday_scan_enabled = bool(isc["enabled"])
+        bk = cfg.get("bankroll") or {}
+        if not os.getenv("BANKROLL") and "initial" in bk:
+            s.bankroll = float(bk["initial"])
+        if _env_flag("BANKROLL_DYNAMIC") is None and "dynamic" in bk:
+            s.bankroll_dynamic = bool(bk["dynamic"])
         return s.validate()

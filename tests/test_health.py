@@ -46,3 +46,19 @@ def test_health_detects_per_market_calibration_registry(tmp_path):
     r = generate_health_report(root=tmp_path)
     assert r["leagues"]["mlb"]["calibration"] is True
     assert r["leagues"]["mlb"]["calibration_markets"] == ["spreads"]
+
+
+def test_corrupt_results_file_is_logged_not_silently_counted_as_absent(tmp_path, caplog):
+    # An unreadable CSV already reaches the same None/0 branch as a missing one,
+    # so the status was never wrong -- but the operator could not tell "never
+    # ingested" from "ingested and now corrupt", which need different repairs.
+    hist = tmp_path / "data" / "historical"
+    hist.mkdir(parents=True)
+    corrupt = hist / f"results_{ML_LEAGUES[0]}.csv"
+    corrupt.write_bytes(b'a,b\n"unterminated,1\n\x00\x00')
+
+    with caplog.at_level("WARNING", logger="sqp.monitoring.health"):
+        generate_health_report(root=tmp_path)
+
+    assert any("no se pudo leer" in rec.getMessage() for rec in caplog.records), \
+        "un CSV ilegible debe registrarse, no confundirse con uno ausente"

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.audit.report import settlement_audit_report
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
+from sqp.pipeline.cleanup import unsettled_completed_picks
 from sqp.settlement.runner import fetch_and_settle, realized_roi
 from sqp.storage.served_store import ServedStore
 
@@ -34,12 +35,12 @@ def main() -> int:
     if not leagues:
         log.warning("No hay candidatos ni stream servido que liquidar.")
     total_new = 0
-    failures = 0
+    failed: list[str] = []
     for lg in leagues:
         try:
             settled = fetch_and_settle(lg, settings, days_from=args.days_from)
         except Exception as exc:
-            failures += 1
+            failed.append(lg)
             log.error("[%s] fallo al liquidar: %s", lg, exc)
             continue
         if not settled.empty:
@@ -49,13 +50,38 @@ def main() -> int:
         else:
             log.info("[%s] sin nuevas liquidaciones.", lg)
 
-    path = settlement_audit_report()
-    log.info("Total nuevas liquidadas: %d. Auditoria -> %s", total_new, path)
-    print(f"Liquidadas {total_new} apuestas nuevas. Auditoria: {path}")
+    # Best-effort: failing to WRITE the report is not a data-integrity problem,
+    # so it must not abort a day whose settlement actually succeeded.
+    try:
+        path = settlement_audit_report()
+        log.info("Total nuevas liquidadas: %d. Auditoria -> %s", total_new, path)
+        print(f"Liquidadas {total_new} apuestas nuevas. Auditoria: {path}")
+    except Exception as exc:
+        log.error("No se pudo escribir el reporte de auditoria: %s", exc)
+        print(f"Liquidadas {total_new} apuestas nuevas. Auditoria: NO ESCRITA.")
+
     # DIARIO_COMPLETO.bat relies on this exit status to abort before the daily
-    # run. Returning success after one or more league failures made its documented
-    # safety guarantee ineffective.
-    return 1 if failures else 0
+    # run. Abort only for the case the guarantee exists for: a league that failed
+    # to settle AND still holds commenced, ungraded picks, which the daily run
+    # would make permanently ungradeable by overwriting candidates_<league>.csv
+    # (M2 window). A transient failure -- exhausted quota, a 5xx -- on a league
+    # with nothing at risk threatens no data, and aborting there cost a full day
+    # of evidence: under shadow mode the scarce resource is settled sample, not
+    # capital. run_all.py keeps its own per-league M2 guard either way.
+    if not failed:
+        return 0
+    at_risk = unsettled_completed_picks(
+        ROOT / "data" / "predictions", ROOT / "data" / "bets", failed)
+    if at_risk:
+        for lg, n in sorted(at_risk.items()):
+            log.error("[%s] fallo al liquidar con %d picks ya comenzados sin "
+                      "liquidar: se ABORTA el dia para no volverlos no graduables.",
+                      lg, n)
+        return 1
+    log.warning("%d liga(s) fallaron al liquidar (%s) pero ninguna retiene picks "
+                "comenzados sin liquidar: el dia continua.",
+                len(failed), ", ".join(failed))
+    return 0
 
 
 if __name__ == "__main__":

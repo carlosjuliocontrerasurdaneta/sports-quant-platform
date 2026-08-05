@@ -42,3 +42,6 @@ graphify-out/
 # Bytecode de los hooks: tests/test_claude_model_routing.py carga
 # route-model.py via importlib y genera el __pycache__ (auditoria 2026-07-29).
 .claude/hooks/__pycache__/
+
+# Parches sueltos generados por auditorias: son residuo, no fuente (auditoria 2026-08-04).
+*.patch

@@ -33,7 +33,13 @@ def _rows(path: Path) -> int | None:
         return None
     try:
         return int(len(pd.read_csv(path)))
-    except Exception:
+    except Exception as exc:
+        # An unreadable file trips the same check as an absent one (both land in
+        # the None/0 branch, so nothing passes silently), but the report could
+        # not tell them apart: "no stored results" reads as "never ingested"
+        # when the truth is "ingested and now corrupt" -- a different repair.
+        log.warning("%s existe pero no se pudo leer (%s); se cuenta como sin filas.",
+                    path, exc)
         return None
 
 

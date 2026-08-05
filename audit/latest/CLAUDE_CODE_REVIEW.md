@@ -1,54 +1,123 @@
-# Revisión de Claude Code y Quant Loops — Auditoría 2026-08-02
+# Revisión de Claude Code y Quant Loops — Auditoría 2026-08-04
 
-La revisión estructural completa se hizo el 2026-07-29/30 (historial git de
-este archivo) y su remediación sigue vigente. Esta pasada verifica el estado
-actual pieza por pieza.
+La remediación estructural completa se hizo el 2026-08-04 por la mañana (commit
+`2a293cb`). Esta pasada verifica su resultado por ejecución, no por lectura.
 
-## Arquitectura de `.claude` — estado verificado
+## Integridad referencial: VERIFICADA
 
-| Pieza | Estado 2026-08-02 |
+Comprobado programáticamente contra `.claude/automation/model-routing.json`:
+
+```
+rutas totales: 24
+loops inexistentes: ninguno
+agentes referenciados inexistentes: ninguno
+```
+
+Los 13 loops cuantitativos (`01`–`13`) más el router `00` existen en
+`.claude/loops/quant/`. Los 10 loops generales existen en `.claude/loops/`.
+
+## Estados: VERIFICADO — `STATES.md` es sólido
+
+`.claude/loops/quant/STATES.md` es fuente única de verdad y cumple lo exigible:
+
+- **Definiciones exactas** de `PASS`, `DEGRADED`, `BLOCKED` y `DONE` por
+  condiciones observables, no por juicio.
+- **Precedencia explícita**: `BLOCKED` > `DEGRADED` > `PASS`; `DONE` es una
+  elevación de `PASS` tras el verification gate.
+- **Umbrales anclados al código**, no inventados en el loop: `n≥15`
+  (`segments.py`), `min_n` 30 (`configs/default.yaml`), `AUTO_PROMOTE_MIN_N_VAL`
+  (`calibrator.py`), 200/80 (`tuning.py`).
+- **Separación `Status` (idle/active/closed) vs `Result`**, que era el defecto
+  corregido esta mañana.
+- **Registro de evidencia obligatorio** en `current-task.md`: comandos con
+  códigos de salida, rutas de artefactos, métricas con su `n`.
+- **Lenguaje obligatorio**: *"Un `PASS` nunca significa que el sistema sea
+  rentable: significa que el loop se ejecutó y dejó evidencia."*
+
+Los loops referencian este archivo en vez de redefinir el vocabulario. Correcto.
+
+## Hallazgo: la regla de `STATES.md` se violó el mismo día que se escribió
+
+`current-task.md` cerró la tarea de la mañana con `Result: PASS` mientras la
+suite estaba en **5 failed** y ruff/mypy no se habían ejecutado. `STATES.md`
+dice literalmente:
+
+> Si no puede determinarse a partir de un artefacto o de la salida de un
+> comando, el resultado es `BLOCKED`, nunca `PASS`.
+
+Y define `PASS` exigiendo que "todas las validaciones requeridas se ejecutaron y
+ninguna falló". El estado correcto habría sido `BLOCKED`.
+
+**Conclusión:** el problema del sistema de loops no es la especificación, que es
+buena, sino que **no hay nada que impida declarar un resultado sin la evidencia
+que la propia especificación exige**. Es el hallazgo A-1 en su forma
+automatizada. Ver `BACKLOG.md` B-1.
+
+## Estructura de los loops: correcta pero incompleta
+
+Estructura real verificada (leída, no inferida) en
+`09-champion-challenger.md`, representativa del conjunto:
+
+| Sección | Presente |
 |---|---|
-| `CLAUDE.md` (raíz + `.claude/`) | Coherentes entre sí y con la realidad del repo |
-| `ORCHESTRATOR.md` | Tabla de ruteo apunta a loops que existen; agentes referenciados existen en `.claude/agents/` |
-| `automation/decision-engine.md` | 23 reglas ordenadas, sin contradicciones con el orquestador |
-| `automation/autonomy-policy.md` | Consistente con los límites del operador (commit/push/promoción/riesgo = aprobación humana; shadow explícito desde K-009) |
-| `automation/runtime/current-task.md` | **Corregido (M-02):** decía "in-progress" para la auditoría 07-29 cerrada el 07-31 — tarea zombi. Ahora refleja el estado real |
-| Loops genéricos (10) | Versionados, referenciados por el router |
-| Quant Loops (13 + STATES.md) | Versionados; `STATES.md` es fuente única de PASS/DEGRADED/BLOCKED/DONE con condiciones observables y umbrales de muestra anclados al código (fix K-003 de la auditoría anterior, verificado vigente) |
-| Router quant (`00-…router.md`) | Las 13 rutas existen; reglas comunes centralizadas (sin duplicación) |
-| Comandos (16) | Existen; `/memoria-cargar` y `/full-audit` ejecutados esta sesión |
-| Hooks (`settings.json`) | PostToolUse/Stop/UserPromptSubmit activos; check-secrets verificado por su prueba documentada |
-| Permisos | deny protege `data/`, `.env`, `git reset --hard`; `git push` fuera de deny por decisión 2026-07-31 |
-| Memoria (`.claude/memory/`) | `roadmap.md` **corregido (B-02)**: enlaces muertos a docs borrados en `f43ba00` retirados. known-issues y project-decisions al día (decisión 2026-08-02 añadida) |
-| Skills | 20+ del proyecto + plugins; sin colisiones nuevas detectadas |
+| Reglas comunes (autonomía, memoria, no promover, no usar información posterior al evento, presupuesto de iteraciones) | Sí |
+| Objetivo | Sí |
+| Criterio previo obligatorio (pre-registro de métrica, mejora mínima, muestra mínima) | Sí |
+| Flujo con comandos concretos | Sí |
+| Estados de salida | Sí, delegados a `STATES.md` |
+| **Inputs explícitos** | **No** |
+| **Artefactos producidos** | **No** |
+| **Transición al siguiente loop** | **No** |
 
-## Contradicciones encontradas y resueltas
+El pre-registro obligatorio es una salvaguarda real y bien puesta: sin métrica
+primaria, mejora mínima y muestra mínima declaradas **antes** de ejecutar, el
+loop no puede emitir `CANDIDATE_FOR_APPROVAL` y el resultado es `BLOCKED`. Eso
+previene data snooping por construcción.
 
-1. **Documentación vs configuración (A-01):** README/Obsidian/memoria decían
-   `accuracy` activo; `configs/default.yaml` dice `edge`. Resuelto a favor de
-   la realidad (config + commit `f6c2130`).
-2. **current-task vs realidad (M-02):** tarea in-progress ya cerrada. Resuelto.
-3. **roadmap.md vs docs/ (B-02):** índice apuntando a archivos borrados.
-   Resuelto.
+## Duplicación
 
-## Clasificador automático (UserPromptSubmit)
+El bloque "Reglas comunes" está duplicado literalmente en **14 archivos**. Una
+regla que cambie exige 14 ediciones coherentes. No corregido en esta pasada:
+esos 14 archivos se remediaron hace horas y reescribirlos hoy es churn de alto
+riesgo sin beneficio verificable. Ver `BACKLOG.md` B-3.
 
-El hook clasificó esta solicitud como `modeling → model.md → ml-engineer`; la
-semántica real era auditoría integral (→ `/full-audit`). La propia instrucción
-del hook prevé la discrepancia ("confirma la semántica"), y así se operó. No es
-defecto; queda anotado como limitación conocida del clasificador determinista.
+## Límites de autonomía: VERIFICADOS
 
-## Evaluación de autonomía
+`autonomy-policy.md`, `ORCHESTRATOR.md` y las Reglas comunes de cada loop
+prohíben de forma consistente: promover modelos o calibradores, cambiar riesgo,
+apostar dinero, hacer deploy y publicar cambios sin aprobación humana explícita.
+`calibration.auto_promote: false` en `configs/default.yaml` respalda la política
+en código, no solo en prosa. Coherente.
 
-Los límites siguen correctos tras la directiva del objetivo sacrosanto: el
-policy exige aprobación humana para desactivar shadow, mover stakes, promover
-modelos o publicar — todos controles que PROTEGEN el capital, no que
-contravienen el fin de ganar dinero. No se modificó ninguno.
+`.claude/settings.local.json` está correctamente ignorado por git, igual que
+`*.backup-*`. `.claude/settings.json` (trackeado) contiene solo el modelo y la
+lista de permisos.
 
-## Mejoras pendientes (backlog)
+## Modelo principal: deriva resuelta
 
-- M-7 (07-24): recortar permisos amplios de `settings.local.json` (archivo
-  local del usuario; decisión manual).
-- Considerar un check automático (health o hook) que compare
-  `configs/default.yaml:picks.mode` contra lo que afirman README/Estado del
-  proyecto, para que una brecha tipo A-01 no vuelva a pasar desapercibida.
+Ver `FINDINGS.md` A-2. Estado final: `claude-opus-5` en `settings.json`,
+`MODEL_ROUTING.md`, `Registro de decisiones.md`, `project-decisions.md` y
+`tests/test_claude_model_routing.py`. Candado a tres bandas: cambiar el modelo
+obliga a tocar configuración, política y prueba.
+
+**Decisión deliberada:** el test **no se aflojó** para aceptar un conjunto de
+modelos. Era el único mecanismo que detectó esta deriva, y la deriva
+config↔documentación es el fallo recurrente de este repositorio.
+
+## Memoria
+
+`.claude/memory/project-decisions.md` y `architecture-log.md` están al día. La
+entrada de Fable 5 quedó marcada como SUPERSEDIDA en vez de reescrita: el
+historial de decisiones conserva qué se decidió y por qué se revirtió, que es
+justamente lo que hizo auditable el hallazgo A-2.
+
+## Resumen
+
+| Dimensión | Estado |
+|---|---|
+| Conectados (router → loops → agentes) | Sí, verificado |
+| Versionados | Sí |
+| Consistentes | Sí |
+| Verificables (criterios observables) | Sí, vía `STATES.md` |
+| Ejecutables | Sí |
+| **Pendiente** | Inputs/artefactos/transición por loop; deduplicación de Reglas comunes; **control automático que impida declarar `PASS` sin evidencia** |

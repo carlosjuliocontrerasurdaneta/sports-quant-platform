@@ -1,80 +1,93 @@
-# Resumen ejecutivo — Auditoría integral 2026-08-02
+# Resumen ejecutivo — Auditoría integral 2026-08-04
 
-Auditoría solicitada por el operador el 2026-08-02. Sustituye el contenido de
-`audit/latest/` de la auditoría anterior (2026-07-29/30, conservada en el
-historial git). Alcance: código, configuración, dependencias, seguridad,
-operación, documentación, `.claude`/Quant Loops. `data/`, `historical/`,
-`logs/` y `exports/` NO se escanearon (regla permanente del proyecto); la
-dimensión de datos se auditó a nivel de código, esquemas y health check.
+Sustituye el contenido de `audit/latest/` de la auditoría del 2026-08-02
+(conservada en el historial git). Alcance: código, configuración, dependencias,
+seguridad, operación, documentación, `.claude`/Quant Loops. `data/`,
+`historical/`, `logs/` y `exports/` **no se escanearon** (regla permanente del
+proyecto); la dimensión de datos se auditó a nivel de código, esquemas y health
+check.
 
-Commit base: `1dba6b0` · Rama: `main` · Python 3.14.4 · Sin commit realizado.
+Rama: `fix/claude-audit-20260804` · Commit base: `2a293cb` · Python 3.14.4 ·
+**Sin commit realizado.**
 
-## Estado general
+## Estado general: BUENO — con un fallo de proceso confirmado y recurrente
 
-**BUENO, con una brecha documental significativa (corregida en esta sesión).**
-La línea base ya era verde en todas las puertas técnicas: 581 tests, ruff
-limpio, mypy limpio (88 archivos), pip check limpio, compileall limpio. La
-auditoría anterior (2026-07-29/31, 24 correcciones) dejó el código en buen
-estado; los 10 commits posteriores llevan cada uno tests propios y validación
-registrada en el mensaje.
+Las puertas técnicas quedan verdes y verificadas por ejecución real (no por
+documentación): 618 tests, ruff limpio, mypy limpio (89 archivos), `pip check`
+limpio, `compileall` limpio. El repositorio no versiona datos, artefactos ni
+secretos: 443 archivos trackeados, `.git` de 5.8 MB.
 
-## Hallazgo principal
+El hallazgo rector no es de código sino de proceso.
 
-El revert de `pick_mode: accuracy` → `edge` (commit `f6c2130`, 2026-07-31,
-decisión del operador) **no se propagó a ninguna documentación**: README,
-`Obsidian/Estado del proyecto.md`, `Tareas.md`, la bitácora y la memoria del
-asistente seguían afirmando que el modo precisión estaba activo en producción.
-Cualquier lector (humano o agente) habría operado sobre un estado falso del
-sistema. **Corregido**: 5 documentos sincronizados con la realidad
-(`configs/default.yaml` línea 72: `mode: edge`).
+## Hallazgo principal: el estado se declaraba sin verificarlo
 
-## Directiva estratégica registrada
+Al iniciar la sesión, la documentación del propio día (`Bitácora/2026-08-04.md`)
+afirmaba **"Suite completa verde"** y **"Ruff y Mypy: no ejecutados porque no
+están instalados en el entorno"**. Medición real:
 
-Durante la sesión el operador fijó el objetivo rector definitivo, textual:
-**"El fin del sistema es ganar dinero, eso escríbelo sobre piedra. Es
-sacrosanto."** Registrado en `.claude/memory/project-decisions.md`,
-`Obsidian/Estado del proyecto.md`, la bitácora del día y la memoria persistente
-del asistente. Supersede el pivot a hit rate del 2026-07-27. Nota de honestidad
-obligatoria: es el objetivo, no un logro — no hay edge demostrado a la fecha
-(shadow activo, gate de CLV vacío, OOS −5.32% en la regla edge/Kelly).
+| Afirmación documentada | Realidad medida |
+|---|---|
+| Suite completa verde | **5 failed, 612 passed** |
+| Ruff y Mypy no instalados | **Instalados** (ruff 0.15.14, mypy 2.1.0) y limpios |
 
-## Mejoras realizadas (8 correcciones, 1 de código)
+Es el tercer caso en tres días, junto con la deriva del `pick_mode` del 07-31
+detectada el 08-02. Agravante verificado: `current-task.md` cerró esa tarea con
+`Result: PASS` en violación de la regla explícita de su propio
+`STATES.md`: *"Si no puede determinarse a partir de un artefacto o de la salida
+de un comando, el resultado es BLOCKED, nunca PASS."*
 
-1. `src/sqp/models/ml_train.py` (`_register`): un `registry.json` corrupto se
-   descartaba y sobrescribía en silencio; ahora se respalda como
-   `registry.json.corrupt-<ts>` y se loggea WARNING. Test TDD (rojo→verde).
-2. `README.md`: modo precisión reetiquetado "disponible, NO activo (revertido
-   2026-07-31)", con la razón económica y las columnas de breakeven.
-3. `Obsidian/Estado del proyecto.md`: snapshot 2026-08-02, modo EDGE activo,
-   objetivo sacrosanto al frente.
-4. `Obsidian/Tareas.md`: 2 tareas del modo precisión marcadas obsoletas, revert
-   registrado en completadas, tarea nueva por las filas sin liquidar.
-5. `Obsidian/Bitácora/2026-08-02.md`: creada (auditoría + directiva).
-6. `.claude/memory/roadmap.md`: enlaces muertos a docs eliminados retirados.
-7. `.claude/automation/runtime/current-task.md`: tarea zombi "in-progress"
-   desde el 07-29 cerrada; estado real registrado.
-8. `.github/workflows/ci.yml`: comentario obsoleto (">=3.10" → ">=3.11").
+## Riesgo más grave corregido: C-2, fail-open del stack de riesgo
+
+`Settings.load()` se saltaba en silencio toda la configuración si
+`configs/default.yaml` no se resolvía. Los defaults del dataclass son inseguros:
+`shadow_mode=False`, `clv_gate_enabled=False`, `max_plausible_edge=0.15` (el
+doble del 0.075 desplegado), `paused_markets={}`. El resultado habría sido
+apuestas reales sin capa de control y sin un solo warning.
+
+Honestidad sobre la explotabilidad: **no estaba activo**. El paquete corre desde
+fuente, `ROOT` resuelve al repositorio y el YAML existe; el CI usa `pip install
+-e` (editable), que preserva la ruta. El gatillo es un `pip install .` no
+editable, que `pyproject.toml` habilita al declarar `packages.find where=["src"]`.
+Latente, no vivo. Corregido: ahora lanza `FileNotFoundError`.
+
+## Mejoras realizadas (5 correcciones de código/config, todas con prueba)
+
+1. `src/sqp/config.py` — fail-fast en `load()` (C-2).
+2. `scripts/settle_all.py` — el abort del día deja de dispararse por fallos
+   transitorios sin picks en riesgo; reporte de auditoría pasa a best-effort.
+3. `.claude/settings.json` + `MODEL_ROUTING.md` + registros — deriva del modelo
+   principal resuelta en `claude-opus-5` por decisión del operador.
+4. `src/sqp/monitoring/health.py` — un CSV ilegible se registra en vez de
+   confundirse con uno ausente.
+5. `.gitignore` — `*.patch` ignorado (había un parche residual sin trackear en
+   la raíz, en riesgo de commit accidental).
 
 ## Riesgos principales vigentes
 
-- **87 filas servidas pendientes de liquidar fuera de la ventana de scores**
-  (health check WARN: brasileirao 73, mlb 12, tenis 2). Sin backfill+settle no
-  se gradúan nunca y sesgan la muestra de auditoría (supervivencia). Requiere
-  decisión del operador (settle consume cuota del API). Comandos en BACKLOG.md.
-- **Sin ventaja predictiva demostrada**: sistema ≈ break-even u OOS negativo;
-  gate de CLV vacío. La calidad del software no es validez predictiva.
+- **54 filas servidas sin liquidar fuera de la ventana de scores** (chile 42,
+  tennis_atp_canadian_open 12). Health check en WARN. Misma clase que M-01,
+  cerrado el 08-02: son instancias nuevas, así que el fallback desde
+  `data/historical/` no cubre estas ligas. Sesga la muestra por supervivencia.
+  Requiere decisión del operador (el settle consume cuota del API).
+- **Sin ventaja predictiva demostrada.** El gate de CLV sigue vacío; ningún
+  (liga, mercado) alcanza mediana positiva con n≥30. La calidad del software no
+  es validez predictiva.
 
 ## Preparación
 
-- **Shadow: PREPARADO** (ya opera así; medición completa: CLV con filtro de
-  frescura, monitor de degradación, diagnóstico por segmentos, breakeven por
-  cuota desde `f6c2130`).
-- **Dinero real: NO PREPARADO.** Ningún (liga, mercado) pasa el gate de salida
-  (mediana CLV > 0 con n≥30, allow-list default-deny).
+- **Shadow: PREPARADO.** Ya opera así; la medición es completa (CLV con filtro
+  de frescura, monitor de degradación, diagnóstico por segmentos, breakeven por
+  cuota, observatorio intradía v2).
+- **Dinero real: NO PREPARADO.** Ningún mercado pasa el gate de salida. No se
+  modificó `shadow_mode`, bankroll, stakes ni límites de exposición.
 
 ## Conclusión
 
-El repositorio queda verificado en verde (VALIDATION.md), con la documentación
-re-sincronizada con la realidad operativa y el objetivo rector grabado en
-piedra. No se realizó ninguna acción que requiriera autorización: sin commit,
-sin push, sin cambios de riesgo/modo/umbrales/bankroll, shadow intacto.
+El repositorio queda en verde verificado por ejecución, con dos fallos reales
+corregidos (uno de ellos crítico latente) y con la brecha de proceso
+documentada. Ninguna de las correcciones aumenta la probabilidad de que el
+sistema gane dinero: son de seguridad, integridad y observabilidad. La ausencia
+de edge demostrado permanece intacta y es el hecho dominante del proyecto.
+
+No se realizó ninguna acción que requiriera autorización: sin commit, push,
+tag, deploy, consumo de API paga, promoción de modelos ni cambios de riesgo.

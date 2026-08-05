@@ -230,9 +230,16 @@ Format:
 - Reason: la configuración principal ya seleccionaba Fable 5 por decisión del operador, mientras la política y las pruebas lo declaraban no disponible; el hook de palabras clave no representaba el decision engine cuantitativo.
 - Alternatives: sustituir Fable 5 por Opus (rechazado por decisión explícita del operador); dejar el hook como recomendación parcial (rechazado: inyectaba loops incorrectos).
 - Consequences: política principal/subagentes separada; 24 rutas validadas contra loops y agentes existentes; incidente cuantitativo tiene prioridad sobre el incidente general.
+- SUPERSEDIDA el mismo día: ver la entrada `claude-opus-5` más abajo.
 
 - Date: 2026-08-04
 - Decision: Restablecer promoción humana por defecto para calibradores (`calibration.auto_promote: false`) y conservar la función automática únicamente como opt-in explícitamente aprobado.
 - Reason: `ORCHESTRATOR.md`, `autonomy-policy.md` y los loops prohíben promoción automática; el YAML activo contradecía esa fuente autoritativa.
 - Alternatives: reescribir todas las políticas para permitir promoción automática (rechazado: ampliaría riesgo y contradecía la regla vigente Train ≠ promote).
 - Consequences: el run diario deja candidatos en staging; el registro live solo cambia por una acción aprobada. Los gates de la función opcional y su log permanecen probados.
+
+- Date: 2026-08-04
+- Decision: `claude-opus-5` es el modelo de la conversacion principal de Claude Code. Supersede la autorizacion de `claude-fable-5` tomada horas antes el mismo dia. Subagentes sin cambio: Opus/Haiku.
+- Reason: decision explicita del operador durante la auditoria de esta sesion. La autorizacion de Fable 5 se habia registrado con un riesgo abierto declarado en `architecture-log.md` ("no se verifico la disponibilidad externa del identificador contra una instalacion real") y contra el precedente del 2026-07-30, cuando se detecto que la cuenta no tenia creditos de Fable 5. `.claude/settings.json` ya corria `claude-opus-5`: la politica iba por detras de la realidad, no al reves.
+- Alternatives: revertir `settings.json` a `claude-fable-5` (rechazado por el operador); aflojar el test para aceptar un conjunto de modelos (rechazado: habria silenciado el unico mecanismo que detecta la deriva config/doc, que es el fallo recurrente de este repo).
+- Consequences: `MODEL_ROUTING.md`, `Registro de decisiones.md` y `tests/test_claude_model_routing.py` alineados en el mismo literal (candado a tres bandas). El test sigue siendo exacto a proposito: cambiar el modelo principal obliga a tocar politica y prueba.

@@ -25,11 +25,15 @@ def test_full_audit_routes_to_orchestrator():
     assert route["primary_agent"] == "principal-orchestrator"
 
 
-def test_fable_5_is_authorized_as_the_main_model_only():
+def test_main_model_matches_the_authorized_policy():
+    # Three-way lock: settings.json, MODEL_ROUTING.md and this literal must agree.
+    # Config/doc drift is the failure this repo keeps hitting (pick_mode 07-31,
+    # this model 08-04), so the check stays exact on purpose -- switching the main
+    # model is a deliberate act that must touch the policy and this test too.
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
-    assert settings["model"] == "claude-fable-5"
+    assert settings["model"] == "claude-opus-5"
 
     allowed_subagent_models = {"opus", "haiku"}
     bad_routes = [
@@ -52,8 +56,7 @@ def test_fable_5_is_authorized_as_the_main_model_only():
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
         encoding="utf-8"
     )
-    assert "claude-fable-5" in policy
-    assert "Fable no se usa" not in policy
+    assert "claude-opus-5" in policy
 
 
 def test_every_route_references_an_existing_loop_and_agents():

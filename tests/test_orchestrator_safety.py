@@ -61,7 +61,9 @@ def test_live_pipeline_failure_returns_nonzero_and_preserves_prior_file(monkeypa
     assert mod.main() == 1
 
 
-def test_settlement_failure_propagates_to_batch_exit_status(monkeypatch, tmp_path):
+def _settle_all_with_failure(monkeypatch, tmp_path, at_risk):
+    """settle_all with every league failing; ``at_risk`` is what the
+    commenced-but-unsettled probe reports for those failed leagues."""
     mod = _load_script("settle_all")
     pred = tmp_path / "data" / "predictions"
     pred.mkdir(parents=True)
@@ -71,5 +73,31 @@ def test_settlement_failure_propagates_to_batch_exit_status(monkeypatch, tmp_pat
     monkeypatch.setattr(mod, "fetch_and_settle",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(mod, "settlement_audit_report", lambda: "audit.md")
+    monkeypatch.setattr(mod, "unsettled_completed_picks", lambda *a, **k: at_risk)
     monkeypatch.setattr(sys, "argv", ["settle_all.py"])
+    return mod
+
+
+def test_settlement_failure_with_picks_at_risk_aborts_the_day(monkeypatch, tmp_path):
+    # A league that failed to settle AND still holds commenced, ungraded picks is
+    # the case the DIARIO_COMPLETO abort exists for: the daily run would overwrite
+    # candidates_<league>.csv and make them permanently ungradeable (M2 window).
+    mod = _settle_all_with_failure(monkeypatch, tmp_path, {"mlb": 3})
     assert mod.main() == 1
+
+
+def test_transient_settlement_failure_does_not_abort_the_day(monkeypatch, tmp_path):
+    # Quota exhausted or a 5xx on a league with nothing commenced-and-ungraded
+    # puts no pick at risk. Aborting there cost a full day of operation for a
+    # failure that threatens nothing (audit 2026-08-04).
+    mod = _settle_all_with_failure(monkeypatch, tmp_path, {})
+    assert mod.main() == 0
+
+
+def test_audit_report_failure_is_best_effort(monkeypatch, tmp_path):
+    # A failure WRITING the report is not a data-integrity problem; it must not
+    # abort the day either.
+    mod = _settle_all_with_failure(monkeypatch, tmp_path, {})
+    monkeypatch.setattr(mod, "settlement_audit_report",
+                        lambda: (_ for _ in ()).throw(OSError("disk full")))
+    assert mod.main() == 0

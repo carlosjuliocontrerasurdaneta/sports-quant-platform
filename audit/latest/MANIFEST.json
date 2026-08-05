@@ -1,60 +1,89 @@
 {
-  "audit_id": "audit-2026-08-02",
-  "started_utc": "2026-08-02T12:50:00Z",
-  "finished_utc": "2026-08-02T13:35:00Z",
-  "branch": "main",
-  "base_commit": "1dba6b0474a148ea3c49c449518f5a7f341f902c",
+  "audit_id": "audit-2026-08-04",
+  "started_utc": "2026-08-05T02:15:00Z",
+  "finished_utc": "2026-08-05T03:55:00Z",
+  "branch": "fix/claude-audit-20260804",
+  "base_commit": "2a293cb",
   "commit_created": false,
   "python_version": "3.14.4",
+  "platform": "win32",
   "git_state_initial": {
-    "modified": 1,
-    "untracked": 0,
-    "note": ".claude/settings.json preexistente (renombre de modelo del harness)"
+    "modified": 3,
+    "untracked": 1,
+    "note": "arbol ya modificado por una remediacion previa inconclusa: tests escritos en rojo sin el codigo de produccion que los verdea"
   },
   "git_state_final": {
-    "modified": 17,
+    "modified": 14,
     "untracked": 1,
-    "diff_stat": "17 files changed, 444 insertions(+), 1222 deletions(-)",
-    "note": "las eliminaciones netas provienen de regenerar audit/latest/ (entregables anteriores conservados en git)"
+    "note": "claude-loops-remediation-20260804.patch sigue untracked; ahora cubierto por *.patch en .gitignore"
   },
-  "tests_initial": {"passed": 581, "failed": 0, "duration_s": 191.5},
-  "tests_final": {"passed": 582, "failed": 0, "duration_s": 100.3},
+  "tests_initial": {
+    "passed": 612,
+    "failed": 5,
+    "total": 617,
+    "duration_s": 220.46,
+    "note": "contradice la afirmacion 'Suite completa verde' de Obsidian/Bitacora/2026-08-04.md"
+  },
+  "tests_final": {
+    "passed": 618,
+    "failed": 0,
+    "total": 618,
+    "duration_s": 85.14
+  },
   "commands_executed": [
-    "git status --short / git log / git show",
-    "python --version",
-    "python -m compileall -q src scripts (x2)",
-    "PYTHONPATH=src pytest tests/ -q (x2 suite completa + 1 focalizada)",
-    "ruff check . (x2)",
-    "ruff format --check . (informativo; el proyecto no usa ruff format)",
-    "mypy src (x2)",
-    "pip check (x2)",
-    "python scripts/health_check.py",
-    "escaneo de secretos (git grep patrones api_key/secret/token/password)",
-    "verificacion de rutas de loops/agentes/comandos .claude"
+    {"cmd": "git status --short", "result": "14 modified, 1 untracked"},
+    {"cmd": "python --version", "result": "Python 3.14.4"},
+    {"cmd": "python -m compileall -q src scripts", "result": "OK"},
+    {"cmd": "pytest tests/ -q", "result": "618 passed"},
+    {"cmd": "ruff check .", "result": "All checks passed!"},
+    {"cmd": "ruff format --check .", "result": "192 files would be reformatted (no es estandar del proyecto; CI no lo ejecuta)"},
+    {"cmd": "mypy src", "result": "Success: no issues found in 89 source files"},
+    {"cmd": "pip check", "result": "No broken requirements found."},
+    {"cmd": "scripts/health_check.py", "result": "WARN (0 errors, 2 warnings)"},
+    {"cmd": "git ls-files | wc -l", "result": "443"},
+    {"cmd": "secret scan sobre archivos trackeados", "result": "sin coincidencias reales"},
+    {"cmd": "integridad referencial de model-routing.json", "result": "24 rutas, 0 loops inexistentes, 0 agentes inexistentes"}
+  ],
+  "tools_unavailable": [],
+  "tools_not_run": [
+    {"tool": "pip-audit", "reason": "requiere instalacion y descarga del indice de advisories; el CI lo ejecuta de forma bloqueante contra requirements.lock"}
   ],
   "findings_by_severity": {
-    "critico": 0,
-    "alto": 1,
-    "medio": 2,
-    "bajo": 3,
-    "informativo": 8
+    "CRITICO": 1,
+    "ALTO": 2,
+    "MEDIO": 2,
+    "BAJO": 2,
+    "INFORMATIVO": 3
   },
-  "findings_fixed": ["A-01", "M-02", "B-01", "B-02", "B-03"],
-  "findings_pending_human": ["M-01 (87 filas sin liquidar: backfill gratis + settle con cuota API)", "commit de los cambios"],
+  "findings_by_status": {
+    "corregido": 5,
+    "parcial": 1,
+    "requiere_decision_humana": 1,
+    "no_corregible_automaticamente": 2,
+    "no_confirmado": 1
+  },
   "files_modified": [
-    "src/sqp/models/ml_train.py",
-    "tests/test_ml_models.py",
-    "README.md",
-    "Obsidian/Estado del proyecto.md",
-    "Obsidian/Tareas.md",
-    "Obsidian/Bitacora/2026-08-02.md (nuevo)",
+    "src/sqp/config.py",
+    "src/sqp/monitoring/health.py",
+    "scripts/settle_all.py",
+    "tests/test_config.py",
+    "tests/test_orchestrator_safety.py",
+    "tests/test_health.py",
+    "tests/test_claude_model_routing.py",
+    ".claude/settings.json",
+    ".claude/automation/MODEL_ROUTING.md",
     ".claude/memory/project-decisions.md",
-    ".claude/memory/roadmap.md",
-    ".claude/automation/runtime/current-task.md",
-    ".github/workflows/ci.yml",
-    "audit/latest/* (8 entregables regenerados)"
+    ".gitignore",
+    "Obsidian/Bitacora/2026-08-04.md",
+    "Obsidian/Decisiones/Registro de decisiones.md",
+    "Obsidian/Tareas.md"
   ],
-  "operator_directive": "2026-08-02: el fin del sistema es GANAR DINERO (sacrosanto); registrado en project-decisions, Estado del proyecto, bitacora y memoria persistente. No es afirmacion de rentabilidad lograda.",
-  "final_state": "PASS",
-  "final_state_rationale": "todas las validaciones ejecutadas y en verde; correcciones con prueba; sin acciones que requirieran autorizacion; pendientes M-01 y commit son decisiones humanas, no bloqueos tecnicos"
+  "authorization_required_actions_taken": [],
+  "risk_parameters_changed": false,
+  "shadow_mode_changed": false,
+  "models_promoted": false,
+  "paid_api_used": false,
+  "final_result": "DONE",
+  "final_result_rationale": "Todas las validaciones ejecutables terminaron en verde y quedo evidencia reproducible. El unico WARN (54 filas servidas pendientes) es un backlog de datos que requiere decision humana por consumo de cuota, no un fallo de validacion critica.",
+  "predictive_edge_demonstrated": false
 }
