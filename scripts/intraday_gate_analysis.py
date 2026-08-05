@@ -45,20 +45,28 @@ def main() -> int:
         return cons.get((market, str(selection), line))
 
     rep = evaluate_gate(df, close_for)
-    print("# Gate fase ofensiva intradía (#4) — regla 2026-07-14")
+    print("# Gate fase ofensiva intradía (#4) — test de signo (KI-020, 2026-08-05)")
     print(f"Log: {len(df)} filas | intradía n={rep['n_intraday']} "
-          f"(mín {rep['gate_min_n']}) | picks 11:00 n={rep['n_1100']}")
+          f"({rep['n_intraday_nontied']} no empatadas, mín "
+          f"{rep['gate_min_nontied']}) | picks 11:00 n={rep['n_1100']} "
+          f"({rep['n_1100_nontied']} no empatadas)")
     print(f"CLV intradía : mediana {rep['median_intraday']:+.2%} | "
           f"media {rep['mean_intraday']:+.2%} | beat {rep['beat_intraday']:.0%}")
     print(f"CLV 11:00    : mediana {rep['median_1100']:+.2%} | "
           f"media {rep['mean_1100']:+.2%} | beat {rep['beat_1100']:.0%}")
+    print(f"Test de signo: intradía {rep['pos_intraday']}/"
+          f"{rep['n_intraday_nontied']} positivas "
+          f"({rep['pos_rate_intraday']:.0%}), p={rep['sign_p_intraday']:.4f} "
+          f"(alfa {rep['sign_alpha']}) | 11:00 {rep['pos_1100']}/"
+          f"{rep['n_1100_nontied']} ({rep['pos_rate_1100']:.0%})")
     if rep["by_league_intraday"]:
         print("Intradía por liga (n / mediana / media):")
         for lg, s in sorted(rep["by_league_intraday"].items()):
             print(f"  {lg:28s} {int(s['count']):3d} / {s['median']:+.4f} / {s['mean']:+.4f}")
     print(f"\nVEREDICTO: {rep['verdict']}")
     if rep["verdict"] == "INSUFICIENTE":
-        print("Seguir acumulando observatorio; re-ejecutar cuando n_intradía >= 30.")
+        print(f"Seguir acumulando observatorio; re-ejecutar con "
+              f"{rep['gate_min_nontied']} filas intradía no empatadas.")
     elif rep["verdict"] == "PASS":
         print("Evidencia a favor de CONSTRUIR la generación intradía (decisión humana).")
     else:
