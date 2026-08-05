@@ -76,3 +76,74 @@ def test_quant_loop_common_spelling_is_consistent():
         if " segun " in p.read_text(encoding="utf-8")
     ]
     assert bad == []
+
+
+# ---------------------------------------------------------------------------
+# B-1: un resultado PASS/DONE debe traer la evidencia que STATES.md exige.
+# Motivacion: el 2026-08-04 current-task.md cerro en `Result: PASS` con la suite
+# en 5 failed y ruff/mypy sin ejecutar. STATES.md ya lo prohibia -- "si no puede
+# determinarse a partir de un artefacto o de la salida de un comando, el
+# resultado es BLOCKED, nunca PASS" -- pero nada lo hacia cumplir.
+# ---------------------------------------------------------------------------
+
+_PASS_NO_EVIDENCE = """# Current Task
+
+Status: closed
+Result: PASS
+
+## Objective
+
+Algo que se dio por bueno sin medirlo.
+"""
+
+_PASS_WITH_EVIDENCE = """# Current Task
+
+Status: closed
+Result: PASS
+
+## Comandos ejecutados y codigos de salida
+
+| Comando | Salida | Codigo |
+|---|---|---|
+| `pytest -q` | 618 passed | 0 |
+
+## Artefactos producidos
+
+- `audit/latest/VALIDATION.md`
+"""
+
+_BLOCKED_NO_EVIDENCE = """# Current Task
+
+Status: active
+Result: BLOCKED
+
+## Objective
+
+Bloqueado a la espera de aprobacion humana.
+"""
+
+
+def test_pass_without_evidence_is_flagged():
+    mod = _load_health_module()
+    missing = mod.pass_result_missing_evidence(_PASS_NO_EVIDENCE)
+    assert missing, "un PASS sin comandos ni artefactos debe senalarse"
+
+
+def test_pass_with_commands_and_artifacts_is_accepted():
+    mod = _load_health_module()
+    assert mod.pass_result_missing_evidence(_PASS_WITH_EVIDENCE) == []
+
+
+def test_blocked_result_does_not_require_evidence():
+    # BLOCKED es precisamente el resultado honesto cuando falta evidencia:
+    # exigirsela lo volveria imposible de declarar.
+    mod = _load_health_module()
+    assert mod.pass_result_missing_evidence(_BLOCKED_NO_EVIDENCE) == []
+
+
+def test_live_current_task_satisfies_its_own_evidence_contract():
+    # El archivo real del repositorio debe cumplir la regla que impone.
+    mod = _load_health_module()
+    text = (ROOT / ".claude/automation/runtime/current-task.md").read_text(
+        encoding="utf-8")
+    assert mod.pass_result_missing_evidence(text) == []

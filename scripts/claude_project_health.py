@@ -48,6 +48,38 @@ _ACTIVE_TASK_STATES = {"active", "in-progress", "in_progress", "running"}
 _TERMINAL_TASK_STATES = {"idle", "closed"}
 
 
+_RESULTS_REQUIRING_EVIDENCE = {"pass", "done"}
+
+# STATES.md, "Registro de evidencia": un resultado positivo exige (3) comandos
+# ejecutados con sus codigos de salida y (4) rutas de los artefactos. Se piden
+# como secciones nombradas porque es lo unico verificable sin interpretar prosa.
+_EVIDENCE_SECTIONS = (
+    ("comandos ejecutados", r"^#+\s*Comandos ejecutados"),
+    ("artefactos producidos", r"^#+\s*Artefactos"),
+)
+
+
+def pass_result_missing_evidence(text: str) -> list[str]:
+    """Secciones de evidencia que faltan en un ``current-task.md`` cuyo
+    ``Result`` es PASS o DONE. Lista vacia si cumple, o si el resultado es
+    DEGRADED/BLOCKED (donde la falta de evidencia es justamente lo que se
+    declara) o no hay resultado declarado.
+
+    Existe porque el 2026-08-04 la tarea cerro en ``Result: PASS`` con la suite
+    en 5 failed y ruff/mypy sin ejecutar. STATES.md ya lo prohibia; nada lo
+    hacia cumplir (auditoria 2026-08-04, B-1).
+    """
+    match = re.search(r"^Result:\s*([^\n]+)", text,
+                      flags=re.IGNORECASE | re.MULTILINE)
+    if not match:
+        return []
+    result = match.group(1).strip().casefold().split(maxsplit=1)[0].rstrip(":")
+    if result not in _RESULTS_REQUIRING_EVIDENCE:
+        return []
+    return [name for name, pattern in _EVIDENCE_SECTIONS
+            if not re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)]
+
+
 def current_task_is_active(text: str) -> bool:
     """Return whether ``current-task.md`` describes work still in progress.
 
@@ -95,10 +127,18 @@ def main() -> int:
         warnings.append("No test_*.py files found")
 
     current_task = ROOT / ".claude/automation/runtime/current-task.md"
-    if current_task.exists() and current_task_is_active(
-        current_task.read_text(encoding="utf-8")
-    ):
-        warnings.append("An autonomous task appears active; inspect current-task.md")
+    if current_task.exists():
+        task_text = current_task.read_text(encoding="utf-8")
+        if current_task_is_active(task_text):
+            warnings.append(
+                "An autonomous task appears active; inspect current-task.md")
+        missing = pass_result_missing_evidence(task_text)
+        if missing:
+            # Un PASS sin evidencia es peor que un BLOCKED honesto: se propaga
+            # como estado bueno a la bitacora y a la siguiente sesion.
+            errors.append(
+                "current-task.md declares a positive Result without the evidence "
+                f"STATES.md requires (missing: {', '.join(missing)})")
 
     report = {
         "status": "error" if errors else ("warning" if warnings else "ok"),
