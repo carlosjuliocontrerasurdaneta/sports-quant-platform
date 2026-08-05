@@ -2,6 +2,7 @@
 matematica del CLV, segmentos y regla de salida del shadow mode."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +58,68 @@ def test_compute_clv_negative_when_entry_worse_than_close(tmp_path):
     df, _ = compute_clv(tmp_path / "data" / "bets", tmp_path)
     assert df.iloc[0]["clv_pct"] < 0
     assert bool(df.iloc[0]["beat_close"]) is False
+
+
+def _clv_warnings(caplog) -> list[logging.LogRecord]:
+    return [
+        record for record in caplog.records
+        if record.name == "sqp.clv" and record.levelno == logging.WARNING
+    ]
+
+
+def test_compute_clv_warns_on_implausible_clv(tmp_path, caplog):
+    _write_odds(tmp_path, [_odds_row(price_decimal=4.85)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=2.50)])
+    caplog.set_level(logging.WARNING, logger="sqp.clv")
+
+    compute_clv(tmp_path / "data" / "bets", tmp_path)
+
+    warnings = _clv_warnings(caplog)
+    assert len(warnings) == 1
+    message = warnings[0].getMessage()
+    assert "test" in message
+    assert "h2h" in message
+    assert "e1" in message
+
+
+def test_compute_clv_warns_at_the_exact_threshold_on_the_positive_side(
+        tmp_path, caplog):
+    # El comparador es >=, y usa abs(): un CLV de exactamente +0.25 avisa igual
+    # que uno negativo. Un cierre muy peor que la entrada es tan sospechoso de
+    # emparejamiento roto como uno muy mejor.
+    _write_odds(tmp_path, [_odds_row(price_decimal=2.00)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=2.50)])
+    caplog.set_level(logging.WARNING, logger="sqp.clv")
+
+    df, _ = compute_clv(tmp_path / "data" / "bets", tmp_path)
+
+    assert df.iloc[0]["clv_pct"] == 0.25
+    assert len(_clv_warnings(caplog)) == 1
+
+
+def test_compute_clv_keeps_the_implausible_row(tmp_path):
+    _write_odds(tmp_path, [_odds_row(price_decimal=4.85)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=2.50)])
+
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
+
+    assert len(df) == 1
+    assert abs(df.iloc[0]["clv_pct"] - (2.50 / 4.85 - 1.0)) < 1e-12
+    assert unmatched == 0
+
+
+def test_compute_clv_does_not_warn_on_normal_clv(tmp_path, caplog):
+    _write_odds(tmp_path, [_odds_row(price_decimal=1.90)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=2.00)])
+    caplog.set_level(logging.WARNING, logger="sqp.clv")
+
+    df, _ = compute_clv(tmp_path / "data" / "bets", tmp_path)
+
+    # Una prueba negativa sin premisa se satisface sola: si el emparejamiento
+    # se rompiera, no habria filas ni avisos y esto seguiria verde sin ejercer
+    # nada. La fila procesada es la premisa.
+    assert len(df) == 1
+    assert _clv_warnings(caplog) == []
 
 
 def test_equal_entry_is_neutral_not_beating_close(tmp_path):

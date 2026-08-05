@@ -20,8 +20,11 @@ import pandas as pd
 from sqp.audit.report import DISCLAIMER, load_all_settled
 from sqp.backtesting.roi_engine import load_closing_odds
 from sqp.config import ROOT
+from sqp.logging_config import get_logger
 from sqp.pipeline.probabilities import _consensus_lines
 from sqp.risk.clv_gate import CLV_GATE_MIN_N, gate_decisions, write_clv_gate
+
+log = get_logger("sqp.clv")
 
 # Regla de salida del shadow mode (2026-07-04), parte CLV: mediana positiva
 # sobre al menos este numero de picks liquidados. La otra parte (gate de
@@ -36,6 +39,13 @@ SHADOW_EXIT_MIN_N = 100
 # captura horaria (CAPTURE_CLOSE, ventana 120 min) un snapshot a <=90 min del
 # comienzo si es un proxy razonable de cierre.
 CLOSE_MAX_AGE_MIN = 90.0
+
+# Magnitud de CLV por encima de la cual la fila es sospechosa de un defecto de
+# emparejamiento, no de un mal precio. Referencia empirica (2026-08-05): tras
+# corregir KI-019 el peor CLV legitimo observado ronda el 6%, mientras que las
+# dos filas contaminadas por precios EN VIVO daban -48.5% y -28.0%. El aviso
+# NO descarta la fila: descartar en silencio es como se pierde evidencia.
+CLV_IMPLAUSIBLE_PCT = 0.25
 
 
 def _point(market: str, line) -> float | None:
@@ -77,6 +87,14 @@ def compute_clv(bets_dir: Path, root: Path,
             unmatched += 1
             continue
         entry = float(r.price_decimal)
+        clv_pct = entry / float(close) - 1.0
+        if abs(clv_pct) >= CLV_IMPLAUSIBLE_PCT:
+            log.warning(
+                "CLV implausible %.1f%% en %s %s/%s (evento %s): entrada %.2f "
+                "vs cierre %.2f. Revisar el emparejamiento entrada-cierre; la "
+                "fila se conserva.",
+                clv_pct * 100, r.league, r.market, r.selection,
+                str(r.event_id), entry, float(close))
         gen = getattr(r, "generated_at", None)
         rows.append({
             "league": r.league, "market": r.market, "selection": r.selection,
@@ -85,7 +103,7 @@ def compute_clv(bets_dir: Path, root: Path,
             "event_id": str(r.event_id), "line": r.line,
             "generated_at": "" if gen is None or pd.isna(gen) else str(gen),
             "result": r.result, "entry": entry, "close": float(close),
-            "clv_pct": entry / float(close) - 1.0,
+            "clv_pct": clv_pct,
             # Equality is neutral CLV, not "beating" the close. Counting ties as
             # wins inflated the observed beat-close rate (82.7% while the median
             # CLV was exactly zero in the audited dataset).

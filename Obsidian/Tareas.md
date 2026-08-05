@@ -37,6 +37,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Completadas recientemente
 
+- [x] 2026-08-05 — Aviso de CLV implausible (`|CLV| >= 25%`) en `compute_clv`: `WARNING` con liga/mercado/evento/entrada/cierre, **sin descartar la fila** (descartar en silencio es lo que habría escondido KI-019). Umbral calibrado sobre datos reales (peor CLV legítimo ~6% vs −48.5%/−28.0% contaminados); hoy dispara 0 veces. 634 tests verdes. Ver [[Bitácora/2026-08-05]].
 - [x] 2026-08-04 — Auditoría integrada y remediación de `.claude`: routing de los 13 loops cuantitativos, Fable 5 principal, estados/handoffs, health check, promoción humana por defecto, permisos locales y tests de regresión. Ver [[Bitácora/2026-08-04]].
 - [x] 2026-07-31 — **Revert a `pick_mode: edge`** (`f6c2130`) + `breakeven_hit_rate`/`hit_rate_margin` en el reporte por segmento. Documentado retroactivamente en la auditoría del 2026-08-02 (la sesión del 07-31 no actualizó la bóveda). Ver [[Bitácora/2026-08-02]].
 - [x] 2026-07-28 — **Modo precisión implementado y ACTIVADO** (`pick_mode: accuracy`, umbral 0.70, solo moneyline, stake plano, flag `accuracy_mode`, skip de la revocación por edge, KPI por banda sobre probabilidad calibrada). TDD, 436 tests verdes. Ver [[Bitácora/2026-07-28]].
