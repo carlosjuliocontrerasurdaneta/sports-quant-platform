@@ -66,12 +66,17 @@ def load_closing_odds(root: Path, league: str,
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
     out: dict[str, EventOdds] = {}
     for eid, g in df.groupby("event_id"):
-        commence = str(g["commence_time"].iloc[0])
         # Compare as timestamps, not strings: captured_at mixes '+00:00' and 'Z'
         # suffixes across files and lexicographic order is not temporal order
         # (audit 2026-07-24, M-30).
-        commence_ts = pd.to_datetime(commence, utc=True, errors="coerce")
         cap_ts = pd.to_datetime(g["captured_at"], utc=True, errors="coerce")
+        # El proveedor CORRIGE la hora de inicio sobre la marcha, así que vale
+        # la última reportada, no la de una fila arbitraria: con la obsoleta un
+        # snapshot ya EN VIVO pasaba el filtro y se tomaba como cierre, con un
+        # precio que refleja el partido en curso (KI-019, 2026-08-05).
+        latest = cap_ts.idxmax() if cap_ts.notna().any() else g.index[0]
+        commence = str(g.loc[latest, "commence_time"])
+        commence_ts = pd.to_datetime(commence, utc=True, errors="coerce")
         if pd.isna(commence_ts):
             continue
         pre_mask = cap_ts < commence_ts

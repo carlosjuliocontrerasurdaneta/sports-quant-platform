@@ -32,6 +32,24 @@ def test_load_closing_odds_picks_last_snapshot_before_commence(tmp_path):
     assert prices == [1.9]                     # only the last strictly-pre-commence snapshot
 
 
+def test_load_closing_odds_honours_a_corrected_commence_time(tmp_path):
+    """El proveedor corrige la hora de inicio sobre la marcha (KI-019): el
+    partido de las 12:00 en realidad empezó a las 11:00. Tomar el commence de
+    una fila arbitraria admitía como "cierre" un snapshot ya EN VIVO, cuyo
+    precio refleja lo que va pasando en la cancha, no el mercado prepartido."""
+    base = {"event_id": "e1", "home": "Fernandez", "away": "Linette",
+            "market": "h2h", "point": "", "bookmaker": "dk", "outcome": "Linette"}
+    rows = [
+        {**base, "commence_time": "2026-06-10T12:00:00Z",   # hora original
+         "captured_at": "2026-06-10T10:30:00Z", "price_decimal": 2.50},
+        {**base, "commence_time": "2026-06-10T11:00:00Z",   # corregida: ya empezó
+         "captured_at": "2026-06-10T11:30:00Z", "price_decimal": 4.85},
+    ]
+    _write_odds(tmp_path, rows)
+    odds = load_closing_odds(tmp_path, "test")
+    assert [ln.price_decimal for ln in odds["e1"].lines] == [2.50]
+
+
 def test_load_closing_odds_max_age_drops_stale_events(tmp_path):
     commence = "2026-06-10T23:00:00Z"
     base = {"event_id": "e1", "commence_time": commence, "home": "Rays", "away": "Red Sox",
