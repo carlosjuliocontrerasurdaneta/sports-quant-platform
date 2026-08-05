@@ -76,3 +76,30 @@ def test_offline_mode_uses_cache_only(tmp_path):
     warm = _client(tmp_path, sess, offline_mode=True)
     assert warm.fetch_odds("mlb", "baseball_mlb")    # returns parsed events
     assert sess.calls == 0                           # served from disk, no API call
+
+
+def test_file_cache_ttl_boundary_is_deterministic(tmp_path, monkeypatch):
+    # El test de TTL fallaba SOLO en la pata Windows del CI desde (al menos) el
+    # 2026-08-02: la condicion era `age > ttl`, asi que con ttl=0 un archivo
+    # escrito en el mismo tick del reloj tenia age==0.0 y NO expiraba. La
+    # granularidad de mtime del runner lo hacia determinista alli y no en local,
+    # y el fallo sobrevivio dias porque nadie miraba el CI.
+    # "younger than ttl" significa age < ttl, luego expira con age >= ttl.
+    # El reloj se congela para clavar el borde exacto en vez de depender de el.
+    import os
+
+    c = FileCache(tmp_path)
+    k = c.key("/x", {"a": 1})
+    c.put(k, {"v": 1})
+    f = tmp_path / f"{k}.json"
+
+    frozen = 1_000_000.0
+    monkeypatch.setattr("sqp.providers.odds_cache.time.time", lambda: frozen)
+
+    os.utime(f, (frozen, frozen))               # edad EXACTAMENTE 0
+    assert c.get(k, ttl=0) is None              # ttl=0 nunca sirve nada
+    assert c.get(k, ttl=float("inf")) == {"v": 1}   # inf ignora la edad
+
+    os.utime(f, (frozen, frozen - 10.0))        # edad EXACTAMENTE 10
+    assert c.get(k, ttl=10) is None             # borde: age == ttl -> expira
+    assert c.get(k, ttl=11) == {"v": 1}         # mas joven -> sirve

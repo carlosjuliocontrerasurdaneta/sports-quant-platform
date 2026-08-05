@@ -34,7 +34,12 @@ class FileCache:
         f = self._file(key)
         if not f.exists():
             return None
-        if ttl != float("inf") and (time.time() - f.stat().st_mtime) > ttl:
+        # `>=`, no `>`: "younger than ttl" es age < ttl, asi que una entrada con
+        # age == ttl ya caduco. Con `>` un ttl=0 servia la entrada si el archivo
+        # se habia escrito en el mismo tick del reloj (age 0.0), lo que rompia la
+        # pata Windows del CI de forma intermitente segun la granularidad de
+        # mtime del runner (auditoria 2026-08-05).
+        if ttl != float("inf") and (time.time() - f.stat().st_mtime) >= ttl:
             return None
         try:
             return json.loads(f.read_text(encoding="utf-8"))
