@@ -31,23 +31,61 @@
     "duration_s": 85.14
   },
   "commands_executed": [
-    {"cmd": "git status --short", "result": "14 modified, 1 untracked"},
-    {"cmd": "python --version", "result": "Python 3.14.4"},
-    {"cmd": "python -m compileall -q src scripts", "result": "OK"},
-    {"cmd": "pytest tests/ -q", "result": "618 passed"},
-    {"cmd": "ruff check .", "result": "All checks passed!"},
-    {"cmd": "ruff format --check .", "result": "192 files would be reformatted (no es estandar del proyecto; CI no lo ejecuta)"},
-    {"cmd": "mypy src", "result": "Success: no issues found in 89 source files"},
-    {"cmd": "pip check", "result": "No broken requirements found."},
-    {"cmd": "scripts/health_check.py", "result": "WARN (0 errors, 2 warnings)"},
-    {"cmd": "git ls-files | wc -l", "result": "443"},
-    {"cmd": "secret scan sobre archivos trackeados", "result": "sin coincidencias reales"},
-    {"cmd": "integridad referencial de model-routing.json", "result": "24 rutas, 0 loops inexistentes, 0 agentes inexistentes"}
+    {
+      "cmd": "git status --short",
+      "result": "14 modified, 1 untracked"
+    },
+    {
+      "cmd": "python --version",
+      "result": "Python 3.14.4"
+    },
+    {
+      "cmd": "python -m compileall -q src scripts",
+      "result": "OK"
+    },
+    {
+      "cmd": "pytest tests/ -q",
+      "result": "618 passed"
+    },
+    {
+      "cmd": "ruff check .",
+      "result": "All checks passed!"
+    },
+    {
+      "cmd": "ruff format --check .",
+      "result": "192 files would be reformatted (no es estandar del proyecto; CI no lo ejecuta)"
+    },
+    {
+      "cmd": "mypy src",
+      "result": "Success: no issues found in 89 source files"
+    },
+    {
+      "cmd": "pip check",
+      "result": "No broken requirements found."
+    },
+    {
+      "cmd": "scripts/health_check.py",
+      "result": "WARN (0 errors, 2 warnings)"
+    },
+    {
+      "cmd": "git ls-files | wc -l",
+      "result": "443"
+    },
+    {
+      "cmd": "secret scan sobre archivos trackeados",
+      "result": "sin coincidencias reales"
+    },
+    {
+      "cmd": "integridad referencial de model-routing.json",
+      "result": "24 rutas, 0 loops inexistentes, 0 agentes inexistentes"
+    },
+    {
+      "cmd": "pip-audit -s osv -r requirements.lock",
+      "result": "No known vulnerabilities found"
+    }
   ],
   "tools_unavailable": [],
-  "tools_not_run": [
-    {"tool": "pip-audit", "reason": "requiere instalacion y descarga del indice de advisories; el CI lo ejecuta de forma bloqueante contra requirements.lock"}
-  ],
+  "tools_not_run": [],
   "findings_by_severity": {
     "CRITICO": 1,
     "ALTO": 2,

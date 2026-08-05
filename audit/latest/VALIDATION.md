@@ -128,10 +128,19 @@ agentes referenciados inexistentes: ninguno
 ## Herramientas no disponibles
 
 Ninguna. `pytest`, `ruff`, `mypy`, `pip` y `python` estaban todos instalados y
-se ejecutaron. `pip-audit` (que el CI ejecuta contra `requirements.lock`) **no se
-ejecutó localmente**: requiere instalación y descarga del índice de advisories.
-No puedo confirmar el estado de vulnerabilidades de dependencias en esta pasada;
-el CI lo cubre de forma bloqueante en cada push.
+se ejecutaron.
+
+`pip-audit` se instaló y ejecutó (2026-08-05), cerrando la brecha que esta
+auditoría había declarado abierta:
+
+```
+$ python -m pip_audit -s osv -r requirements.lock
+No known vulnerabilities found
+```
+
+Nota: contra el servicio por defecto (PyPI) la consulta agota el tiempo de
+lectura en este entorno; con `-s osv` (base de datos OSV) completa. El CI usa el
+servicio por defecto y lo ejecuta de forma bloqueante en cada push.
 
 ## No verificado
 
