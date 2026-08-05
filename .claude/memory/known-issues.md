@@ -133,3 +133,17 @@ Format:
 - Affected files: src/sqp/audit/html_report.py.
 - Proposed fix: renderizar vacío o "—" cuando point es NaN y excluir "nan" de las opciones del filtro.
 - Status: RESUELTO (2026-07-08). Mitad del issue ya estaba resuelta el 2026-07-03 (el filtro de Historial pasó de Línea a Mercado, así que no hay filtro que muestre "nan"). Restaba el render: _fmt_cell (html_report.py) ahora devuelve "—" para float NaN (tablas server-rendered de Auditoría/Historial); la tabla de Picks ya manejaba null→"" client-side. Test de regresión en test_html_report.py.
+
+- ID: KI-019
+- Severity: Media (integridad de la evidencia de CLV)
+- Description: Dos filas del grupo "picks 11:00" del gate intradía tienen CLV de −48.5% y −28.0%, ambas `tennis_wta_washington_open`. Una magnitud así no es un resultado de apuesta: apunta a un desajuste en el emparejamiento entrada↔cierre (precio o línea). Contamina la media del grupo de comparación: quitando SOLO la peor fila, la ventaja intradía cae de +0.0150 a +0.0075 y P(dif>0) de 0.947 a 0.868. Detectado por el análisis del gate del 2026-08-05.
+- Affected files: src/sqp/audit/intraday_gate.py (_clv_frame), src/sqp/backtesting/roi_engine.py (load_closing_odds), data/bets/intraday_edge_log.csv.
+- Proposed fix: investigar esas filas concretas; probable relación con el hallazgo de cuotas degeneradas `price_decimal = 1.0` del 2026-07-24 (guard pendiente en ingestión o lectura). Considerar un filtro de plausibilidad de CLV con log, no descarte silencioso.
+- Status: ABIERTO (2026-08-05).
+
+- ID: KI-020
+- Severity: Media (diseño de criterio, no bug)
+- Description: El gate intradía usa la MEDIANA del CLV, pero el 41% de las filas intradía son ceros exactos (empates de precio) y Q1 = 0.0000. La mediana solo supera 0 si más de la mitad de las filas son estrictamente positivas, así que el gate puede no dispararse nunca aunque exista señal. Los ceros son ausencia de información, no evidencia en contra.
+- Affected files: src/sqp/audit/intraday_gate.py (evaluate_gate), regla pre-registrada del 2026-07-14.
+- Proposed fix: NO pasarse a la media (medida el 2026-08-05: +0.0018, IC95% [−0.0065, +0.0109], P(>0)=0.65; sin tenis es negativa) — sería data snooping y aprobaría ruido. Si se concluye que la mediana fue mal elegida, pre-registrar un test que trate empates (signo/Wilcoxon sobre no empatadas, con su propio n mínimo) ANTES de acumular más muestra.
+- Status: ABIERTO — requiere decisión del operador (2026-08-05).

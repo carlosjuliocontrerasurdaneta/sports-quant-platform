@@ -334,3 +334,31 @@ Para romper el cuello de botella ("solo MLB tiene OOS confiable") se usó el bac
 **Validación:** pytest 436 passed; ruff limpio; graphify actualizado. RED verificado (8 fallos por feature ausente) antes de GREEN.
 
 **Pendiente:** definir gate de salida del shadow para el modo precisión (propuesta: hit rate observado >= prometido por banda con n suficiente); vigilar volumen de picks con umbral 0.70 los primeros días (si sale vacío, decidir umbral vs esperar ligas mejor calibradas).
+
+## 2026-08-04/05 — Auditoría integral: fail-open del riesgo, evidencia de tenis anulada y guard de PASS
+
+**Contexto de entrada:** la sesión empezó pidiendo una auditoría completa. La bitácora del propio día afirmaba "Suite completa verde" y "Ruff y Mypy no instalados". **Ambas falsas**: la suite estaba en 5 failed / 612 passed y ambas herramientas estaban instaladas (ruff 0.15.14, mypy 2.1.0) y limpias. Tercer estado falso declarado en tres días (con la deriva del `pick_mode` del 07-31). `current-task.md` había cerrado en `Result: PASS` violando la regla explícita de su propio `STATES.md`.
+
+**C-2 CRÍTICO (latente) — `src/sqp/config.py`:** `Settings.load()` envolvía toda la carga en `if cfg_path.exists():`, saltándosela en silencio si faltaba el YAML. Los defaults del dataclass son inseguros: `shadow_mode=False`, `clv_gate_enabled=False`, `max_plausible_edge=0.15` (el doble del 0.075 desplegado), `paused_markets={}`. Un config no resuelto producía **apuestas reales sin capa de control y sin warning**. No estaba activo (corre desde fuente; CI usa `pip install -e`), pero `pip install .` no editable lo dispara — `pyproject.toml` lo habilita con `packages.find where=["src"]`. Misma clase de fail-open que B-08 (07-29), ya corregida para env vars y no para la ruta de archivo. Ahora lanza `FileNotFoundError`.
+
+**M-3 INTEGRIDAD DE DATOS — `src/sqp/settlement/runner.py`:** dos defectos encadenados en tenis. (1) `_grade_served_from_history` cargaba el histórico con la clave de LIGA (`tennis_atp_canadian_open` → 0 filas) en vez del TOUR (`atp` → 7.239); `tour_from_league()` ya existía en `providers/espn_tennis.py` sin usarse ahí. (2) `_settle_tennis` **nunca invocaba** el fallback: la ruta de tenis no lo tenía en absoluto — el fix de M-01 (08-02) solo cubrió no-tenis. Efecto real, no teórico: el test en rojo mostró la fila graduándose como `void` con el log *"1 stale row(s) voided"* **teniendo el resultado ya en `data/historical/`**. Se anulaba evidencia de calibración recuperable, y precisamente en el deporte donde vive la única señal de CLV positiva.
+
+**M-1 — `scripts/settle_all.py`:** `return 1 if failures else 0` abortaba el día por cualquier fallo, aunque `run_all.py:142-159` ya aplica el guard M2 por liga. Bajo shadow el stake es 0, así que un 5xx o cuota agotada costaba un día de EVIDENCIA, que es el recurso escaso. Ahora aborta solo con picks comenzados sin liquidar; reporte de auditoría a best-effort.
+
+**B-1 — `scripts/claude_project_health.py`:** `pass_result_missing_evidence()`. Si `Result` es PASS o DONE exige las secciones de evidencia que STATES.md pide (comandos con códigos de salida, artefactos). DEGRADED y BLOCKED exentos a propósito: declarar falta de evidencia es para lo que existen. Se reporta como **error**, no warning. Un test exige que el `current-task.md` real cumpla la regla que impone.
+
+**Ejecutado con autorización:** backfill (gratis) → chile +0 filas, ATP +121. Graduación desde histórico: **82 filas de tenis** (20 eventos × h2h/spreads/totals de ambos lados). chile: 0 graduables — confirmado sin vendor de resultados bajo esa clave (mismo patrón que brasileirao) → **42 anuladas con flag**, nunca borradas. Health check WARN 2 → 1.
+
+**Modelo principal → `claude-opus-5`** (decisión del operador). El test de routing NO se aflojó: era el único mecanismo que detectaba la deriva config↔doc, que es el fallo recurrente del repo. La autorización de `claude-fable-5` de horas antes se había registrado con riesgo declarado ("no se verificó el identificador contra una instalación real") y contra el precedente del 07-30 (cuenta sin créditos de Fable).
+
+**Gate intradía #4 — n=29/30, y una advertencia:** llegar a 30 NO es aprobar. El criterio exige mediana intradía > 0 Y > mediana 11:00; **ambas están en +0.0000%**. Análisis preparado para decidir en frío (criterio NO tocado): la media intradía sola es ruido (+0.0018, IC95% [−0.0065, +0.0109], P(>0)=0.65); sin tenis es negativa (n=20, −0.0051); la ventaja frente a 11:00 cae de +0.0150 a +0.0075 al quitar UNA fila. Esa fila —`tennis_wta_washington_open` con CLV **−48.5%**— no es una apuesta mala sino un desajuste de precio/línea: tarea abierta. Problema estructural real: con **41% de ceros exactos** la mediana solo supera 0 si >50% de filas son estrictamente positivas, así que el gate puede no dispararse nunca aunque exista señal. Recomendación: NO pasarse a la media; si la mediana fue mal elegida, pre-registrar un test que trate empates (signo/Wilcoxon) ANTES de acumular más muestra.
+
+**Validación final (salida real):** `pytest` **625 passed** (desde 612 con 5 en rojo); `ruff check .` limpio; `mypy src` 89 archivos sin issues; `pip check` limpio; `compileall` OK; health check WARN(1). `ruff format` declarado NO adoptado en `pyproject.toml` (reformatearía 192 de 209 archivos; el CI no lo ejecuta). `pip-audit` NO ejecutado localmente — lo cubre el CI de forma bloqueante.
+
+**Commits (rama `fix/claude-audit-20260804`, pusheados, sin merge a main):** `a4e8dd5`, `9cd6929`, `fce1737`, `1f39668`, `4f7ca34`. Entregables en `audit/latest/` (7 + MANIFEST). Borrado `claude-loops-remediation-20260804.patch` (1.855 líneas) tras verificar su contenido en `2a293cb`.
+
+**Sin tocar:** `shadow_mode`, `pick_mode`, bankroll, stakes, límites de exposición, calibradores, modelos. Sin ventaja predictiva demostrada.
+
+**Pendiente para la próxima sesión:** `gh` no está autenticado (`gh auth login`) → no se pudo ver el CI ni abrir PR; la rama sigue sin mergear a `main`. Decisión del operador sobre el estadístico del gate. Investigar el CLV de −48.5%.
+
+**Lección central:** una corrección verificada en una rama del código no está verificada en las demás — el fix de M-01 se dio por cerrado el 08-02 sin probar la ruta de tenis, que era justo la que tenía la peculiaridad de claves. Es la misma familia que declarar un estado sin medirlo.

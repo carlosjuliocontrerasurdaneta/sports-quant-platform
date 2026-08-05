@@ -169,3 +169,21 @@ liquidación no cambian.
 **Razón:** la auditoría integrada encontró divergencias entre configuración ejecutable, decision engine, hooks, estados y políticas de aprobación.
 **Validación:** compilación Python, validación JSON/YAML/rutas/NUL, pruebas focalizadas y suite completa. Ruff y Mypy no estaban disponibles en el entorno de remediación.
 **Riesgo:** no se verificó la disponibilidad externa del identificador Fable 5 contra una instalación real de Claude Code; la coherencia del repositorio sí queda probada.
+
+## 2026-08-04/05 — Auditoría integral: fail-fast de configuración, fallback histórico de tenis y guard de evidencia
+
+**Tipo:** seguridad / integridad de datos / control de proceso
+**Módulos afectados:** `src/sqp/config.py`, `src/sqp/settlement/runner.py`, `src/sqp/monitoring/health.py`, `scripts/settle_all.py`, `scripts/claude_project_health.py`, `pyproject.toml`, `.gitignore`, `.claude/automation/`, tests y bóveda Obsidian.
+
+**Cambios estructurales:**
+1. `Settings.load()` pasa de fail-open a **fail-fast**: sin `configs/default.yaml` lanza `FileNotFoundError` en vez de caer a defaults inseguros (`shadow_mode=False`, gate de CLV apagado, `max_plausible_edge` 0.15 vs 0.075). Cierra la clase de fallo B-08 en la ruta de archivo.
+2. La liquidación de tenis gana **fallback histórico**: `_settle_tennis` ahora llama a `_grade_served_from_history`, y este resuelve la clave del histórico por TOUR (`tour_from_league`) en vez de por liga. Antes ninguna fila servida de tenis se graduaba por esa vía y se anulaba por `stale_void` con el resultado ya en disco.
+3. El abort del día en `settle_all` deja de ser global: solo aborta si una liga fallida retiene picks comenzados sin liquidar (el guard M2 por liga de `run_all` ya cubría el riesgo).
+4. Nuevo contrato de evidencia: `pass_result_missing_evidence()` convierte en **error** un `current-task.md` que declare `Result: PASS|DONE` sin las secciones de comandos y artefactos que `STATES.md` exige.
+5. `claude-opus-5` sustituye a `claude-fable-5` como modelo principal (decisión del operador), con política, registro y test alineados en un candado a tres bandas.
+
+**Razón:** la auditoría encontró que la documentación del día declaraba un estado (suite verde, herramientas ausentes) que la ejecución real contradecía, y que dos rutas de código —carga de configuración y liquidación de tenis— fallaban hacia el lado inseguro sin aviso.
+
+**Validación:** `pytest` 625 passed (desde 612 con 5 en rojo), `ruff check` limpio, `mypy src` 89 archivos sin issues, `pip check` limpio, `compileall` OK, health check WARN(1). `pip-audit` no ejecutado localmente (lo cubre el CI). `ruff format` declarado NO adoptado.
+
+**Riesgo:** `gh` no autenticado en el entorno, así que el resultado del CI de la rama no se verificó y no se abrió PR; la rama `fix/claude-audit-20260804` no está mergeada a `main`.
