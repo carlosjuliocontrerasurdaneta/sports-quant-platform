@@ -12,6 +12,7 @@ cobertura queda limitada a lo que CAPTURE_CLOSE haya guardado.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -88,7 +89,14 @@ def compute_clv(bets_dir: Path, root: Path,
             continue
         entry = float(r.price_decimal)
         clv_pct = entry / float(close) - 1.0
-        if abs(clv_pct) >= CLV_IMPLAUSIBLE_PCT:
+        if not math.isfinite(clv_pct):
+            log.warning(
+                "CLV no finito en %s %s/%s (evento %s): entrada %r vs cierre "
+                "%r. Precio ausente o corrupto en el origen; la fila se "
+                "conserva con clv_pct NaN y NO cuenta para la mediana.",
+                r.league, r.market, r.selection, str(r.event_id),
+                entry, float(close))
+        elif abs(clv_pct) >= CLV_IMPLAUSIBLE_PCT:
             log.warning(
                 "CLV implausible %.1f%% en %s %s/%s (evento %s): entrada %.2f "
                 "vs cierre %.2f. Revisar el emparejamiento entrada-cierre; la "
