@@ -16,9 +16,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.13 added to narrow the gap with the dev runtime (3.14); pyproject
-        # requires >=3.11. Bump to 3.14 here once setup-python ships it stably.
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.14 anadido el 2026-08-06 (auditoria F-09): es el interprete REAL de
+        # produccion (los .bat fijan SQP_PYTHON a Python314) y hasta ahora
+        # ninguna puerta lo validaba, asi que una regresion especifica de 3.14
+        # pasaba el CI y fallaba solo en la maquina que opera. pyproject
+        # requiere >=3.11.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 

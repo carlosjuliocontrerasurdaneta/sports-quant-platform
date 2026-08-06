@@ -213,8 +213,22 @@ class OddsAPIClient:
                 "next_timestamp": snap.get("next_timestamp"),
                 "events": events}
 
+    # The Odds API solo admite daysFrom en [1, 3]; fuera de rango devuelve 422.
+    MAX_SCORES_DAYS_FROM = 3
+
     def fetch_scores(self, sport_key: str, days_from: int = 3) -> list[dict]:
         """Completed games for settlement / rating updates (where supported).
         Not cached: settlement needs fresh final scores; a stale cache could grade
-        not-yet-final games. Scores are cheap; correctness outweighs the saving."""
+        not-yet-final games. Scores are cheap; correctness outweighs the saving.
+
+        ``days_from`` fuera de [1, 3] falla RAPIDO y en local. Antes se enviaba
+        tal cual y el proveedor devolvia 422 por liga: N errores que en el log
+        son indistinguibles de una caida del proveedor, gastando ademas una
+        llamada por liga para averiguar algo que se sabe de antemano
+        (observado el 2026-08-06 con --days-from 10)."""
+        if not 1 <= days_from <= self.MAX_SCORES_DAYS_FROM:
+            raise ValueError(
+                f"days_from={days_from} fuera del rango admitido por el "
+                f"proveedor [1, {self.MAX_SCORES_DAYS_FROM}]. Para liquidar mas "
+                f"atras, usa el backfill de resultados historicos.")
         return cast("list[dict]", self._get(f"/sports/{sport_key}/scores", daysFrom=days_from))

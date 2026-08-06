@@ -31,6 +31,7 @@ from sqp.domain.models import Event, EventOdds, MarketLine
 from sqp.markets.edge import adjusted_edge
 from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
                                 _pick_main_lines, _spread_novig)
+from sqp.pipeline.probabilities import build_model_map
 from sqp.risk.kelly import edge, kelly_fraction_stake
 from sqp.settlement.settle import settle_candidates
 from sqp.sports.registry import get_adapter
@@ -156,20 +157,6 @@ def _day_diff(a: str, b: str) -> int:
         return 99
 
 
-def _model_map(est, event: Event, spread, total) -> dict:
-    mm = {("h2h", event.home, None): est.home_win_estimated_probability,
-          ("h2h", event.away, None): est.away_win_estimated_probability}
-    if est.draw_estimated_probability is not None:
-        mm[("h2h", "Draw", None)] = est.draw_estimated_probability
-    if est.home_cover_estimated_probability is not None and spread is not None:
-        mm[("spreads", event.home, spread)] = est.home_cover_estimated_probability
-        mm[("spreads", event.away, -spread)] = est.away_cover_estimated_probability
-    if est.over_estimated_probability is not None and total is not None:
-        mm[("totals", "Over", total)] = est.over_estimated_probability
-        mm[("totals", "Under", total)] = est.under_estimated_probability
-    return mm
-
-
 def _apply_backtest_daily_cap(candidates: pd.DataFrame, bankroll: float,
                               cap_pct: float) -> pd.DataFrame:
     """Apply the production per-league exposure cap independently per game day."""
@@ -197,6 +184,20 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     This is the out-of-sample evaluation window: parameters frozen on the train
     period (date < bet_from_date) are scored only on later, unseen games."""
     adapter = get_adapter(league, family, league_params)
+    # Orden determinista: el emparejamiento resultado<->cuotas es codicioso con
+    # consumo (`used`), asi que el reparto depende del ORDEN de entrada. Con
+    # dobles jornadas o series en dias consecutivos dos resultados compiten por
+    # las mismas cuotas y barajar la entrada cambiaba el ROI: el backtest no era
+    # reproducible bit a bit (auditoria 2026-08-05, F-11).
+    # La clave debe determinar el orden por CONTENIDO. Con solo
+    # (fecha, home, away) los dos partidos de una doble jornada empatan, y
+    # `sorted` es estable: preservaba el orden de entrada y el defecto seguia.
+    results = sorted(results, key=lambda r: (str(r.get("date", "")),
+                                             str(r.get("home", "")),
+                                             str(r.get("away", "")),
+                                             str(r.get("game_id", "")),
+                                             str(r.get("home_score", "")),
+                                             str(r.get("away_score", ""))))
     order_insensitive = family == "tennis"  # players have no home/away orientation
     idx = _match_index(odds_by_id, order_insensitive)
     used: set[str] = set()
@@ -223,7 +224,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                 else:
                     hs, as_ = int(r["away_score"]), int(r["home_score"])
                 scores[eo.event.event_id] = (hs, as_, eo.event.home)
-                for key, p_model in _model_map(est, ev, spread, total).items():
+                for key, p_model in build_model_map(est, ev, spread, total).items():
                     price = cons.get(key)
                     if price is None or p_model is None:
                         continue

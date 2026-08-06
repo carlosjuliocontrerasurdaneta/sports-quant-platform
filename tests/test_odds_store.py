@@ -101,3 +101,32 @@ def test_concurrent_appends_do_not_interleave_rows(tmp_path):
     df = pd.read_csv(store.path("wnba", "202606"))
     assert len(df) == 6 and list(df.columns) == COLUMNS
     assert not store.path("wnba", "202606").with_suffix(".csv.lock").exists()
+
+
+def test_locked_honours_timeout_when_stat_fails_persistently(tmp_path, monkeypatch):
+    """Un fallo PERSISTENTE de stat() no puede colgar el run diario.
+
+    La rama `except OSError` hacia `continue`, saltandose tanto la comprobacion
+    de deadline como el sleep: el bucle giraba sin salida al 100% de CPU y
+    `timeout_s` no rescataba. Reproducido en la verificacion independiente (el
+    proceso hijo seguia vivo diez veces pasado su timeout) antes de corregirlo
+    (auditoria 2026-08-05, F-08)."""
+    import time as _time
+    from pathlib import Path as _Path
+
+    target = tmp_path / "odds_x_202607.csv"
+    lock = target.with_suffix(target.suffix + ".lock")
+    lock.write_text("")                      # ocupado por "otro proceso"
+    real_stat = _Path.stat
+
+    def _boom(self, *a, **kw):
+        if self == lock:
+            raise OSError("stat falla de forma persistente (permisos/disco/red)")
+        return real_stat(self, *a, **kw)
+
+    monkeypatch.setattr(_Path, "stat", _boom)
+    t0 = _time.monotonic()
+    with _locked(target, timeout_s=0.2, stale_s=300.0):
+        pass
+    # Degrada (sin lock) pero RETORNA. Antes no llegaba nunca a esta linea.
+    assert _time.monotonic() - t0 < 10.0

@@ -40,11 +40,18 @@ def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
             break
         except FileExistsError:
             try:
-                if time.time() - lock.stat().st_mtime > stale_s:
-                    lock.unlink(missing_ok=True)
-                    continue
+                stale = time.time() - lock.stat().st_mtime > stale_s
             except OSError:
-                continue  # el otro proceso lo libero entre exists y stat
+                # El otro proceso lo libero entre exists y stat -- o stat falla
+                # de forma PERSISTENTE (permisos, disco, recurso de red caido).
+                # Antes esta rama hacia `continue`, saltandose tanto la
+                # comprobacion de deadline como el sleep: un fallo persistente
+                # giraba sin salida al 100% de CPU y `timeout_s` no rescataba,
+                # colgando el run diario (auditoria 2026-08-05, F-08).
+                stale = False
+            if stale:
+                lock.unlink(missing_ok=True)
+                continue
             if time.monotonic() >= deadline:
                 log.warning("lock timeout on %s; proceeding WITHOUT lock "
                             "(degraded, risk of interleaved write)", lock.name)

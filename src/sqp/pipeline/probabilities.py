@@ -128,6 +128,30 @@ def _pick_main_lines(eo: EventOdds) -> tuple[float | None, float | None]:
     return spread, total
 
 
+def build_model_map(est, event, spread, total) -> dict:
+    """(mercado, seleccion, punto) -> probabilidad estimada del modelo.
+
+    Punto unico de verdad para el run diario y para el backtest de ROI. Estaba
+    duplicado literalmente en ``pipeline.daily`` y ``backtesting.roi_engine``
+    con las mismas seis entradas y las mismas convenciones de signo: anadir un
+    mercado o cambiar un signo exigia dos ediciones coherentes, y una sola
+    producia un backtest que evaluaba una politica distinta de la desplegada,
+    en silencio (auditoria 2026-08-05, F-10).
+    """
+    mm: dict[tuple[str, str, float | None], float | None] = {
+        ("h2h", event.home, None): est.home_win_estimated_probability,
+        ("h2h", event.away, None): est.away_win_estimated_probability}
+    if est.draw_estimated_probability is not None:
+        mm[("h2h", "Draw", None)] = est.draw_estimated_probability
+    if est.home_cover_estimated_probability is not None and spread is not None:
+        mm[("spreads", event.home, spread)] = est.home_cover_estimated_probability
+        mm[("spreads", event.away, -spread)] = est.away_cover_estimated_probability
+    if est.over_estimated_probability is not None and total is not None:
+        mm[("totals", "Over", total)] = est.over_estimated_probability
+        mm[("totals", "Under", total)] = est.under_estimated_probability
+    return mm
+
+
 def _decision_probability(p_model: float, fair: float | None, shrink: float,
                           league: str, market: str, settings) -> tuple[float, float]:
     """(p_used_raw, p_decision) para un candidato.

@@ -17,7 +17,8 @@ from sqp.markets.edge import adjusted_edge
 # daily (scripts/clv_analysis.py y tests importan varios de estos nombres).
 from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
                                         _novig_probs, _spread_novig,
-                                        _pick_main_lines, _decision_probability)
+                                        _pick_main_lines, _decision_probability,
+                                        build_model_map)
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.clv_gate import load_clv_gate, market_allowed
@@ -598,18 +599,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                "market_novig_draw": h2h_fair.get("Draw")}
         rows.append(row)
 
-        # Edge scan on consensus prices
-        model_map: dict[tuple[str, str, float | None], float | None] = {
-            ("h2h", eo.event.home, None): est.home_win_estimated_probability,
-            ("h2h", eo.event.away, None): est.away_win_estimated_probability}
-        if est.draw_estimated_probability is not None:
-            model_map[("h2h", "Draw", None)] = est.draw_estimated_probability
-        if est.home_cover_estimated_probability is not None and spread is not None:
-            model_map[("spreads", eo.event.home, spread)] = est.home_cover_estimated_probability
-            model_map[("spreads", eo.event.away, -spread)] = est.away_cover_estimated_probability
-        if est.over_estimated_probability is not None and total is not None:
-            model_map[("totals", "Over", total)] = est.over_estimated_probability
-            model_map[("totals", "Under", total)] = est.under_estimated_probability
+        # Edge scan on consensus prices. El mapa lo construye el helper
+        # compartido con el backtest, para que ambos no puedan divergir
+        # (auditoria 2026-08-05, F-10).
+        model_map = build_model_map(est, eo.event, spread, total)
 
         for key, p_model in model_map.items():
             price = cons.get(key)

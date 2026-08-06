@@ -17,7 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff", "mypy"]
+# pytest-cov pineado el 2026-08-06 (auditoria F-20): el CI ya publicaba una
+# tabla de cobertura informativa, pero en local el comando fallaba por no
+# estar instalado, asi que no habia forma de reproducirla.
+dev = ["pytest>=7.0", "pytest-cov", "ruff", "mypy"]
 
 [build-system]
 requires = ["setuptools>=68"]
