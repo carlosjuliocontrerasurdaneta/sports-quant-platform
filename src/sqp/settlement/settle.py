@@ -5,6 +5,7 @@ scores in this API -> requires a secondary results provider (explicit gap).
 Audit trail: settled rows are appended, never overwritten.
 """
 from __future__ import annotations
+import math
 from datetime import datetime, timezone
 import pandas as pd
 
@@ -36,6 +37,21 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str,
             # el empate solo lo gana la seleccion Draw.
             return "loss" if three_way else "push"
         return "win" if sel_is_home == (margin > 0) and sel != "Draw" else "loss"
+    if m in ("spreads", "totals"):
+        # Una linea no finita (NaN/inf) volvia FALSAS todas las comparaciones de
+        # abajo, asi que el resultado se FABRICABA sin mirar el marcador:
+        # totals/Under ganaba SIEMPRE, totals/Over y spreads perdian SIEMPRE
+        # (auditoria 2026-08-05, F-03, reproducido). Un "win" fabricado es peor
+        # que una fila perdida: entra en el ROI realizado y en las etiquetas de
+        # calibracion como evidencia valida.
+        # "void" y no "push": push afirma que la apuesta existio y se devolvio
+        # el stake; void afirma que no se pudo graduar, que es lo cierto.
+        try:
+            line = float(line)
+        except (TypeError, ValueError):
+            return "void"
+        if not math.isfinite(line):
+            return "void"
     if m == "spreads":
         adj = margin + line if sel_is_home else -margin + line
         return "win" if adj > 0 else ("push" if adj == 0 else "loss")

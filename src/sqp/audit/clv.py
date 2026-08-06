@@ -125,6 +125,16 @@ def clv_segments(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     """n, CLV mediano/medio y % que batio el cierre por segmento."""
     if df.empty:
         return pd.DataFrame()
+    # Solo filas informativas. Antes se agregaba con `size`, que CUENTA las no
+    # finitas que median/mean saltan, asi que el n>=min_n del gate de CLV se
+    # satisfacia con filas sin informacion; y beat_close quedaba en False para
+    # un NaN (NaN > x es False), sesgando beat_close_rate a la baja. Peor con
+    # inf: pandas NO lo ignora en median/mean, asi que una sola fila llevaba la
+    # mediana a inf (auditoria 2026-08-05, F-02).
+    _clv = pd.to_numeric(df["clv_pct"], errors="coerce")
+    df = df[_clv.notna() & (_clv != math.inf) & (_clv != -math.inf)]
+    if df.empty:
+        return pd.DataFrame()
     out = (df.groupby(by)
              .agg(n=("clv_pct", "size"),
                   median_clv_pct=("clv_pct", "median"),

@@ -7,26 +7,43 @@ de decisión; ``daily`` los re-importa, así que los consumidores existentes
 (scripts/clv_analysis.py, tests) no cambian.
 """
 from __future__ import annotations
+import math
 from collections import defaultdict
 from statistics import median
 from sqp.calibration.calibrator import calibrate_probability
 from sqp.domain.models import EventOdds
+from sqp.logging_config import get_logger
+from sqp.markets.odds import is_usable_price
 from sqp.markets.vig import remove_vig_power
+
+log = get_logger("sqp.probabilities")
 
 
 def _consensus_lines(eo: EventOdds) -> dict:
     """Median price per (market, outcome, point) across books; plus the de-vig
     no-vig probability per market used as the fair benchmark."""
     groups: dict[tuple, list[float]] = defaultdict(list)
+    n_non_finite = 0
     for ln in eo.lines:
         # Degenerate quotes (price_decimal <= 1.0 means "no payout") corrupt the
         # fair benchmark: 1/1.0 = 1.0 is an implied CERTAINTY, and remove_vig_power
         # then normalizes the whole market around it. Such rows exist in the
         # captured history (audit 2026-07-24) and `clv_movement._consensus` already
         # filters them; the live consensus did not (audit 2026-07-29, B-13).
-        if ln.price_decimal is None or ln.price_decimal <= 1.0:
+        # `is_usable_price` also rejects NaN/inf, which the old `<= 1.0` guard let
+        # through -- every comparison with NaN is False (audit 2026-08-05, F-01).
+        if not is_usable_price(ln.price_decimal):
+            if ln.price_decimal is not None and not math.isfinite(ln.price_decimal):
+                n_non_finite += 1
             continue
         groups[(ln.market, ln.outcome, ln.point)].append(ln.price_decimal)
+    if n_non_finite:
+        # Telemetria: sin esto el descarte era invisible y un evento podia
+        # desaparecer de los picks sin dejar rastro en ningun contador.
+        log.warning("evento %s (%s): %d linea(s) con precio no finito "
+                    "descartadas del consenso. Precio ausente o corrupto en el "
+                    "origen; revisar la ingestion.",
+                    eo.event.event_id, eo.event.league, n_non_finite)
     # ``statistics.median`` averages the two central values for an even number
     # of books. Picking ``sorted(v)[len(v)//2]`` was the *upper* median and
     # systematically biased every even-book consensus toward that one quote.
@@ -39,6 +56,11 @@ def _consensus_counts(eo: EventOdds) -> dict:
     thin-market term of the edge penalty (a one-book line is less reliable)."""
     counts: dict[tuple, int] = defaultdict(int)
     for ln in eo.lines:
+        # Mismo predicado que _consensus_lines: contar lineas que el consenso
+        # descarto inflaba books_count y desactivaba la penalizacion por mercado
+        # fino justo donde hacia falta (auditoria 2026-08-05, COR-03).
+        if not is_usable_price(ln.price_decimal):
+            continue
         counts[(ln.market, ln.outcome, ln.point)] += 1
     return dict(counts)
 
@@ -63,6 +85,12 @@ def _novig_probs(cons: dict, market: str, point=None,
         required = 2
     if len(keys) < required:
         return {}
+    if not all(is_usable_price(cons[k]) for k in keys):
+        # Un precio no finito degrada al camino YA existente y probado de
+        # "mercado incompleto" ({} -> flag incomplete_market, stake 0) en vez de
+        # propagar NaN a las probabilidades justas de todo el mercado
+        # (auditoria 2026-08-05, F-01).
+        return {}
     implied = [1.0 / cons[k] for k in keys]
     fair = remove_vig_power(implied)
     return {k[1]: p for k, p in zip(keys, fair)}
@@ -80,6 +108,8 @@ def _spread_novig(cons: dict, home: str, away: str, spread: float | None) -> dic
     present = [k for k in pair if k in cons]
     if len(present) < 2:
         return {}
+    if not all(is_usable_price(cons[k]) for k in present):
+        return {}   # mismo criterio que _novig_probs (auditoria 2026-08-05, F-01)
     fair = remove_vig_power([1.0 / cons[k] for k in present])
     return {k[1]: p for k, p in zip(present, fair)}
 

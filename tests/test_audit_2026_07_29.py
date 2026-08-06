@@ -139,13 +139,31 @@ def test_b08_unset_returns_none():
         assert _env_flag("SHADOW_MODE") is None
 
 
+def test_production_yaml_stays_in_shadow_mode():
+    """El shadow mode de produccion NO puede desactivarse en silencio.
+
+    Antes esta comprobacion vivia dentro del test de B-08 como un
+    `pytest.skip`: si default.yaml dejaba de declarar `shadow_mode: true`, la
+    prueba se saltaba a si misma. Es decir, el unico control que existia contra
+    la desactivacion se apagaba EXACTAMENTE en el estado que debia vigilar, y
+    la suite seguia verde (auditoria 2026-08-05, F-04).
+
+    Politica vigente desde 2026-08-05: no hay evidencia que justifique salir del
+    shadow mode -- tres vias medidas, las tres sin ventaja. Desactivarlo es una
+    decision humana que debe romper la suite y registrarse, no colarse en un
+    diff."""
+    from sqp.config import CONFIG_DIR, load_yaml
+    cfg = load_yaml(CONFIG_DIR / "default.yaml")
+    assert cfg.get("shadow_mode") is True, (
+        "configs/default.yaml ya no declara `shadow_mode: true`. Si la "
+        "desactivacion es deliberada, registrala en Obsidian/Decisiones y "
+        "actualiza este test; si no lo es, es una regresion de control de "
+        "riesgo.")
+
+
 def test_b08_production_yaml_shadow_survives_unrecognized_env():
     """Contra configs/default.yaml real, que hoy lleva `shadow_mode: true`:
     un SHADOW_MODE vacio NO debe poder desactivar el shadow mode."""
-    from sqp.config import CONFIG_DIR, load_yaml
-    cfg = load_yaml(CONFIG_DIR / "default.yaml")
-    if not cfg.get("shadow_mode"):
-        pytest.skip("default.yaml ya no declara shadow_mode: true")
     for raw in ("", "on", "  ", "si"):
         with patch.dict(os.environ, {"SHADOW_MODE": raw}, clear=False):
             assert Settings.load().shadow_mode is True, (

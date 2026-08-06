@@ -110,17 +110,31 @@ def test_compute_clv_warns_when_entry_price_is_infinite(tmp_path, caplog):
     assert len(df) == 1 and unmatched == 0
 
 
-def test_compute_clv_warns_when_closing_price_is_not_finite(tmp_path, caplog):
+def test_closing_price_not_finite_is_rejected_upstream_at_the_consensus(
+        tmp_path, caplog):
+    """Un cierre no finito ya no llega a compute_clv: lo descarta el consenso.
+
+    ESTE TEST CAMBIO DE EXPECTATIVA (auditoria 2026-08-05, F-01). Antes
+    afirmaba que la fila entraba con `close` NaN y que `compute_clv` emitia el
+    aviso de "CLV no finito". Ahora `_consensus_lines` rechaza el precio en
+    ORIGEN con su propio aviso, asi que el evento se queda sin cierre
+    emparejable y cuenta como `unmatched`.
+
+    No es un test aflojado: es mas fuerte. El defecto se detecta una capa antes,
+    el aviso identifica la linea corrupta y su evento (no solo el sintoma), y
+    ninguna fila con valor no finito alcanza los agregados. El camino de la
+    ENTRADA no finita sigue cubierto por su propio test, porque llega desde
+    settled_*.csv y no pasa por el consenso."""
     _write_odds(tmp_path, [_odds_row(price_decimal=float("nan"))])
     _write_settled(tmp_path, [_settled_row(price_decimal=2.00)])
-    caplog.set_level(logging.WARNING, logger="sqp.clv")
+    caplog.set_level(logging.WARNING, logger="sqp.probabilities")
 
     df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
 
-    assert len(_clv_warnings(caplog)) == 1
-    assert len(df) == 1 and unmatched == 0
-    assert "no finito" in _clv_warnings(caplog)[0].getMessage()
-    assert pd.isna(df.iloc[0]["close"])
+    assert df.empty and unmatched == 1
+    msgs = [r.getMessage() for r in caplog.records
+            if r.name == "sqp.probabilities"]
+    assert msgs and "no finito" in msgs[0] and "e1" in msgs[0]
 
 
 def test_compute_clv_warns_at_the_exact_threshold_on_the_positive_side(

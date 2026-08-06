@@ -12,6 +12,7 @@ roi_engine -> daily).
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,7 +32,14 @@ def gate_decisions(segments: pd.DataFrame,
     if segments.empty:
         return segments.copy()
     out = segments.copy()
-    out["allowed"] = (out["n"] >= min_n) & (out["median_clv_pct"] > 0)
+    med = pd.to_numeric(out["median_clv_pct"], errors="coerce")
+    # La mediana debe ser FINITA ademas de positiva: pandas no ignora inf en
+    # median (a diferencia de NaN), asi que una sola fila corrupta la llevaba a
+    # inf, e inf > 0 es True -- un precio malo podia APROBAR un mercado para
+    # stake real (auditoria 2026-08-05, F-02). Doble guard con clv_segments: si
+    # una de las dos capas se relaja, la otra sigue negando.
+    finite = med.notna() & (med != math.inf) & (med != -math.inf)
+    out["allowed"] = (out["n"] >= min_n) & finite & (med > 0)
     return out
 
 
