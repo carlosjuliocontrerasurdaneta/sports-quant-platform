@@ -93,7 +93,8 @@ def compute_clv(bets_dir: Path, root: Path,
             log.warning(
                 "CLV no finito en %s %s/%s (evento %s): entrada %r vs cierre "
                 "%r. Precio ausente o corrupto en el origen; la fila se "
-                "conserva con clv_pct NaN y NO cuenta para la mediana.",
+                "conserva con clv_pct no finito y SI cuenta en n y en "
+                "beat_close_rate; si es inf tambien contamina mediana y media.",
                 r.league, r.market, r.selection, str(r.event_id),
                 entry, float(close))
         elif abs(clv_pct) >= CLV_IMPLAUSIBLE_PCT:

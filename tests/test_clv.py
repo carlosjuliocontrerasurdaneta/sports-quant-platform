@@ -96,6 +96,20 @@ def test_compute_clv_warns_when_entry_price_is_not_finite(tmp_path, caplog):
     assert pd.isna(df.iloc[0]["clv_pct"])
 
 
+def test_compute_clv_warns_when_entry_price_is_infinite(tmp_path, caplog):
+    _write_odds(tmp_path, [_odds_row(price_decimal=1.90)])
+    _write_settled(tmp_path, [_settled_row(price_decimal=float("inf"))])
+    caplog.set_level(logging.WARNING, logger="sqp.clv")
+
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
+
+    warnings = _clv_warnings(caplog)
+    assert len(warnings) == 1
+    assert "no finito" in warnings[0].getMessage()
+    assert "si es inf tambien contamina mediana y media" in warnings[0].getMessage()
+    assert len(df) == 1 and unmatched == 0
+
+
 def test_compute_clv_warns_when_closing_price_is_not_finite(tmp_path, caplog):
     _write_odds(tmp_path, [_odds_row(price_decimal=float("nan"))])
     _write_settled(tmp_path, [_settled_row(price_decimal=2.00)])
@@ -105,6 +119,8 @@ def test_compute_clv_warns_when_closing_price_is_not_finite(tmp_path, caplog):
 
     assert len(_clv_warnings(caplog)) == 1
     assert len(df) == 1 and unmatched == 0
+    assert "no finito" in _clv_warnings(caplog)[0].getMessage()
+    assert pd.isna(df.iloc[0]["close"])
 
 
 def test_compute_clv_warns_at_the_exact_threshold_on_the_positive_side(
