@@ -45,3 +45,7 @@ graphify-out/
 
 # Parches sueltos generados por auditorias: son residuo, no fuente (auditoria 2026-08-04).
 *.patch
+# Temporary AI cross-review outputs
+.claude/reviews/runtime/
+# Scratch tree the Codex reviewer writes its temp files and caches into
+.codex-tmp/
