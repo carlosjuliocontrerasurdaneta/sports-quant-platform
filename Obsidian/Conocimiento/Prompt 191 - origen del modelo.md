@@ -11,6 +11,11 @@ MLB en 21 fases. **Todo el repositorio es la industrialización de este
 documento.** Se conserva aquí porque explica por qué `src/sqp` está construido
 como está.
 
+> Archivo fuente de la v2: `docs/prompts/prompt-191-mlb-pricing-v2.md`. La v1 no
+> existe como archivo — solo citada y analizada en esta nota. Los cinco motores
+> hermanos por deporte están en `docs/prompts/` y analizados en
+> [[Motores de pricing por deporte - analisis]].
+
 ## La hipótesis fundacional
 
 Carlos, textual (2026-08-15):
