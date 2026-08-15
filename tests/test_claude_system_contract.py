@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import re
 from pathlib import Path
 
 import yaml
@@ -67,6 +69,87 @@ def test_all_general_loops_finish_through_verification_gate():
         if "/verification-gate" not in path.read_text(encoding="utf-8")
     ]
     assert missing == []
+
+
+def _guardrail_block(path: Path, heading: str) -> str:
+    """Bloque de vinetas que sigue a `heading`, hasta la primera linea no-vineta."""
+    block: list[str] = []
+    started = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() == heading:
+            started = True
+            continue
+        if not started:
+            continue
+        if line.startswith("- "):
+            block.append(line)
+        elif line.strip():
+            break
+    return "\n".join(block)
+
+
+# ---------------------------------------------------------------------------
+# El bloque de reglas comunes esta duplicado en cada loop a proposito: un loop
+# se carga solo, asi que debe ser autocontenido. El riesgo no es la duplicacion
+# sino la deriva -- que una copia cambie y las demas no.
+# ---------------------------------------------------------------------------
+
+
+def test_quant_loops_share_an_identical_common_rules_block():
+    blocks = {
+        p.name: _guardrail_block(p, "## Reglas comunes")
+        for p in sorted((ROOT / ".claude/loops/quant").glob("*.md"))
+        if p.name != "STATES.md"
+    }
+    assert all(blocks.values()), f"loop sin bloque de reglas comunes: {blocks}"
+    assert len(set(blocks.values())) == 1, "las reglas comunes derivaron entre loops"
+
+
+def test_general_loops_share_an_identical_guardrail_block():
+    blocks = {
+        p.name: _guardrail_block(p, "## Common guardrails")
+        for p in sorted((ROOT / ".claude/loops").glob("*.md"))
+    }
+    assert all(blocks.values()), f"loop sin bloque de guardrails: {blocks}"
+    assert len(set(blocks.values())) == 1, "los guardrails derivaron entre loops"
+
+
+# ---------------------------------------------------------------------------
+# Hay dos tablas de enrutamiento a los loops quant: `model-routing.json`, que
+# consume el hook `route-model.py`, y la tabla del router 00, que lee el
+# orquestador ya dentro del contexto quant. Deben apuntar al mismo conjunto: un
+# loop nuevo registrado solo en una de las dos queda inalcanzable o invisible.
+# ---------------------------------------------------------------------------
+
+
+def test_quant_router_table_matches_model_routing_config():
+    config = json.loads(
+        (ROOT / ".claude/automation/model-routing.json").read_text(encoding="utf-8")
+    )
+    routed = {
+        route["loop"]
+        for route in config["routes"]
+        if route.get("loop", "").startswith("quant/")
+    }
+    router = ROOT / ".claude/loops/quant/00-quant-operations-router.md"
+    tabulated = {
+        f"quant/{name}"
+        for name in re.findall(r"`(\d\d-[a-z0-9-]+\.md)`", router.read_text(encoding="utf-8"))
+    }
+    on_disk = {
+        f"quant/{p.name}"
+        for p in (ROOT / ".claude/loops/quant").glob("*.md")
+        if p.name not in {"STATES.md", router.name}
+    }
+    assert tabulated == routed, (
+        f"la tabla del router 00 y model-routing.json divergieron: "
+        f"solo en la tabla {sorted(tabulated - routed)}, "
+        f"solo en el json {sorted(routed - tabulated)}"
+    )
+    assert on_disk == routed, (
+        f"loops quant sin ruta declarada: {sorted(on_disk - routed)}; "
+        f"rutas a loops inexistentes: {sorted(routed - on_disk)}"
+    )
 
 
 def test_quant_loop_common_spelling_is_consistent():
