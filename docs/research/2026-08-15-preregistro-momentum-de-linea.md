@@ -126,3 +126,78 @@ pipeline, ni configuración, ni riesgo, ni el shadow mode. Script en
 
 Todas las cifras son probabilidades estimadas y CLV es un diagnóstico de
 proceso, nunca una promesa de ganancia.
+
+---
+
+## 7. Resultado — ejecutado 2026-08-15
+
+> Todo lo anterior se committeó en `331df74`, **antes** de la primera ejecución
+> del script. Esta sección se añade después.
+
+### Veredicto: **FAIL**
+
+| Criterio | Resultado | |
+|---|---|---|
+| 1. n ≥ 200 no empatadas | n = **504** | PASS |
+| 2. Test de signo p < 0,05 | p = **0,4822** | **FAIL** |
+| 3. Sobrevive sin tenis | n = 285, p = **0,6388** | **FAIL** |
+
+1.460 lados con los tres anclajes válidos; 601 cumplen la regla (`move_A > 0`).
+
+### Lo decisivo: la regla no se distingue de su propio control
+
+| Grupo | n no empatadas | % CLV positivo | CLV mediano | CLV medio |
+|---|---:|---:|---:|---:|
+| **Regla** (`move_A > 0`) | 504 | **50,2%** | +0,000% | −0,226% |
+| **Control** (`move_A < 0`) | 516 | **48,1%** | +0,000% | −0,269% |
+
+Seguir el movimiento del mercado y hacer **exactamente lo contrario** producen
+el mismo resultado dentro del ruido. La correlación entre el movimiento pasado
+y el futuro es **+0,0403** — indistinguible de cero.
+
+**A resolución de 30 minutos, la línea es una martingala.** El movimiento
+prepartido no contiene información sobre su propio movimiento futuro. Es el
+mismo cero exacto que ya dieron las otras tres sondas, ahora por una cuarta vía
+que no usa el modelo en absoluto.
+
+Ambas medias son negativas (−0,23% y −0,27%): comprar al consenso y medir
+contra el cierre pierde un poco por ambos lados, que es lo que se espera cuando
+no hay información y sí hay spread.
+
+### La trampa que el pre-registro anticipó, y que se cumplió
+
+El bucket `move_A` 2–5pp da **62,3% positivas, p = 0,0198**. Aislado, parece
+señal. No lo es, y el criterio para descartarlo estaba escrito antes:
+
+| Bucket `move_A` | n | % positivas | p |
+|---|---:|---:|---:|
+| 0–1 pp | 314 | 47,8% | 0,8013 |
+| 1–2 pp | 103 | 49,5% | 0,5781 |
+| **2–5 pp** | 77 | **62,3%** | **0,0198** |
+| > 5 pp | 10 | **40,0%** | 0,8281 |
+
+**No es monótono.** Si el momentum fuera real, el efecto crecería con la
+magnitud del movimiento; aquí sube y luego se desploma. Es un bucket de cuatro,
+con n=77, en un análisis con múltiples cortes: exactamente la tasa de falsos
+positivos que se espera por azar. La §5 del pre-registro nombró la
+no-monotonía como la señal que delató KI-019, y aquí vuelve a hacer su trabajo.
+
+Lo mismo aplica a `tennis_wta_cincinnati_open` (66,7%, n=21, p=0,09) y
+`brasileirao` (62,1%, n=29, p=0,13): submuestras pequeñas dentro de un desglose
+de seis ligas, sin corrección por comparaciones múltiples, y ninguna alcanza el
+umbral por sí sola. **MLB, que aporta la mayor muestra individual (n=185), va
+en contra: 44,9% positivas, p = 0,9294.**
+
+### Limitación honesta de cobertura
+
+`laliga`, `nhl` y tres torneos de tenis dieron **0 lados** con los tres
+anclajes: su cadencia de captura no cubre simultáneamente la ventana de ≥6h y
+la de ≤90 min. Es una limitación de cobertura, no un resultado, y conviene no
+presentarla como evidencia. No rescata nada: MLB solo aporta 214 lados y es
+plano-negativo, y el agregado de 1.460 es suficiente para el criterio
+pre-registrado.
+
+### Consecuencia
+
+Cuarta sonda, cuarto nulo, y la única que no dependía del modelo. Por el
+criterio fijado en §4: **se cierra el proyecto.**
