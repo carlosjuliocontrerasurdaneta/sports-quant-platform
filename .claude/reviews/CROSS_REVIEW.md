@@ -117,6 +117,43 @@ therefore detects changes that `git status` is silent about — a path under
 `--skip-worktree` or `--assume-unchanged`, an emptied or substituted gitlink —
 which the previous fingerprint could not.
 
+### What the snapshot does not cover
+
+The tree is built with `git add -A`, which honours every ignore rule. **Content
+git ignores is not in `review_tree`** — pinned by
+`test_ignored_files_stay_out_of_the_review_tree`. It follows that ignored
+content may be created, edited, extended or deleted during a round with the
+digest unmoved: the snapshot cannot report on bytes it never stored.
+
+The rule *source* decides two separate things, and conflating them is what
+earlier versions of this section got wrong:
+
+| Rule source | Rule file in the tree? | Neutralised by the snapshot? | Pinned by |
+| --- | --- | --- | --- |
+| `.gitignore`, tracked and not itself ignored | yes | no | `test_a_gitignore_edit_still_moves_the_snapshot` |
+| `.gitignore` that is itself ignored | no | no | `test_a_self_ignoring_gitignore_is_still_able_to_hide_content` |
+| `core.excludesFile` | no | **yes** | `test_a_global_excludes_file_cannot_shape_the_review_tree`, `test_a_global_excludes_file_cannot_hide_content_under_a_replaced_gitlink` |
+| `$GIT_DIR/info/exclude` | no | no — git offers no switch | `test_info_exclude_is_still_able_to_hide_content` |
+
+Column 2 governs only whether a change to the *rule text* shows up in the digest,
+and it does so for exactly one reason: the rule file's own bytes are in the tree.
+**That is not the same as covering what the rule hides, and does not imply it.**
+Editing a tracked `.gitignore` moves the digest because the file changed, while
+the content on either side of that edit stays unreviewed either way.
+
+Column 3 is the only one that removes the exposure of hidden *content*, and it
+applies to one source. Column 2 removes a narrower exposure — whether the rule
+text itself can be rewritten undetected — and removes nothing else.
+
+Concretely, in this repository: `.gitignore:31` hides
+`.claude/skills/superpowers-main/` — 172 files, including `hooks/` and
+`scripts/`, none of which appear in `review_tree`. Exactly two rule files are
+hidden by their own patterns (`.mypy_cache/.gitignore`, `.ruff_cache/.gitignore`);
+every other hidden rule file is hidden by an ordinary tracked rule.
+
+A reviewer who must inspect ignored content has to read it from disk. The
+snapshot will not tell them it changed.
+
 What it does **not** claim: this is not a defence against an adversary who can
 write arbitrary files into `.claude/reviews/runtime/`. That directory is
 excluded from the snapshot by construction, since it changes while the round

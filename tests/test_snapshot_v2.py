@@ -634,6 +634,89 @@ def test_ignored_files_stay_out_of_the_review_tree(tmp_path: Path) -> None:
     assert "secret.txt" not in paths
 
 
+# --- CLA-V8-02: ignore sources that live in no tree --------------------------
+#
+# `.gitignore` above may shape the tree because it is itself in the tree, so
+# editing it moves the digest. `core.excludesFile` and `$GIT_DIR/info/exclude`
+# are not, so a path named there leaves `review_tree` with nothing moving and
+# can be edited mid-round undetected. The first is overridden; the second has no
+# switch and is a documented limit, pinned in tests/test_cross_review_e2e_v2.py.
+
+
+def test_a_global_excludes_file_cannot_shape_the_review_tree(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    (root / "extra.py").write_bytes(b"SECRET = 1\n")
+
+    ignore = tmp_path / "globalignore"
+    ignore.write_bytes(b"extra.py\n")
+    _git(root, "config", "core.excludesFile", str(ignore))
+
+    assert "extra.py" in _tree(root, capture(root, RUN_ID).review_tree)
+
+
+def test_a_global_excludes_file_cannot_hide_content_under_a_replaced_gitlink(
+    tmp_path: Path,
+) -> None:
+    """F-1: the override reached one of the two `git add` calls, not both.
+
+    A gitlink replaced by an ordinary directory is re-added by
+    `_replace_with_directory_content`, which runs its own `add`. While that one
+    still honoured the global ignore, a file inside the substituted directory
+    could be named there, leave `review_tree`, and then be rewritten with the
+    digest unmoved -- the exact hole the override exists to close, reachable by
+    a different route.
+    """
+    root = _with_submodule(tmp_path)
+
+    _rmtree(root / "sub")
+    (root / "sub").mkdir()
+    (root / "sub" / "payload.py").write_bytes(b"ORIGINAL = 1\n")
+
+    ignore = tmp_path / "globalignore"
+    ignore.write_bytes(b"payload.py\n")
+    _git(root, "config", "core.excludesFile", str(ignore))
+
+    before = capture(root, RUN_ID).review_tree
+
+    (root / "sub" / "payload.py").write_bytes(b"PWNED = 1\n")
+
+    assert capture(root, RUN_ID).review_tree != before, (
+        "a file under a replaced gitlink stayed hidden by core.excludesFile"
+    )
+
+
+def test_a_self_ignoring_gitignore_is_still_able_to_hide_content(
+    tmp_path: Path,
+) -> None:
+    """A documented limit, pinned rather than endorsed.
+
+    `.gitignore` is normally safe because it is itself in the tree, so editing
+    it moves the digest. A `.gitignore` that its own patterns match is not in
+    the tree, so it and everything it hides can be edited mid-round with nothing
+    moving. `.mypy_cache/.gitignore` and friends are exactly this shape.
+
+    Recorded in the "Scope of the guarantee" section of
+    `.claude/reviews/CROSS_REVIEW.md`. If this starts failing, the limit has
+    closed and that section should be updated to match.
+    """
+    root = _repo(tmp_path)
+    cache = root / "cache"
+    cache.mkdir()
+    (cache / ".gitignore").write_bytes(b"*\n")
+    (cache / "payload.py").write_bytes(b"ORIGINAL = 1\n")
+
+    paths = _tree(root, capture(root, RUN_ID).review_tree)
+
+    assert "cache/.gitignore" not in paths
+
+    before = capture(root, RUN_ID).review_tree
+    (cache / "payload.py").write_bytes(b"PWNED = 1\n")
+
+    assert capture(root, RUN_ID).review_tree == before, (
+        "a self-ignoring .gitignore no longer hides content: update the docs"
+    )
+
+
 # --- the ref -----------------------------------------------------------------
 
 

@@ -743,3 +743,216 @@ def test_repeated_failed_starts_accumulate_nothing(
 
     assert _refs(root) == []
     assert review_v2.load_run(runtime) is None
+
+
+# --- CLA-V8-01: a failed ref deletion is reported, never swallowed -----------
+#
+# release() went through _run, which returns the CompletedProcess and lets the
+# caller ignore it. A failing `update-ref -d` was therefore discarded: --reset
+# printed "Cleared the V2 round" and exited 0 with the ref still standing, and
+# start_run's rollback could not tell that it had not rolled back.
+
+
+def _block_ref_writes(root: Path) -> Path:
+    """The stale lock a killed git leaves behind. A real Windows failure mode."""
+    lock = root / ".git" / "packed-refs.lock"
+    lock.write_text("", encoding="utf-8")
+
+    return lock
+
+
+def test_release_raises_when_the_ref_cannot_be_dropped(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+
+    snapshot_v2.capture(root, "run-1")
+    _block_ref_writes(root)
+
+    with pytest.raises(snapshot_v2.SnapshotError):
+        snapshot_v2.release(root, "run-1")
+
+    assert _refs(root) == [snapshot_v2.ref_name("run-1")]
+
+
+def test_release_is_still_idempotent(tmp_path: Path) -> None:
+    """`update-ref -d` exits 0 for a ref already gone, so checking costs nothing."""
+    root = _repo(tmp_path)
+
+    snapshot_v2.capture(root, "run-1")
+    snapshot_v2.release(root, "run-1")
+    snapshot_v2.release(root, "run-1")
+
+    assert _refs(root) == []
+
+
+def test_reset_refuses_and_keeps_the_manifest_when_the_ref_survives(
+    round_at: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, runtime = round_at
+
+    assert check_reviews_v2.main(["--start"]) == 0
+
+    run = review_v2.load_run(runtime)
+
+    assert run is not None
+
+    _block_ref_writes(root)
+    capsys.readouterr()
+
+    assert check_reviews_v2.main(["--reset"]) == 2
+
+    out = capsys.readouterr().out
+
+    assert "[NOT CLEARED]" in out
+    # The manifest is the only record naming the surviving ref, so deleting it
+    # would strand that ref for good. It must still be there.
+    assert review_v2.load_run(runtime) is not None
+    assert _refs(root) == [snapshot_v2.ref_name(run.run_id)]
+
+
+def test_start_refuses_when_the_previous_ref_cannot_be_dropped(
+    round_at: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Opening anyway would overwrite the only manifest naming the stuck ref."""
+    root, runtime = round_at
+
+    assert check_reviews_v2.main(["--start"]) == 0
+
+    first = review_v2.load_run(runtime)
+
+    assert first is not None
+
+    _block_ref_writes(root)
+    capsys.readouterr()
+
+    assert check_reviews_v2.main(["--start"]) == 2
+    assert "[NO ROUND]" in capsys.readouterr().out
+    assert review_v2.load_run(runtime) == first
+    assert _refs(root) == [snapshot_v2.ref_name(first.run_id)]
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ['{not json', '{"run_id": "x", "workspace_fingerprint": "f"}'],
+    ids=["unparseable", "no-snapshot"],
+)
+def test_a_manifest_that_names_no_round_strands_its_ref_silently(
+    round_at: tuple[Path, Path],
+    capsys: pytest.CaptureFixture[str],
+    corruption: str,
+) -> None:
+    """A known open gap (CLA-V6-03), pinned rather than endorsed.
+
+    The fail-closed handling above only fires when `release` actually runs. A
+    manifest that does not parse, or that carries no `snapshot`, names no round
+    at all: `load_run` returns None, `end_run` never calls `release`, and both
+    commands report success while the ref stays. `--start` is the worse half --
+    it leaks *and* proceeds, so refs accumulate one per round with no signal.
+
+    The runbook documents this rather than claiming it is closed. If this test
+    starts failing, the gap has been fixed and both this test and the Phase 0
+    section of `.claude/commands/cross-review.md` should be updated.
+    """
+    root, runtime = round_at
+
+    assert check_reviews_v2.main(["--start"]) == 0
+
+    stranded = _refs(root)
+
+    assert len(stranded) == 1
+
+    (runtime / "run.json").write_text(corruption, encoding="utf-8")
+    capsys.readouterr()
+
+    # --reset reports success and deletes the only record naming the ref.
+    assert check_reviews_v2.main(["--reset"]) == 0
+    assert "Cleared the V2 round" in capsys.readouterr().out
+    assert _refs(root) == stranded
+
+    # --start then opens a round anyway, so the refs accumulate.
+    assert check_reviews_v2.main(["--start"]) == 0
+
+    after = _refs(root)
+
+    assert len(after) == 2
+    assert stranded[0] in after
+
+
+# --- CLA-V8-02: ignore sources that live outside every tree ------------------
+
+
+def test_a_global_excludes_file_cannot_hide_content(tmp_path: Path) -> None:
+    """core.excludesFile is in no tree, so it must not shape the snapshot."""
+    root = _repo(tmp_path)
+    (root / "extra.py").write_text("SECRET = 1\n", encoding="utf-8")
+
+    before = snapshot_v2.capture(root, "run-1").review_tree
+
+    ignore = tmp_path / "globalignore"
+    ignore.write_text("extra.py\n", encoding="utf-8")
+    _git(root, "config", "core.excludesFile", str(ignore))
+
+    after = snapshot_v2.capture(root, "run-2").review_tree
+
+    assert after == before, "core.excludesFile removed a path from review_tree"
+
+
+def test_a_gitignore_edit_still_moves_the_snapshot(tmp_path: Path) -> None:
+    """Row 1: a tracked, visible rule file is itself in the tree, so changing it
+    moves the digest.
+
+    This measures the rule file's own bytes and nothing else: the rule set is
+    identical across both captures -- only a comment is appended -- so the
+    ignore *effect* is held constant and cannot contribute to the difference.
+
+    The earlier version created the `.gitignore` mid-test, which in one step
+    added the rule file to the tree and removed what it hid. Two causes for one
+    assertion, so it passed under either mutation alone: excluding `.gitignore`
+    from the snapshot, or disabling every ignore rule with `add -A -f`
+    (CLA-V13-01).
+
+    It does NOT show that the rule's effect is visible -- what a `.gitignore`
+    hides is unreviewed whether or not the rule text changes. Reading it as
+    evidence of coverage was F-3.
+    """
+    root = _repo(tmp_path)
+    (root / ".gitignore").write_text("extra.py\n", encoding="utf-8")
+    (root / "extra.py").write_text("SECRET = 1\n", encoding="utf-8")
+
+    # The rule file is tracked, as row 1 says; `extra.py` is ignored throughout
+    # and never enters the tree, so it cannot move anything.
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "tracked ignore rule")
+
+    before = snapshot_v2.capture(root, "run-1").review_tree
+
+    (root / ".gitignore").write_text(
+        "extra.py\n# same rule set, different bytes\n", encoding="utf-8"
+    )
+
+    after = snapshot_v2.capture(root, "run-2").review_tree
+
+    assert after != before
+
+
+def test_info_exclude_is_still_able_to_hide_content(tmp_path: Path) -> None:
+    """A documented limit, pinned rather than endorsed.
+
+    git offers no switch for ``$GIT_DIR/info/exclude``, so a path already named
+    there when a round opens is absent from ``review_tree`` and can be edited
+    during the round without moving it. This test exists so the limit cannot
+    change silently: if it starts failing, git has grown a way to disable the
+    file and the "Scope of the guarantee" section of CROSS_REVIEW.md should be
+    updated to match.
+    """
+    root = _repo(tmp_path)
+    (root / "extra.py").write_text("SECRET = 1\n", encoding="utf-8")
+
+    before = snapshot_v2.capture(root, "run-1").review_tree
+
+    info = root / ".git" / "info"
+    info.mkdir(exist_ok=True)
+    (info / "exclude").write_text("extra.py\n", encoding="utf-8")
+
+    after = snapshot_v2.capture(root, "run-2").review_tree
+
+    assert after != before, "info/exclude no longer shapes the tree: update the docs"

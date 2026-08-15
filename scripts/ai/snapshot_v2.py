@@ -73,6 +73,19 @@ SNAPSHOT_EXCLUDED = (".claude/reviews/runtime/", ".codex-tmp/")
 #: refs/heads and refs/tags, so no branch listing, checkout or push is affected.
 REF_PREFIX = "refs/cross-review/"
 
+#: Prefixed to every ``git add`` here. ``add`` honours every ignore rule, and
+#: whatever it skips is absent from ``review_tree`` and therefore unreviewed --
+#: it can be created, edited or removed mid-round with the digest unmoved.
+#: ``core.excludesFile`` is the one source that can be switched off, and this
+#: switches it off, including the unset-but-defaulted XDG path (CLA-V8-02).
+#: Nothing here narrows what ``.gitignore`` or ``$GIT_DIR/info/exclude`` hide;
+#: the full scope, with the test pinning each case, is in the "What the snapshot
+#: does not cover" section of .claude/reviews/CROSS_REVIEW.md. One constant
+#: rather than two literals because
+#: applying the override to only one of the two ``add`` call sites is exactly how
+#: this was got wrong the first time (F-1).
+NO_GLOBAL_EXCLUDES = ("-c", "core.excludesFile=")
+
 #: ``commit-tree`` is a pure function of tree, parent, message, identity and
 #: date, so all five are pinned: capturing the same state twice must produce the
 #: same commit, otherwise the snapshot could not be compared, only stored.
@@ -512,7 +525,7 @@ def _replace_with_recursive_identity(
 
 def _replace_with_directory_content(root: Path, index: Path, path: str) -> None:
     _git(root, "update-index", "--force-remove", "--", path, index=index)
-    _git(root, "add", "-A", "--", path, index=index)
+    _git(root, *NO_GLOBAL_EXCLUDES, "add", "-A", "--", path, index=index)
 
     listed = _git(root, "ls-files", "-z", "--", path, index=index)
 
@@ -548,7 +561,7 @@ def _trees(
 
         review = _copy_index(root, scratch / "review")
         _clear_visibility_flags(root, review)
-        _git(root, "add", "-A", "--", ".", index=review)
+        _git(root, *NO_GLOBAL_EXCLUDES, "add", "-A", "--", ".", index=review)
         _resolve_gitlinks(root, review, exclusions, depth)
         _drop_excluded(root, review, exclusions)
         _store_raw_bytes(root, review)
@@ -611,5 +624,13 @@ def verify(
 
 
 def release(root: Path, run_id: str) -> None:
-    """Drop the round's ref. Idempotent: a round may end more than once."""
-    _run(root, "update-ref", "-d", ref_name(run_id))
+    """Drop the round's ref. Idempotent: a round may end more than once.
+
+    Through ``_git`` rather than ``_run``: ``update-ref -d`` exits 0 for a ref
+    that is already gone, so idempotence costs nothing, while a deletion that
+    genuinely failed used to be discarded in silence. That let ``--reset``
+    print "Cleared the V2 round" and exit 0 with the ref still standing, and
+    left the start_run rollback unable to tell that it had not rolled back
+    (CLA-V8-01).
+    """
+    _git(root, "update-ref", "-d", ref_name(run_id))

@@ -61,7 +61,15 @@ def main(argv: list[str] | None = None) -> int:
         try:
             end_run(RUNTIME, ROOT)
         except SnapshotError as exc:
-            safe_print(f"WARNING: could not drop the snapshot ref: {exc}")
+            # Keep the manifest. It is the only record naming the ref that is
+            # still standing, so deleting it here would strand that ref for
+            # good -- and reporting success while it survives is exactly the
+            # lie CLA-V8-01 was about.
+            safe_print(f"[NOT CLEARED] could not drop the snapshot ref: {exc}")
+            safe_print(f"The round at {RUNTIME} is intact; retry once git can "
+                       "write refs again.")
+
+            return 2
 
         if RUNTIME.exists():
             shutil.rmtree(RUNTIME, ignore_errors=True)
@@ -76,7 +84,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             end_run(RUNTIME, ROOT)
         except SnapshotError as exc:
-            safe_print(f"WARNING: could not drop the previous snapshot ref: {exc}")
+            # Opening anyway would overwrite the manifest naming the ref that
+            # could not be dropped, leaving it with nothing to name it. Refuse
+            # rather than trade one round for a permanent leak (CLA-V8-01).
+            safe_print(f"[NO ROUND] could not drop the previous snapshot ref: {exc}")
+
+            return 2
 
         try:
             started = start_run(RUNTIME, ROOT)

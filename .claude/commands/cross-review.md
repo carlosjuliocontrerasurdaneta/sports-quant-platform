@@ -23,14 +23,50 @@ V2, publishing it as `refs/cross-review/<run_id>`. It prints `base_commit`,
 round's identity**: both reviewers must echo it, and the gate rebuilds the tree
 from disk to check it still matches.
 
-If `--start` fails it prints `[NO ROUND]` and exits 2. There is no round; do not
-proceed.
+Both commands fail closed, and neither failure may be worked around by carrying
+on:
+
+- `--reset` exits **2** with `[NOT CLEARED]` when it cannot drop the round's
+  ref. It deliberately leaves the manifest in place, because that manifest is
+  the only record naming the surviving ref. Retry once git can write refs again
+  — a stale `.git/*.lock` from a killed git is the usual cause. Do not delete
+  the runtime directory by hand: that strands the ref for good.
+- `--start` exits **2** with `[NO ROUND]` when it cannot snapshot the workspace,
+  cannot write the manifest, or cannot drop the previous round's ref. There is
+  no round; do not proceed.
+
+A corrupt manifest behaves in one of two ways, and only one of them is loud:
+
+- **It still parses, but `release` can never succeed for it** — for example a
+  `run_id` that is not a legal ref-name component. Both commands stay at exit 2.
+  This is the loud case, and the fail-closed handling above covers it.
+- **It does not parse at all, or has no `snapshot` object.** Then it names no
+  round, `release` is never attempted, and both commands report success:
+  `--reset` prints "Cleared the V2 round" and exits **0**, `--start` opens a
+  fresh round and exits **0**. Both leave `refs/cross-review/<run_id>` standing
+  with nothing naming it, and repeating `--start` accumulates one stranded ref
+  per round with no signal to the operator. This gap is known and open
+  (CLA-V6-03): the fail-closed handling does not reach it, because it only fires
+  when `release` actually runs.
+
+In both cases `git for-each-ref refs/cross-review` lists every surviving ref.
+Drop stale ones yourself with `git update-ref -d <refname>` before opening a new
+round, and remove `.claude/reviews/runtime/v2/run.json` by hand if Phase 0 is
+still blocked.
 
 **From here until adjudication is finished, do not modify the repository.** The
-round is bound to the bytes on disk. Any edit outside
-`.claude/reviews/runtime/` and `.codex-tmp/` moves `review_tree`, and the gate
-will correctly refuse to adjudicate reviews that describe a tree that no longer
-exists. This includes "harmless" fixes, formatting and new files.
+round is bound to the bytes on disk. An edit to any file **in the working tree**
+that git does not ignore moves `review_tree`, and the gate will then correctly
+refuse to adjudicate
+reviews describing a tree that no longer exists. This includes "harmless" fixes,
+formatting and new files.
+
+The instruction is deliberately broader than the detection. Edits under
+`.claude/reviews/runtime/` and `.codex-tmp/` are excluded from the snapshot by
+design — and **so is everything git ignores**. Those move nothing and the gate
+will not catch them. Never treat "the gate would have caught it" as licence to
+edit mid-round; see "What the snapshot does not cover" in
+`.claude/reviews/CROSS_REVIEW.md`.
 
 ## Phase 1 — Claude independent review
 
