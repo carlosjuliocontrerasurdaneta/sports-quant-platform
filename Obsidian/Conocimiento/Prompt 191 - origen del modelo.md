@@ -16,6 +16,35 @@ como está.
 > hermanos por deporte están en `docs/prompts/` y analizados en
 > [[Motores de pricing por deporte - analisis]].
 
+## Qué hace el sistema: PREDECIR, no preciar
+
+Corrección del operador, 2026-08-15, textual:
+
+> **"NO preciar, es PREDECIR el resultado de los juegos a través de estimar las
+> probabilidades."**
+
+No es vocabulario, es el marco entero. **Preciar** es relativo al mercado:
+produces un número para compararlo con una cotización. **Predecir** es relativo
+a la realidad: estimas qué va a pasar, y eso es verdad o mentira exista o no un
+mercado. (Los prompts se titulan "motor de pricing" por convención de nombre;
+el objeto es la predicción.)
+
+Consecuencias directas:
+
+- La regla "el mercado NUNCA es input" no es cautela metodológica: es que el
+  mercado **no interviene en el acto de predecir**. Aparece al final solo porque
+  es donde una predicción correcta se cobra.
+- **Batir al mercado no es el objetivo**, es una consecuencia posible.
+- **Calibración y rentabilidad son propiedades distintas.** Una predicción puede
+  estar bien calibrada y no ser rentable. Lo primero es lo que el sistema
+  persigue; lo segundo es si además se puede cobrar.
+- Por eso un CLV de 0 **no cierra nada**: el CLV mide rendimiento contra un
+  mercado, y que el mercado ya lo sepa dice algo del mercado, no de la
+  predicción.
+- En este marco las métricas rectoras son **Brier, log loss y curva de
+  fiabilidad contra la realidad**, sin mercado de por medio — exactamente la
+  fase que ninguno de los seis prompts tenía y que se añadió el 2026-08-15.
+
 ## La hipótesis fundacional
 
 Carlos, textual (2026-08-15):
