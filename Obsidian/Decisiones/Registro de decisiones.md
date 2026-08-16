@@ -17,6 +17,13 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Operación y riesgo
 
+- **2026-08-16 — SHADOW MODE LEVANTADO** (`shadow_mode: false`), por decisión explícita del operador. Registrado aquí porque el test candado `test_production_yaml_never_leaves_capital_unguarded` lo exige antes de aceptar el cambio.
+  - **Riesgo de capital el día del cambio: cero.** El gate de CLV por (liga, mercado) está cableado DEBAJO de shadow (`_zero_stake_flag`, `pipeline/daily.py:373`) y es default-deny; las 24 entradas de `data/bets/clv_gate.json` están en `allowed: false`. Verificado sobre el registro completo: 24 mercados a stake 0, **0 con stake real**.
+  - **Lo que cambia:** el gate de CLV pasa a ser la barrera única, visible y vinculante; el flag de los reportes pasa de `shadow_mode` a `clv_gate`.
+  - **⚠️ A vigilar:** un mercado pasa a llevar dinero real **automáticamente** cuando la auditoría diaria le escriba `allowed: true` (CLV mediano > 0, n ≥ 30). Ya no media aprobación humana. Para recuperarla: `clv_gate.enabled: false` + registro curado a mano, o volver a `shadow_mode: true`.
+  - **Invariante que sustituye al candado viejo:** nunca pueden estar `shadow_mode: false` **y** `clv_gate.enabled: false` a la vez — eso dejaría la banca expuesta a todo candidato sobre `min_edge`. El test ahora vigila eso, no el flag.
+  - **Incoherencia abierta:** la barrera que manda es de **CLV**, y el CLV dejó de ser métrica rectora el 2026-08-15. La regla de salida por mercado sigue siendo la vieja y no está alineada con el objetivo vigente.
+
 - **SHADOW MODE global** (2026-07-03, `fe9ef84`): picks stake-0 hasta que CLV mediano positivo + gate de Brier lo levanten. La decisión más importante vigente.
 - **Gate de CLV por (liga, mercado)** (2026-07-08, `bc27252`): salida del shadow es POR MERCADO, default-deny, ≥30 apuestas con CLV mediano > 0. Ver [[Conocimiento/CLV y selección adversa]].
 - **Exposición en dos capas** (2026-06-28): cap diario por liga + cap global; escalado proporcional (no re-selección).

@@ -89,15 +89,25 @@ calibration:
 # run-environment factor (ratings.yaml mlb.park_bound 0.10) fixed totals OOS
 # (-17.1% -> +2.8% ROI). Re-pause if realized totals ROI turns negative again.
 paused_markets: {}
-# Shadow mode (ENABLED 2026-07-04): picks are selected exactly as in real mode
-# but recorded with stake 0, flagged "shadow_mode". Rationale: realized ROI
-# -15.26% over 431 graded bets and non-positive median CLV mean no market has a
-# demonstrated edge; shadow keeps settlement/CLV/calibration evidence accruing
-# at zero capital risk. Exit rule: evaluate by market and lift shadow only by a
-# human decision when median CLV is strictly positive with adequate sample AND
-# calibration passes its OOS/event gate; otherwise stay shadow.
+# Shadow mode (ENABLED 2026-07-04, LIFTED 2026-08-16 by explicit operator
+# decision): while true, picks were selected exactly as in real mode but
+# recorded with stake 0, flagged "shadow_mode".
+#
+# Lifting it does NOT by itself put money at risk: the per-market CLV gate below
+# is layered UNDER shadow and is default-deny, so every market whose registry
+# entry is missing or `allowed: false` still gets stake 0 -- now flagged
+# "clv_gate" instead of "shadow_mode". As of 2026-08-16 EVERY entry in
+# data/bets/clv_gate.json is allowed: false, so the effective stake is still 0
+# across the board. The gate is now the single, visible, binding barrier.
+#
+# CONSEQUENCE TO KNOW: with shadow off, a market becomes stakeable
+# AUTOMATICALLY as soon as the daily CLV audit writes `allowed: true` for it
+# (median CLV > 0 over >= clv_gate.min_n settled bets matched to a captured
+# close). No further human approval is required at that point. To keep approval
+# manual, set clv_gate.enabled: false and curate the registry by hand, or set
+# shadow_mode back to true.
 # Env var SHADOW_MODE (when set) wins over this key.
-shadow_mode: true
+shadow_mode: false
 # CLV gate per (league, market) (ENABLED 2026-07-08): allow-list layered UNDER
 # shadow mode. A market may carry real stake only if its median CLV over >=
 # min_n settled bets matched to a captured close is positive, per the registry

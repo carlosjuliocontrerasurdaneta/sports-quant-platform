@@ -1,7 +1,7 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-08-04
+actualizada: 2026-08-16
 ---
 
 # Estado del proyecto — Sports Quant Platform
@@ -38,9 +38,34 @@ a 1 de sus 3 mercados (solo h2h).
   REPORTE: observado vs prometido por banda) se mantiene; lo que se revirtió es
   usarla como criterio de SELECCIÓN.
 
-## Modo operativo: SHADOW MODE
+## Modo operativo: SHADOW LEVANTADO — el gate de CLV es ahora la única barrera
 
-- `shadow_mode: true` en `configs/default.yaml` (desde el 2026-07-03, commit `fe9ef84`).
+**2026-08-16, decisión explícita del operador: `shadow_mode: false`.**
+
+Lo que esto cambia y lo que no, medido antes de tocarlo:
+
+- **Riesgo de capital hoy: sigue siendo cero.** El gate de CLV por (liga, mercado)
+  está *por debajo* de shadow y es **default-deny**. Las 24 entradas de
+  `data/bets/clv_gate.json` están en `allowed: false`, así que todos los picks
+  siguen con stake 0. Verificado ejecutando `_zero_stake_flag` sobre el registro
+  completo: **24 mercados a stake 0, 0 con stake real**.
+- **Lo que sí cambia:** el flag que verán los reportes pasa de `shadow_mode` a
+  `clv_gate`, y el gate deja de ser invisible para convertirse en la barrera
+  vinculante y visible.
+- **⚠️ CONSECUENCIA A VIGILAR:** con shadow levantado, un mercado pasa a llevar
+  **dinero real de forma AUTOMÁTICA** en cuanto la auditoría diaria de CLV le
+  escriba `allowed: true` (CLV mediano > 0 sobre ≥30 apuestas liquidadas
+  emparejadas a cierre). **Ya no hace falta ninguna aprobación humana en ese
+  punto.** Para mantener la aprobación manual: `clv_gate.enabled: false` y curar
+  el registro a mano, o volver a poner `shadow_mode: true`.
+- **Tensión pendiente, sin resolver:** el gate que ahora manda es de **CLV**, y
+  el CLV dejó de ser la métrica rectora el 2026-08-15 (ver
+  [[Objetivos y requisitos]]). La regla de salida por mercado sigue siendo la
+  vieja. Definir la nueva es tarea abierta.
+
+### Historial
+
+- `shadow_mode: true` desde el 2026-07-03 (commit `fe9ef84`) hasta el 2026-08-16.
 - Todos los picks se generan y registran con **stake 0** (tenis incluido); no hay dinero en juego.
 - **Regla de salida**: mediana de CLV positiva + pasar el gate de Brier tras ~100 picks liquidados.
 - **Gate de CLV por (liga, mercado)** (2026-07-08, `bc27252`): la salida del shadow es POR MERCADO — allow-list default-deny, ≥30 apuestas con CLV mediano positivo. Ver [[Conocimiento/CLV y selección adversa]].

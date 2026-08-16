@@ -139,8 +139,8 @@ def test_b08_unset_returns_none():
         assert _env_flag("SHADOW_MODE") is None
 
 
-def test_production_yaml_stays_in_shadow_mode():
-    """El shadow mode de produccion NO puede desactivarse en silencio.
+def test_production_yaml_never_leaves_capital_unguarded():
+    """Produccion NUNCA puede quedarse sin barrera de capital.
 
     Antes esta comprobacion vivia dentro del test de B-08 como un
     `pytest.skip`: si default.yaml dejaba de declarar `shadow_mode: true`, la
@@ -148,26 +148,49 @@ def test_production_yaml_stays_in_shadow_mode():
     la desactivacion se apagaba EXACTAMENTE en el estado que debia vigilar, y
     la suite seguia verde (auditoria 2026-08-05, F-04).
 
-    Politica vigente desde 2026-08-05: no hay evidencia que justifique salir del
-    shadow mode -- tres vias medidas, las tres sin ventaja. Desactivarlo es una
-    decision humana que debe romper la suite y registrarse, no colarse en un
-    diff."""
+    Hasta el 2026-08-16 el candado exigia `shadow_mode: true`. El operador
+    levanto el shadow ese dia por decision explicita (registrada en
+    Obsidian/Decisiones y en la bitacora), y la suite se rompio exactamente como
+    este test fue disenado para romperse: la desactivacion no se colo en un
+    diff.
+
+    Lo que el candado protege NO es el flag, es el invariante: **siempre debe
+    quedar al menos una barrera activa entre un pick y el dinero**. Con shadow
+    levantado la unica que queda es el gate de CLV por (liga, mercado), que es
+    default-deny. Apagar ambos a la vez deja la banca expuesta a cada candidato
+    que supere `min_edge`, y eso no puede colarse en un diff."""
     from sqp.config import CONFIG_DIR, load_yaml
     cfg = load_yaml(CONFIG_DIR / "default.yaml")
-    assert cfg.get("shadow_mode") is True, (
-        "configs/default.yaml ya no declara `shadow_mode: true`. Si la "
-        "desactivacion es deliberada, registrala en Obsidian/Decisiones y "
-        "actualiza este test; si no lo es, es una regresion de control de "
-        "riesgo.")
+    shadow = cfg.get("shadow_mode") is True
+    gate = bool((cfg.get("clv_gate") or {}).get("enabled"))
+    assert shadow or gate, (
+        "configs/default.yaml deja el capital SIN NINGUNA barrera: "
+        "`shadow_mode` es false y `clv_gate.enabled` tambien. Con esa "
+        "combinacion todo candidato por encima de min_edge lleva stake real "
+        "sin haber demostrado nada. Si es deliberado, registralo en "
+        "Obsidian/Decisiones y actualiza este test; si no, es una regresion "
+        "de control de riesgo.")
 
 
 def test_b08_production_yaml_shadow_survives_unrecognized_env():
-    """Contra configs/default.yaml real, que hoy lleva `shadow_mode: true`:
-    un SHADOW_MODE vacio NO debe poder desactivar el shadow mode."""
-    for raw in ("", "on", "  ", "si"):
+    """Un SHADOW_MODE no reconocido NO puede alterar lo que declara el yaml.
+
+    Se compara contra el valor DECLARADO en default.yaml, no contra un literal:
+    lo que se vigila es que un env basura sea ignorado, sea cual sea la politica
+    vigente. Antes fijaba `is True` y por tanto media dos cosas a la vez (la
+    politica y la precedencia env/yaml).
+
+    `"on"` estaba en esta lista como ejemplo de valor NO reconocido, pero si lo
+    es: vive en `_TRUE` (config.py:23). El caso pasaba por coincidencia mientras
+    el yaml declaraba `true` -- ambos lados daban True y nadie los distinguia.
+    Al levantar el shadow el 2026-08-16 quedo a la vista. Los valores realmente
+    no reconocidos son los de abajo."""
+    from sqp.config import CONFIG_DIR, load_yaml
+    declarado = load_yaml(CONFIG_DIR / "default.yaml").get("shadow_mode") is True
+    for raw in ("", "  ", "si", "verdadero"):
         with patch.dict(os.environ, {"SHADOW_MODE": raw}, clear=False):
-            assert Settings.load().shadow_mode is True, (
-                f"SHADOW_MODE={raw!r} desactivo el shadow mode del yaml")
+            assert Settings.load().shadow_mode is declarado, (
+                f"SHADOW_MODE={raw!r} altero el shadow mode declarado en el yaml")
 
 
 # --- Q-01: modo precision sin calibrador -------------------------------------
