@@ -1,12 +1,41 @@
 ---
 tags: [objetivos, requisitos, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-14
+actualizada: 2026-08-16
 ---
 
 # Objetivos y requisitos
 
-## Objetivo del sistema
+## Enunciado canónico — SACROSANTO (operador, 2026-08-16)
+
+> «El objetivo del sistema es estimar probabilidades para todos los partidos,
+> mercados (línea, hándicap y Totals) y deportes, con el único propósito de
+> generar ganancias mediante las apuestas realizadas a partir de los Picks
+> generados por el sistema».
+
+El operador lo declaró **sacrosanto**: manda sobre cualquier otra formulación de
+esta bóveda, no se re-litiga ni se matiza. Su estructura:
+
+- **Medio:** estimar probabilidades.
+- **Fin, único:** generar ganancias mediante las apuestas de los picks propios.
+- **Alcance:** *todos* los partidos, *todos* los mercados (línea, hándicap,
+  totals), *todos* los deportes.
+
+"Único propósito" es excluyente: calibración, Brier, fiabilidad y auditoría son
+**instrumentos al servicio de ese fin**, nunca fines en sí mismos. Y a la
+inversa, el fin no se persigue seleccionando por hit rate —eso ya se probó y
+perdía por construcción, ver [[Conocimiento/Idea fundacional - alcance y objetivo]]—
+sino estimando bien. Estimar bien es el único camino; ganar dinero, el único fin.
+
+> **Consecuencia:** el sistema **no** es "un instrumento de medición barato", como
+> lo redefinió la decisión de dirección del 2026-08-05. Existe para generar picks
+> que generen ganancias. Ver [[Registro de decisiones]].
+
+> **Lenguaje:** "generar ganancias" es el propósito, no un logro. No hay ventaja
+> demostrada a la fecha (shadow mode, cinco mediciones sin edge). Nunca redactar
+> como si el fin estuviera cumplido.
+
+## Cómo se instrumenta
 
 Plataforma Python de analítica cuantitativa deportiva (MLB, NBA/WNBA, NFL, NHL, soccer multi-liga, tenis ATP/WTA) que:
 

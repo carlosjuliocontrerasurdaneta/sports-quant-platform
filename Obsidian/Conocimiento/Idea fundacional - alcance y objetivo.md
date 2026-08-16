@@ -72,6 +72,12 @@ Se transcribe íntegro y textual porque es **fuente**, no interpretación.
 
 ## Cómo convive con "ganar dinero es el fin" (2026-08-02)
 
+> **CERRADO el mismo 2026-08-16 por el enunciado canónico y sacrosanto**
+> ([[Objetivos y requisitos]]): estimar probabilidades es el **medio**, generar
+> ganancias es el **único propósito**. Si esta nota y aquel enunciado parecen
+> chocar, manda el enunciado. La tabla de abajo se conserva porque explica el
+> matiz que sigue siendo cierto: lo que el sistema *optimiza* no es el dinero.
+
 No hay contradicción si se separan los niveles, y conviene mantenerlos separados
 de forma explícita:
 
