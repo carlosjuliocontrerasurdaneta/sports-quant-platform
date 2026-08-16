@@ -6,6 +6,11 @@ actualizada: 2026-08-16
 
 # Idea fundacional — alcance y objetivo
 
+> ⚠️ **DEROGADA COMO OBJETIVO (2026-08-16).** El objetivo del sistema es
+> únicamente el enunciado sacrosanto de [[Objetivos y requisitos]]. Esta nota
+> queda como **registro histórico del origen** y por su contraste contra el
+> código; **no derivar de ella criterios, prioridades ni métricas rectoras**.
+
 Texto fundacional de la **plataforma**, aportado por el operador el 2026-08-16
 con la instrucción explícita de grabarlo *sobre piedra*. Complementa a
 [[Prompt 191 - origen del modelo]]: aquel es el origen del **motor de MLB**;

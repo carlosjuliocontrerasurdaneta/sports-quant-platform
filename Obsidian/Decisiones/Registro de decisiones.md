@@ -10,7 +10,8 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Rumbo (sacrosanto)
 
-- **2026-08-16 — Enunciado canónico del objetivo, declarado SACROSANTO por el operador.** Texto íntegro en [[Objetivos y requisitos]]: estimar probabilidades para **todos** los partidos, mercados (línea, hándicap, totals) y deportes, **con el único propósito de generar ganancias** mediante las apuestas de los picks propios. Manda sobre cualquier otra formulación; no se re-litiga ni se matiza.
+- **2026-08-16 — Enunciado ÚNICO y SACROSANTO del objetivo.** Texto íntegro en [[Objetivos y requisitos]]: estimar probabilidades **pregame** para **todos** los partidos, mercados (`h2h`, `spreads`, `totals`) y deportes, **con un único e innegociable fin: ganar dinero** mediante las apuestas de los picks propios. Por instrucción expresa del operador, **toda formulación anterior del objetivo queda derogada** —incluidas las dos redacciones previas del mismo día, el texto fundacional de las seis ligas y la directiva del 08-02—; lo que quede de ellas es registro histórico, no norma. No se re-litiga ni se matiza.
+  - **"Pregame"** acota el acto de estimar: excluye el in-play, incluye el re-precio intradía anterior al `commence_time`.
   - **Consecuencia:** deja **sin efecto** la parte de la decisión de dirección del 2026-08-05 que redefinía el sistema como *"instrumento de medición barato"* con shadow mode indefinido. El sistema existe para generar picks que generen ganancias. El resto de aquella decisión (no abrir cuentas, no invertir en amplitud de modelado hasta tener una fuente de información nueva) sigue en pie como táctica, no como identidad del proyecto.
   - **No reactiva** `pick_mode: accuracy` (perdía por construcción, `f6c2130`) ni convierte al mercado en input del modelo. El fin se persigue **estimando bien**, no seleccionando eventos fáciles.
 
