@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-08-05
+actualizada: 2026-08-16
 ---
 
 # Tareas
@@ -22,6 +22,9 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 - [x] 2026-07-12 — ~~Revisar/promover el candidato de calibración MLB spreads~~. Obsoleto: staging está vacío — el candidato del 07-01 no se regenera con los gates vigentes (iso mejora ECE 0.1461→0.1076 pero empeora Brier OOS; beta falla Brier+monotonía). Nada que promover; ver [[Bitácora/2026-07-12]].
 
 ## Backlog
+
+- [ ] **Brecha del texto fundacional (2026-08-16): atribución de causa de los picks fallidos.** El texto exige que el sistema determine si un fallo vino de métricas mal elegidas, parámetros mal configurados o miscalibración. Hoy existe el balance por mercado (`audit/patterns.py` → `by_market`) y la comparación `brier_model` vs `brier_market` por segmento (`audit/segments.py`), pero **no el paso que asigna causa**. Es el eslabón que convierte la auditoría en recalibración. Ver [[Conocimiento/Idea fundacional - alcance y objetivo]].
+- [ ] **Medir la predicción contra la realidad, con baselines** (precede a lo anterior): correr `scripts/backtest_history.py` por deporte y contrastar Brier/log loss contra tasa base de local, constante 0.50 y Elo simple. La maquinaria existe (`calibration/metrics.py`); lo que falta es que el resultado decida algo. Métricas rectoras desde 2026-08-15, sin mercado de por medio.
 
 - [ ] Hallazgo del primer run OOS (07-24): snapshots históricos con cuotas degeneradas `price_decimal = 1.0` (visibles por los warnings de vig M-16); decidir guard que descarte líneas con precio ≤ 1.0 en ingestión (`odds_api._parse_events`) o lectura (`load_closing_odds`). Ver [[Bitácora/2026-07-24]]. **Actualización 2026-08-06**: el lado de LECTURA quedó cubierto por `is_usable_price` (`c210a22`), que rechaza `<= 1.0` y no finitos en el consenso. Sigue abierto solo el guard en INGESTIÓN (`odds_api._parse_events`).
 - [x] 2026-08-04 — M-7: `.claude/settings.local.json` saneado; retirados `pip install *`, ejecución arbitraria, commit/add, comandos live/write y accesos fuera del repositorio. Ver [[Bitácora/2026-08-04]].

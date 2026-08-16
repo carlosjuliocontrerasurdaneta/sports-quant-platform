@@ -1,7 +1,7 @@
 ---
 tags: [conocimiento, modelo, mlb, origen, sqp]
 creada: 2026-08-15
-actualizada: 2026-08-15
+actualizada: 2026-08-16
 ---
 
 # Prompt 191 — el origen del modelo
@@ -10,6 +10,10 @@ Especificación fundacional de SQP: un motor cuantitativo de pricing pregame par
 MLB en 21 fases. **Todo el repositorio es la industrialización de este
 documento.** Se conserva aquí porque explica por qué `src/sqp` está construido
 como está.
+
+> El origen del **sistema completo** —alcance de ligas y mercados, y qué se
+> optimiza— está en [[Idea fundacional - alcance y objetivo]]. Esta nota cubre
+> solo el motor de MLB.
 
 > Archivo fuente de la v2: `docs/prompts/prompt-191-mlb-pricing-v2.md`. La v1 no
 > existe como archivo — solo citada y analizada en esta nota. Los cinco motores
