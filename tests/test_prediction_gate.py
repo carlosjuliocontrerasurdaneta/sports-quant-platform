@@ -226,6 +226,39 @@ def test_pause_outranks_the_prediction_gate():
                             prediction_blocked=True) == "market_paused"
 
 
+def test_gate_verdicts_none_means_gate_disabled_not_blocking():
+    """`None` = gate apagado. Es la distincion que el `and` inline hacia de
+    forma implicita y donde se escondio el NameError del 2026-08-17."""
+    from sqp.pipeline.daily import _gate_verdicts
+    assert _gate_verdicts(None, None, "mlb", "h2h") == (False, False)
+
+
+def test_gate_verdicts_empty_registry_blocks_default_deny():
+    from sqp.pipeline.daily import _gate_verdicts
+    assert _gate_verdicts({}, {}, "mlb", "h2h") == (True, True)
+
+
+def test_gate_verdicts_allowed_market_is_not_blocked():
+    from sqp.pipeline.daily import _gate_verdicts
+    gate = {"mlb|h2h": {"allowed": True}}
+    assert _gate_verdicts(gate, None, "mlb", "h2h") == (False, False)
+
+
+def test_gate_verdicts_are_independent_per_gate():
+    """El de prediccion permite y el de CLV no: cada uno responde por si mismo.
+    Quien decide la precedencia es _zero_stake_flag, no esta funcion."""
+    from sqp.pipeline.daily import _gate_verdicts
+    pred = {"mlb|h2h": {"allowed": True}}
+    clv = {"mlb|h2h": {"allowed": False}}
+    assert _gate_verdicts(pred, clv, "mlb", "h2h") == (False, True)
+
+
+def test_gate_verdicts_other_market_of_the_same_league_is_blocked():
+    from sqp.pipeline.daily import _gate_verdicts
+    gate = {"mlb|h2h": {"allowed": True}}
+    assert _gate_verdicts(gate, None, "mlb", "totals") == (True, False)
+
+
 def test_daily_module_resolves_the_prediction_gate_helpers():
     """Red de seguridad para un fallo REAL observado el 2026-08-17.
 

@@ -51,6 +51,49 @@ def _env_flag(name: str) -> bool | None:
     return None
 
 
+# Parametros de RIESGO que el entorno puede sobrescribir: (env var, clave yaml).
+# Solo los que dimensionan o autorizan apuestas; los de operacion no entran.
+_RISK_ENV_KEYS = (
+    ("KELLY_FRACTION", "kelly_fraction"),
+    ("MIN_EDGE", "min_edge"),
+    ("MAX_STAKE_PCT", "max_stake_pct"),
+    ("MAX_DAILY_EXPOSURE_PCT", "max_daily_exposure_pct"),
+    ("MAX_TOTAL_EXPOSURE_PCT", "max_total_exposure_pct"),
+    ("MAX_PLAUSIBLE_EDGE", "max_plausible_edge"),
+    ("MARKET_SHRINK", "market_shrink"),
+    ("UNCERTAINTY_PENALTY", "uncertainty_penalty"),
+)
+
+
+def _warn_risk_divergence(risk_yaml: dict) -> None:
+    """Avisa cuando un parametro de riesgo del entorno DIFIERE del yaml.
+
+    La precedencia (env gana) es deliberada y no se toca. Lo que se corrige es
+    que fuera invisible: `.env` no se versiona, asi que el fichero que cualquiera
+    lee describia una produccion distinta de la real. Detectado en la auditoria
+    2026-08-17 -- `.env` fijaba KELLY_FRACTION=0.08 contra 0.25 en el yaml, es
+    decir stakes 3x mas pequenos de lo documentado; si el `.env` se pierde o se
+    recrea, saltan a 3x sin que nadie toque una linea.
+
+    Coincidir no es divergencia y no se reporta: el log solo debe hablar cuando
+    hay algo que decidir."""
+    from sqp.logging_config import get_logger  # diferido, como en _env_flag
+    for env_name, yaml_key in _RISK_ENV_KEYS:
+        raw = os.environ.get(env_name)
+        if raw is None or yaml_key not in risk_yaml:
+            continue
+        try:
+            if float(raw) == float(risk_yaml[yaml_key]):
+                continue
+        except (TypeError, ValueError):
+            continue
+        get_logger("sqp.config").warning(
+            "%s: el entorno manda %s y configs/default.yaml declara %s. Gana el "
+            "entorno. El yaml versionado NO describe esta produccion; si el "
+            ".env se pierde, el valor efectivo saltaria a %s.",
+            env_name, raw, risk_yaml[yaml_key], risk_yaml[yaml_key])
+
+
 @dataclass
 class RiskConfig:
     kelly_fraction: float = 0.25
@@ -312,6 +355,7 @@ class Settings:
             low_book_penalty=float(r.get("low_book_penalty", 0.0)),
             min_books_for_consensus=int(r.get("min_books_for_consensus", 0)),
         )
+        _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                             for lg, mk in (cfg.get("paused_markets") or {}).items()}
         if _env_flag("SHADOW_MODE") is None and "shadow_mode" in cfg:

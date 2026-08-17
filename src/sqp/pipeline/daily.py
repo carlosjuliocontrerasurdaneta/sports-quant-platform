@@ -373,6 +373,28 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
     return df
 
 
+def _gate_verdicts(prediction_gate: dict[str, dict] | None,
+                   clv_gate: dict[str, dict] | None,
+                   league: str, market: str) -> tuple[bool, bool]:
+    """(prediction_blocked, clv_blocked) para un (liga, mercado).
+
+    ``None`` significa gate APAGADO -> no bloquea. Un registro presente pero sin
+    la entrada, o con ``allowed: false``, SI bloquea (default-deny).
+
+    Extraida de la expresion inline que vivia en ``run_league`` (auditoria
+    2026-08-17): esa rama solo se evalua con ``mode != "demo"``, y en demo los
+    gates son ``None``, asi que el ``and`` corto-circuitaba y la llamada nunca se
+    ejecutaba. Un NameError ahi paso los 1073 tests de la suite y solo lo detecto
+    ruff. Como funcion pura se puede ejercitar directamente, que es lo que la
+    ruta live no permitia.
+
+    No decide precedencia: eso es de ``_zero_stake_flag``."""
+    return (prediction_gate is not None
+            and not prediction_allowed(prediction_gate, league, market),
+            clv_gate is not None
+            and not market_allowed(clv_gate, league, market))
+
+
 def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
                      clv_blocked: bool = False,
                      incomplete_market: bool = False,
@@ -720,15 +742,13 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # block anything not yet proven (allow-lists, default-deny). The
             # prediction gate is the binding rule since 2026-08-16; the CLV one
             # only applies while explicitly enabled.
+            pred_blocked, clv_blocked = _gate_verdicts(prediction_gate, clv_gate,
+                                                       league, key[0])
             flag = _zero_stake_flag(
                 paused, suspect, settings.shadow_mode,
-                clv_blocked=(clv_gate is not None
-                             and not market_allowed(clv_gate, league, key[0])),
+                clv_blocked=clv_blocked,
                 incomplete_market=incomplete_market,
-                prediction_blocked=(
-                    prediction_gate is not None
-                    and not prediction_allowed(prediction_gate, league, key[0]))
-            ) or ""
+                prediction_blocked=pred_blocked) or ""
             if flag:
                 stake, pct = 0.0, 0.0
             if accuracy:
