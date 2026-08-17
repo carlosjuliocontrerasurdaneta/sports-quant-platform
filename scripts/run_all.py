@@ -29,6 +29,8 @@ from sqp.pipeline.cleanup import (prune_stale_candidates,
                                   unsettled_completed_picks)
 from sqp.pipeline.daily import apply_global_exposure_cap, run_league
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
+from sqp.risk.prediction_gate import evaluate_markets, write_prediction_gate
+from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.run_all")
 MARKETS = "h2h,spreads,totals"
@@ -286,6 +288,23 @@ def main() -> int:
                      else "ninguno (default-deny)")
         except Exception as exc:
             log.warning("No se pudo generar el analisis CLV: %s", exc)
+        # Prediction gate: la regla de salida RECTORA desde 2026-08-16. Reescribe
+        # data/bets/prediction_gate.json con los (liga, mercado) cuyo modelo puro
+        # bate al mercado FUERA DE MUESTRA y cuyo EV a stake plano es positivo.
+        # Best-effort: un fallo aqui no puede tumbar el run, y el registro previo
+        # (o su ausencia) sigue siendo default-deny.
+        try:
+            graded = ServedStore(ROOT).load_all_graded()
+            decided = evaluate_markets(graded)
+            write_prediction_gate(graded, ROOT / "data" / "bets")
+            ok = ([f"{r.league}|{r.market}" for r in decided.itertuples()
+                   if r.allowed] if not decided.empty else [])
+            log.info("Gate de prediccion -> habilitados para stake real: %s "
+                     "(evaluados: %d)",
+                     ", ".join(ok) if ok else "ninguno (default-deny)",
+                     len(decided))
+        except Exception as exc:
+            log.warning("No se pudo actualizar el gate de prediccion: %s", exc)
         try:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))

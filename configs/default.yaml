@@ -119,8 +119,23 @@ shadow_mode: false
 # real stakes only if its median CLV is positive". Env vars CLV_GATE_ENABLED /
 # CLV_GATE_MIN_N (when set) win over these keys.
 clv_gate:
-  enabled: true
+  enabled: false
   min_n: 30
+# Prediction gate (ENABLED 2026-08-16): SUSTITUYE al de CLV como regla de salida
+# rectora. Un (liga, mercado) lleva stake real solo si cumple LAS DOS:
+#   1. Su modelo PURO bate al mercado evento a evento -- test de signo pareado,
+#      unilateral, empates excluidos, n >= 300 no empatadas y p < 0.05.
+#   2. Su EV a stake plano es positivo (acertar mas que el precio no basta si el
+#      margen no cubre el vig -- leccion de pick_mode accuracy a cuotas 1.07).
+# FUERA DE MUESTRA: solo cuentan filas con game_date posterior al pre-registro
+# (2026-08-16). Lo anterior ya fue observado por el analisis que descubrio los
+# candidatos; usarlo seria validar sobre la muestra del hallazgo (KI-019).
+# Por eso el dia de entrada en vigor niega TODOS los mercados: es lo correcto.
+# Registro data/bets/prediction_gate.json, reescrito por
+# scripts/update_prediction_gate.py. Default-deny.
+# Criterio completo: docs/research/2026-08-16-preregistro-regla-de-salida.md
+prediction_gate:
+  enabled: true
 # Monitor de degradacion por (liga, mercado) (ENABLED 2026-07-13): auto-pausa
 # gated, capa conservadora que alimenta paused_markets por UNION (nunca
 # des-pausa lo listado arriba ni sube stakes). Sobre la ventana movil de

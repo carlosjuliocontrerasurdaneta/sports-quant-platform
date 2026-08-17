@@ -154,22 +154,26 @@ def test_production_yaml_never_leaves_capital_unguarded():
     este test fue disenado para romperse: la desactivacion no se colo en un
     diff.
 
-    Lo que el candado protege NO es el flag, es el invariante: **siempre debe
-    quedar al menos una barrera activa entre un pick y el dinero**. Con shadow
-    levantado la unica que queda es el gate de CLV por (liga, mercado), que es
-    default-deny. Apagar ambos a la vez deja la banca expuesta a cada candidato
-    que supere `min_edge`, y eso no puede colarse en un diff."""
+    Lo que el candado protege NO es un flag concreto -- la politica cambia y los
+    flags con ella -- sino el invariante: **siempre debe quedar al menos una
+    barrera activa entre un pick y el dinero**. Hoy hay tres candidatas, todas
+    default-deny: shadow global, el gate de prediccion (regla rectora desde
+    2026-08-16) y el de CLV (la regla anterior, ya solo evidencia). Apagarlas
+    TODAS deja la banca expuesta a cada candidato que supere `min_edge`, y eso
+    no puede colarse en un diff."""
     from sqp.config import CONFIG_DIR, load_yaml
     cfg = load_yaml(CONFIG_DIR / "default.yaml")
-    shadow = cfg.get("shadow_mode") is True
-    gate = bool((cfg.get("clv_gate") or {}).get("enabled"))
-    assert shadow or gate, (
-        "configs/default.yaml deja el capital SIN NINGUNA barrera: "
-        "`shadow_mode` es false y `clv_gate.enabled` tambien. Con esa "
-        "combinacion todo candidato por encima de min_edge lleva stake real "
-        "sin haber demostrado nada. Si es deliberado, registralo en "
-        "Obsidian/Decisiones y actualiza este test; si no, es una regresion "
-        "de control de riesgo.")
+    barreras = {
+        "shadow_mode": cfg.get("shadow_mode") is True,
+        "prediction_gate": bool((cfg.get("prediction_gate") or {}).get("enabled")),
+        "clv_gate": bool((cfg.get("clv_gate") or {}).get("enabled")),
+    }
+    assert any(barreras.values()), (
+        "configs/default.yaml deja el capital SIN NINGUNA barrera "
+        f"({barreras}). Con esa combinacion todo candidato por encima de "
+        "min_edge lleva stake real sin haber demostrado nada. Si es "
+        "deliberado, registralo en Obsidian/Decisiones y actualiza este test; "
+        "si no, es una regresion de control de riesgo.")
 
 
 def test_b08_production_yaml_shadow_survives_unrecognized_env():

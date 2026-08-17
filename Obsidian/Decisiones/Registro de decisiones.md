@@ -17,6 +17,12 @@ Fuente canónica con formato completo (razón, alternativas, consecuencias): `.c
 
 ## Operación y riesgo
 
+- **2026-08-17 — El GATE DE PREDICCIÓN sustituye al de CLV como regla de salida por mercado.** Criterio pre-registrado en `docs/research/2026-08-16-preregistro-regla-de-salida.md`, escrito antes de implementar. Un (liga, mercado) lleva stake real solo si **(1)** su modelo PURO bate al mercado en test de signo pareado fuera de muestra (n ≥ 300 no empatadas, p < 0,05) **y (2)** su EV a stake plano es positivo. `prediction_gate.enabled: true`, `clv_gate.enabled: false` — el de CLV se sigue calculando como evidencia pero ya no decide.
+  - **Por qué:** el CLV mide rendimiento contra un mercado, no veracidad de la predicción, y dejó de ser métrica rectora el 08-15. Su gate llevaba vacío desde julio: una puerta que nadie puede cruzar equivale a no tener puerta.
+  - **Fuera de muestra:** solo cuentan partidos posteriores al pre-registro. **El día de entrada en vigor niega todos los mercados** — es lo correcto, no un fallo: apostar por un hallazgo post-hoc es el error de KI-019.
+  - **Precedencia:** pausa → mercado incompleto → edge implausible → shadow → predicción → CLV.
+  - **Invariante vigente:** al menos una de las tres barreras (shadow, predicción, CLV) debe estar activa. Lo vigila `test_production_yaml_never_leaves_capital_unguarded`.
+
 - **2026-08-16 — SHADOW MODE LEVANTADO** (`shadow_mode: false`), por decisión explícita del operador. Registrado aquí porque el test candado `test_production_yaml_never_leaves_capital_unguarded` lo exige antes de aceptar el cambio.
   - **Riesgo de capital el día del cambio: cero.** El gate de CLV por (liga, mercado) está cableado DEBAJO de shadow (`_zero_stake_flag`, `pipeline/daily.py:373`) y es default-deny; las 24 entradas de `data/bets/clv_gate.json` están en `allowed: false`. Verificado sobre el registro completo: 24 mercados a stake 0, **0 con stake real**.
   - **Lo que cambia:** el gate de CLV pasa a ser la barrera única, visible y vinculante; el flag de los reportes pasa de `shadow_mode` a `clv_gate`.

@@ -57,21 +57,9 @@ DEFAULT_MIN_N = 30
 
 
 def load_graded(demo: bool = False) -> pd.DataFrame:
-    """Todas las filas graduadas del stream servido, con su liga."""
-    store = ServedStore(ROOT, demo=demo)
-    frames = []
-    for league in store.leagues():
-        path = store.graded_path(league)
-        if not path.exists():
-            continue
-        df = pd.read_csv(path)
-        if df.empty:
-            continue
-        df["league"] = league
-        frames.append(df)
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+    """Todas las filas graduadas del stream servido, con su liga. La carga vive
+    en el store para que el gate de prediccion y este analisis no diverjan."""
+    return ServedStore(ROOT, demo=demo).load_all_graded()
 
 
 def to_outcomes(df: pd.DataFrame) -> pd.DataFrame:

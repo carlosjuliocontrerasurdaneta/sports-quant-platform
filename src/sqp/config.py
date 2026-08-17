@@ -164,6 +164,16 @@ class Settings:
         default_factory=lambda: _env_flag("CLV_GATE_ENABLED") is True)
     clv_gate_min_n: int = field(
         default_factory=lambda: int(os.getenv("CLV_GATE_MIN_N", "30")))
+    # Prediction gate (2026-08-16): SUSTITUYE al de CLV como regla de salida
+    # rectora. Un mercado lleva stake real solo si su modelo PURO bate al
+    # mercado en test de signo pareado FUERA DE MUESTRA (n >= min_n, p < alpha)
+    # y su EV a stake plano es positivo. Registro data/bets/prediction_gate.json.
+    # Default-deny (sin registro / sin entrada / evidencia corta -> stake 0,
+    # flag "prediction_gate"). OFF por defecto para que Settings() directo
+    # (tests/demo) no se vea afectado; produccion lo activa por yaml.
+    # Criterio: docs/research/2026-08-16-preregistro-regla-de-salida.md
+    prediction_gate_enabled: bool = field(
+        default_factory=lambda: _env_flag("PREDICTION_GATE_ENABLED") is True)
     # Monitor de degradacion por (liga, mercado) (2026-07-13): auto-pausa gated.
     # Sobre la ventana movil de liquidadas, pausa un mercado cuyo Brier estimado
     # es peor que el baseline del mercado (prob. implicita sin vig) por mas de
@@ -319,6 +329,9 @@ class Settings:
             s.clv_gate_enabled = bool(cg["enabled"])
         if "CLV_GATE_MIN_N" not in os.environ and "min_n" in cg:
             s.clv_gate_min_n = int(cg["min_n"])
+        pg = cfg.get("prediction_gate") or {}
+        if _env_flag("PREDICTION_GATE_ENABLED") is None and "enabled" in pg:
+            s.prediction_gate_enabled = bool(pg["enabled"])
         dm = cfg.get("degradation_monitor") or {}
         if _env_flag("DEGRADATION_ENABLED") is None and "enabled" in dm:
             s.degradation_enabled = bool(dm["enabled"])

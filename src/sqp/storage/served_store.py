@@ -83,6 +83,28 @@ class ServedStore:
         return sorted(p.stem.replace("served_", "")
                       for p in self.dir.glob("served_*.csv"))
 
+    def graded_leagues(self) -> list[str]:
+        """Ligas con stream GRADUADO. No coincide con ``leagues()``: esa lista
+        los servidos, y una liga puede tener servidos sin graduar todavia."""
+        return sorted(p.stem.replace("graded_", "")
+                      for p in self.dir.glob("graded_*.csv"))
+
+    def load_all_graded(self) -> pd.DataFrame:
+        """Todas las filas graduadas de todas las ligas, con columna ``league``.
+
+        Base SIN sesgo de seleccion para evaluar la prediccion: son todos los
+        lados priceados, no solo los apostados. La consumen el gate de
+        prediccion, su script y el analisis de reproducciones; vive aqui para
+        que las tres no puedan divergir."""
+        frames = []
+        for league in self.graded_leagues():
+            df = self._load(self.graded_path(league))
+            if df.empty:
+                continue
+            df["league"] = league
+            frames.append(df)
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
     def _load(self, path: Path) -> pd.DataFrame:
         if not path.exists():
             return pd.DataFrame(columns=COLUMNS)

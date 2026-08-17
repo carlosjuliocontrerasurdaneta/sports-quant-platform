@@ -22,6 +22,8 @@ from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
 from sqp.risk.clv_gate import load_clv_gate, market_allowed
+from sqp.risk.prediction_gate import (load_prediction_gate,
+                                      market_allowed as prediction_allowed)
 from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.lock import locked
 from sqp.risk.kelly import kelly_fraction_stake, edge
@@ -373,14 +375,25 @@ def _finalize(league: str, rows: list[dict], candidates: list[BetCandidate],
 
 def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
                      clv_blocked: bool = False,
-                     incomplete_market: bool = False) -> str | None:
+                     incomplete_market: bool = False,
+                     prediction_blocked: bool = False) -> str | None:
     """Reason a selected candidate must be recorded with stake 0, or None to
     stake it. Pausing wins over the plausibility cap; shadow mode (global,
-    stake-0 evidence gathering) zeroes whatever remains; the per-market CLV
-    gate (allow-list, sqp.risk.clv_gate) blocks any market not yet proven
-    against the captured close. Shadow outranks the gate so reports keep the
-    shadow_mode flag while shadow is on; the gate becomes the visible,
-    binding reason once shadow mode is lifted."""
+    stake-0 evidence gathering) zeroes whatever remains; then the per-market
+    gates block any market not yet proven.
+
+    Two gates, both allow-lists and both default-deny:
+
+    - ``prediction_gate`` (sqp.risk.prediction_gate) is the BINDING exit rule
+      since 2026-08-16: the model must beat the market out of sample and its
+      flat-stake EV must be positive.
+    - ``clv_gate`` (sqp.risk.clv_gate) was the previous rule. It keeps being
+      computed as evidence but no longer decides; it only shows up here when
+      explicitly enabled.
+
+    Prediction outranks CLV so the reported reason is the rule actually in
+    force. Shadow outranks both, so reports keep the shadow_mode flag while
+    shadow is on."""
     if paused:
         return "market_paused"
     if incomplete_market:
@@ -389,6 +402,8 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
         return "edge_exceeds_max_plausible"
     if shadow:
         return "shadow_mode"
+    if prediction_blocked:
+        return "prediction_gate"
     if clv_blocked:
         return "clv_gate"
     return None
@@ -501,6 +516,19 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                         "(data/bets/clv_gate.json): default-deny, ningun "
                         "mercado lleva stake real hasta que la auditoria CLV "
                         "diaria lo reescriba.", league)
+
+    # Prediction gate: la regla de salida RECTORA desde 2026-08-16 (sustituye al
+    # de CLV). Mismo contrato: solo live, None = apagado, {} = registro
+    # ausente/ilegible -> default-deny.
+    prediction_gate: dict[str, dict] | None = None
+    if settings.prediction_gate_enabled and mode != "demo":
+        prediction_gate = load_prediction_gate(ROOT / "data" / "bets")
+        if not prediction_gate:
+            log.warning("[%s] Prediction gate activo sin registro utilizable "
+                        "(data/bets/prediction_gate.json): default-deny, ningun "
+                        "mercado lleva stake real hasta que "
+                        "scripts/update_prediction_gate.py lo reescriba.",
+                        league)
 
     if mode == "demo":
         provider = SyntheticProvider(family)
@@ -688,13 +716,19 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 continue
             # A paused market is suspended from staking but kept in the audit trail
             # (stake 0, flagged). Pausing takes precedence over the plausibility cap;
-            # shadow mode zeroes whatever remains; the CLV gate blocks markets not
-            # yet proven against the captured close (allow-list, default-deny).
+            # shadow mode zeroes whatever remains; then the per-market gates
+            # block anything not yet proven (allow-lists, default-deny). The
+            # prediction gate is the binding rule since 2026-08-16; the CLV one
+            # only applies while explicitly enabled.
             flag = _zero_stake_flag(
                 paused, suspect, settings.shadow_mode,
                 clv_blocked=(clv_gate is not None
                              and not market_allowed(clv_gate, league, key[0])),
-                incomplete_market=incomplete_market) or ""
+                incomplete_market=incomplete_market,
+                prediction_blocked=(
+                    prediction_gate is not None
+                    and not prediction_allowed(prediction_gate, league, key[0]))
+            ) or ""
             if flag:
                 stake, pct = 0.0, 0.0
             if accuracy:

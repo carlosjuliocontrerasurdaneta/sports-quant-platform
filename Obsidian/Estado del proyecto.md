@@ -58,10 +58,14 @@ Lo que esto cambia y lo que no, medido antes de tocarlo:
   emparejadas a cierre). **Ya no hace falta ninguna aprobación humana en ese
   punto.** Para mantener la aprobación manual: `clv_gate.enabled: false` y curar
   el registro a mano, o volver a poner `shadow_mode: true`.
-- **Tensión pendiente, sin resolver:** el gate que ahora manda es de **CLV**, y
-  el CLV dejó de ser la métrica rectora el 2026-08-15 (ver
-  [[Objetivos y requisitos]]). La regla de salida por mercado sigue siendo la
-  vieja. Definir la nueva es tarea abierta.
+- **RESUELTO el 2026-08-17:** la regla de salida por mercado es ahora el **gate de
+  predicción** (`prediction_gate.enabled: true`; el de CLV pasa a
+  `enabled: false` y queda como evidencia). Un mercado lleva stake real solo si su
+  modelo puro bate al mercado en test de signo pareado **fuera de muestra**
+  (n ≥ 300, p < 0,05) **y** su EV a stake plano es positivo. Criterio
+  pre-registrado antes de implementar. **Hoy no lo pasa ningún mercado** — la
+  ventana de validación arranca tras el pre-registro, así que la evidencia se
+  acumula desde cero. Ver [[Bitácora/2026-08-17]].
 
 ### Historial
 
