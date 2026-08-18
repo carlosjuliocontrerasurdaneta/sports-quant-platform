@@ -1,7 +1,7 @@
 ---
 tags: [conocimiento, modelo, mlb, origen, sqp]
 creada: 2026-08-15
-actualizada: 2026-08-16
+actualizada: 2026-08-17
 ---
 
 # Prompt 191 — el origen del modelo
@@ -278,18 +278,40 @@ En conjunto, v2 pasa de "modelo bien intencionado" a **especificación auditable
 
 ## Lo que sigue abierto en v2
 
-### 1. `NB_alpha = 0.15` sub-dispersa las carreras
+### 1. `NB_alpha = 0.15` sub-dispersa las carreras — MEDIDO Y CONFIRMADO (2026-08-17)
 
-Con `var = μ(1 + αμ)` y μ = 4.60: var = 7.77, **sd = 2.79**. La dispersión real de
-carreras por equipo-partido en MLB ronda **sd ≈ 3.1** (var/media ≈ 2.0–2.1). Para
-reproducirla haría falta **α ≈ 0.22–0.24**, no 0.15.
+Con `var = μ(1 + αμ)` y μ = 4.60: var = 7.77, **sd = 2.79**. La estimación previa
+de esta nota era **α ≈ 0.22–0.24**. Ya no hace falta estimar:
 
-Consecuencia direccional: menos varianza → distribución del margen más estrecha →
-**probabilidades de favorito infladas**. En un partido con margen esperado 1,5
-carreras el efecto ronda **+1 pp** sobre el favorito; en la cola es mayor.
+```
+Var(y|lambda)/lambda = 2,209   sobre 17.946 equipos-partido propios (2023 -> 2026)
+```
 
-Coincide con el diagnóstico registrado del proyecto: *"ROI realizado MLB
-persistentemente negativo (−27,6%): sesgo sistemático de sobreconfianza"*.
+Producción usa `dispersion_k: 3.8` (`registry.py:41`), que en la parametrización
+del prompt es **α = 1/3,8 = 0,263**. El prompt asume 0,15: **subestima la
+dispersión en un 43%.**
+
+Coste medido sobre los mismos λ y los mismos 8.973 partidos (Brier):
+
+| Mercado | prod α=0,263 | prompt α=0,15 | Poisson α=0 |
+|---|---:|---:|---:|
+| Total 7,5 | **0,24473** | 0,24754 | 0,25887 |
+| Total 8,5 | **0,24913** | 0,25028 | 0,25527 |
+| Moneyline | 0,24517 | 0,24505 | 0,24541 |
+
+Matiz importante que corrige la lectura previa: **el efecto vive en los totales,
+no en la moneyline.** Las tres variantes caben en 0,0004 de Brier en ML — la
+dispersión es un parámetro de colas y no mueve el reparto home/away. La
+consecuencia "probabilidades de favorito infladas" es real pero de segundo orden
+comparada con el efecto sobre over/under.
+
+Matiz técnico adicional: la relación empírica `Var = 2,209·μ` es **lineal**
+(quasi-Poisson), mientras la NB con k fijo impone `Var = μ + μ²/k`, **cuadrática**.
+Coinciden solo en μ≈4,6. A μ=3,0 la NB subestima (5,37 vs 6,63 empírico); a μ=6,0
+sobrestima (15,47 vs 13,25). En duelos de abridores extremos la distribución está
+mal especificada de forma predecible.
+
+Ver [[Bitácora/2026-08-17]].
 
 ### 2. `HomeAdj = 1.02` subestima la localía — probablemente el sesgo más grande
 
@@ -352,6 +374,36 @@ los otros tres no tiene una interpretación clara en unidades de carrera.
 Ver el matiz de la sección de v1: si viene de correlación histórica cruda,
 sobreestima la correlación residual una vez condicionado el entorno.
 
+## Lo único del prompt que este motor NO tiene: la Fase 13 (rho)
+
+Añadido 2026-08-17, tras medir. Es la conclusión más útil de todo el análisis del
+prompt, y llegó por un camino inesperado.
+
+`poisson_match_probs` hace `p = p_home[i] * p_away[j]`: **los dos marcadores son
+independientes**. En la realidad correlacionan positivamente (parque, clima,
+umpire, duración del partido). Bajo independencia:
+
+```
+Var(total)  = Var_h + Var_a     realidad: + 2·Cov  -> hace falta MAS varianza
+Var(margen) = Var_h + Var_a     realidad: - 2·Cov  -> hace falta MENOS varianza
+```
+
+`dispersion_k` es **una sola perilla para dos cantidades que necesitan corrección
+de signo opuesto**. Está calibrada contra totales, así que sobre-infla el margen —
+y eso se mide: en runline −1,5 Poisson **bate** a k=3,8 (Brier +0,00082, IC95%
+[+0,00004, +0,00154], P=0,981 en bootstrap pareado), con orden monótono inverso al
+de totales.
+
+La Fase 13 del prompt —rho con cópula gaussiana explícita, semilla, correlación
+empírica resultante y fallback honesto `rho_aplicado = 0`— es la forma correcta de
+cerrar ese hueco. El defecto n.º 8 de esta nota (procedencia de `rho_base = 0.12`
+no declarada) **sigue en pie**: la correlación residual, una vez condicionado el
+entorno, debe ser menor que la cruda; en este motor `park` ya multiplica ambos λ.
+
+Hipótesis alternativa no descartada: la forma cuadrática de la NB frente a la
+relación lineal empírica (ver punto 1) también degradaría el runline. El test que
+discrimina es partir la evaluación por terciles de λ total.
+
 ## Lo que se puede comprobar ya, con datos propios
 
 Los puntos 1, 2 y 4 son **medibles con lo que el repositorio ya guarda**
@@ -359,12 +411,14 @@ Los puntos 1, 2 y 4 son **medibles con lo que el repositorio ya guarda**
 `ServedStore`), sin gasto de cuota:
 
 1. **Localía**: tasa de victoria local realizada vs. media de `P_home` servida.
-   Una brecha persistente de ~2 pp confirmaría el punto 2.
-2. **Dispersión**: sd del margen realizado vs. sd del margen simulado.
-   Si la realizada es mayor, confirma α bajo.
+   Una brecha persistente de ~2 pp confirmaría el punto 2. **Pendiente.**
+2. ~~**Dispersión**: sd del margen realizado vs. sd del margen simulado.~~
+   **HECHO 2026-08-17** (`scripts/research_dispersion_mlb.py`): dispersión
+   condicional 2,209 sobre 17.946 equipos-partido. Ver punto 1 arriba y
+   [[Bitácora/2026-08-17]].
 3. **Calibración**: curva de fiabilidad de las probabilidades servidas por banda.
    La sobreconfianza en favoritos ya está documentada; esto la ataría a una causa
-   concreta y corregible en vez de a "el modelo está mal".
+   concreta y corregible en vez de a "el modelo está mal". **Pendiente.**
 
 Los tres son mejoras dirigidas, baratas y falsables. Ver
 [[Bitácora/2026-08-15]].
