@@ -2,6 +2,7 @@
 edge-plausibility cap that flags miscalibrated selections instead of staking them.
 """
 import pandas as pd
+import pytest
 from sqp.config import ROOT, RiskConfig, Settings
 from sqp.domain.models import Event
 from sqp.models.team_scoring import TeamScoringRates
@@ -112,6 +113,44 @@ def test_poisson_scoring_totals_toggle_off_is_league_constant():
     ab = adapter.estimate(_nhl_ev("A", "B"), None, 6.0)
     cd = adapter.estimate(_nhl_ev("C", "D"), None, 6.0)
     assert abs(ab.over_estimated_probability - cd.over_estimated_probability) < 1e-9
+
+
+def _fit_neutral(adapter, n: int = 20):
+    """Dos equipos identicos: Elo igualado -> tilt = 0, asi el bonus queda aislado."""
+    adapter.fit_results([{"date": f"2026-01-{i%28+1:02d}", "home": "A", "away": "B",
+                          "home_score": 3, "away_score": 3} for i in range(n)])
+    return adapter
+
+
+def test_home_scoring_bonus_shifts_the_split_without_inflating_the_total():
+    """El bonus de localia reparte carreras entre los dos lados, no las crea.
+
+    Hasta el 2026-08-18 `lam_home` sumaba el bonus entero y `lam_away` no restaba
+    nada, asi que `lam_home + lam_away = avg_total + bonus`: TODOS los partidos de
+    las tres familias Poisson salian con el total inflado por el bonus completo.
+    Medido walk-forward sobre el historico, producia sesgo Over sistematico
+    (mlb +0,194 carreras, epl +0,285 goles) y hasta +4,79 pp de sesgo en la
+    probabilidad de Over de la EPL a linea 2,5.
+    """
+    adapter = _fit_neutral(get_adapter("nhl", "hockey"))
+    assert adapter.params["home_scoring_bonus"] > 0, "el test no prueba nada sin bonus"
+    lam_h, lam_a = adapter._rates(_nhl_ev("A", "B"))
+    expected_total = adapter.scoring.expected_total("A", "B", adapter.params["avg_total"])
+    assert abs((lam_h + lam_a) - expected_total) < 1e-9
+
+
+def test_home_scoring_bonus_still_favors_the_home_side():
+    """Arreglar el total no puede costar la ventaja de localia.
+
+    Contra la misma pareja: subir el bonus debe abrir la brecha local-visitante
+    exactamente en su valor, y dejar el total intacto.
+    """
+    h0, a0 = _fit_neutral(get_adapter("nhl", "hockey", {"home_scoring_bonus": 0.0}))._rates(
+        _nhl_ev("A", "B"))
+    h1, a1 = _fit_neutral(get_adapter("nhl", "hockey", {"home_scoring_bonus": 0.4}))._rates(
+        _nhl_ev("A", "B"))
+    assert (h1 - a1) - (h0 - a0) == pytest.approx(0.4, abs=1e-9)
+    assert h1 + a1 == pytest.approx(h0 + a0, abs=1e-9)
 
 
 def test_risk_config_has_plausibility_cap_default():

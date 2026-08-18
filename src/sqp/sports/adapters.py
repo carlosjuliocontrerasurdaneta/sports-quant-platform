@@ -100,8 +100,15 @@ class PoissonAdapter(SportAdapter):
             avg = self.scoring.expected_total(event.home, event.away, avg)
         # tilt: shift scoring share toward the favorite, bounded.
         tilt = max(-0.30, min(0.30, (p_home - 0.5) * self.params.get("tilt_scale", 0.9)))
-        lam_home = avg * (0.5 + tilt) + self.params.get("home_scoring_bonus", 0.0)
-        lam_away = avg * (0.5 - tilt)
+        # El bonus de localia se REPARTE (media a cada lado, con signo opuesto):
+        # abre la brecha local-visitante en `bonus` sin tocar la suma. Hasta el
+        # 2026-08-18 se sumaba entero al local y no se restaba nada al visitante,
+        # asi que inflaba el TOTAL de cada partido en `bonus` -> sesgo Over
+        # sistematico en las tres familias Poisson (mlb +0,194 carreras,
+        # epl +0,285 goles, hasta +4,79 pp en p(Over) de EPL a 2,5).
+        half_bonus = self.params.get("home_scoring_bonus", 0.0) / 2.0
+        lam_home = avg * (0.5 + tilt) + half_bonus
+        lam_away = avg * (0.5 - tilt) - half_bonus
         return max(0.1, lam_home), max(0.1, lam_away)
 
     def estimate(self, event, spread_line, total_line) -> EstimatedProbabilities:
