@@ -20,19 +20,21 @@ def is_usable_price(price: float | None) -> bool:
 
 
 def american_to_decimal(american: float) -> float:
+    if not math.isfinite(american):
+        raise ValueError(f"American odds must be finite, got {american}")
     if american == 0:
         raise ValueError("American odds cannot be 0")
     return 1 + (american / 100.0 if american > 0 else 100.0 / abs(american))
 
 
 def decimal_to_american(decimal: float) -> float:
-    if decimal <= 1:
-        raise ValueError("Decimal odds must be > 1")
+    if not is_usable_price(decimal):
+        raise ValueError(f"Decimal odds must be finite and > 1, got {decimal}")
     return (decimal - 1) * 100 if decimal >= 2 else -100 / (decimal - 1)
 
 
 def implied_probability(decimal: float) -> float:
     """Raw implied probability (includes vig)."""
-    if decimal <= 1:
-        raise ValueError("Decimal odds must be > 1")
+    if not is_usable_price(decimal):
+        raise ValueError(f"Decimal odds must be finite and > 1, got {decimal}")
     return 1.0 / decimal
