@@ -25,24 +25,38 @@ def test_full_audit_routes_to_orchestrator():
     assert route["primary_agent"] == "principal-orchestrator"
 
 
+# Escalon caro y escalon barato, cerrados por igualdad de conjuntos y no por
+# pertenencia: anadir una ruta a opus tiene que ser un acto deliberado que toque
+# este literal, que es el unico freno de coste que no depende de que alguien se
+# acuerde. Politica: .claude/automation/MODEL_ROUTING.md
+OPUS_ROUTES = {"full-audit", "incident", "quant-incident"}
+HAIKU_ROUTES = {"documentation"}
+
+
 def test_main_model_matches_the_authorized_policy():
     # Three-way lock: settings.json, MODEL_ROUTING.md and this literal must agree.
     # Config/doc drift is the failure this repo keeps hitting (pick_mode 07-31,
-    # this model 08-04), so the check stays exact on purpose -- switching the main
-    # model is a deliberate act that must touch the policy and this test too.
+    # model 08-04, and this very change on 08-18, que se aplico a settings.json y
+    # model-routing.json pero no a la politica ni aqui). El check es exacto a
+    # proposito: cambiar el modelo principal es un acto deliberado.
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
-    assert settings["model"] == "claude-opus-5"
+    assert settings["model"] == "sonnet"
+    assert CONFIG["default"]["model"] == "sonnet"
 
-    allowed_subagent_models = {"opus", "haiku"}
+    # RUTAS: sonnet es la norma; opus y haiku son las excepciones declaradas.
+    allowed_route_models = {"opus", "sonnet", "haiku"}
     bad_routes = [
-        r["id"]
-        for r in CONFIG["routes"]
-        if r.get("model") not in allowed_subagent_models
+        r["id"] for r in CONFIG["routes"] if r.get("model") not in allowed_route_models
     ]
-    assert bad_routes == [], f"rutas con modelo de subagente no permitido: {bad_routes}"
+    assert bad_routes == [], f"rutas con modelo no permitido: {bad_routes}"
+    assert {r["id"] for r in CONFIG["routes"] if r.get("model") == "opus"} == OPUS_ROUTES
+    assert {r["id"] for r in CONFIG["routes"] if r.get("model") == "haiku"} == HAIKU_ROUTES
 
+    # SUBAGENTES: politica independiente y sin cambios. Un especialista al que se
+    # delega explicitamente declara opus o haiku, nunca sonnet.
+    allowed_subagent_models = {"opus", "haiku"}
     bad_agents = [
         p.name
         for p in (ROOT / ".claude/agents").rglob("*.md")
@@ -56,7 +70,7 @@ def test_main_model_matches_the_authorized_policy():
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
         encoding="utf-8"
     )
-    assert "claude-opus-5" in policy
+    assert "**Conversación principal:** `sonnet`" in policy
 
 
 def test_every_route_references_an_existing_loop_and_agents():
@@ -131,10 +145,12 @@ def test_general_calibration_and_calibrator_changes_follow_decision_engine():
     assert change["loop"] == "model.md"
 
 
-def test_bug_routes_to_opus_python_engineer():
+def test_bug_routes_to_sonnet_python_engineer():
+    # Un bugfix es trabajo normal, no un incidente critico: desde el 2026-08-18
+    # va a sonnet. Solo full-audit/incident/quant-incident conservan opus.
     route = MODULE.classify("Corrige el bug del settlement", CONFIG)
     assert route["id"] == "bugfix"
-    assert route["model"] == "opus"
+    assert route["model"] == "sonnet"
     assert route["primary_agent"] == "python-engineer"
 
 

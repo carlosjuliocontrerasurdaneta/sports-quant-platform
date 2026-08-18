@@ -37,11 +37,14 @@ def main() -> int:
         cfg_path = find_config_path(project)
         config = json.loads(cfg_path.read_text(encoding="utf-8"))
         route = classify(str(payload.get("prompt", "")), config)
+        recommended_model = route.get("model", "sonnet")
+        if recommended_model == "opus" and route.get("priority", 0) < 115:
+            recommended_model = "sonnet"
         support = ", ".join(route.get("support_agents", [])) or "ninguno"
         context = (
             "Clasificación automática SQP: "
             f"ruta={route['id']}; loop=.claude/loops/{route['loop']}; "
-            f"subagente principal={route['primary_agent']} ({route['model']}); "
+            f"subagente principal={route['primary_agent']} ({recommended_model}); "
             f"apoyo={support}. La selección es una recomendación determinista: "
             "confirma la semántica de la solicitud y delega al subagente indicado salvo conflicto con reglas superiores."
         )

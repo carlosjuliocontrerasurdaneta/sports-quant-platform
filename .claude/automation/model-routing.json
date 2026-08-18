@@ -3,7 +3,7 @@
   "default": {
     "loop": "feature.md",
     "primary_agent": "python-engineer",
-    "model": "opus",
+    "model": "sonnet",
     "support_agents": [
       "repository-cartographer",
       "qa-engineer"
@@ -86,7 +86,7 @@
       ],
       "loop": "quant/01-daily-prediction.md",
       "primary_agent": "sports-quant-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "provider-integrator",
         "qa-engineer"
@@ -104,7 +104,7 @@
       ],
       "loop": "quant/02-pregame-refresh.md",
       "primary_agent": "line-movement-analyst",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "odds-market-auditor",
         "sports-quant-auditor"
@@ -123,7 +123,7 @@
       ],
       "loop": "quant/03-postgame-settlement.md",
       "primary_agent": "sports-quant-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "data-engineer",
         "qa-engineer"
@@ -141,7 +141,7 @@
       ],
       "loop": "quant/04-daily-audit.md",
       "primary_agent": "sports-quant-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "calibration-auditor",
         "backtest-reviewer"
@@ -160,7 +160,7 @@
       ],
       "loop": "quant/05-loss-diagnosis.md",
       "primary_agent": "sports-quant-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "leakage-detector",
         "odds-market-auditor"
@@ -179,7 +179,7 @@
       ],
       "loop": "quant/06-calibration-monitor.md",
       "primary_agent": "calibration-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "backtest-reviewer",
         "risk-manager"
@@ -197,7 +197,7 @@
       ],
       "loop": "quant/07-drift-monitor.md",
       "primary_agent": "ml-engineer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "data-engineer",
         "sports-quant-auditor"
@@ -214,7 +214,7 @@
       ],
       "loop": "quant/08-data-quality-recovery.md",
       "primary_agent": "data-engineer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "provider-integrator",
         "qa-engineer"
@@ -233,7 +233,7 @@
       ],
       "loop": "quant/09-champion-challenger.md",
       "primary_agent": "backtest-reviewer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "calibration-auditor",
         "leakage-detector",
@@ -250,7 +250,7 @@
       ],
       "loop": "quant/10-controlled-recalibration.md",
       "primary_agent": "calibration-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "backtest-reviewer",
         "risk-manager"
@@ -267,7 +267,7 @@
       ],
       "loop": "quant/11-season-transition.md",
       "primary_agent": "sports-quant-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "feature-engineer",
         "ml-engineer"
@@ -285,7 +285,7 @@
       ],
       "loop": "quant/13-weekly-continuous-improvement.md",
       "primary_agent": "principal-orchestrator",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "sports-quant-auditor",
         "calibration-auditor",
@@ -306,7 +306,7 @@
       ],
       "loop": "calibration.md",
       "primary_agent": "calibration-auditor",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "backtest-reviewer",
         "risk-manager"
@@ -330,7 +330,7 @@
       ],
       "loop": "model.md",
       "primary_agent": "ml-engineer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "feature-engineer",
         "leakage-detector",
@@ -353,7 +353,7 @@
       ],
       "loop": "backtest.md",
       "primary_agent": "backtest-reviewer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "leakage-detector",
         "sports-quant-auditor"
@@ -371,7 +371,7 @@
       ],
       "loop": "refactor.md",
       "primary_agent": "backend-architect",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "repository-cartographer",
         "python-engineer",
@@ -391,7 +391,7 @@
       ],
       "loop": "provider.md",
       "primary_agent": "provider-integrator",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "data-engineer",
         "leakage-detector",
@@ -412,7 +412,7 @@
       ],
       "loop": "bugfix.md",
       "primary_agent": "python-engineer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "repository-cartographer",
         "qa-engineer"
@@ -431,7 +431,7 @@
       ],
       "loop": "refactor.md",
       "primary_agent": "security-reviewer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "python-engineer",
         "qa-engineer"
@@ -449,7 +449,7 @@
       ],
       "loop": "release.md",
       "primary_agent": "devops-engineer",
-      "model": "opus",
+      "model": "sonnet",
       "support_agents": [
         "qa-engineer",
         "security-reviewer"

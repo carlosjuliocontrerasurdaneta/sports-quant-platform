@@ -8,16 +8,21 @@ El enrutamiento tiene dos capas independientes:
 
 ## Política autorizada
 
-- **Conversación principal:** `claude-opus-5`, por decisión humana explícita del
-  2026-08-04. Supersede la autorización de `claude-fable-5` tomada ese mismo día:
-  se registró con el riesgo abierto de no haber verificado el identificador contra
-  una instalación real (`architecture-log.md`), y el precedente del 2026-07-30 era
-  que la cuenta no tenía créditos de Fable 5. El hook no debe afirmar que cambia
+- **Conversación principal:** `sonnet`, por decisión humana explícita del
+  2026-08-18. Supersede a `claude-opus-5` (2026-08-04), que a su vez había
+  superseduo a `claude-fable-5` ese mismo día. El hook no debe afirmar que cambia
   este modelo.
-- **Subagentes Opus:** auditorías, arquitectura, modelado, calibración, leakage,
-  backtesting, riesgo, implementación, datos, providers, QA, seguridad, DevOps y
-  especialistas deportivos.
-- **Subagente Haiku:** documentación estrictamente limitada.
+- **Escalón de las rutas** (`model-routing.json`), el lever de coste:
+  - `opus` — **solo** `full-audit`, `incident` y `quant-incident`: auditorías
+    exhaustivas e incidentes críticos.
+  - `haiku` — **solo** `documentation`: consulta y resumen acotados.
+  - `sonnet` — todo lo demás, incluida la ruta `default`. Es el trabajo normal:
+    modelado, calibración, backtesting, arquitectura, providers, bugfix,
+    seguridad y release.
+- **Frontmatter de subagentes:** política **independiente y sin cambios**. Un
+  subagente declara `opus` o `haiku`, nunca `sonnet`: cuando se delega
+  explícitamente a un especialista es porque el trabajo lo justifica. La ruta
+  puede pasar un modelo que tiene precedencia sobre el frontmatter (ver abajo).
 
 Una variable `CLAUDE_CODE_SUBAGENT_MODEL` o un modelo indicado explícitamente al
 invocar un subagente puede tener precedencia sobre su frontmatter. Esa excepción
