@@ -55,11 +55,33 @@ def test_scoring_rates_decay_is_noop_without_dates_or_half_life():
         with_hl.expected_total("A", "B", 200.0)
 
 
-def test_wnba_adapter_enables_scoring_recency_decay():
-    # The WNBA override must plumb scoring_half_life_days into the adapter;
-    # other leagues default to 0 (legacy cumulative behavior, byte-identical).
+def test_basketball_leagues_enable_scoring_recency_decay():
+    # WNBA la lleva desde el 2026-07-04; NBA desde el 2026-08-18.
     assert get_adapter("wnba", "basketball").scoring.half_life_days > 0
-    assert get_adapter("nba", "basketball").scoring.half_life_days == 0
+    assert get_adapter("nba", "basketball").scoring.half_life_days > 0
+
+
+def test_nba_totals_decay_regression_guard():
+    """NBA acumulaba 2002-2026 sin decaimiento contra una liga que paso de 189 a
+    227 puntos por partido.
+
+    Medido con el arnes walk-forward (ajuste sobre todo el historico, evaluacion
+    sobre los 3.638 partidos desde 2024, linea 227): el modelo daba 17,70 % de
+    Over cuando ocurre el 50,20 % -- **32,5 pp de sesgo** y Brier 0,3567, PEOR que
+    predecir 0,50 constante. Con media vida de 180 dias: sesgo +1,18 pp y Brier
+    0,2383, sin mover spreads ni moneyline (en la familia Normal el margen sale
+    de Elo).
+
+    Latente, no activo: la NBA arranca en octubre. Sin este guard el override se
+    puede perder en un merge y el sesgo vuelve sin que nadie lo note hasta que
+    haya picks reales.
+
+    NHL comparte el mecanismo pero NO se cambio: alli la mejora de totals
+    (-0,0029 de Brier) se compensa con spreads (+0,0014) y moneyline (+0,0011),
+    porque en Poisson las tasas alimentan las dos lambdas.
+    """
+    assert get_adapter("nba", "basketball").scoring.half_life_days == 180.0
+    assert get_adapter("nhl", "hockey").scoring.half_life_days == 0.0
 
 
 def test_normal_adapter_total_is_matchup_specific():

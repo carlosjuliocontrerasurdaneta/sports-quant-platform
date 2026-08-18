@@ -67,6 +67,20 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
     "wnba":   {"avg_total": 171.0, "total_sigma": 19.0, "margin_sigma": 14.0,  # residual 13.6
                "points_per_elo": 0.024,
                "scoring_half_life_days": 180.0},
+    # NBA: mismo defecto que wnba (07-04) pero mucho mayor, y latente porque la
+    # liga esta fuera de temporada. El historico va de 2002 a 2026 y la anotacion
+    # paso de 189 a 227 puntos por partido; las tasas acumuladas SIN decaimiento
+    # proyectaban ~207 contra lineas actuales de ~227. Medido con el arnes
+    # walk-forward (evaluacion sobre 3.638 partidos desde 2024, linea 227):
+    # p(Over) estimada 0,1770 contra 0,5020 observada -- 32,5 pp de sesgo, Brier
+    # 0,3567, PEOR que predecir 0,50 constante. Con 180 dias: sesgo +1,18 pp,
+    # Brier 0,2383, y spreads/moneyline IDENTICOS (en la familia Normal el margen
+    # sale de Elo). 180 se elige por el precedente de wnba, no por minimizar el
+    # Brier de la rejilla (90 daba 0,2367; la diferencia es 0,004 y elegir el
+    # argmin sobre los datos de la medicion seria sobreajuste).
+    # NHL comparte el mecanismo y NO se cambio: alli la ganancia en totals se
+    # compensa con spreads y moneyline. Ver Bitacora/2026-08-18.
+    "nba":    {"scoring_half_life_days": 180.0},
     # Universitario: MUCHA mas varianza que el profesional (palizas, disparidad
     # de talento, sin draft igualador). Heredaban el sigma de NBA/NFL.
     "ncaab":  {"avg_total": 145.0, "total_sigma": 18.0, "margin_sigma": 16.0},  # residuales 17.7 / 15.6
