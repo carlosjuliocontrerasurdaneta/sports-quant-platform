@@ -64,9 +64,18 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
     # todos los totals al Under). Ver test_team_scoring y team_scoring.py.
     # 15.0 -> 19.0 (residual medido 18.6). Era la causa del peor segmento del
     # marcador: wnba/totals con Brier 0.336 frente a 0.250 del mercado.
+    # scoring_half_life_days 180 -> 60 (2026-08-18). 180 no bastaba: temporada
+    # corta (mayo-septiembre), ~7 meses de paron y anotacion en subida (166 en
+    # 2023 -> 174,5 en 2026), asi que el promedio arrastraba temporadas viejas.
+    # Medido en la linea REAL del mercado (mediana servida 177,5), evaluando 2026:
+    # el modelo proyectaba 167,7 puntos contra 174,5 realizados -- casi diez
+    # puntos por debajo de la linea -- y daba 30,66 % de Over cuando ocurria el
+    # 43,77 %. tune_market_param acepta 60 con mejora OOS +0,0289 sobre 4 folds
+    # (margen 0,0020); el sesgo cae de -0,1311 a -0,0714. NO es una cura: el
+    # residual sigue negativo y el corte sigue en auto-pausa por degradacion.
     "wnba":   {"avg_total": 171.0, "total_sigma": 19.0, "margin_sigma": 14.0,  # residual 13.6
                "points_per_elo": 0.024,
-               "scoring_half_life_days": 180.0},
+               "scoring_half_life_days": 60.0},
     # NBA: mismo defecto que wnba (07-04) pero mucho mayor, y latente porque la
     # liga esta fuera de temporada. El historico va de 2002 a 2026 y la anotacion
     # paso de 189 a 227 puntos por partido; las tasas acumuladas SIN decaimiento

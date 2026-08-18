@@ -84,6 +84,22 @@ def test_nba_totals_decay_regression_guard():
     assert get_adapter("nhl", "hockey").scoring.half_life_days == 0.0
 
 
+def test_wnba_totals_needs_a_shorter_half_life_than_the_nba():
+    """180 dias no bastaban para la WNBA: temporada corta (mayo-septiembre),
+    ~7 meses de parón y anotacion en subida (166 en 2023 -> 174,5 en 2026).
+
+    Medido en la linea REAL del mercado (mediana servida 177,5), evaluando 2026:
+    el modelo proyectaba 167,7 puntos contra 174,5 realizados y una linea de
+    177,5 -- casi diez puntos por debajo -- y daba 30,66 % de Over cuando ocurria
+    el 43,77 %. El tuner de mercados acepta 60 dias con mejora OOS +0,0289 sobre
+    4 folds (margen 0,0020); el sesgo cae de -0,1311 a -0,0714.
+
+    NO es una cura: el sesgo residual sigue siendo negativo, y `wnba/totals`
+    continua en auto-pausa por degradacion. Es la mitad del error, no su final.
+    """
+    assert get_adapter("wnba", "basketball").scoring.half_life_days == 60.0
+
+
 def test_normal_adapter_total_is_matchup_specific():
     adapter = get_adapter("nba", "basketball")
     rows = []
