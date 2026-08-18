@@ -14,10 +14,48 @@ from sqp.calibration.metrics import brier_score, log_loss, expected_calibration_
 from sqp.domain.models import Event
 
 
+def _market_summary(probs: list[float], outcomes: list[float]) -> dict:
+    """Metricas de un mercado binario, con el SESGO DIRECCIONAL al frente.
+
+    `bias` = probabilidad media estimada - tasa observada. Es la metrica que el
+    arnes existia para poder calcular: el Brier mezcla direccion y afilamiento,
+    asi que un modelo que sobreestima sistematicamente puede tener buen Brier.
+    El bug del `home_scoring_bonus` (2026-08-18) era exactamente eso.
+    """
+    n = len(probs)
+    mean_p = sum(probs) / n
+    observed = sum(outcomes) / n
+    return {"n": n,
+            "brier": brier_score(probs, outcomes),
+            "log_loss": log_loss(probs, outcomes),
+            "ece": expected_calibration_error(probs, outcomes),
+            "mean_probability": mean_p,
+            "observed_rate": observed,
+            "bias": mean_p - observed}
+
+
 def walk_forward_backtest(results: list[dict], league: str, family: str,
-                          league_params: dict | None = None, warmup: int = 60) -> dict:
+                          league_params: dict | None = None, warmup: int = 60,
+                          spread_lines: tuple[float, ...] = (),
+                          total_lines: tuple[float, ...] = ()) -> dict:
+    """Backtest temporal. Sin `spread_lines`/`total_lines` el resultado es
+    identico al historico (los cinco scripts que ya lo llaman no se mueven).
+
+    Con lineas, evalua ademas esos mercados contra lineas FIJAS de referencia:
+    el desenlace sale del marcador, asi que no hace falta historico de cuotas.
+    Los empujes (marcador exactamente en la linea) se excluyen, igual que los
+    empates en las metricas binarias del moneyline.
+    """
     adapter = get_adapter(league, family, league_params)
     probs, outcomes = [], []
+    market_probs: dict[str, list[float]] = {}
+    market_outcomes: dict[str, list[float]] = {}
+
+    def _record(key: str, p: float | None, covered: bool, push: bool) -> None:
+        if p is None or push:
+            return
+        market_probs.setdefault(key, []).append(p)
+        market_outcomes.setdefault(key, []).append(1.0 if covered else 0.0)
     dates: list[str] = []
     draw_probs, draw_outcomes = [], []
     threeway_ll_terms: list[float] = []
@@ -50,6 +88,18 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
             outcomes.append(1.0 if r["home_score"] > r["away_score"] else
                             (0.5 if r["home_score"] == r["away_score"] else 0.0))
             dates.append(str(r.get("date")))
+            margin = r["home_score"] - r["away_score"]
+            total = r["home_score"] + r["away_score"]
+            for s in spread_lines:
+                # `poisson_match_probs`/`normal_margin_probs` cubren con
+                # `margin > -spread_line` y empujan en la igualdad.
+                _record(f"spreads@{s}",
+                        adapter.estimate(ev, s, None).home_cover_estimated_probability,
+                        margin > -s, margin == -s)
+            for t in total_lines:
+                _record(f"totals@{t}",
+                        adapter.estimate(ev, None, t).over_estimated_probability,
+                        total > t, total == t)
         adapter.observe(r)
     mask = [o in (0.0, 1.0) for o in outcomes]  # binary metrics exclude draws
     p = [x for x, m in zip(probs, mask) if m]
@@ -72,6 +122,9 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
         "binary_outcomes": y,
         "binary_dates": d,
         "threeway_ll_series": list(threeway_ll_terms),
+        # Spreads/totals contra lineas fijas. Vacio salvo que se pidan lineas.
+        "markets": {k: _market_summary(v, market_outcomes[k])
+                    for k, v in market_probs.items() if v},
         "note": ("Calibration-only backtest. Three-way leagues are scored on "
                  "P(home | no draw) vs draw-excluded outcomes; draw calibration "
                  "is reported separately. Realized ROI requires real historical "
