@@ -31,7 +31,12 @@ def _market_summary(probs: list[float], outcomes: list[float]) -> dict:
             "ece": expected_calibration_error(probs, outcomes),
             "mean_probability": mean_p,
             "observed_rate": observed,
-            "bias": mean_p - observed}
+            "bias": mean_p - observed,
+            # Series por partido en orden temporal: es lo que necesita
+            # `rolling_origin_improvement` para validar una seleccion fuera de
+            # muestra. Sin ellas el tuner solo puede comparar agregados.
+            "probs": list(probs),
+            "outcomes": list(outcomes)}
 
 
 def walk_forward_backtest(results: list[dict], league: str, family: str,

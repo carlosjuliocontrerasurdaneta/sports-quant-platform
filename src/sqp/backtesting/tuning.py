@@ -177,6 +177,77 @@ def tune_home_advantage(results: list[dict], league: str, family: str,
                      "sample-size and margin gates. Re-validate after season changes.")}
 
 
+MIN_EVAL_MARKET = 200       # evaluated games required to override on a market
+
+_MARKET_LINE_ARG = {"totals": "total_lines", "spreads": "spread_lines"}
+
+
+def tune_market_param(results: list[dict], league: str, family: str, *,
+                      param: str, grid: tuple[float, ...],
+                      market: str, line: float, default_value: float,
+                      league_params: dict | None = None, warmup: int = 60,
+                      min_eval: int = MIN_EVAL_MARKET,
+                      margin: float = IMPROVEMENT_MARGIN,
+                      n_splits: int = 0) -> dict:
+    """Tunea `param` por su efecto en SPREADS o TOTALS contra una linea fija.
+
+    `tune_home_advantage` y `tune_dc_rho` puntúan el moneyline, asi que un
+    parametro que arregla el total y estropea el hándicap (o al reves) les es
+    invisible. Este comparte gate, margen y holdout rolling-origin: lo unico que
+    cambia es de que serie de perdida se alimenta.
+
+    El desenlace sale del marcador, asi que no consume cuota de la API de cuotas.
+    """
+    if market not in _MARKET_LINE_ARG:
+        raise ValueError(f"market must be one of {sorted(_MARKET_LINE_ARG)}, got {market!r}")
+    key = f"{market}@{line}"
+    line_kw = {_MARKET_LINE_ARG[market]: (line,)}
+
+    def _run(value: float) -> dict:
+        params = dict(league_params or {})
+        params[param] = float(value)
+        res = walk_forward_backtest(results, league, family, params, warmup=warmup, **line_kw)
+        m = res["markets"].get(key)
+        if m is None:
+            raise ValueError(f"League '{league}' produced no {market} estimates at line {line}.")
+        return m
+
+    rows: list[dict] = []
+    loss_series: dict[float, list[float]] = {}
+    n_eval = 0
+    for value in grid:
+        m = _run(value)
+        n_eval = m["n"]
+        rows.append({param: float(value), "log_loss": m["log_loss"], "brier": m["brier"],
+                     "bias": m["bias"], "ece": m["ece"], "n": m["n"]})
+        loss_series[float(value)] = _binary_nll_series(m["probs"], m["outcomes"])
+    table = pd.DataFrame(rows)
+    best = table.loc[table["log_loss"].idxmin()]
+    base_ll = _loss_at(table, "log_loss", param, float(default_value))
+    if base_ll is None:  # el default no esta en la rejilla: evaluarlo aparte
+        dm = _run(default_value)
+        base_ll = dm["log_loss"]
+        loss_series[float(default_value)] = _binary_nll_series(dm["probs"], dm["outcomes"])
+    insample_improvement = base_ll - float(best["log_loss"])
+    accepted, reason, oos = _gate(n_eval, min_eval, "evaluated games", insample_improvement,
+                                  margin, loss_series, float(default_value), n_splits)
+    return {"league": league, "param": param, "market_key": key,
+            "best_value": float(best[param]),                    # argmin crudo, SIEMPRE
+            "best_log_loss": float(best["log_loss"]),
+            "best_bias": float(best["bias"]),
+            "default_value": float(default_value),
+            "default_log_loss": float(base_ll),
+            "n_eval": n_eval, "improvement": insample_improvement,
+            "oos_improvement": oos,
+            "accepted": accepted, "reason": reason,
+            "recommended_value": float(best[param]) if accepted else float(default_value),
+            "table": table,
+            "note": ("Scored on a FIXED reference line: the outcome comes from the "
+                     "scoreboard, so no odds history and no API quota are needed. "
+                     "A fixed line is a valid relative comparison between grid "
+                     "values, not an estimate of live market performance.")}
+
+
 def tune_dc_rho(results: list[dict], league: str, family: str,
                 league_params: dict | None = None,
                 grid: tuple[float, ...] = DEFAULT_DC_RHO_GRID, warmup: int = 60,
