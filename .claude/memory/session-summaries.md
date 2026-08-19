@@ -362,3 +362,33 @@ Para romper el cuello de botella ("solo MLB tiene OOS confiable") se usó el bac
 **Pendiente para la próxima sesión:** `gh` no está autenticado (`gh auth login`) → no se pudo ver el CI ni abrir PR; la rama sigue sin mergear a `main`. Decisión del operador sobre el estadístico del gate. Investigar el CLV de −48.5%.
 
 **Lección central:** una corrección verificada en una rama del código no está verificada en las demás — el fix de M-01 se dio por cerrado el 08-02 sin probar la ruta de tenis, que era justo la que tenía la peculiaridad de claves. Es la misma familia que declarar un estado sin medirlo.
+
+## 2026-08-19 — Análisis del prediction gate + bajada de min_n a 100
+
+**Trabajo realizado:**
+
+Sesión de análisis cuantitativo del prediction gate y del estado del sistema. Un solo cambio de código implementado.
+
+**Análisis del gate (sin cambios de código):**
+- Diagnóstico completo del prediction gate: VALIDATION_START=2026-08-16, todos los mercados en `muestra_insuficiente`.
+- Mercado más prometedor post-registro: `brasileirao|h2h` (n=18, win%=67%, EV=+0.038). Único con señal real (EV+ y sign test direccionalmente correcto).
+- `mlb|spreads`: histórico in-sample n=435, win%=56.3%, EV=+0.066, p=0.005. Pero TODO el histórico es pre-registro. Post-registro: n=18, win%=56%, p=0.407 — sin muestra aún.
+- `ligamx|totals`: win%=67% (sign test pasa), pero EV=-0.078 (no cubre el vig). Investigado el `avg_goals`: histórico real LigaMx = 2.833 (1051 partidos), config actual 2.85 — correcto, no hay qué ajustar.
+- EV negativo de `ligamx|totals` se debe a que el mercado cobra el Over a 1.67 (break-even 59.9%) y el modelo solo asigna 58.1% — 2pp de diferencia que el histórico no justifica cambiar.
+
+**Cambio implementado:**
+- `PREDICTION_GATE_MIN_N`: 300 → **100** (commit `a5cb6ce`, pusheado a main)
+- Justificación estadística: n=300 es necesario para señales débiles (~52% win rate); con 67% win rate observado, n=100 da p~10⁻⁹ — el umbral era excesivo para la señal real.
+- Gate regenerado con `update_prediction_gate.py`: todos los mercados siguen en `muestra_insuficiente` (el más avanzado es `ligamx|h2h` con n=54, pero señal mala).
+
+**Proyecciones de apertura (asumiendo señal sostenida):**
+- `brasileirao|h2h`: ~27 agosto (~9 caras/día, necesita 82 más)
+- `mlb|spreads`: ~3 septiembre (~11 caras/día, necesita 192 más para p<0.05 al 56%)
+
+**Recordatorios programados (cloud agents):**
+- `trig_01NgVCGszwkmas42q5RUfy82`: 27 agosto 09:00 Santiago — revisar `brasileirao|h2h`
+- `trig_01DmB8pVPaafTo3Hmz2KumEW`: 3 septiembre 09:00 Santiago — revisar `mlb|spreads`
+
+**Archivos modificados:** `src/sqp/risk/prediction_gate.py`
+
+**Estado del sistema:** shadow_mode activo, stakes=0, sin mercados abiertos. Próxima revisión automatizada el 27 de agosto.

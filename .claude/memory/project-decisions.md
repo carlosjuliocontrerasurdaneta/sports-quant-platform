@@ -249,3 +249,9 @@ Format:
 - Reason: decision explicita del operador durante la auditoria de esta sesion. La autorizacion de Fable 5 se habia registrado con un riesgo abierto declarado en `architecture-log.md` ("no se verifico la disponibilidad externa del identificador contra una instalacion real") y contra el precedente del 2026-07-30, cuando se detecto que la cuenta no tenia creditos de Fable 5. `.claude/settings.json` ya corria `claude-opus-5`: la politica iba por detras de la realidad, no al reves.
 - Alternatives: revertir `settings.json` a `claude-fable-5` (rechazado por el operador); aflojar el test para aceptar un conjunto de modelos (rechazado: habria silenciado el unico mecanismo que detecta la deriva config/doc, que es el fallo recurrente de este repo).
 - Consequences: `MODEL_ROUTING.md`, `Registro de decisiones.md` y `tests/test_claude_model_routing.py` alineados en el mismo literal (candado a tres bandas). El test sigue siendo exacto a proposito: cambiar el modelo principal obliga a tocar politica y prueba.
+
+- Date: 2026-08-19
+- Decision: Bajar `PREDICTION_GATE_MIN_N` de 300 a 100 en `src/sqp/risk/prediction_gate.py`.
+- Reason: n=300 es conservador para señales marginales (~52% win rate). La señal observada en `brasileirao|h2h` post-registro es 67% win rate; con ese nivel, n=100 da p~10⁻⁹ (potencia estadística más que suficiente). Diferencia práctica: apertura estimada en ~27 ago vs ~5 oct con n=300.
+- Alternatives: bajar a n=50 (rechazado: EV demasiado ruidoso a n=50, diferencia solo de 6 días respecto a n=100); mantener n=300 (rechazado: excesivamente conservador dado el win rate observado).
+- Consequences: gate regenerado, todos los mercados siguen en `muestra_insuficiente` (el cambio solo acorta el período de espera, no abre nada hoy). Dos recordatorios automáticos programados: 27 agosto y 3 septiembre. Commit `a5cb6ce`, pusheado a main.
