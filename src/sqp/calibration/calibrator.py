@@ -14,9 +14,11 @@ into certainties.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from functools import lru_cache
+from pathlib import Path
 
 import joblib
 import numpy as np
@@ -51,6 +53,10 @@ def _load_calibrator(path_str: str):
     """Load a persisted calibrator once per process (the daily loop applies it
     per candidate). Keyed by absolute path, so a retrain to a new file -- or a
     test that redirects MODELS_DIR -- is picked up without stale caching."""
+    path = Path(path_str)
+    if not _verify_hash(path):
+        log.warning("joblib integrity check FAILED for %s — file may have been "
+                    "modified since training; loading anyway", path.name)
     return joblib.load(path_str)
 
 
@@ -83,6 +89,31 @@ def _no_extreme_expansion(predict, lo: float = 0.05, hi: float = 0.95,
     return not bool(np.any((grid <= 0.90) & (vals >= 0.95)))
 
 
+def _hash_sidecar(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".sha256")
+
+
+def _compute_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _write_hash(path: Path) -> None:
+    _hash_sidecar(path).write_text(_compute_sha256(path), encoding="utf-8")
+
+
+def _verify_hash(path: Path) -> bool:
+    """True when the sidecar digest matches the file, or no sidecar exists
+    (backward compat: models persisted before this change have no sidecar)."""
+    sidecar = _hash_sidecar(path)
+    if not sidecar.exists():
+        return True
+    return _compute_sha256(path) == sidecar.read_text(encoding="utf-8").strip()
+
+
 def _persist_or_remove(model, path, keep: bool) -> bool:
     """Persist ``model`` to ``path`` when ``keep`` is True; otherwise remove any
     stale model already at ``path``. Returns whether a model is present at
@@ -90,8 +121,10 @@ def _persist_or_remove(model, path, keep: bool) -> bool:
     whose calibrator stops helping is automatically dropped back to a no-op."""
     if keep:
         joblib.dump(model, str(path))
+        _write_hash(path)
         return True
     path.unlink(missing_ok=True)
+    _hash_sidecar(path).unlink(missing_ok=True)
     return False
 
 

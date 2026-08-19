@@ -21,7 +21,8 @@ def _get_with_retry(session: requests.Session, url: str, **kwargs) -> requests.R
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
             r = session.get(url, **kwargs)
-            if r.status_code not in _RETRY_STATUS:
+            # getattr: test fakes/sessions may omit status_code; treat as final.
+            if getattr(r, "status_code", None) not in _RETRY_STATUS:
                 r.raise_for_status()
                 return r
             last_exc = requests.HTTPError(response=r)

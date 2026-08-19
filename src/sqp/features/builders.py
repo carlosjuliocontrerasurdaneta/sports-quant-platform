@@ -47,10 +47,11 @@ def build_team_rolling_dataset(df: pd.DataFrame, cfg: SportFeatureConfig) -> tup
     df = df.dropna(subset=["home_team", "away_team", "home_score", "away_score"])
     if "week" in df.columns:
         sort_cols = ["date", "week"]
-    elif "game_id" in df.columns:
-        sort_cols = ["date", "game_id"]
     else:
-        sort_cols = ["date"]
+        # Prefer an explicit start time for intra-day ordering (doubleheaders).
+        # game_id alone is not guaranteed to be chronologically monotone.
+        time_col = next((c for c in ("commence_time", "start_time") if c in df.columns), None)
+        sort_cols = ["date"] + ([time_col] if time_col else []) + (["game_id"] if "game_id" in df.columns else [])
     df = df.sort_values([c for c in sort_cols if c in df.columns]).reset_index(drop=True)
 
     team_stats: dict[str, dict] = {}
