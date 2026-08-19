@@ -24,6 +24,8 @@ def _require_finite(implied: list[float]) -> None:
     """
     if not all(math.isfinite(p) for p in implied):
         raise ValueError(f"Implied probabilities must be finite, got {implied}")
+    if any(p <= 0 for p in implied):
+        raise ValueError(f"Implied probabilities must be positive, got {implied}")
 
 
 def remove_vig_proportional(implied: list[float]) -> list[float]:

@@ -37,3 +37,26 @@ def test_power_logs_warning_on_out_of_domain(caplog):
         remove_vig_power([1.0, 0.5])
     msgs = [r.getMessage() for r in caplog.records if r.name == "sqp.vig"]
     assert msgs and "inapplicable" in msgs[0]
+
+
+def test_power_under_round_falls_back_to_proportional_with_warning(caplog):
+    import logging
+    # under-round severo: f(0.5)=2*sqrt(0.2)-1<0 y f(5)<0 => brentq sin raiz
+    under = [0.2, 0.2]  # sum=0.4; no hay k en [0.5,5] con sum(p^k)=1
+    with caplog.at_level(logging.WARNING, logger="sqp.vig"):
+        fair = remove_vig_power(under)
+    assert fair == pytest.approx([0.5, 0.5])
+    msgs = [r.getMessage() for r in caplog.records if r.name == "sqp.vig"]
+    assert any("no root" in m for m in msgs)
+
+
+def test_proportional_rejects_negative_element():
+    # elemento negativo con suma positiva debe rechazarse: normalizarlo produciria
+    # una probabilidad negativa en la salida
+    with pytest.raises(ValueError):
+        remove_vig_proportional([-0.1, 0.9])
+
+
+def test_power_rejects_negative_element():
+    with pytest.raises(ValueError):
+        remove_vig_power([-0.1, 0.9])

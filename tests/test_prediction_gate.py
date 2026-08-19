@@ -277,6 +277,46 @@ def test_daily_module_resolves_the_prediction_gate_helpers():
     assert callable(daily.load_prediction_gate)
 
 
+def test_prediction_gate_live_route_end_to_end(tmp_path):
+    """Integración de la ruta live: write gate -> load -> _gate_verdicts ->
+    _zero_stake_flag. Cubre el agujero documentado en el comentario del test
+    anterior: que los helpers sean callables NO garantiza que la cadena completa
+    funcione correctamente en el camino live (mode != 'demo').
+
+    Usa n=500 (>= min_n=300) con win-rate suficiente para que el gate apruebe,
+    y verifica que el mercado resultante no bloquea el stake."""
+    from sqp.pipeline.daily import _gate_verdicts, _zero_stake_flag
+    from sqp.risk.prediction_gate import load_prediction_gate, write_prediction_gate
+
+    df = _rows(300, 200, p_model=0.6, p_market=0.5, price=2.0,
+               league="mlb", market="h2h", game_date="2026-09-01")
+    write_prediction_gate(df, tmp_path)
+    gate = load_prediction_gate(tmp_path)
+
+    pred_blocked, clv_blocked = _gate_verdicts(gate, None, "mlb", "h2h")
+    flag = _zero_stake_flag(False, False, False,
+                            prediction_blocked=pred_blocked,
+                            clv_blocked=clv_blocked)
+    assert pred_blocked is False
+    assert flag is None
+
+
+def test_prediction_gate_live_route_blocks_denied_market(tmp_path):
+    """Un mercado con n insuficiente escrito al gate debe bloquear el stake."""
+    from sqp.pipeline.daily import _gate_verdicts, _zero_stake_flag
+    from sqp.risk.prediction_gate import load_prediction_gate, write_prediction_gate
+
+    df = _rows(120, 80, p_model=0.6, p_market=0.5, price=2.0,
+               league="nfl", market="totals", game_date="2026-09-01")
+    write_prediction_gate(df, tmp_path)
+    gate = load_prediction_gate(tmp_path)
+
+    pred_blocked, _ = _gate_verdicts(gate, None, "nfl", "totals")
+    flag = _zero_stake_flag(False, False, False, prediction_blocked=pred_blocked)
+    assert pred_blocked is True
+    assert flag == "prediction_gate"
+
+
 def test_prediction_gate_outranks_the_clv_gate():
     """El de prediccion es la regla RECTORA desde 2026-08-16; el de CLV queda
     como evidencia. Si ambos bloquean, el motivo que se reporta es el vigente."""
