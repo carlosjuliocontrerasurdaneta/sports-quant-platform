@@ -9,3 +9,7 @@ Steps:
 4. Refactor.
 5. Validate.
 6. Document.
+
+## Loop de referencia
+
+Leer y seguir `.claude/loops/refactor.md`.

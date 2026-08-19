@@ -27,3 +27,7 @@ Design and audit features for MLB, NBA, NFL, and NHL probabilistic models.
 5. Timestamp requirement
 6. Leakage risk
 7. Validation tests
+
+## Loop de referencia
+
+Leer y seguir `.claude/loops/feature.md`.

@@ -10,3 +10,7 @@ Check:
 - Docs.
 - Rollback.
 - Known risks.
+
+## Loop de referencia
+
+Leer y seguir `.claude/loops/release.md`.

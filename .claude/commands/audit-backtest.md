@@ -11,3 +11,7 @@ Required checks:
 - ROI formula.
 - Sample size.
 - Bias risks.
+
+## Loop de referencia
+
+Leer y seguir `.claude/loops/backtest.md`.

@@ -56,5 +56,6 @@ log en `logs/calibration_review.log`). Guía de decisión:
 ## Loop de referencia
 
 Antes de ejecutar, leer y seguir el loop correspondiente:
+- Calibración general → `.claude/loops/calibration.md`
 - Monitoreo de calibración → `.claude/loops/quant/06-calibration-monitor.md`
 - Recalibración controlada → `.claude/loops/quant/10-controlled-recalibration.md`
