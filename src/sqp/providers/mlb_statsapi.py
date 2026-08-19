@@ -5,10 +5,31 @@ stats vendor assumed by default (it is public). Other leagues need configured
 vendors or demo mode.
 """
 from __future__ import annotations
+import time
 import requests
 from .base import ResultsProvider
 
 BASE = "https://statsapi.mlb.com/api/v1"
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 3
+_BACKOFF_SECONDS = 2.0
+
+
+def _get_with_retry(session: requests.Session, url: str, **kwargs) -> requests.Response:
+    """GET with linear backoff on transient errors, mirroring the ESPN/odds-api pattern."""
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            r = session.get(url, **kwargs)
+            if r.status_code not in _RETRY_STATUS:
+                r.raise_for_status()
+                return r
+            last_exc = requests.HTTPError(response=r)
+        except requests.RequestException as exc:
+            last_exc = exc
+        if attempt < _MAX_ATTEMPTS:
+            time.sleep(_BACKOFF_SECONDS * attempt)
+    raise last_exc  # type: ignore[misc]
 
 
 class MLBStatsProvider(ResultsProvider):
@@ -19,10 +40,9 @@ class MLBStatsProvider(ResultsProvider):
         from datetime import date, timedelta
         end = date.today()
         start = end - timedelta(days=days_back)
-        r = self.session.get(f"{BASE}/schedule", params={
+        r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R"}, timeout=60)
-        r.raise_for_status()
         out = []
         for d in r.json().get("dates", []):
             for g in d.get("games", []):
@@ -54,10 +74,9 @@ class MLBStatsProvider(ResultsProvider):
         from datetime import date, timedelta
         end = date.today()
         start = end - timedelta(days=days_back)
-        r = self.session.get(f"{BASE}/schedule", params={
+        r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R", "hydrate": "probablePitcher"}, timeout=120)
-        r.raise_for_status()
         out = []
         for d in r.json().get("dates", []):
             for g in d.get("games", []):
@@ -81,10 +100,9 @@ class MLBStatsProvider(ResultsProvider):
         from sqp.models.fip import fip_from_line
         end = date.today()
         start = end - timedelta(days=days_back)
-        r = self.session.get(f"{BASE}/schedule", params={
+        r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R"}, timeout=120)
-        r.raise_for_status()
         games = [(g.get("gamePk"), d["date"]) for d in r.json().get("dates", [])
                  for g in d.get("games", [])
                  if g.get("status", {}).get("abstractGameState") == "Final"
@@ -126,9 +144,8 @@ class MLBStatsProvider(ResultsProvider):
         return pl.get("person", {}).get("fullName"), fip
 
     def fetch_probable_pitchers(self, date_iso: str) -> list[dict]:
-        r = self.session.get(f"{BASE}/schedule", params={
+        r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "date": date_iso, "hydrate": "probablePitcher"}, timeout=60)
-        r.raise_for_status()
         out = []
         for d in r.json().get("dates", []):
             for g in d.get("games", []):

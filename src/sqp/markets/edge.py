@@ -20,6 +20,8 @@ this is a no-op (``adjusted_edge == raw_edge``, ``effective_probability == p``);
 from __future__ import annotations
 from dataclasses import dataclass
 
+from sqp.markets.odds import is_usable_price
+
 
 @dataclass
 class AdjustedEdge:
@@ -41,6 +43,8 @@ def adjusted_edge(probability: float, price_decimal: float,
     when None the uncertainty/anomaly terms are skipped. ``books_count`` is how
     many bookmakers quoted the line; when None the thin-market term is skipped.
     """
+    if not is_usable_price(price_decimal):
+        raise ValueError(f"price_decimal must be a positive finite number, got {price_decimal!r}")
     raw = probability * price_decimal - 1.0
     penalty = 0.0
     if market_probability is not None:

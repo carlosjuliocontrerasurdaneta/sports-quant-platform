@@ -123,6 +123,27 @@ def _load_method_registry(*, staging: bool = False) -> dict:
         return {}
 
 
+def _staging_meta_path(key: str):
+    return _staging_dir() / f"{key}_n_val.json"
+
+
+def _write_staging_meta(key: str, *, n_val: int, n_val_events: int) -> None:
+    path = _staging_meta_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"n_val": n_val, "n_val_events": n_val_events}),
+                    encoding="utf-8")
+
+
+def _load_staging_meta(key: str) -> dict | None:
+    path = _staging_meta_path(key)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> None:
     """Record (or clear with ``None``) the best apply-time method for ``key`` in
     the live registry, or the staging registry when ``staging=True``. Self-healing
@@ -230,8 +251,9 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
 
     beta = BetaCalibrator().fit(train_probs, train_outcomes)
 
-    raw_val_ece = float(expected_calibration_error(val_probs, val_outcomes))
-    raw_val_brier = float(brier_score(val_probs, val_outcomes))
+    raw_clipped = np.clip(val_probs, 0.01, 0.99)
+    raw_val_ece = float(expected_calibration_error(raw_clipped, val_outcomes))
+    raw_val_brier = float(brier_score(raw_clipped, val_outcomes))
     iso_val_probs = np.clip(iso.predict(val_probs), 0.01, 0.99)
     val_metrics = calibration_report(iso_val_probs, val_outcomes)
     beta_val_probs = np.clip(beta.predict(val_probs), 0.01, 0.99)
@@ -286,6 +308,8 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
         ranked.append(("beta", beta_val_ece))
     best_method = min(ranked, key=lambda r: r[1])[0] if ranked else None
     _set_best_method(sport, best_method, staging=staging)
+    if staging:
+        _write_staging_meta(sport, n_val=len(val_df), n_val_events=n_val_groups)
 
     log.info("[%s] Calibration fit on %d rows, val %d | raw ECE %.4f -> iso %.4f "
              "(%s) / beta %.4f (%s)", sport, len(train_df), len(val_df), raw_val_ece,
@@ -378,7 +402,16 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     return out
 
 
-def promote_calibrators(keys: list[str] | None = None) -> list[str]:
+# 15 -> 30 (auditoria 2026-07-24, M-28): el gate elige best_method sobre el
+# mismo split que reporta como OOS, asi que un n_val delgado sobreestima al
+# candidato; exigir mas eventos independientes compensa ese optimismo de
+# seleccion sin rediseñar el split. Compartido entre promote y auto_promote.
+AUTO_PROMOTE_MIN_N_VAL = 30
+
+
+def promote_calibrators(keys: list[str] | None = None,
+                        min_n_val: int = AUTO_PROMOTE_MIN_N_VAL,
+                        force: bool = False) -> list[str]:
     """Promote staged candidate calibrators into the LIVE registry the pipeline
     applies. This is the deliberate step that ``train_market_calibrators`` does
     NOT perform: training only writes to staging, so a daily retrain can never
@@ -390,11 +423,23 @@ def promote_calibrators(keys: list[str] | None = None) -> list[str]:
     (``keys=None``) also DEMOTES any live market the latest retrain no longer
     recommends (absent from staging), so promotion faithfully adopts the current
     retrain and self-healing is preserved. Returns the keys promoted.
+
+    ``min_n_val`` guards against promoting a calibrator fitted on a tiny
+    out-of-sample split (the same guard ``auto_promote_calibrators`` applies).
+    Pass ``force=True`` to override it — but document why.
     """
     staged = _load_method_registry(staging=True)
     targets = staged if keys is None else {k: v for k, v in staged.items() if k in keys}
     promoted: list[str] = []
     for key, method in targets.items():
+        if not force:
+            meta = _load_staging_meta(key)
+            if meta is not None:
+                n_val_events = int(meta.get("n_val_events", meta.get("n_val", 0)))
+                if n_val_events < min_n_val:
+                    log.warning("[%s] skipping promotion: n_val_events=%d < min_n_val=%d "
+                                "(pass force=True to override)", key, n_val_events, min_n_val)
+                    continue
         for name in ("iso", "beta"):
             src = _model_path(key, name, staging=True)
             if src.exists():
@@ -411,13 +456,6 @@ def promote_calibrators(keys: list[str] | None = None) -> list[str]:
                     _model_path(key, name).unlink(missing_ok=True)
     _load_calibrator.cache_clear()
     return promoted
-
-
-# 15 -> 30 (auditoria 2026-07-24, M-28): el gate elige best_method sobre el
-# mismo split que reporta como OOS, asi que un n_val delgado sobreestima al
-# candidato; exigir mas eventos independientes compensa ese optimismo de
-# seleccion sin rediseñar el split.
-AUTO_PROMOTE_MIN_N_VAL = 30
 
 
 def auto_promote_calibrators(results: list[dict], *,

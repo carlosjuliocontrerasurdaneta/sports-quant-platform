@@ -30,6 +30,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--leagues", nargs="+", required=True)
     ap.add_argument("--warmup", type=int, default=60)
+    ap.add_argument(
+        "--bet-from-date",
+        metavar="YYYY-MM-DD",
+        default=None,
+        help="Only bet/count games on or after this date. Earlier games still "
+        "feed walk-forward ratings but are excluded from the ROI report. "
+        "Use to separate the parameter-freeze date from the evaluation window.",
+    )
     args = ap.parse_args()
     settings = Settings.load()
     failures = 0
@@ -45,7 +53,8 @@ def main() -> int:
             StartersStore(ROOT).attach(league, results)
         res = realized_roi_backtest(results, odds, league, meta["family"],
                                     meta.get("league_params"), risk=settings.risk,
-                                    bankroll=settings.bankroll, warmup=args.warmup)
+                                    bankroll=settings.bankroll, warmup=args.warmup,
+                                    bet_from_date=args.bet_from_date)
         print(f"\n=== {league.upper()} (realized ROI) ===")
         print(f"odds events: {len(odds)} | results matched: {res['n_events_matched']} | "
               f"bets: {res['n_bets']}")

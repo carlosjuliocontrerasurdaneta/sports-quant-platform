@@ -54,6 +54,12 @@ def main() -> int:
                     help="Promote all staged candidates (skip dry-run).")
     ap.add_argument("--keys", type=str, default=None,
                     help="Comma-separated keys to promote (implies promotion).")
+    ap.add_argument("--force", action="store_true",
+                    help="Bypass the n_val guard and promote regardless of sample size. "
+                    "Only use when you have reviewed the candidate and accept the risk.")
+    ap.add_argument("--min-n-val", type=int, default=None,
+                    help="Minimum out-of-sample events required for promotion "
+                    "(default: AUTO_PROMOTE_MIN_N_VAL from calibrator).")
     args = ap.parse_args()
 
     staged = _load_method_registry(staging=True)
@@ -76,7 +82,9 @@ def main() -> int:
               "(todos) o --keys k1,k2 (selección).")
         return 0
 
-    promoted = promote_calibrators(keys=keys)
+    from sqp.calibration.calibrator import AUTO_PROMOTE_MIN_N_VAL
+    min_n_val = args.min_n_val if args.min_n_val is not None else AUTO_PROMOTE_MIN_N_VAL
+    promoted = promote_calibrators(keys=keys, min_n_val=min_n_val, force=args.force)
     print(f"\nPromovidos a producción: {promoted or 'ninguno'}")
     log.info("Calibradores promovidos: %s", promoted)
     return 0

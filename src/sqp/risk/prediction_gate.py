@@ -39,7 +39,7 @@ PREDICTION_GATE_FILENAME = "prediction_gate.json"
 VALIDATION_START = "2026-08-16"
 # Minimo de filas no empatadas por (liga, mercado). Por debajo, el signo es
 # ruido: deny.
-PREDICTION_GATE_MIN_N = 100
+PREDICTION_GATE_MIN_N = 300
 PREDICTION_GATE_ALPHA = 0.05
 
 _REQUIRED = ("model_probability", "implied_probability_novig", "price_decimal")
