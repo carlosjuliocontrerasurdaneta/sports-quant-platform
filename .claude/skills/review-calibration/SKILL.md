@@ -52,3 +52,9 @@ log en `logs/calibration_review.log`). Guía de decisión:
 2. Diff staging vs live del dry-run.
 3. Veredicto por candidato: promover / rechazar / esperar más muestra, con
    evidencia (ECE/Brier OOS, forma del preview, n de validación).
+
+## Loop de referencia
+
+Antes de ejecutar, leer y seguir el loop correspondiente:
+- Monitoreo de calibración → `.claude/loops/quant/06-calibration-monitor.md`
+- Recalibración controlada → `.claude/loops/quant/10-controlled-recalibration.md`

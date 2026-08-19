@@ -40,3 +40,9 @@ Al revisar la liquidación (`SETTLE_ALL.bat` → `scripts/settle_all.py`):
 - Riesgos: liga auto-saltada del run si tiene picks comenzados sin liquidar;
   corridas idempotentes (re-correr no debe duplicar).
 - No abrir históricos completos: usar solo el final de los logs y encabezados.
+
+## Loop de referencia
+
+Antes de ejecutar, leer y seguir el loop correspondiente:
+- Predicción diaria → `.claude/loops/quant/01-daily-prediction.md`
+- Liquidación post-partido → `.claude/loops/quant/03-postgame-settlement.md`
