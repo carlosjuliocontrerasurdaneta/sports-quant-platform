@@ -30,3 +30,10 @@ def test_power_single_element_normalizes_to_certainty():
 def test_proportional_rejects_nonpositive_sum():
     with pytest.raises(ValueError):
         remove_vig_proportional([0.0, 0.0])
+
+def test_power_logs_warning_on_out_of_domain(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="sqp.vig"):
+        remove_vig_power([1.0, 0.5])
+    msgs = [r.getMessage() for r in caplog.records if r.name == "sqp.vig"]
+    assert msgs and "inapplicable" in msgs[0]
