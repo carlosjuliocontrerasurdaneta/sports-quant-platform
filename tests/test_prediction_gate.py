@@ -77,7 +77,8 @@ def test_only_rows_after_the_preregistration_date_are_counted():
 # --- condicion 1: bate al mercado ---------------------------------------------
 
 def test_thin_sample_is_denied_however_good_it_looks():
-    df = _rows(60, 40, p_model=0.6, p_market=0.5, price=2.0)
+    # n=80 < PREDICTION_GATE_MIN_N (100) → muestra insuficiente
+    df = _rows(48, 32, p_model=0.6, p_market=0.5, price=2.0)
     out = evaluate_markets(df)
     row = out.iloc[0]
     assert bool(row["allowed"]) is False
