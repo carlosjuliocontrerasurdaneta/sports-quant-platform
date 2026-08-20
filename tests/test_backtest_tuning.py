@@ -1,12 +1,14 @@
 """Three-way backtest scoring, home-advantage tuning, and ratings overrides."""
 from pathlib import Path
 
+import pytest
 import sqp.pipeline.daily as daily
 from sqp.backtesting.engine import walk_forward_backtest
 from sqp.backtesting.tuning import tune_home_advantage
 from sqp.providers.synthetic import SyntheticProvider
 
 
+@pytest.mark.slow
 def test_walk_forward_three_way_conditional_and_draw_stats():
     results = SyntheticProvider("soccer").fetch_results("epl")
     res = walk_forward_backtest(results, "epl", "soccer", {"avg_total": 2.8})
@@ -16,6 +18,7 @@ def test_walk_forward_three_way_conditional_and_draw_stats():
     assert 0.0 < res["brier_score"] < 0.5
 
 
+@pytest.mark.slow
 def test_walk_forward_two_way_has_no_draw_stats():
     results = SyntheticProvider("basketball").fetch_results("nba")
     res = walk_forward_backtest(results, "nba", "basketball")
@@ -33,6 +36,7 @@ def test_dixon_coles_negative_rho_boosts_draw():
     assert same == base  # rho=0 must be a no-op
 
 
+@pytest.mark.slow
 def test_walk_forward_reports_threeway_log_loss():
     soccer = SyntheticProvider("soccer").fetch_results("epl")
     res = walk_forward_backtest(soccer, "epl", "soccer", {"avg_total": 2.8})
@@ -42,6 +46,7 @@ def test_walk_forward_reports_threeway_log_loss():
     assert nba["log_loss_threeway"] is None
 
 
+@pytest.mark.slow
 def test_tune_dc_rho_grid():
     from sqp.backtesting.tuning import tune_dc_rho
     results = SyntheticProvider("soccer").fetch_results("epl")
@@ -50,6 +55,7 @@ def test_tune_dc_rho_grid():
     assert len(res["table"]) == 2
 
 
+@pytest.mark.slow
 def test_tune_home_advantage_grid():
     results = SyntheticProvider("basketball").fetch_results("nba")
     res = tune_home_advantage(results, "nba", "basketball", grid=(40.0, 80.0))
@@ -58,6 +64,7 @@ def test_tune_home_advantage_grid():
     assert res["best_log_loss"] == res["table"]["log_loss"].min()
 
 
+@pytest.mark.slow
 def test_dc_rho_grid_clamps_out_of_range_values():
     from sqp.backtesting.tuning import tune_dc_rho
     results = SyntheticProvider("soccer").fetch_results("epl")
@@ -68,6 +75,7 @@ def test_dc_rho_grid_clamps_out_of_range_values():
     assert -0.30 <= res["best_dc_rho"] <= 0.05
 
 
+@pytest.mark.slow
 def test_home_adv_gate_rejects_thin_sample_and_keeps_default():
     results = SyntheticProvider("basketball").fetch_results("nba")  # 200 games -> 140 eval
     res = tune_home_advantage(results, "nba", "basketball", grid=(0.0, 150.0),
@@ -77,6 +85,7 @@ def test_home_adv_gate_rejects_thin_sample_and_keeps_default():
     assert res["best_home_adv"] in (0.0, 150.0)         # raw argmin still reported
 
 
+@pytest.mark.slow
 def test_dc_rho_gate_rejects_when_too_few_draws():
     from sqp.backtesting.tuning import tune_dc_rho
     results = SyntheticProvider("soccer").fetch_results("epl")
@@ -110,6 +119,7 @@ def test_rolling_origin_none_when_insufficient_data():
     assert rolling_origin_improvement({0.0: [1.0] * 100}, 0.0, n_splits=1) is None  # need >=2
 
 
+@pytest.mark.slow
 def test_home_adv_holdout_gate_sets_oos_field():
     results = SyntheticProvider("basketball").fetch_results("nba")
     res = tune_home_advantage(results, "nba", "basketball", grid=(0.0, 70.0, 150.0),

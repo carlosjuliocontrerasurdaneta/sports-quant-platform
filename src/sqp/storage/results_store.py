@@ -21,14 +21,17 @@ class ResultsStore:
     def path(self, league: str) -> Path:
         return self.dir / f"results_{league}.csv"
 
+    _LOAD_COLS = ["date", "home", "away", "game_id", "home_score", "away_score", "neutral"]
+
     def load(self, league: str) -> list[dict]:
         """Stored results in chronological order, in ResultsProvider dict format."""
         p = self.path(league)
         if not p.exists():
             return []
-        df = pd.read_csv(p, dtype={"date": str, "game_id": str})
+        df = pd.read_csv(p, usecols=lambda c: c in self._LOAD_COLS,
+                         dtype={"date": str, "game_id": str})
         df = self._migrate(df).sort_values("date", kind="stable")
-        return df[["date", "home", "away", "game_id", "home_score", "away_score", "neutral"]].to_dict("records")
+        return df[self._LOAD_COLS].to_dict("records")
 
     @staticmethod
     def _migrate(df: pd.DataFrame) -> pd.DataFrame:

@@ -29,6 +29,7 @@ def test_feature_columns_excludes_labels_and_meta():
     assert "home_win" not in cols and "total_pts" not in cols and "game_id" not in cols
 
 
+@pytest.mark.slow
 def test_train_and_predict_round_trip(tmp_path):
     df = _synthetic_dataset()
     res = ml_train.train_moneyline(df, "nba", root=tmp_path)
@@ -44,6 +45,7 @@ def test_train_and_predict_round_trip(tmp_path):
     assert np.all((p >= 0.01) & (p <= 0.99))
 
 
+@pytest.mark.slow
 def test_train_totals(tmp_path):
     df = _synthetic_dataset()
     res = ml_train.train_totals(df, "nba", root=tmp_path)
@@ -51,6 +53,7 @@ def test_train_totals(tmp_path):
     assert res["metrics"]["cv_mae_mean"] >= 0.0
 
 
+@pytest.mark.slow
 def test_oos_metrics_gate(tmp_path):
     df = _synthetic_dataset()
     m = ml_train.oos_moneyline_metrics(df, "nba")

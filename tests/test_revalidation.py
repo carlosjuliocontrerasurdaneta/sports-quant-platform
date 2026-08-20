@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pandas as pd
+import pytest
 
 from sqp.config import Settings
 from sqp.pipeline.revalidation import revalidate_candidates
@@ -164,6 +165,7 @@ def _probables(home_p="Gerrit Cole", away_p="José Berríos", home="A", away="B"
              "home_pitcher": home_p, "away_pitcher": away_p}]
 
 
+@pytest.mark.slow
 def test_run_league_persists_pick_time_pitchers():
     from sqp.config import Settings as S
     from sqp.pipeline.daily import run_league

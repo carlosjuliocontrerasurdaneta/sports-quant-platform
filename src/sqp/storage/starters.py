@@ -49,7 +49,7 @@ class StartersStore:
                      "lo ya almacenado.", league, dropped)
         if new.empty:
             p = self.path(league)
-            return len(pd.read_csv(p, dtype={"game_id": str})) if p.exists() else 0
+            return len(pd.read_csv(p, usecols=[0])) if p.exists() else 0
         p = self.path(league)
         if p.exists():
             cur = pd.read_csv(p, dtype={"game_id": str})

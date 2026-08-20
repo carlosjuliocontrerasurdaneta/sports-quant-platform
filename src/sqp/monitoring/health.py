@@ -32,7 +32,7 @@ def _rows(path: Path) -> int | None:
     if not path.exists():
         return None
     try:
-        return int(len(pd.read_csv(path)))
+        return int(len(pd.read_csv(path, usecols=[0])))
     except Exception as exc:
         # An unreadable file trips the same check as an absent one (both land in
         # the None/0 branch, so nothing passes silently), but the report could

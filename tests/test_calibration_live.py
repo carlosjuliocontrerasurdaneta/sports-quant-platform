@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from sqp.calibration import calibrator as cal
 from sqp.calibration.calibrator import (apply_calibration, calibrate_probability,
@@ -40,6 +41,7 @@ def test_calibrate_probability_noop_without_model():
     assert calibrate_probability(0.62, "no_such_league", "h2h") == 0.62
 
 
+@pytest.mark.slow
 def test_calibrate_probability_uses_composite_key(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     cal._load_calibrator.cache_clear()
@@ -72,6 +74,7 @@ def _history(n_h2h: int, n_totals_small: int = 5) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@pytest.mark.slow
 def test_train_market_calibrators_groups_skips_and_persists(tmp_path, monkeypatch):
     monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
     cal._load_calibrator.cache_clear()
@@ -102,6 +105,7 @@ def test_train_market_calibrators_empty_history_is_safe():
     assert train_market_calibrators(pd.DataFrame()) == []
 
 
+@pytest.mark.slow
 def test_group_summaries_propagate_gate_verdicts_and_brier(tmp_path, monkeypatch):
     """El resumen por (liga, mercado) debe traer los veredictos del gate y el
     Brier crudo OOS, para que el CLI y el log del run diario puedan decir POR QUE
@@ -118,6 +122,7 @@ def test_group_summaries_propagate_gate_verdicts_and_brier(tmp_path, monkeypatch
         assert "raw_val_brier" in r
 
 
+@pytest.mark.slow
 def test_demo_pipeline_calibrated_equals_estimated_when_disabled():
     # With calibration off, the decision probability equals the stored estimated
     # probability: enabling the flag is the only thing that diverges them.

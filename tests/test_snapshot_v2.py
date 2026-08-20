@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
 
 AI_DIR = Path(__file__).resolve().parents[1] / "scripts" / "ai"
 

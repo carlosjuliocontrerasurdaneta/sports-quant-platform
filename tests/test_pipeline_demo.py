@@ -1,11 +1,14 @@
 """End-to-end demo-mode test: no credentials, synthetic data, full pipeline."""
 from pathlib import Path
 import pandas as pd
+import pytest
 from sqp.config import Settings
 from sqp.pipeline.daily import run_league, _archive_existing
 from sqp.backtesting.engine import walk_forward_backtest
 from sqp.providers.synthetic import SyntheticProvider
 
+
+@pytest.mark.slow
 def test_demo_pipeline_all_families():
     settings = Settings.load()
     for league in ["mlb", "nba", "nfl", "nhl"]:
@@ -15,6 +18,7 @@ def test_demo_pipeline_all_families():
         p = df["home_win_estimated_probability"]
         assert ((p >= 0) & (p <= 1)).all()
 
+@pytest.mark.slow
 def test_demo_soccer_three_way():
     settings = Settings.load()
     df = run_league("epl", settings, mode="demo")
@@ -61,6 +65,7 @@ def test_default_config_unpauses_mlb_totals_with_park_factor():
     assert float(mlb.get("park_bound", 0.0)) > 0.0   # park factor enabled
 
 
+@pytest.mark.slow
 def test_paused_market_produces_no_actionable_candidates():
     from sqp.config import ROOT
     settings = Settings.load()
@@ -99,6 +104,7 @@ def test_shadow_mode_settings_plumbing(monkeypatch):
     assert Settings.load().shadow_mode is False
 
 
+@pytest.mark.slow
 def test_shadow_mode_records_picks_with_zero_stake():
     # Shadow mode (2026-07-04): the pipeline selects picks exactly as in real
     # mode (selection still requires a would-be-staked candidate) but forces
@@ -143,6 +149,7 @@ def test_archive_existing_preserves_prior_picks(tmp_path: Path):
     assert list((tmp_path / "archive").iterdir()) == [archived]
 
 
+@pytest.mark.slow
 def test_walk_forward_backtest_demo():
     results = SyntheticProvider("basketball").fetch_results("nba")
     res = walk_forward_backtest(results, "nba", "basketball")
