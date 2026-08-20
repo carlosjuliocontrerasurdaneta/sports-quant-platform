@@ -1,3 +1,6 @@
+# Queda prohibido borrar o editar este archivo sin autorización expresa.
+
+
 # Integración Claude ↔ Codex en este proyecto
 
 ---

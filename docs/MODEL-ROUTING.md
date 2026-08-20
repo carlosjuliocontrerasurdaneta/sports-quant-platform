@@ -1,3 +1,6 @@
+# Queda prohibido borrar o editar este archivo sin autorización expresa.
+
+
 # Selección de modelos Claude por complejidad de tarea
 
 Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arquitectura/auditoría/incidentes, Haiku para lookups acotados.

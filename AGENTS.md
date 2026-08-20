@@ -1,3 +1,9 @@
+\# Queda prohibido borrar o editar este archivo sin autorización expresa.
+
+
+
+
+
 \# Sports Quant Platform — Codex Instructions
 
 
