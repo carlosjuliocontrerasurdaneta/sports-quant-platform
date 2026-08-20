@@ -53,6 +53,9 @@ ESPN_PATHS: dict[str, dict] = {
     # catalog as of 2026-06); needs a different results vendor.
 }
 
+# Leagues confirmed absent from ESPN's catalog; backfill requires a different vendor.
+ESPN_UNAVAILABLE: frozenset[str] = frozenset({"frauen_bundesliga"})
+
 _CHUNK_DAYS = 30  # range queries are capped server-side; chunk to avoid dropped events
 
 
@@ -61,6 +64,10 @@ class ESPNResultsProvider(ResultsProvider):
         self.session = session or requests.Session()
 
     def fetch_results(self, league: str, days_back: int = 365) -> list[dict]:
+        if league in ESPN_UNAVAILABLE:
+            raise ProviderNotConfiguredError(
+                f"League '{league}' is not available on ESPN's scoreboard API "
+                "(confirmed absent as of 2026-06). A different results vendor is needed.")
         cfg = ESPN_PATHS.get(league)
         if cfg is None:
             raise ProviderNotConfiguredError(
