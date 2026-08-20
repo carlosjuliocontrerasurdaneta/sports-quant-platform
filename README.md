@@ -180,4 +180,3 @@ ajustes y riesgos específicos que guían la evolución de cada adaptador.
 5. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
 6. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
    key numbers con cautela.
-```
