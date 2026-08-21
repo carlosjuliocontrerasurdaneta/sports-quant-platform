@@ -488,6 +488,28 @@ def promote_calibrators(keys: list[str] | None = None,
                 for name in ("iso", "beta"):
                     _model_path(key, name).unlink(missing_ok=True)
     _load_calibrator.cache_clear()
+    # Log every manual promotion so the audit trail matches auto_promote_calibrators.
+    if promoted:
+        now = pd.Timestamp.now(tz="UTC").isoformat()
+        staged_reg = _load_method_registry(staging=True)
+        entries = [{"timestamp": now, "key": k, "action": "promoted",
+                    "method": staged_reg.get(k, ""), "n_val": None,
+                    "n_val_events": None}
+                   for k in promoted]
+        log_path = MODELS_DIR / "promotion_log.csv"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        new_df = pd.DataFrame(entries)
+        if log_path.exists():
+            try:
+                prior = pd.read_csv(log_path)
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                prior = pd.DataFrame()
+            cols = list(prior.columns) + [c for c in new_df.columns if c not in prior.columns]
+            new_df = pd.concat([prior.reindex(columns=cols),
+                                new_df.reindex(columns=cols)], ignore_index=True)
+        tmp = log_path.with_suffix(".csv.tmp")
+        new_df.to_csv(tmp, index=False)
+        tmp.replace(log_path)
     return promoted
 
 
