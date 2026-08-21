@@ -19,7 +19,7 @@ Run the daily pipeLine
 Close all picks from the previous day
 
 
-
+Realiza todas las tareas necesarias para mejorar el proyecto.
 
 Realiza e implementa todas las tareas necesarias para mejorar el proyecto.
 
