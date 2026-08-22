@@ -1,3 +1,5 @@
+# Queda prohibido borrar o editar este archivo sin autorización expresa.
+
 # Sports Quant Platform
 
 - Python package: `src/sqp`; tests: `tests`; operational scripts: `scripts`.
