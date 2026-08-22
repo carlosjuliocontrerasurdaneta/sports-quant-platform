@@ -25,8 +25,8 @@ Medir rendimiento y calidad probabilística de la cohorte liquidada.
    de `accuracy` a `edge` (razón: favoritos a 1.07 pueden acertar el 90% y
    perder dinero). ROI realizado y yield requieren `staked > 0`; bajo el
    `prediction_gate` los stakes son 0 por (liga, mercado) no habilitado,
-   lo que no implica equilibrio. CLV requiere cuota de entrada y de cierre
-   emparejables; seguir calculándolo como evidencia del gate.
+   lo que no implica equilibrio. CLV requiere una cuota de entrada y una cuota
+   de cierre emparejables; seguir calculándolo como evidencia del gate.
 6. Comparar con baseline y ventanas móviles.
 7. Derivar pérdidas relevantes al loop 05.
 
