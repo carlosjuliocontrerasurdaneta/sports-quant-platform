@@ -19,18 +19,22 @@ Medir rendimiento y calidad probabilística de la cohorte liquidada.
 2. Separar pushes, voids y pendientes.
 3. Calcular `n`, hit rate, Brier, Log Loss y ECE.
 4. Separar liga, mercado, modelo y banda probabilística.
-5. **El objetivo vigente es el hit rate** (decisión 2026-07-27). Reportar por
-   banda el hit rate observado y el `gap` = observado − prometido. ROI realizado
-   y yield son métricas SECUNDARIAS y requieren `staked > 0`; bajo `shadow_mode`
-   salen `0.0` porque no se arriesgó capital, lo que no implica equilibrio. CLV
-   requiere una cuota de entrada y una cuota de cierre emparejables, pero no
-   requiere stake real y debe seguir calculándose en shadow.
+5. Reportar por banda el hit rate observado y el `gap` = observado − prometido.
+   **El hit rate se juzga contra el punto de equilibrio de la cuota** (1/price),
+   no contra un umbral fijo — decisión 2026-07-31 que revirtió `picks.mode`
+   de `accuracy` a `edge` (razón: favoritos a 1.07 pueden acertar el 90% y
+   perder dinero). ROI realizado y yield requieren `staked > 0`; bajo el
+   `prediction_gate` los stakes son 0 por (liga, mercado) no habilitado,
+   lo que no implica equilibrio. CLV requiere cuota de entrada y de cierre
+   emparejables; seguir calculándolo como evidencia del gate.
 6. Comparar con baseline y ventanas móviles.
 7. Derivar pérdidas relevantes al loop 05.
 
 ## Artefactos
 - `data/bets/segment_diagnostics_latest.csv` (hit rate y `gap` por banda)
-- `data/bets/degradation_pause.json`, `data/bets/clv_gate.json`
+- `data/bets/degradation_pause.json`
+- `data/bets/prediction_gate.json` (gate rector desde 2026-08-16: modelo puro vs mercado OOS + EV plano positivo)
+- `data/bets/clv_gate.json` (secundario: evidencia CLV, no decide stakes)
 
 ## Criterios de salida
 Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos:

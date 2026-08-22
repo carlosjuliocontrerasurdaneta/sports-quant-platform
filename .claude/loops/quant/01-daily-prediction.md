@@ -57,5 +57,6 @@ Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos de este lo
 - `PASS`: artefactos escritos para todas las ligas activas y validaciones en verde.
 
 ## Acciones que requieren aprobación humana
-Desactivar `shadow_mode`, cambiar stakes o bankroll, ampliar exposición, o gastar
-cuota de API fuera de la ejecución programada.
+Cambiar stakes, bankroll o exposición; modificar `prediction_gate` (el gate rector
+actual — `shadow_mode` fue levantado el 2026-08-16 y ya no es el control activo);
+o gastar cuota de API fuera de la ejecución programada.
