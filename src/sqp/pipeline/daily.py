@@ -111,19 +111,28 @@ def _adjacent_days(day: str) -> tuple[str, ...]:
 
 
 def _within_horizon(events: list[EventOdds], max_days: int) -> list[EventOdds]:
-    """Keep only events commencing within `max_days` (ISO-Zulu string compare).
-    Drops next-season opener lines posted months early (e.g. NFL in June)."""
+    """Keep only events commencing within `max_days`.
+    Drops next-season opener lines posted months early (e.g. NFL in June).
+    Unparsable start times are kept (conservative: never silently drop an event)."""
     if not max_days or max_days <= 0:
         return events
-    cutoff = (datetime.now(timezone.utc) + timedelta(days=max_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return [eo for eo in events if str(eo.event.start_time) <= cutoff]
+    cutoff = datetime.now(timezone.utc) + timedelta(days=max_days)
+    out = []
+    for eo in events:
+        dt = _parse_iso_utc(str(eo.event.start_time))
+        if dt is None or dt <= cutoff:
+            out.append(eo)
+    return out
 
 
 def _already_started(start_time: str) -> bool:
-    """ISO-Zulu comparison; The Odds API also returns in-play events whose
-    quoted prices are live odds, useless for a pregame model."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return bool(start_time) and str(start_time) <= now
+    """True when `start_time` is in the past; The Odds API also returns in-play
+    events whose quoted prices are live odds, useless for a pregame model.
+    Unparsable timestamps are treated as not started (conservative)."""
+    if not start_time:
+        return False
+    dt = _parse_iso_utc(str(start_time))
+    return dt is not None and dt <= datetime.now(timezone.utc)
 
 
 def _prior_day(day: str) -> str | None:
