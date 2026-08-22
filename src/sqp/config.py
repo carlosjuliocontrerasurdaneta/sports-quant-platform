@@ -364,7 +364,7 @@ class Settings:
         # env var (if set) wins over yaml; otherwise yaml, else the dataclass default
         if _env_flag("CALIBRATION_ENABLED") is None and "enabled" in cal:
             s.calibration_enabled = bool(cal["enabled"])
-        if "CALIBRATION_METHOD" not in os.environ and cal.get("method"):
+        if not os.getenv("CALIBRATION_METHOD") and cal.get("method"):
             s.calibration_method = str(cal["method"])
         if _env_flag("CALIBRATION_AUTO_PROMOTE") is None and "auto_promote" in cal:
             s.calibration_auto_promote = bool(cal["auto_promote"])

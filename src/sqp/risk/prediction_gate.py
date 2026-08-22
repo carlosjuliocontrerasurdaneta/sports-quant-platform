@@ -34,6 +34,10 @@ from pathlib import Path
 import pandas as pd
 from scipy.stats import binomtest
 
+from sqp.logging_config import get_logger
+
+log = get_logger(__name__)
+
 PREDICTION_GATE_FILENAME = "prediction_gate.json"
 # Fecha del pre-registro. Solo cuenta lo ESTRICTAMENTE posterior.
 VALIDATION_START = "2026-08-16"
@@ -55,7 +59,11 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     df = graded[graded["result"].isin(["win", "loss"])].copy()
     if df.empty:
         return df.assign(y=pd.Series(dtype=int))
-    fecha = df["game_date"].astype(str) if "game_date" in df.columns else ""
+    if "game_date" not in df.columns:
+        log.warning("prediction_gate: columna 'game_date' ausente — "
+                    "todas las filas filtradas (default-deny).")
+        return df.iloc[0:0].assign(y=pd.Series(dtype=int))
+    fecha = df["game_date"].astype(str)
     df = df[fecha > validation_start]
     for col in _REQUIRED:
         if col not in df.columns:

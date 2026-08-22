@@ -212,6 +212,8 @@ class BetaCalibrator:
             return float(-np.mean(outcomes * np.log(cal) + (1 - outcomes) * np.log(1 - cal)))
 
         res = minimize(neg_log_loss, [1.0, 1.0, 0.0], method="Nelder-Mead")
+        if not res.success:
+            log.warning("BetaCalibrator Nelder-Mead did not converge: %s", res.message)
         self.a, self.b, self.c = res.x
         return self
 
@@ -444,7 +446,8 @@ AUTO_PROMOTE_MIN_N_VAL = 30
 
 def promote_calibrators(keys: list[str] | None = None,
                         min_n_val: int = AUTO_PROMOTE_MIN_N_VAL,
-                        force: bool = False) -> list[str]:
+                        force: bool = False,
+                        _log: bool = True) -> list[str]:
     """Promote staged candidate calibrators into the LIVE registry the pipeline
     applies. This is the deliberate step that ``train_market_calibrators`` does
     NOT perform: training only writes to staging, so a daily retrain can never
@@ -479,6 +482,9 @@ def promote_calibrators(keys: list[str] | None = None,
                 dst = _model_path(key, name)
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(str(src), str(dst))
+                sidecar = _hash_sidecar(src)
+                if sidecar.exists():
+                    shutil.copyfile(str(sidecar), str(_hash_sidecar(dst)))
         _set_best_method(key, method)
         promoted.append(key)
     if keys is None:  # full sync: demote live markets no longer recommended
@@ -489,13 +495,19 @@ def promote_calibrators(keys: list[str] | None = None,
                     _model_path(key, name).unlink(missing_ok=True)
     _load_calibrator.cache_clear()
     # Log every manual promotion so the audit trail matches auto_promote_calibrators.
-    if promoted:
+    # _log=False when called from auto_promote_calibrators, which handles its own
+    # consolidated log (promoted + demoted + skipped in one write) to avoid double
+    # entries: the same key would appear twice with different n_val values.
+    if promoted and _log:
         now = pd.Timestamp.now(tz="UTC").isoformat()
         staged_reg = _load_method_registry(staging=True)
-        entries = [{"timestamp": now, "key": k, "action": "promoted",
-                    "method": staged_reg.get(k, ""), "n_val": None,
-                    "n_val_events": None}
-                   for k in promoted]
+        entries = []
+        for k in promoted:
+            meta = _load_staging_meta(k)
+            entries.append({"timestamp": now, "key": k, "action": "promoted",
+                            "method": staged_reg.get(k, ""),
+                            "n_val": meta.get("n_val") if meta else None,
+                            "n_val_events": meta.get("n_val_events") if meta else None})
         log_path = MODELS_DIR / "promotion_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         new_df = pd.DataFrame(entries)
@@ -544,7 +556,7 @@ def auto_promote_calibrators(results: list[dict], *,
             eligible.append((key, r))
         else:
             skipped.append((key, r))
-    promoted = promote_calibrators(keys=[k for k, _ in eligible]) if eligible else []
+    promoted = promote_calibrators(keys=[k for k, _ in eligible], _log=False) if eligible else []
     demoted = [k for k in _load_method_registry() if k not in staged]
     for key in demoted:
         _set_best_method(key, None)

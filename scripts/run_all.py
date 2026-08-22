@@ -303,6 +303,18 @@ def main() -> int:
                      "(evaluados: %d)",
                      ", ".join(ok) if ok else "ninguno (default-deny)",
                      len(decided))
+            if not ok and not decided.empty:
+                from sqp.risk.prediction_gate import PREDICTION_GATE_MIN_N
+                progress = sorted(
+                    [(f"{r.league}|{r.market}", int(r.n), r.reason)
+                     for r in decided.itertuples()],
+                    key=lambda x: -x[1])
+                summary = " | ".join(
+                    f"{k}: {n}/{PREDICTION_GATE_MIN_N} ({reason})"
+                    for k, n, reason in progress[:10])
+                log.info("Gate de prediccion — progreso OOS (n/min_n): %s%s",
+                         summary,
+                         f" ... y {len(progress) - 10} más" if len(progress) > 10 else "")
         except Exception as exc:
             log.warning("No se pudo actualizar el gate de prediccion: %s", exc)
         try:

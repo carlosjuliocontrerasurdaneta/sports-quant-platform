@@ -22,7 +22,7 @@ if not exist logs mkdir logs
 echo === SQP - SETTLE ALL + AUDITORIA (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\settle_all.log
 echo === SQP - SETTLE ALL + AUDITORIA (%DATE% %TIME%) === >> logs\settle_all.log
-"%SQP_PYTHON%" scripts\settle_all.py --days-from 2 >> logs\settle_all.log 2>&1
+"%SQP_PYTHON%" scripts\settle_all.py --days-from 5 >> logs\settle_all.log 2>&1
 if errorlevel 1 goto :error
 
 echo === DONE ===
