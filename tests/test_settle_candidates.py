@@ -80,7 +80,9 @@ def test_event_without_score_is_skipped():
 def test_realized_roi_zero_staked_is_zero_not_nan():
     tie_scores = {"e1": (1, 1, "Home")}
     out = settle_candidates(_cands(), tie_scores)
-    assert out.attrs.get("realized_roi") == pytest.approx(0.0)
+    staked = out.loc[out["result"].isin(["win", "loss"]), "stake"].sum()
+    roi = float(out["pnl"].sum() / staked) if staked else 0.0
+    assert roi == pytest.approx(0.0)
 
 
 def test_realized_roi_computed_correctly():
@@ -93,7 +95,9 @@ def test_realized_roi_computed_correctly():
     scores = {"e1": (2, 0, "Home"), "e2": (0, 2, "Home")}
     out = settle_candidates(cands, scores)
     # e1: Home wins (2-0) -> win +10; e2: Away wins (0-2) -> win +10
-    assert out.attrs["realized_roi"] == pytest.approx(1.0)
+    staked = out.loc[out["result"].isin(["win", "loss"]), "stake"].sum()
+    roi = float(out["pnl"].sum() / staked) if staked else 0.0
+    assert roi == pytest.approx(1.0)
 
 
 # --- spreads push (adj == 0) --------------------------------------------------

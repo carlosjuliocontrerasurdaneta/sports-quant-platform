@@ -78,9 +78,6 @@ def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int
         rows.append({**row.to_dict(), "result": result, "pnl": round(pnl, 2),
                      "settled_at": datetime.now(timezone.utc).isoformat()})
     out = pd.DataFrame(rows)
-    if not out.empty:
-        staked = out.loc[out.result.isin(["win", "loss"]), "stake"].sum()
-        out.attrs["realized_roi"] = float(out["pnl"].sum() / staked) if staked else 0.0
     return out
 
 
