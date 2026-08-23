@@ -166,6 +166,13 @@ class RiskConfig:
     # streak_home/away: consecutive wins (+) or losses (-) entering the game.
     # 0 = no-op (default off); activate only after OOS validation.
     streak_coef: float = 0.0
+    # Offensive/defensive strength adjustment (Dixon-Coles simplified).
+    # off_def_h2h_coef: scales expected scoring margin for h2h/spreads.
+    # off_def_totals_coef: scales expected total vs line for totals.
+    # off_def_n: games window for avg scored/conceded. 0 = no-op (default).
+    off_def_h2h_coef: float = 0.0
+    off_def_totals_coef: float = 0.0
+    off_def_n: int = 10
 
 
 @dataclass
@@ -421,6 +428,9 @@ class Settings:
             totals_tendency_coef=float(r.get("totals_tendency_coef", 0.0)),
             totals_tendency_n=int(r.get("totals_tendency_n", 10)),
             streak_coef=float(r.get("streak_coef", 0.0)),
+            off_def_h2h_coef=float(r.get("off_def_h2h_coef", 0.0)),
+            off_def_totals_coef=float(r.get("off_def_totals_coef", 0.0)),
+            off_def_n=int(r.get("off_def_n", 10)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]

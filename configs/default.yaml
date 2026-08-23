@@ -62,6 +62,15 @@ risk:
   # adj = sign * (streak_home - streak_away) * streak_coef.
   # e.g. home on +3 streak, away on -2 → home selection gets +5*coef. 0 = no-op.
   streak_coef: 0.01
+  # Offensive/defensive strength (Dixon-Coles simplified).
+  # H2H/spreads: expected_margin = (scored_home + conceded_away - scored_away - conceded_home)/2
+  #              adj = sign * expected_margin * off_def_h2h_coef
+  # Totals:      expected_total = (scored_home + conceded_away + scored_away + conceded_home)/2
+  #              adj = (expected_total - point) * off_def_totals_coef
+  # Both default to 0 (no-op); activate only after OOS validation.
+  off_def_h2h_coef: 0.0
+  off_def_totals_coef: 0.0
+  off_def_n: 10
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +

@@ -167,6 +167,112 @@ def team_h2h_form(
     return total / len(recent)
 
 
+def team_avg_scored(
+    team: str,
+    results: list[dict],
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Average goals/runs scored per game in the team's last n games.
+
+    Returns None when fewer than 2 games are available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    recent = team_games[-n:]
+    if len(recent) < 2:
+        return None
+    scored = []
+    for r in recent:
+        try:
+            is_home = norm(str(r.get("home", ""))) == team_n
+            scored.append(float(r["home_score"]) if is_home else float(r["away_score"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sum(scored) / len(scored) if scored else None
+
+
+def team_avg_conceded(
+    team: str,
+    results: list[dict],
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Average goals/runs conceded per game in the team's last n games.
+
+    Returns None when fewer than 2 games are available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    recent = team_games[-n:]
+    if len(recent) < 2:
+        return None
+    conceded = []
+    for r in recent:
+        try:
+            is_home = norm(str(r.get("home", ""))) == team_n
+            conceded.append(float(r["away_score"]) if is_home else float(r["home_score"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sum(conceded) / len(conceded) if conceded else None
+
+
+def off_def_p_adjustment(
+    market: str,
+    selection: str,
+    home: str,
+    away: str,
+    avg_scored_home: float | None,
+    avg_conceded_home: float | None,
+    avg_scored_away: float | None,
+    avg_conceded_away: float | None,
+    point: float | None,
+    off_def_h2h_coef: float,
+    off_def_totals_coef: float,
+) -> float:
+    """Additive adjustment based on offensive and defensive strength.
+
+    Totals: expected_total = (scored_home + conceded_away + scored_away + conceded_home) / 2
+            adj = (expected_total - point) * off_def_totals_coef
+            Over gets +adj, Under gets -adj.
+
+    H2H/spreads: expected_margin = (scored_home + conceded_away - scored_away - conceded_home) / 2
+                 adj = sign * expected_margin * off_def_h2h_coef
+                 Home selection gets sign=+1, away gets -1.
+
+    Returns 0 when any required input is None or both coefs are 0.
+    """
+    have_all = all(x is not None for x in
+                   [avg_scored_home, avg_conceded_home, avg_scored_away, avg_conceded_away])
+    if market == "totals" and off_def_totals_coef != 0.0 and have_all and point is not None:
+        expected_total = (avg_scored_home + avg_conceded_away  # type: ignore[operator]
+                          + avg_scored_away + avg_conceded_home) / 2.0  # type: ignore[operator]
+        adj = (expected_total - point) * off_def_totals_coef
+        if selection == "Over":
+            return adj
+        if selection == "Under":
+            return -adj
+        return 0.0
+    if market in ("h2h", "spreads") and off_def_h2h_coef != 0.0 and have_all:
+        expected_margin = (avg_scored_home + avg_conceded_away  # type: ignore[operator]
+                           - avg_scored_away - avg_conceded_home) / 2.0  # type: ignore[operator]
+        if selection == home:
+            return expected_margin * off_def_h2h_coef
+        if selection == away:
+            return -expected_margin * off_def_h2h_coef
+    return 0.0
+
+
 def team_streak(
     team: str,
     results: list[dict],
