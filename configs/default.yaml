@@ -61,7 +61,7 @@ risk:
   # Win/loss streak adjustment (h2h and spreads only).
   # adj = sign * (streak_home - streak_away) * streak_coef.
   # e.g. home on +3 streak, away on -2 → home selection gets +5*coef. 0 = no-op.
-  streak_coef: 0.0
+  streak_coef: 0.01
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +
