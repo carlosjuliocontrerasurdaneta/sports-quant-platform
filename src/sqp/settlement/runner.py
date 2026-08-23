@@ -6,14 +6,13 @@ settled in a prior run is never graded twice.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pandas as pd
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
+from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
 from sqp.providers.odds_api import OddsAPIClient
 from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start,
                                    settle_candidates, void_stale_candidates)
@@ -252,20 +251,6 @@ def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
         _atomic_write_csv(settled, out)
     return settled
 
-
-def _atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
-    """Write ``df`` to ``out`` via a sibling temp file + ``os.replace``.
-
-    settled_*.csv is the single source feeding the ROI audit, the bankroll
-    ledger (which sizes live stakes) and calibrator training; a crash mid-write
-    must never leave it truncated. ``os.replace`` is atomic on the same volume,
-    so readers only ever see the old file or the complete new one."""
-    tmp = out.with_suffix(out.suffix + ".tmp")
-    try:
-        df.to_csv(tmp, index=False)
-        os.replace(tmp, out)
-    finally:
-        tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
 def _prediction_start_times(league: str) -> dict[str, str]:

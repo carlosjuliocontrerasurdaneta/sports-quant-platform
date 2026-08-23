@@ -18,13 +18,13 @@ Demo runs are isolated under ``data/calibration/demo/`` (same rule as
 from __future__ import annotations
 
 import csv
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
 
 log = get_logger("sqp.served_store")
 
@@ -56,16 +56,6 @@ def _header(p: Path) -> list[str]:
     with p.open(newline="", encoding="utf-8") as fh:
         return next(csv.reader(fh), [])
 
-
-def _atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
-    """Temp file + ``os.replace``: readers only ever see the old file or the
-    complete new one (same crash-safety rule as settled_*.csv)."""
-    tmp = out.with_suffix(out.suffix + ".tmp")
-    try:
-        df.to_csv(tmp, index=False)
-        os.replace(tmp, out)
-    finally:
-        tmp.unlink(missing_ok=True)
 
 
 class ServedStore:

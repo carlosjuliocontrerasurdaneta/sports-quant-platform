@@ -194,13 +194,24 @@ def paused_from_registry(markets: dict[str, dict]) -> dict[str, list[str]]:
 
 
 def append_degradation_log(transitions: list[dict], bets_dir: Path) -> Path | None:
-    """Rastro auditable de cada transicion pause/resume (append-only CSV)."""
+    """Rastro auditable de cada transicion pause/resume (append-only CSV, escritura atomica)."""
     if not transitions:
         return None
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / DEGRADATION_LOG_FILENAME
-    pd.DataFrame(transitions).to_csv(path, mode="a", header=not path.exists(),
-                                     index=False)
+    new = pd.DataFrame(transitions)
+    if path.exists():
+        try:
+            prior = pd.read_csv(path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            prior = pd.DataFrame()
+        if not prior.empty:
+            cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
+            new = pd.concat([prior.reindex(columns=cols), new.reindex(columns=cols)],
+                            ignore_index=True)
+    tmp = path.with_suffix(".csv.tmp")
+    new.to_csv(tmp, index=False)
+    tmp.replace(path)
     return path
 
 

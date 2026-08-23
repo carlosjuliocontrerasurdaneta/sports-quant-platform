@@ -175,18 +175,13 @@ def join_starters(events_df: pd.DataFrame, starters_df: pd.DataFrame) -> pd.Data
     results = []
     for _, ev_row in events_df.iterrows():
         gdate = ev_row.get("game_date")
-        home = ev_row.get("home", "")
-        away = ev_row.get("away", "")
-        commence_dt = ev_row.get("commence_dt")
 
         # Buscar en starters por date + equipos que contengan substring del home/away
         cands = starters_df[starters_df["date_str"] == gdate] if gdate else pd.DataFrame()
         if cands.empty:
             continue
         # Matching: el nombre del equipo en odds a veces es ciudad + apodo
-        # Intento: last word of home matches last word of team in starters or vice versa
-        matched = None
-        home_last = norm(home).split()[-1] if home else ""
+        # Gap: starters no tienen campo de equipo; se necesita tabla gamePk -> event_id
         for _, st_row in cands.iterrows():
             # los starters no tienen equipo, solo starter name + date
             # usamos game_id como clave — no podemos hacer match exacto aquí
@@ -373,7 +368,6 @@ def main() -> None:
     print("\n[4/4] Veredicto del experimento")
     print("-" * 60)
     n_real = len(valid) if not valid.empty else 0
-    n_movida = patterns.get("n_con_movida", 0)
 
     if not join_possible:
         verdict = "BLOQUEADO"
