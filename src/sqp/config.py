@@ -144,6 +144,11 @@ class RiskConfig:
     rest_days_coef: float = 0.0
     recent_form_coef: float = 0.0
     recent_form_n: int = 5
+    # Books-spread penalty: deflates the edge when bookmakers disagree on the
+    # fair price. spread = std dev of implied probs across books for the key.
+    # penalty = max(0, spread - threshold) * books_spread_penalty. 0 = no-op.
+    books_spread_penalty: float = 0.0
+    books_spread_threshold: float = 0.0
 
 
 @dataclass
@@ -392,6 +397,8 @@ class Settings:
             rest_days_coef=float(r.get("rest_days_coef", 0.0)),
             recent_form_coef=float(r.get("recent_form_coef", 0.0)),
             recent_form_n=int(r.get("recent_form_n", 5)),
+            books_spread_penalty=float(r.get("books_spread_penalty", 0.0)),
+            books_spread_threshold=float(r.get("books_spread_threshold", 0.0)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]

@@ -16,6 +16,7 @@ from sqp.markets.edge import adjusted_edge
 # 2026-07-02, M2); se re-importan aquí para conservar la API histórica de
 # daily (scripts/clv_analysis.py y tests importan varios de estos nombres).
 from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
+                                        _consensus_spread,
                                         _novig_probs, _spread_novig,
                                         _pick_main_lines, _decision_probability,
                                         build_model_map)
@@ -663,6 +664,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             warn = f"{warn} {started_msg}" if warn else started_msg
         cons = _consensus_lines(eo)
         cons_n = _consensus_counts(eo)
+        cons_spread = _consensus_spread(eo)
         h2h_fair = _novig_probs(cons, "h2h", three_way=three_way)
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
@@ -742,7 +744,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                                 line_movement_flat_pp=settings.risk.line_movement_flat_pp,
                                 line_velocity_pp_per_h=_lm.velocity_pp_per_h if _lm else None,
                                 line_velocity_penalty=settings.risk.line_velocity_penalty,
-                                line_velocity_flat_pp_per_h=settings.risk.line_velocity_flat_pp_per_h)
+                                line_velocity_flat_pp_per_h=settings.risk.line_velocity_flat_pp_per_h,
+                                books_spread=cons_spread.get(key),
+                                books_spread_penalty=settings.risk.books_spread_penalty,
+                                books_spread_threshold=settings.risk.books_spread_threshold)
             stake, pct = kelly_fraction_stake(adj.effective_probability, price,
                                               settings.bankroll,
                                               settings.risk.kelly_fraction,

@@ -43,6 +43,11 @@ risk:
   rest_days_coef: 0.0
   recent_form_coef: 0.0
   recent_form_n: 5
+  # Books-spread penalty: deflates edge when bookmakers disagree on the fair
+  # price. spread = std dev of implied probs across books. 0 = no-op.
+  # e.g. books_spread_threshold: 0.02, books_spread_penalty: 0.5
+  books_spread_penalty: 0.0
+  books_spread_threshold: 0.0
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +

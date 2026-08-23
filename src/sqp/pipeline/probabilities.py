@@ -65,6 +65,22 @@ def _consensus_counts(eo: EventOdds) -> dict:
     return dict(counts)
 
 
+def _consensus_spread(eo: EventOdds) -> dict:
+    """Std dev of implied probabilities (1/price) across books per key.
+
+    Returns None for keys with fewer than 2 valid quotes (no spread to measure).
+    A high spread signals market disagreement and increases uncertainty about
+    the fair price; used as an extra penalty term in adjusted_edge.
+    """
+    from statistics import stdev
+    groups: dict[tuple, list[float]] = defaultdict(list)
+    for ln in eo.lines:
+        if not is_usable_price(ln.price_decimal):
+            continue
+        groups[(ln.market, ln.outcome, ln.point)].append(1.0 / ln.price_decimal)
+    return {k: stdev(v) for k, v in groups.items() if len(v) >= 2}
+
+
 def _novig_probs(cons: dict, market: str, point=None,
                  three_way: bool = False) -> dict:
     """No-vig fair probabilities for h2h and totals. h2h pairs every outcome

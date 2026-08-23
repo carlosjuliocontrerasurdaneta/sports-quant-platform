@@ -41,7 +41,10 @@ def adjusted_edge(probability: float, price_decimal: float,
                   line_movement_flat_pp: float = 0.5,
                   line_velocity_pp_per_h: float | None = None,
                   line_velocity_penalty: float = 0.0,
-                  line_velocity_flat_pp_per_h: float = 0.5) -> AdjustedEdge:
+                  line_velocity_flat_pp_per_h: float = 0.5,
+                  books_spread: float | None = None,
+                  books_spread_penalty: float = 0.0,
+                  books_spread_threshold: float = 0.0) -> AdjustedEdge:
     """Deflate the raw EV (``p*d - 1``) by the model-vs-market disagreement, a
     thin-market term, adverse-line-movement and adverse-velocity penalties.
 
@@ -53,6 +56,10 @@ def adjusted_edge(probability: float, price_decimal: float,
     abs(movement_pp) * line_movement_penalty.
     ``line_velocity_pp_per_h``: movement_pp / lookback_h; adverse when
     < -flat_pp_per_h → penalty += abs(velocity) * line_velocity_penalty.
+    ``books_spread``: std dev of implied probs across bookmakers (None when
+    fewer than 2 books); above books_spread_threshold → penalty +=
+    (spread - threshold) * books_spread_penalty. High spread = market
+    disagreement = reduced confidence in the consensus price.
     All penalty coefficients default 0 = no-op.
     """
     if not is_usable_price(price_decimal):
@@ -73,6 +80,9 @@ def adjusted_edge(probability: float, price_decimal: float,
     if (line_velocity_pp_per_h is not None and line_velocity_penalty > 0.0
             and line_velocity_pp_per_h < -line_velocity_flat_pp_per_h):
         penalty += abs(line_velocity_pp_per_h) * line_velocity_penalty
+    if (books_spread is not None and books_spread_penalty > 0.0
+            and books_spread > books_spread_threshold):
+        penalty += (books_spread - books_spread_threshold) * books_spread_penalty
     penalty = max(0.0, penalty)
     adj = raw - penalty
     p_eff = (adj + 1.0) / price_decimal
