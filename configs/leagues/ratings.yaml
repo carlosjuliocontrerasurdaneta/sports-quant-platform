@@ -25,6 +25,7 @@ leagues:
     park_bound: 0.10
   mls:
     elo_home_adv: 30.0
+    elo_home_away_split: true
   ncaaf:
     elo_home_adv: 150.0
   nhl:
