@@ -1,0 +1,230 @@
+# Venue coordinates [lat, lon] per league and normalized team name (lowercase).
+# Used by the weather feature (sqp.features.weather) to fetch Open-Meteo data.
+# Keys must match the output of get_team_normalizer(league)(team_name).
+# Add missing teams by checking the normalized name in run_diario.log.
+# Retractable-roof and dome stadiums are listed but weather effect is minimal.
+
+mlb:
+  arizona diamondbacks: [33.4453, -112.0667]   # Chase Field (retractable)
+  atlanta braves: [33.8907, -84.4677]           # Truist Park
+  baltimore orioles: [39.2839, -76.6218]        # Oriole Park at Camden Yards
+  boston red sox: [42.3467, -71.0972]           # Fenway Park
+  chicago cubs: [41.9484, -87.6553]             # Wrigley Field
+  chicago white sox: [41.8299, -87.6338]        # Guaranteed Rate Field
+  cincinnati reds: [39.0979, -84.5077]          # Great American Ball Park
+  cleveland guardians: [41.4958, -81.6852]      # Progressive Field
+  colorado rockies: [39.7559, -104.9942]        # Coors Field
+  detroit tigers: [42.3390, -83.0485]           # Comerica Park
+  houston astros: [29.7573, -95.3555]           # Minute Maid Park (retractable)
+  kansas city royals: [39.0517, -94.4803]       # Kauffman Stadium
+  los angeles angels: [33.7999, -117.8829]      # Angel Stadium
+  los angeles dodgers: [34.0739, -118.2400]     # Dodger Stadium
+  miami marlins: [25.7781, -80.2197]            # loanDepot Park (retractable)
+  milwaukee brewers: [43.0280, -87.9712]        # American Family Field (retractable)
+  minnesota twins: [44.9817, -93.2780]          # Target Field
+  new york mets: [40.7571, -73.8458]            # Citi Field
+  new york yankees: [40.8296, -73.9262]         # Yankee Stadium
+  athletics: [38.5802, -121.5024]               # Sutter Health Park, Sacramento
+  oakland athletics: [38.5802, -121.5024]       # alt name
+  philadelphia phillies: [39.9057, -75.1665]    # Citizens Bank Park
+  pittsburgh pirates: [40.4469, -80.0057]       # PNC Park
+  san diego padres: [32.7076, -117.1570]        # Petco Park
+  san francisco giants: [37.7786, -122.3893]    # Oracle Park
+  seattle mariners: [47.5914, -122.3322]        # T-Mobile Park (retractable)
+  st. louis cardinals: [38.6226, -90.1928]      # Busch Stadium
+  tampa bay rays: [27.7683, -82.6534]           # Tropicana Field (dome)
+  texas rangers: [32.7512, -97.0827]            # Globe Life Field (retractable)
+  toronto blue jays: [43.6414, -79.3894]        # Rogers Centre (dome)
+  washington nationals: [38.8730, -77.0074]     # Nationals Park
+
+mls:
+  atlanta united fc: [33.7554, -84.4009]
+  austin fc: [30.3870, -97.7192]
+  charlotte fc: [35.2258, -80.8528]
+  chicago fire fc: [41.8623, -87.6167]
+  fc cincinnati: [39.1115, -84.5221]
+  colorado rapids: [39.8059, -104.8922]
+  columbus crew: [39.9681, -82.9905]
+  d.c. united: [38.8682, -77.0125]
+  fc dallas: [33.1547, -97.0820]
+  houston dynamo fc: [29.7523, -95.3510]
+  la galaxy: [33.8641, -118.2611]
+  lafc: [34.0131, -118.2845]
+  inter miami cf: [26.1905, -80.1873]
+  minnesota united fc: [44.9536, -93.1643]
+  cf montréal: [45.4625, -73.5746]
+  nashville sc: [36.1327, -86.7712]
+  new england revolution: [42.0909, -71.2643]
+  new york city fc: [40.8296, -73.9262]
+  new york red bulls: [40.7368, -74.1502]
+  orlando city sc: [28.5408, -81.3886]
+  philadelphia union: [39.8327, -75.3804]
+  portland timbers: [45.5213, -122.6917]
+  real salt lake: [40.5836, -111.8929]
+  san jose earthquakes: [37.3517, -121.9250]
+  seattle sounders fc: [47.5952, -122.3316]
+  sporting kc: [39.1215, -94.8236]
+  st. louis city sc: [38.6284, -90.2083]
+  toronto fc: [43.6336, -79.4189]
+  vancouver whitecaps fc: [49.2776, -123.1118]
+  san diego fc: [32.7076, -117.1570]
+
+wnba:
+  atlanta dream: [33.7490, -84.3880]
+  chicago sky: [41.8781, -87.6298]
+  connecticut sun: [41.5240, -72.0754]
+  dallas wings: [32.7901, -96.8034]
+  indiana fever: [39.7640, -86.1556]
+  las vegas aces: [36.0909, -115.1833]
+  los angeles sparks: [34.0430, -118.2673]
+  minnesota lynx: [44.9795, -93.2762]
+  new york liberty: [40.6828, -74.0148]
+  phoenix mercury: [33.4458, -112.0710]
+  seattle storm: [47.5952, -122.3316]
+  washington mystics: [38.9012, -77.0220]
+
+epl:
+  arsenal: [51.5549, -0.1084]
+  aston villa: [52.5092, -1.8847]
+  bournemouth: [50.7352, -1.8381]
+  brentford: [51.4882, -0.3088]
+  brighton: [50.8615, -0.0837]
+  chelsea: [51.4816, -0.1909]
+  crystal palace: [51.3983, -0.0855]
+  everton: [53.4389, -2.9663]
+  fulham: [51.4749, -0.2217]
+  ipswich: [52.0558, 1.1450]
+  leicester city: [52.6204, -1.1421]
+  liverpool: [53.4308, -2.9608]
+  manchester city: [53.4831, -2.2004]
+  manchester united: [53.4631, -2.2913]
+  newcastle united: [54.9756, -1.6218]
+  nottingham forest: [52.9400, -1.1328]
+  southampton: [50.9058, -1.3914]
+  tottenham hotspur: [51.6042, -0.0666]
+  west ham united: [51.5386, -0.0164]
+  wolverhampton wanderers: [52.5900, -2.1303]
+
+laliga:
+  athletic club: [43.2640, -2.9496]
+  atletico madrid: [40.4361, -3.5995]
+  barcelona: [41.3809, 2.1228]
+  celta vigo: [42.2122, -8.7381]
+  deportivo alaves: [42.8457, -2.6711]
+  espanyol: [41.3453, 2.0750]
+  getafe: [40.3264, -3.7171]
+  girona: [41.9636, 2.8167]
+  las palmas: [28.1028, -15.4437]
+  leganes: [40.3520, -3.7625]
+  mallorca: [39.5898, 2.6604]
+  osasuna: [42.7968, -1.6327]
+  rayo vallecano: [40.3921, -3.6611]
+  real betis: [37.3561, -6.0037]
+  real madrid: [40.4531, -3.6883]
+  real sociedad: [43.3016, -1.9740]
+  real valladolid: [41.6480, -4.7473]
+  sevilla: [37.3841, -5.9705]
+  valencia: [39.4749, -0.3589]
+  villarreal: [39.9445, -0.1036]
+
+ligamx:
+  america: [19.3029, -99.1505]
+  atlas: [20.6534, -103.4184]
+  atletico san luis: [22.1473, -100.9736]
+  chivas: [20.6534, -103.4184]
+  deportivo toluca: [19.2810, -99.6610]
+  fc juarez: [31.6904, -106.4245]
+  leon: [21.1236, -101.6887]
+  mazatlan: [23.2494, -106.4111]
+  monterrey: [25.6878, -100.2474]
+  necaxa: [21.8818, -102.2902]
+  pachuca: [20.1011, -98.7591]
+  puebla: [18.9990, -98.2083]
+  pumas unam: [19.3232, -99.1847]
+  queretaro: [20.6073, -100.3869]
+  santos laguna: [25.4384, -103.9560]
+  tigres uanl: [25.7330, -100.3082]
+  tijuana: [32.5312, -116.9858]
+  cruz azul: [19.4831, -99.1471]
+  guadalajara: [20.6534, -103.4184]
+
+seriea:
+  ac milan: [45.4781, 9.1240]
+  as roma: [41.9340, 12.4547]
+  atalanta: [45.7092, 9.6806]
+  bologna: [44.4927, 11.3107]
+  cagliari: [39.2157, 9.1307]
+  como: [45.7893, 9.0953]
+  empoli: [43.7222, 10.9438]
+  fiorentina: [43.7802, 11.2822]
+  genoa: [44.4148, 8.9520]
+  hellas verona: [45.4349, 10.9676]
+  inter milan: [45.4781, 9.1240]
+  juventus: [45.1096, 7.6412]
+  lazio: [41.9340, 12.4547]
+  lecce: [40.3518, 18.1743]
+  monza: [45.5845, 9.2744]
+  napoli: [40.8279, 14.1932]
+  parma: [44.7975, 10.3378]
+  torino: [45.0411, 7.6504]
+  udinese: [46.0807, 13.1994]
+  venezia: [45.4654, 12.3340]
+
+ligue1:
+  brest: [48.3898, -4.4860]
+  le havre: [49.4860, 0.1102]
+  lens: [50.4323, 2.8153]
+  lille: [50.6117, 3.1303]
+  lyon: [45.7656, 4.9825]
+  marseille: [43.2698, 5.3960]
+  monaco: [43.7272, 7.4153]
+  montpellier: [43.6220, 3.8133]
+  nantes: [47.2560, -1.5252]
+  nice: [43.7056, 7.2619]
+  paris saint-germain: [48.8414, 2.2530]
+  rennes: [48.1074, -1.7063]
+  reims: [49.2458, 4.0258]
+  saint-etienne: [45.4607, 4.3899]
+  strasbourg: [48.5607, 7.7541]
+  toulouse: [43.5832, 1.4333]
+  angers: [47.4606, -0.5502]
+  auxerre: [47.7977, 3.5703]
+  niza: [43.7056, 7.2619]
+
+brasileirao:
+  atletico-mg: [-19.9350, -43.9278]
+  atletico-pr: [-25.4284, -49.2769]
+  bahia: [-12.9800, -38.5043]
+  botafogo: [-22.9068, -43.1729]
+  corinthians: [-23.5455, -46.4740]
+  cruzeiro: [-19.8647, -43.9688]
+  flamengo: [-22.9120, -43.2300]
+  fluminense: [-22.9120, -43.2300]
+  fortaleza: [-3.8073, -38.5228]
+  gremio: [-30.0645, -51.2389]
+  internacional: [-30.0645, -51.2389]
+  juventude: [-29.1677, -51.1788]
+  palmeiras: [-23.5271, -46.6901]
+  red bull bragantino: [-22.9522, -46.5412]
+  santos: [-23.9612, -46.3347]
+  sao paulo: [-23.5507, -46.7349]
+  sport: [-8.0521, -34.9020]
+  vasco da gama: [-22.8965, -43.2278]
+  vitoria: [-12.9800, -38.5043]
+  criciuma: [-28.6773, -49.3697]
+
+chile:
+  colo-colo: [-33.4569, -70.6483]
+  universidad de chile: [-33.4569, -70.6483]
+  universidad catolica: [-33.4596, -70.6083]
+  union espanola: [-33.4076, -70.6450]
+  huachipato: [-36.7833, -73.0500]
+  deportes iquique: [-20.2053, -70.1308]
+  everton: [-33.0253, -71.5469]
+  audax italiano: [-33.5018, -70.7007]
+  la serena: [-29.9075, -71.2539]
+  palestino: [-33.4569, -70.6483]
+  nublense: [-36.6070, -72.1028]
+  magallanes: [-33.4569, -70.6483]
+  cobresal: [-26.3180, -69.6602]
+  rangers: [-34.9842, -71.2460]

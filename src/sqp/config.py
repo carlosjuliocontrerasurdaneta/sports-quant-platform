@@ -147,6 +147,18 @@ class RiskConfig:
 
 
 @dataclass
+class WeatherConfig:
+    enabled: bool = False
+    timeout_s: int = 10
+    # Adverse-weather penalty on totals: excess wind and precipitation reduce
+    # expected scoring -> p(Over) decreases. Set NEGATIVE values to activate
+    # (e.g. wind_coef_totals=-0.001 = -0.1 pp per km/h above threshold).
+    wind_threshold_kmh: float = 20.0
+    wind_coef_totals: float = 0.0
+    precip_coef_totals: float = 0.0
+
+
+@dataclass
 class Settings:
     mode: str = field(default_factory=lambda: os.getenv("SQP_MODE", "demo"))
     # Accept THE_ODDS_API_KEY too: that is The Odds API's own env-var name and
@@ -174,6 +186,7 @@ class Settings:
     # horizon those flood the picks with games that won't play for weeks.
     event_horizon_days: int = field(default_factory=lambda: int(os.getenv("MAX_EVENT_HORIZON_DAYS", "7")))
     risk: RiskConfig = field(default_factory=RiskConfig)
+    weather: WeatherConfig = field(default_factory=WeatherConfig)
     # Modo de seleccion de picks (decision 2026-07-27: el objetivo del proyecto
     # es maximizar el porcentaje de aciertos). "edge": seleccion clasica por
     # valor esperado (Kelly sobre min_edge). "accuracy": seleccion por
@@ -372,6 +385,13 @@ class Settings:
             anomaly_extra_penalty=float(r.get("anomaly_extra_penalty", 0.0)),
             low_book_penalty=float(r.get("low_book_penalty", 0.0)),
             min_books_for_consensus=int(r.get("min_books_for_consensus", 0)),
+            line_movement_penalty=float(r.get("line_movement_penalty", 0.0)),
+            line_movement_flat_pp=float(r.get("line_movement_flat_pp", 0.5)),
+            line_velocity_penalty=float(r.get("line_velocity_penalty", 0.0)),
+            line_velocity_flat_pp_per_h=float(r.get("line_velocity_flat_pp_per_h", 0.5)),
+            rest_days_coef=float(r.get("rest_days_coef", 0.0)),
+            recent_form_coef=float(r.get("recent_form_coef", 0.0)),
+            recent_form_n=int(r.get("recent_form_n", 5)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
@@ -423,6 +443,17 @@ class Settings:
         isc = cfg.get("intraday_scan") or {}
         if _env_flag("INTRADAY_SCAN_ENABLED") is None and "enabled" in isc:
             s.intraday_scan_enabled = bool(isc["enabled"])
+        wt = cfg.get("weather") or {}
+        if _env_flag("WEATHER_ENABLED") is None and "enabled" in wt:
+            s.weather.enabled = bool(wt["enabled"])
+        if "weather_timeout_s" not in os.environ and "timeout_s" in wt:
+            s.weather.timeout_s = int(wt["timeout_s"])
+        if "wind_threshold_kmh" in wt:
+            s.weather.wind_threshold_kmh = float(wt["wind_threshold_kmh"])
+        if "wind_coef_totals" in wt:
+            s.weather.wind_coef_totals = float(wt["wind_coef_totals"])
+        if "precip_coef_totals" in wt:
+            s.weather.precip_coef_totals = float(wt["precip_coef_totals"])
         bk = cfg.get("bankroll") or {}
         if not os.getenv("BANKROLL") and "initial" in bk:
             s.bankroll = float(bk["initial"])

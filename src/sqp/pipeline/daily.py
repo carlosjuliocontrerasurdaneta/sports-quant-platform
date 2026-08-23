@@ -652,6 +652,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # Empty when no snapshots exist yet (demo mode, new league).
     from sqp.markets.line_movement import event_line_movement, load_league_odds
     _league_odds = load_league_odds(league, ROOT / "data" / "odds")
+    from sqp.features.weather import weather_p_adjustment
+    _venues = load_yaml(CONFIG_DIR / "venues.yaml").get(league, {})
     for eo in events:
         spread, total = _pick_main_lines(eo)
         est = adapter.estimate(eo.event, spread, total)
@@ -682,6 +684,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
 
         from sqp.features.rest_form import (rest_form_p_adjustment,
                                             team_recent_form, team_rest_days)
+        from sqp.features.weather import get_event_weather
         _ref_date = eo.event.start_time[:10]
         _rest_home = team_rest_days(
             eo.event.home, results, _ref_date, adapter.normalize)
@@ -691,6 +694,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             eo.event.home, results, settings.risk.recent_form_n, adapter.normalize)
         _form_away = team_recent_form(
             eo.event.away, results, settings.risk.recent_form_n, adapter.normalize)
+        _vc = _venues.get(adapter.normalize(eo.event.home))
+        _event_weather = (get_event_weather(_vc[0], _vc[1],
+                                            eo.event.start_time, settings.weather)
+                          if _vc else None)
 
         for key, p_model in model_map.items():
             price = cons.get(key)
@@ -706,14 +713,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # still be captured in the served stream, but it must never carry
             # stake: there is no valid market anchor or vig removal for it.
             incomplete_market = fair is None
-            # Apply rest-days and recent-form adjustment before market shrink.
-            # No-op when both coefficients are 0 (default).
-            _p_rf = max(0.01, min(0.99, p_model + rest_form_p_adjustment(
-                p_model, key[0], key[1], eo.event.home, eo.event.away,
-                _rest_home, _rest_away, _form_home, _form_away,
-                settings.risk.rest_days_coef, settings.risk.recent_form_coef)))
+            # Apply rest-days, recent-form and weather adjustments before
+            # market shrink. Each term is 0 by default (no-op).
+            _p_adj = max(0.01, min(0.99, p_model
+                         + rest_form_p_adjustment(
+                             p_model, key[0], key[1], eo.event.home, eo.event.away,
+                             _rest_home, _rest_away, _form_home, _form_away,
+                             settings.risk.rest_days_coef, settings.risk.recent_form_coef)
+                         + weather_p_adjustment(
+                             key[0], key[1], _event_weather, settings.weather)))
             p_used, p_decision = _decision_probability(
-                _p_rf, fair, settings.risk.market_shrink, league, key[0], settings)
+                _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)
             # Deflate the EV by the model-vs-market disagreement (and thin markets)
             # and stake on the resulting effective probability, so an overconfident

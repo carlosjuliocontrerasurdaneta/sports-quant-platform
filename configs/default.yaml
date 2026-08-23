@@ -191,3 +191,18 @@ revalidation:
 # fase ofensiva de generacion intradia (#4). Env INTRADAY_SCAN_ENABLED gana.
 intraday_scan:
   enabled: true
+
+# Weather feature via Open-Meteo (no API key required).
+# Venue coordinates: configs/venues.yaml (keyed by normalized team name).
+# When enabled, fetches hourly temperature, precipitation and wind speed for
+# each event venue at start time. Responses cached per venue-day.
+# Coefficients activate the adverse-weather penalty on totals markets:
+#   wind_coef_totals < 0  → reduce p(Over) per km/h above threshold
+#   precip_coef_totals < 0 → reduce p(Over) per mm of precipitation
+# Both default to 0 (no-op); activate with OOS evidence.
+weather:
+  enabled: false
+  timeout_s: 10
+  wind_threshold_kmh: 20.0
+  wind_coef_totals: 0.0
+  precip_coef_totals: 0.0
