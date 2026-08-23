@@ -167,6 +167,73 @@ def team_h2h_form(
     return total / len(recent)
 
 
+def team_streak(
+    team: str,
+    results: list[dict],
+    normalize: Callable[[str], str] | None = None,
+) -> int:
+    """Current consecutive win (+) or loss (-) streak for the team.
+
+    Iterates from the most recent game backward. A draw or a missing score
+    resets to 0 and stops. Returns 0 when no games are available.
+    e.g. W W W → +3; L L → -2; W L W → +1 (only the last win counts).
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    streak = 0
+    for r in reversed(team_games):
+        try:
+            hs = float(r["home_score"])
+            aws = float(r["away_score"])
+        except (KeyError, TypeError, ValueError):
+            break
+        is_home = norm(str(r.get("home", ""))) == team_n
+        if hs > aws:
+            outcome = 1 if is_home else -1
+        elif aws > hs:
+            outcome = -1 if is_home else 1
+        else:
+            break  # draw breaks streak
+        if streak == 0:
+            streak = outcome
+        elif (outcome > 0) == (streak > 0):
+            streak += outcome
+        else:
+            break
+    return streak
+
+
+def streak_p_adjustment(
+    market: str,
+    selection: str,
+    home: str,
+    away: str,
+    streak_home: int,
+    streak_away: int,
+    streak_coef: float,
+) -> float:
+    """Additive adjustment for h2h and spreads based on win/loss streak differential.
+
+    adj = sign * (streak_home - streak_away) * streak_coef.
+    Home selection gets sign=+1, away gets -1. Totals and draws return 0.
+    streak_coef defaults to 0 (no-op); activate only after OOS validation.
+    """
+    if streak_coef == 0.0 or market == "totals":
+        return 0.0
+    if selection == home:
+        sign = 1.0
+    elif selection == away:
+        sign = -1.0
+    else:
+        return 0.0
+    return sign * (streak_home - streak_away) * streak_coef
+
+
 def team_avg_total(
     team: str,
     results: list[dict],

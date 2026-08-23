@@ -161,6 +161,11 @@ class RiskConfig:
     # totals_tendency_n: games window. 0 = no-op (default off).
     totals_tendency_coef: float = 0.0
     totals_tendency_n: int = 10
+    # Win/loss streak adjustment for h2h and spreads.
+    # adj = sign * (streak_home - streak_away) * streak_coef.
+    # streak_home/away: consecutive wins (+) or losses (-) entering the game.
+    # 0 = no-op (default off); activate only after OOS validation.
+    streak_coef: float = 0.0
 
 
 @dataclass
@@ -415,6 +420,7 @@ class Settings:
             h2h_n=int(r.get("h2h_n", 10)),
             totals_tendency_coef=float(r.get("totals_tendency_coef", 0.0)),
             totals_tendency_n=int(r.get("totals_tendency_n", 10)),
+            streak_coef=float(r.get("streak_coef", 0.0)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
