@@ -246,6 +246,67 @@ def home_away_form_p_adjustment(
     return 0.0
 
 
+def team_avg_margin(
+    team: str,
+    results: list[dict],
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Average scoring margin (scored - conceded) in the team's last n games.
+
+    Positive = team wins on average; negative = loses on average.
+    Captures dominance that win rate misses (winning by 1 vs winning by 10).
+    Returns None when fewer than 2 games are available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    recent = team_games[-n:]
+    if len(recent) < 2:
+        return None
+    margins = []
+    for r in recent:
+        try:
+            hs, aws = float(r["home_score"]), float(r["away_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        is_home = norm(str(r.get("home", ""))) == team_n
+        margins.append(hs - aws if is_home else aws - hs)
+    return sum(margins) / len(margins) if margins else None
+
+
+def margin_p_adjustment(
+    market: str,
+    selection: str,
+    home: str,
+    away: str,
+    margin_home: float | None,
+    margin_away: float | None,
+    margin_coef: float,
+) -> float:
+    """Additive adjustment based on average scoring margin differential.
+
+    adj = sign * (margin_home - margin_away) * margin_coef.
+    Home selection gets sign=+1, away gets -1.
+    Only h2h and spreads; totals and draws return 0.
+    margin_coef defaults to 0 (no-op); activate only after OOS validation.
+    """
+    if margin_coef == 0.0 or market == "totals":
+        return 0.0
+    if margin_home is None or margin_away is None:
+        return 0.0
+    diff = margin_home - margin_away
+    if selection == home:
+        return diff * margin_coef
+    if selection == away:
+        return -diff * margin_coef
+    return 0.0
+
+
 def team_avg_scored(
     team: str,
     results: list[dict],

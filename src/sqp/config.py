@@ -178,6 +178,11 @@ class RiskConfig:
     # adj = sign * (form_home_at_home - form_away_at_away) * coef. 0 = no-op.
     home_away_form_coef: float = 0.0
     home_away_form_n: int = 5
+    # Average scoring margin adjustment (h2h and spreads only).
+    # adj = sign * (margin_home - margin_away) * margin_coef.
+    # margin = avg(scored - conceded) over last margin_n games. 0 = no-op.
+    margin_coef: float = 0.0
+    margin_n: int = 10
 
 
 @dataclass
@@ -438,6 +443,8 @@ class Settings:
             off_def_n=int(r.get("off_def_n", 10)),
             home_away_form_coef=float(r.get("home_away_form_coef", 0.0)),
             home_away_form_n=int(r.get("home_away_form_n", 5)),
+            margin_coef=float(r.get("margin_coef", 0.0)),
+            margin_n=int(r.get("margin_n", 10)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]

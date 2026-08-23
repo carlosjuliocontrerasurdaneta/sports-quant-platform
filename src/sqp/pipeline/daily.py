@@ -686,12 +686,13 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
 
         from sqp.features.rest_form import (h2h_p_adjustment,
                                             home_away_form_p_adjustment,
+                                            margin_p_adjustment,
                                             off_def_p_adjustment,
                                             rest_form_p_adjustment,
                                             streak_p_adjustment, team_avg_conceded,
-                                            team_avg_scored, team_avg_total,
-                                            team_h2h_form, team_recent_form,
-                                            team_recent_form_away,
+                                            team_avg_margin, team_avg_scored,
+                                            team_avg_total, team_h2h_form,
+                                            team_recent_form, team_recent_form_away,
                                             team_recent_form_home,
                                             team_rest_days, team_streak,
                                             totals_tendency_p_adjustment)
@@ -726,6 +727,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             eo.event.home, results, settings.risk.home_away_form_n, adapter.normalize)
         _form_away_at_away = team_recent_form_away(
             eo.event.away, results, settings.risk.home_away_form_n, adapter.normalize)
+        _margin_home = team_avg_margin(
+            eo.event.home, results, settings.risk.margin_n, adapter.normalize)
+        _margin_away = team_avg_margin(
+            eo.event.away, results, settings.risk.margin_n, adapter.normalize)
         _vc = _venues.get(adapter.normalize(eo.event.home))
         _event_weather = (get_event_weather(_vc[0], _vc[1],
                                             eo.event.start_time, settings.weather)
@@ -773,7 +778,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                          + home_away_form_p_adjustment(
                              key[0], key[1], eo.event.home, eo.event.away,
                              _form_home_at_home, _form_away_at_away,
-                             settings.risk.home_away_form_coef)))
+                             settings.risk.home_away_form_coef)
+                         + margin_p_adjustment(
+                             key[0], key[1], eo.event.home, eo.event.away,
+                             _margin_home, _margin_away,
+                             settings.risk.margin_coef)))
             p_used, p_decision = _decision_probability(
                 _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)
