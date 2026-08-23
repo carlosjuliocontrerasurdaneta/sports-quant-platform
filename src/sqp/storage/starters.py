@@ -14,6 +14,82 @@ log = get_logger("sqp.storage.starters")
 
 COLUMNS = ["game_id", "date", "home_starter", "away_starter", "ingested_at"]
 
+LOG_COLUMNS = [
+    "event_id", "game_date", "home", "away",
+    "home_pitcher", "away_pitcher", "confirmed_at_utc",
+]
+
+
+def log_pitcher_confirmation(
+    root: Path,
+    league: str,
+    rows: list[dict],
+    confirmed_at: datetime | None = None,
+) -> int:
+    """Append pitcher confirmations for events matched in the daily run.
+
+    Each row must contain: event_id, game_date, home, away,
+    home_pitcher, away_pitcher. Rows where both pitchers are None are skipped.
+    Only rows whose (event_id, home_pitcher, away_pitcher) triplet is new or
+    changed relative to the last logged entry for that event_id are appended —
+    this captures pitcher changes while avoiding duplicates on re-runs.
+
+    Returns the number of new rows appended.
+    """
+    if not rows:
+        return 0
+    ts = (confirmed_at or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    p = root / "data" / "historical" / f"pitcher_confirmation_log_{league}.csv"
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    new_rows = [
+        {
+            "event_id": str(r.get("event_id", "")),
+            "game_date": str(r.get("game_date", "")),
+            "home": str(r.get("home", "")),
+            "away": str(r.get("away", "")),
+            "home_pitcher": r.get("home_pitcher"),
+            "away_pitcher": r.get("away_pitcher"),
+            "confirmed_at_utc": ts,
+        }
+        for r in rows
+        if r.get("home_pitcher") or r.get("away_pitcher")
+    ]
+    if not new_rows:
+        return 0
+
+    new_df = pd.DataFrame(new_rows)[LOG_COLUMNS]
+
+    if p.exists():
+        existing = pd.read_csv(p, dtype={"event_id": str})
+        # Keep only new or changed pitcher assignments per event_id
+        last_by_event = (
+            existing.sort_values("confirmed_at_utc")
+            .drop_duplicates(subset=["event_id"], keep="last")
+            .set_index("event_id")
+        )
+        to_append = []
+        for row in new_rows:
+            eid = row["event_id"]
+            prev = last_by_event.loc[eid] if eid in last_by_event.index else None
+            if prev is None:
+                to_append.append(row)
+            elif (str(prev.get("home_pitcher")) != str(row["home_pitcher"])
+                  or str(prev.get("away_pitcher")) != str(row["away_pitcher"])):
+                to_append.append(row)
+        if not to_append:
+            return 0
+        appended = pd.DataFrame(to_append)[LOG_COLUMNS]
+        combined = pd.concat([existing, appended], ignore_index=True)
+    else:
+        combined = new_df
+        to_append = new_rows
+
+    atomic_write_csv(combined.sort_values("confirmed_at_utc", kind="stable"), p)
+    n = len(to_append) if p.exists() else len(new_rows)
+    log.info("[%s] pitcher_confirmation_log: %d fila(s) nuevas/cambiadas.", league, n)
+    return n
+
 
 class StartersStore:
     def __init__(self, root: Path):

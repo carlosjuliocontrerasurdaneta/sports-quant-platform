@@ -5,9 +5,11 @@ receive their OWN announced starters. The previous implementation keyed the
 probables map on (home, away) only, so the later game overwrote the earlier one
 and both events estimated with identical pitchers (same probability to 6 dp).
 """
+import pandas as pd
 from sqp.domain.models import Event, EventOdds
 from sqp.pipeline.daily import _attach_probable_pitchers, _prior_day
 from sqp.sports.team_names import normalize_key
+from sqp.storage.starters import log_pitcher_confirmation
 
 
 class _FakeProbablesProvider:
@@ -105,3 +107,57 @@ def test_provider_failure_is_best_effort():
     game = _event("2026-06-16T01:41:00Z")
     _attach_probable_pitchers([game], "mlb", provider=_Boom())  # must not raise
     assert game.event.home_pitcher is None
+
+
+def test_log_pitcher_confirmation_appends_new_rows(tmp_path):
+    rows = [
+        {"event_id": "ev1", "game_date": "2026-08-22", "home": "Yankees",
+         "away": "Red Sox", "home_pitcher": "Ace A", "away_pitcher": "Arm B"},
+    ]
+    n = log_pitcher_confirmation(tmp_path, "mlb", rows)
+    assert n == 1
+    log_path = tmp_path / "data" / "historical" / "pitcher_confirmation_log_mlb.csv"
+    assert log_path.exists()
+    df = pd.read_csv(log_path)
+    assert len(df) == 1
+    assert df.loc[0, "home_pitcher"] == "Ace A"
+
+
+def test_log_pitcher_confirmation_no_duplicate_on_rerun(tmp_path):
+    rows = [
+        {"event_id": "ev1", "game_date": "2026-08-22", "home": "Yankees",
+         "away": "Red Sox", "home_pitcher": "Ace A", "away_pitcher": "Arm B"},
+    ]
+    log_pitcher_confirmation(tmp_path, "mlb", rows)
+    n2 = log_pitcher_confirmation(tmp_path, "mlb", rows)  # same pitcher, same event
+    assert n2 == 0
+    log_path = tmp_path / "data" / "historical" / "pitcher_confirmation_log_mlb.csv"
+    df = pd.read_csv(log_path)
+    assert len(df) == 1  # no duplicate
+
+
+def test_log_pitcher_confirmation_records_pitcher_change(tmp_path):
+    rows_day1 = [
+        {"event_id": "ev1", "game_date": "2026-08-22", "home": "Yankees",
+         "away": "Red Sox", "home_pitcher": "Ace A", "away_pitcher": "Arm B"},
+    ]
+    rows_day2 = [
+        {"event_id": "ev1", "game_date": "2026-08-22", "home": "Yankees",
+         "away": "Red Sox", "home_pitcher": "Ace A SCRATCH", "away_pitcher": "Arm B"},
+    ]
+    log_pitcher_confirmation(tmp_path, "mlb", rows_day1)
+    n = log_pitcher_confirmation(tmp_path, "mlb", rows_day2)
+    assert n == 1  # change detected
+    log_path = tmp_path / "data" / "historical" / "pitcher_confirmation_log_mlb.csv"
+    df = pd.read_csv(log_path)
+    assert len(df) == 2
+    assert df.iloc[-1]["home_pitcher"] == "Ace A SCRATCH"
+
+
+def test_log_pitcher_confirmation_skips_rows_without_pitchers(tmp_path):
+    rows = [
+        {"event_id": "ev1", "game_date": "2026-08-22", "home": "Yankees",
+         "away": "Red Sox", "home_pitcher": None, "away_pitcher": None},
+    ]
+    n = log_pitcher_confirmation(tmp_path, "mlb", rows)
+    assert n == 0

@@ -203,6 +203,7 @@ def _attach_probable_pitchers(events: list[EventOdds], league: str,
         log.warning("[%s] Could not fetch probable pitchers: %s", league, exc)
         return
     matched = 0
+    confirmed_rows: list[dict] = []
     for eo in events:
         cands = by_pair.get((nk(eo.event.home), nk(eo.event.away)), [])
         ev_t = _parse_iso_utc(str(eo.event.start_time))
@@ -211,7 +212,18 @@ def _attach_probable_pitchers(events: list[EventOdds], league: str,
             eo.event.home_pitcher = g.get("home_pitcher")
             eo.event.away_pitcher = g.get("away_pitcher")
             matched += 1
+            confirmed_rows.append({
+                "event_id": eo.event.event_id,
+                "game_date": str(eo.event.start_time)[:10],
+                "home": eo.event.home,
+                "away": eo.event.away,
+                "home_pitcher": eo.event.home_pitcher,
+                "away_pitcher": eo.event.away_pitcher,
+            })
     log.info("[%s] probable starters attached to %d/%d events.", league, matched, len(events))
+    if confirmed_rows:
+        from sqp.storage.starters import log_pitcher_confirmation
+        log_pitcher_confirmation(ROOT, league, confirmed_rows)
 
 
 def _closest_probable(cands: list[dict], ev_t: datetime | None) -> dict | None:
