@@ -126,6 +126,12 @@ class RiskConfig:
     anomaly_extra_penalty: float = 0.0
     low_book_penalty: float = 0.0
     min_books_for_consensus: int = 0
+    # Adverse line-movement penalty: when the consensus implied prob moved
+    # AGAINST the pick by more than line_movement_flat_pp pp since the first
+    # captured snapshot, the edge is deflated by
+    # abs(movement_pp) * line_movement_penalty. 0 = no-op (default off).
+    line_movement_penalty: float = 0.0
+    line_movement_flat_pp: float = 0.5
 
 
 @dataclass

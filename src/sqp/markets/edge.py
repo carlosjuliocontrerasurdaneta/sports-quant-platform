@@ -35,13 +35,20 @@ def adjusted_edge(probability: float, price_decimal: float,
                   market_probability: float | None, books_count: int | None,
                   *, uncertainty_penalty: float = 0.0, anomaly_edge_gap: float = 0.0,
                   anomaly_extra_penalty: float = 0.0, low_book_penalty: float = 0.0,
-                  min_books_for_consensus: int = 0) -> AdjustedEdge:
-    """Deflate the raw EV (``p*d - 1``) by the model-vs-market disagreement and a
-    thin-market term, and fold the penalty into an effective probability.
+                  min_books_for_consensus: int = 0,
+                  line_movement_pp: float | None = None,
+                  line_movement_penalty: float = 0.0,
+                  line_movement_flat_pp: float = 0.5) -> AdjustedEdge:
+    """Deflate the raw EV (``p*d - 1``) by the model-vs-market disagreement, a
+    thin-market term, and an optional adverse-line-movement penalty.
 
     ``market_probability`` is the no-vig fair probability of the same selection;
     when None the uncertainty/anomaly terms are skipped. ``books_count`` is how
     many bookmakers quoted the line; when None the thin-market term is skipped.
+    ``line_movement_pp`` is the implied-prob movement in pp from first to last
+    snapshot (negative = market moved against the pick); when the movement is
+    adverse (< -line_movement_flat_pp) the penalty is
+    ``abs(line_movement_pp) * line_movement_penalty``. Default 0 = no-op.
     """
     if not is_usable_price(price_decimal):
         raise ValueError(f"price_decimal must be a positive finite number, got {price_decimal!r}")
@@ -55,6 +62,9 @@ def adjusted_edge(probability: float, price_decimal: float,
     if (books_count is not None and min_books_for_consensus > 0
             and books_count < min_books_for_consensus):
         penalty += low_book_penalty
+    if (line_movement_pp is not None and line_movement_penalty > 0.0
+            and line_movement_pp < -line_movement_flat_pp):
+        penalty += abs(line_movement_pp) * line_movement_penalty
     penalty = max(0.0, penalty)
     adj = raw - penalty
     p_eff = (adj + 1.0) / price_decimal

@@ -28,6 +28,12 @@ risk:
   anomaly_extra_penalty: 0.02
   low_book_penalty: 0.015
   min_books_for_consensus: 2
+  # Adverse line-movement penalty. When the implied-prob consensus moved against
+  # the pick by more than line_movement_flat_pp pp, the edge is deflated by
+  # abs(movement_pp) * line_movement_penalty. 0 = no-op (off by default;
+  # activate only after OOS evidence confirms the signal adds value).
+  line_movement_penalty: 0.0
+  line_movement_flat_pp: 0.5
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +
