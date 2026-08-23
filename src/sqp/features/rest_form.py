@@ -413,6 +413,68 @@ def off_def_p_adjustment(
     return 0.0
 
 
+def team_over_rate(
+    team: str,
+    results: list[dict],
+    reference_line: float | None,
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Fraction of the team's last n games where (home_score + away_score) > reference_line.
+
+    Uses the current game's totals line as the reference so the signal is
+    calibrated to the actual bet being evaluated. Returns None when
+    reference_line is None or fewer than 2 games are available.
+    """
+    if reference_line is None:
+        return None
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    recent = team_games[-n:]
+    if len(recent) < 2:
+        return None
+    overs = []
+    for r in recent:
+        try:
+            overs.append(1.0 if float(r["home_score"]) + float(r["away_score"]) > reference_line
+                         else 0.0)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sum(overs) / len(overs) if overs else None
+
+
+def over_under_rate_p_adjustment(
+    market: str,
+    selection: str,
+    over_rate_home: float | None,
+    over_rate_away: float | None,
+    over_under_rate_coef: float,
+) -> float:
+    """Additive adjustment for totals based on historical Over rate vs the line.
+
+    combined = (over_rate_home + over_rate_away) / 2; centered at 0.5.
+    adj = (combined - 0.5) * coef.
+    Over gets +adj, Under gets -adj. Returns 0 for h2h/spreads or missing data.
+    coef defaults to 0 (no-op); activate only after OOS validation.
+    """
+    if over_under_rate_coef == 0.0 or market != "totals":
+        return 0.0
+    if over_rate_home is None or over_rate_away is None:
+        return 0.0
+    combined = (over_rate_home + over_rate_away) / 2.0
+    adj = (combined - 0.5) * over_under_rate_coef
+    if selection == "Over":
+        return adj
+    if selection == "Under":
+        return -adj
+    return 0.0
+
+
 def team_streak(
     team: str,
     results: list[dict],

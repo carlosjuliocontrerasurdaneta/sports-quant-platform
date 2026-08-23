@@ -688,11 +688,13 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                                             home_away_form_p_adjustment,
                                             margin_p_adjustment,
                                             off_def_p_adjustment,
+                                            over_under_rate_p_adjustment,
                                             rest_form_p_adjustment,
                                             streak_p_adjustment, team_avg_conceded,
                                             team_avg_margin, team_avg_scored,
                                             team_avg_total, team_h2h_form,
-                                            team_recent_form, team_recent_form_away,
+                                            team_over_rate, team_recent_form,
+                                            team_recent_form_away,
                                             team_recent_form_home,
                                             team_rest_days, team_streak,
                                             totals_tendency_p_adjustment)
@@ -750,6 +752,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # still be captured in the served stream, but it must never carry
             # stake: there is no valid market anchor or vig removal for it.
             incomplete_market = fair is None
+            # Over/Under rate uses the actual totals line as reference; computed
+            # here (inner loop) because key[2] varies per selection.
+            if key[0] == "totals" and key[2] is not None:
+                _over_rate_home = team_over_rate(
+                    eo.event.home, results, key[2],
+                    settings.risk.over_under_rate_n, adapter.normalize)
+                _over_rate_away = team_over_rate(
+                    eo.event.away, results, key[2],
+                    settings.risk.over_under_rate_n, adapter.normalize)
+            else:
+                _over_rate_home = _over_rate_away = None
             # Apply rest-days, recent-form and weather adjustments before
             # market shrink. Each term is 0 by default (no-op).
             _p_adj = max(0.01, min(0.99, p_model
@@ -782,7 +795,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                          + margin_p_adjustment(
                              key[0], key[1], eo.event.home, eo.event.away,
                              _margin_home, _margin_away,
-                             settings.risk.margin_coef)))
+                             settings.risk.margin_coef)
+                         + over_under_rate_p_adjustment(
+                             key[0], key[1], _over_rate_home, _over_rate_away,
+                             settings.risk.over_under_rate_coef)))
             p_used, p_decision = _decision_probability(
                 _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)

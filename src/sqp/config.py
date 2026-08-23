@@ -183,6 +183,12 @@ class RiskConfig:
     # margin = avg(scored - conceded) over last margin_n games. 0 = no-op.
     margin_coef: float = 0.0
     margin_n: int = 10
+    # Over/Under rate adjustment (totals only).
+    # combined = (over_rate_home + over_rate_away) / 2, centered at 0.5.
+    # adj = (combined - 0.5) * coef. Uses the actual totals line as reference.
+    # 0 = no-op (default off); activate only after OOS validation.
+    over_under_rate_coef: float = 0.0
+    over_under_rate_n: int = 10
 
 
 @dataclass
@@ -445,6 +451,8 @@ class Settings:
             home_away_form_n=int(r.get("home_away_form_n", 5)),
             margin_coef=float(r.get("margin_coef", 0.0)),
             margin_n=int(r.get("margin_n", 10)),
+            over_under_rate_coef=float(r.get("over_under_rate_coef", 0.0)),
+            over_under_rate_n=int(r.get("over_under_rate_n", 10)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
