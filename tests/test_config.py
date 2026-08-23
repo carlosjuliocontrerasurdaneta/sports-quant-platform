@@ -53,18 +53,15 @@ def test_risk_override_from_env_is_logged(monkeypatch, caplog):
     """Un parametro de RIESGO que viene del entorno y difiere del yaml debe
     quedar en el log.
 
-    Hallazgo de la auditoria 2026-08-17: `.env` fija KELLY_FRACTION=0.08 y
-    configs/default.yaml declara 0.25. La precedencia es correcta y deliberada
-    (env gana), pero el fichero VERSIONADO describe una produccion que no
-    existe, y `.env` no se versiona: si se pierde o se recrea, los stakes se
-    triplican en silencio. Que la divergencia sea visible al arrancar es la
-    diferencia entre una decision y un accidente."""
-    monkeypatch.setenv("KELLY_FRACTION", "0.08")
+    El mecanismo se verifica con un valor distinto del que declara el yaml
+    (0.08). El yaml fue alineado a 0.08 el 2026-08-23; el test usa 0.15
+    para crear la divergencia y probar la deteccion, que es lo que importa."""
+    monkeypatch.setenv("KELLY_FRACTION", "0.15")
     with caplog.at_level("WARNING"):
         s = Settings.load()
-    assert s.risk.kelly_fraction == 0.08
+    assert s.risk.kelly_fraction == 0.15
     assert "KELLY_FRACTION" in caplog.text
-    assert "0.25" in caplog.text and "0.08" in caplog.text
+    assert "0.08" in caplog.text and "0.15" in caplog.text
 
 
 def test_no_warning_when_env_matches_the_yaml(monkeypatch, caplog):

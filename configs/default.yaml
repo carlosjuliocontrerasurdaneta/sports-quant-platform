@@ -1,6 +1,6 @@
 # Global defaults. Per-sport parameters live in each adapter; per-league soccer configs in configs/leagues/.
 risk:
-  kelly_fraction: 0.25
+  kelly_fraction: 0.08  # .env production value (2026-08-23); yaml aligned to silence divergence warning
   min_edge: 0.02
   max_stake_pct: 0.02
   max_daily_exposure_pct: 0.10   # per-league cap, applied inside each run_league
