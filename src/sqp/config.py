@@ -149,6 +149,12 @@ class RiskConfig:
     # penalty = max(0, spread - threshold) * books_spread_penalty. 0 = no-op.
     books_spread_penalty: float = 0.0
     books_spread_threshold: float = 0.0
+    # Head-to-head historical adjustment (h2h market only).
+    # h2h_coef: pp added per unit of H2H advantage centered at 0.5 (e.g. 0.05
+    # means a team that won 100% of past matchups gets +5 pp vs a 50/50 record).
+    # h2h_n: number of past direct matchups to consider. 0 = no-op.
+    h2h_coef: float = 0.0
+    h2h_n: int = 10
 
 
 @dataclass
@@ -399,6 +405,8 @@ class Settings:
             recent_form_n=int(r.get("recent_form_n", 5)),
             books_spread_penalty=float(r.get("books_spread_penalty", 0.0)),
             books_spread_threshold=float(r.get("books_spread_threshold", 0.0)),
+            h2h_coef=float(r.get("h2h_coef", 0.0)),
+            h2h_n=int(r.get("h2h_n", 10)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]

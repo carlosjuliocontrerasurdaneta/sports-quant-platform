@@ -48,6 +48,10 @@ risk:
   # e.g. books_spread_threshold: 0.02, books_spread_penalty: 0.5
   books_spread_penalty: 0.0
   books_spread_threshold: 0.0
+  # Head-to-head historical adjustment (h2h market only). Centered at 0.5:
+  # a team with 70% H2H win rate gets +(0.70-0.50)*h2h_coef pp. 0 = no-op.
+  h2h_coef: 0.0
+  h2h_n: 10
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +

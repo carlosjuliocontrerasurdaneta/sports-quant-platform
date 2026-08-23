@@ -125,3 +125,67 @@ def rest_form_p_adjustment(
     if recent_form_coef != 0.0 and form_home is not None and form_away is not None:
         adj += sign * (form_home - form_away) * recent_form_coef
     return adj
+
+
+def team_h2h_form(
+    team_a: str,
+    team_b: str,
+    results: list[dict],
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Win rate of team_a vs team_b in their last n direct matchups.
+
+    win=1, draw=0.5, loss=0. Returns None when fewer than 2 matchups found.
+    Results must be in chronological order (ascending date).
+    """
+    norm = normalize or (lambda x: x)
+    a = norm(team_a)
+    b = norm(team_b)
+    matchups = [
+        r for r in results
+        if (norm(str(r.get("home", ""))) == a and norm(str(r.get("away", ""))) == b)
+        or (norm(str(r.get("home", ""))) == b and norm(str(r.get("away", ""))) == a)
+    ]
+    recent = matchups[-n:]
+    if len(recent) < 2:
+        return None
+    total = 0.0
+    for r in recent:
+        try:
+            hs = float(r["home_score"])
+            aws = float(r["away_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        home_is_a = norm(str(r.get("home", ""))) == a
+        if hs > aws:
+            total += 1.0 if home_is_a else 0.0
+        elif aws > hs:
+            total += 0.0 if home_is_a else 1.0
+        else:
+            total += 0.5
+    return total / len(recent)
+
+
+def h2h_p_adjustment(
+    market: str,
+    selection: str,
+    home: str,
+    away: str,
+    h2h_home: float | None,
+    h2h_coef: float,
+) -> float:
+    """Additive h2h adjustment to p_model for h2h markets only.
+
+    h2h_home is the home team's win rate in past direct matchups vs the away
+    team (from team_h2h_form). Centered at 0.5 (equal record):
+      adj = sign * (h2h_home - 0.5) * h2h_coef
+    Returns 0 for spreads, totals, draws, or when h2h_home is None / coef is 0.
+    """
+    if h2h_home is None or h2h_coef == 0.0 or market != "h2h":
+        return 0.0
+    if selection == home:
+        return (h2h_home - 0.5) * h2h_coef
+    if selection == away:
+        return -(h2h_home - 0.5) * h2h_coef
+    return 0.0
