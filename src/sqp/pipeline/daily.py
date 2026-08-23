@@ -680,6 +680,18 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         # (auditoria 2026-08-05, F-10).
         model_map = build_model_map(est, eo.event, spread, total)
 
+        from sqp.features.rest_form import (rest_form_p_adjustment,
+                                            team_recent_form, team_rest_days)
+        _ref_date = eo.event.start_time[:10]
+        _rest_home = team_rest_days(
+            eo.event.home, results, _ref_date, adapter.normalize)
+        _rest_away = team_rest_days(
+            eo.event.away, results, _ref_date, adapter.normalize)
+        _form_home = team_recent_form(
+            eo.event.home, results, settings.risk.recent_form_n, adapter.normalize)
+        _form_away = team_recent_form(
+            eo.event.away, results, settings.risk.recent_form_n, adapter.normalize)
+
         for key, p_model in model_map.items():
             price = cons.get(key)
             if price is None or p_model is None or warn:
@@ -694,8 +706,14 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # still be captured in the served stream, but it must never carry
             # stake: there is no valid market anchor or vig removal for it.
             incomplete_market = fair is None
+            # Apply rest-days and recent-form adjustment before market shrink.
+            # No-op when both coefficients are 0 (default).
+            _p_rf = max(0.01, min(0.99, p_model + rest_form_p_adjustment(
+                p_model, key[0], key[1], eo.event.home, eo.event.away,
+                _rest_home, _rest_away, _form_home, _form_away,
+                settings.risk.rest_days_coef, settings.risk.recent_form_coef)))
             p_used, p_decision = _decision_probability(
-                p_model, fair, settings.risk.market_shrink, league, key[0], settings)
+                _p_rf, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)
             # Deflate the EV by the model-vs-market disagreement (and thin markets)
             # and stake on the resulting effective probability, so an overconfident

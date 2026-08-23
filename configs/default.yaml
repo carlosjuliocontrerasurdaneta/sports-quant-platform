@@ -38,6 +38,11 @@ risk:
   # them faster than line_velocity_flat_pp_per_h pp/h. 0 = no-op.
   line_velocity_penalty: 0.0
   line_velocity_flat_pp_per_h: 0.5
+  # Rest days and recent form adjustments. Additive correction to p_model
+  # before the market shrink and edge calculation. 0 = no-op (default).
+  rest_days_coef: 0.0
+  recent_form_coef: 0.0
+  recent_form_n: 5
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +

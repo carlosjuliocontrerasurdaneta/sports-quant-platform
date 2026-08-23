@@ -136,6 +136,14 @@ class RiskConfig:
     # against them faster than line_velocity_flat_pp_per_h pp/h. 0 = no-op.
     line_velocity_penalty: float = 0.0
     line_velocity_flat_pp_per_h: float = 0.5
+    # Rest days and recent form probability adjustments.
+    # rest_days_coef: pp added per extra rest day of home advantage (e.g. 0.002).
+    # recent_form_coef: pp added per unit of form differential in [-1,1] (e.g. 0.05).
+    # recent_form_n: number of past games for the form window.
+    # All default to 0 (no-op); activate only after OOS validation.
+    rest_days_coef: float = 0.0
+    recent_form_coef: float = 0.0
+    recent_form_n: int = 5
 
 
 @dataclass
