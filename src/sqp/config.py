@@ -132,6 +132,10 @@ class RiskConfig:
     # abs(movement_pp) * line_movement_penalty. 0 = no-op (default off).
     line_movement_penalty: float = 0.0
     line_movement_flat_pp: float = 0.5
+    # Adverse velocity penalty: penalizes picks where the consensus moved
+    # against them faster than line_velocity_flat_pp_per_h pp/h. 0 = no-op.
+    line_velocity_penalty: float = 0.0
+    line_velocity_flat_pp_per_h: float = 0.5
 
 
 @dataclass

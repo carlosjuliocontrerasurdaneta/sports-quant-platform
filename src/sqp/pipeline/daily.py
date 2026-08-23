@@ -650,7 +650,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # Load all captured odds for this league once; used per-selection below to
     # compute pregame line movement (adverse movement deflates adjusted_edge).
     # Empty when no snapshots exist yet (demo mode, new league).
-    from sqp.markets.line_movement import event_line_movement_pp, load_league_odds
+    from sqp.markets.line_movement import event_line_movement, load_league_odds
     _league_odds = load_league_odds(league, ROOT / "data" / "odds")
     for eo in events:
         spread, total = _pick_main_lines(eo)
@@ -701,7 +701,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # and stake on the resulting effective probability, so an overconfident
             # edge produces a smaller stake (and often falls below min_edge). No-op
             # when the penalty coefficients are 0. estimated_edge stays the RAW e.
-            _mov_pp = event_line_movement_pp(
+            _lm = event_line_movement(
                 _league_odds, eo.event.event_id, key[0], key[1], key[2])
             adj = adjusted_edge(p_decision, price, fair, cons_n.get(key),
                                 uncertainty_penalty=settings.risk.uncertainty_penalty,
@@ -709,9 +709,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                                 anomaly_extra_penalty=settings.risk.anomaly_extra_penalty,
                                 low_book_penalty=settings.risk.low_book_penalty,
                                 min_books_for_consensus=settings.risk.min_books_for_consensus,
-                                line_movement_pp=_mov_pp,
+                                line_movement_pp=_lm.movement_pp if _lm else None,
                                 line_movement_penalty=settings.risk.line_movement_penalty,
-                                line_movement_flat_pp=settings.risk.line_movement_flat_pp)
+                                line_movement_flat_pp=settings.risk.line_movement_flat_pp,
+                                line_velocity_pp_per_h=_lm.velocity_pp_per_h if _lm else None,
+                                line_velocity_penalty=settings.risk.line_velocity_penalty,
+                                line_velocity_flat_pp_per_h=settings.risk.line_velocity_flat_pp_per_h)
             stake, pct = kelly_fraction_stake(adj.effective_probability, price,
                                               settings.bankroll,
                                               settings.risk.kelly_fraction,
