@@ -155,6 +155,12 @@ class RiskConfig:
     # h2h_n: number of past direct matchups to consider. 0 = no-op.
     h2h_coef: float = 0.0
     h2h_n: int = 10
+    # Totals scoring-tendency adjustment: compares the combined average total
+    # (home_score + away_score per game) of both teams vs the totals line.
+    # adj = (combined_avg - point) * coef; Over gets +adj, Under -adj.
+    # totals_tendency_n: games window. 0 = no-op (default off).
+    totals_tendency_coef: float = 0.0
+    totals_tendency_n: int = 10
 
 
 @dataclass
@@ -407,6 +413,8 @@ class Settings:
             books_spread_threshold=float(r.get("books_spread_threshold", 0.0)),
             h2h_coef=float(r.get("h2h_coef", 0.0)),
             h2h_n=int(r.get("h2h_n", 10)),
+            totals_tendency_coef=float(r.get("totals_tendency_coef", 0.0)),
+            totals_tendency_n=int(r.get("totals_tendency_n", 10)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]

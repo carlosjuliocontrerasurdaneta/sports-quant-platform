@@ -52,6 +52,12 @@ risk:
   # a team with 70% H2H win rate gets +(0.70-0.50)*h2h_coef pp. 0 = no-op.
   h2h_coef: 0.0
   h2h_n: 10
+  # Totals scoring-tendency adjustment: compares the avg combined score of both
+  # teams over their last totals_tendency_n games vs the totals line.
+  # adj = (combined_avg - point) * coef; Over gets +adj, Under -adj. 0 = no-op.
+  # e.g. both teams avg 5.5 runs, line is 8.0 → combined 5.5 vs 8 → favor Under.
+  totals_tendency_coef: 0.0
+  totals_tendency_n: 10
 # Bankroll. current balance = initial + realized PnL (real settled bets) + manual
 # adjustments (data/bets/bankroll_adjustments.csv). dynamic ENABLED 2026-06-21
 # Current audit: 915.75 = 1000 - 84.25 over 431 graded bets. When dynamic, the live run sizes Kelly +

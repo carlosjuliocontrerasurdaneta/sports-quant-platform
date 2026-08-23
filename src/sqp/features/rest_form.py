@@ -167,6 +167,65 @@ def team_h2h_form(
     return total / len(recent)
 
 
+def team_avg_total(
+    team: str,
+    results: list[dict],
+    n: int = 10,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Average total score (home_score + away_score) per game in the team's last n games.
+
+    Captures scoring environment tendency: high-scoring teams inflate totals,
+    low-scoring ones deflate them. Returns None when fewer than 2 games available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    team_games = [
+        r for r in results
+        if norm(str(r.get("home", ""))) == team_n
+        or norm(str(r.get("away", ""))) == team_n
+    ]
+    recent = team_games[-n:]
+    if len(recent) < 2:
+        return None
+    totals_list = []
+    for r in recent:
+        try:
+            totals_list.append(float(r["home_score"]) + float(r["away_score"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sum(totals_list) / len(totals_list) if totals_list else None
+
+
+def totals_tendency_p_adjustment(
+    market: str,
+    selection: str,
+    avg_total_home: float | None,
+    avg_total_away: float | None,
+    point: float | None,
+    totals_tendency_coef: float,
+) -> float:
+    """Additive adjustment to p_model for totals markets based on team scoring tendency.
+
+    combined_avg = mean of both teams' avg total per game.
+    adj = (combined_avg - point) * coef.
+    Over gets +adj (teams tend to score more than the line → favor Over).
+    Under gets -adj. Returns 0 for h2h/spreads, or when any input is missing.
+    coef defaults to 0 (no-op); activate only with OOS evidence.
+    """
+    if totals_tendency_coef == 0.0 or market != "totals":
+        return 0.0
+    if avg_total_home is None or avg_total_away is None or point is None:
+        return 0.0
+    combined_avg = (avg_total_home + avg_total_away) / 2.0
+    adj = (combined_avg - point) * totals_tendency_coef
+    if selection == "Over":
+        return adj
+    if selection == "Under":
+        return -adj
+    return 0.0
+
+
 def h2h_p_adjustment(
     market: str,
     selection: str,
