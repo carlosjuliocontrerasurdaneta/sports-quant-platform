@@ -684,11 +684,15 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         # (auditoria 2026-08-05, F-10).
         model_map = build_model_map(est, eo.event, spread, total)
 
-        from sqp.features.rest_form import (h2h_p_adjustment, off_def_p_adjustment,
+        from sqp.features.rest_form import (h2h_p_adjustment,
+                                            home_away_form_p_adjustment,
+                                            off_def_p_adjustment,
                                             rest_form_p_adjustment,
                                             streak_p_adjustment, team_avg_conceded,
                                             team_avg_scored, team_avg_total,
                                             team_h2h_form, team_recent_form,
+                                            team_recent_form_away,
+                                            team_recent_form_home,
                                             team_rest_days, team_streak,
                                             totals_tendency_p_adjustment)
         from sqp.features.weather import get_event_weather
@@ -718,6 +722,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             eo.event.away, results, settings.risk.off_def_n, adapter.normalize)
         _avg_conceded_away = team_avg_conceded(
             eo.event.away, results, settings.risk.off_def_n, adapter.normalize)
+        _form_home_at_home = team_recent_form_home(
+            eo.event.home, results, settings.risk.home_away_form_n, adapter.normalize)
+        _form_away_at_away = team_recent_form_away(
+            eo.event.away, results, settings.risk.home_away_form_n, adapter.normalize)
         _vc = _venues.get(adapter.normalize(eo.event.home))
         _event_weather = (get_event_weather(_vc[0], _vc[1],
                                             eo.event.start_time, settings.weather)
@@ -761,7 +769,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                              _avg_scored_home, _avg_conceded_home,
                              _avg_scored_away, _avg_conceded_away,
                              key[2], settings.risk.off_def_h2h_coef,
-                             settings.risk.off_def_totals_coef)))
+                             settings.risk.off_def_totals_coef)
+                         + home_away_form_p_adjustment(
+                             key[0], key[1], eo.event.home, eo.event.away,
+                             _form_home_at_home, _form_away_at_away,
+                             settings.risk.home_away_form_coef)))
             p_used, p_decision = _decision_probability(
                 _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)

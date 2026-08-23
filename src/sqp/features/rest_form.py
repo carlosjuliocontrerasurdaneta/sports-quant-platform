@@ -167,6 +167,85 @@ def team_h2h_form(
     return total / len(recent)
 
 
+def team_recent_form_home(
+    team: str,
+    results: list[dict],
+    n: int = 5,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Win rate (win=1, draw=0.5, loss=0) in the team's last n HOME games only.
+
+    Returns None when fewer than 2 home games are available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    home_games = [r for r in results if norm(str(r.get("home", ""))) == team_n]
+    recent = home_games[-n:]
+    if len(recent) < 2:
+        return None
+    total = 0.0
+    for r in recent:
+        try:
+            hs, aws = float(r["home_score"]), float(r["away_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        total += 1.0 if hs > aws else (0.5 if hs == aws else 0.0)
+    return total / len(recent)
+
+
+def team_recent_form_away(
+    team: str,
+    results: list[dict],
+    n: int = 5,
+    normalize: Callable[[str], str] | None = None,
+) -> float | None:
+    """Win rate (win=1, draw=0.5, loss=0) in the team's last n AWAY games only.
+
+    Returns None when fewer than 2 away games are available.
+    """
+    norm = normalize or (lambda x: x)
+    team_n = norm(team)
+    away_games = [r for r in results if norm(str(r.get("away", ""))) == team_n]
+    recent = away_games[-n:]
+    if len(recent) < 2:
+        return None
+    total = 0.0
+    for r in recent:
+        try:
+            hs, aws = float(r["home_score"]), float(r["away_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        total += 1.0 if aws > hs else (0.5 if hs == aws else 0.0)
+    return total / len(recent)
+
+
+def home_away_form_p_adjustment(
+    market: str,
+    selection: str,
+    home: str,
+    away: str,
+    form_home_at_home: float | None,
+    form_away_at_away: float | None,
+    home_away_form_coef: float,
+) -> float:
+    """Additive adjustment based on role-specific recent form.
+
+    adj = sign * (form_home_at_home - form_away_at_away) * coef.
+    Home selection gets sign=+1, away gets -1. Totals and draws return 0.
+    Returns 0 when either form value is None or coef is 0.
+    """
+    if home_away_form_coef == 0.0 or market == "totals":
+        return 0.0
+    if form_home_at_home is None or form_away_at_away is None:
+        return 0.0
+    diff = form_home_at_home - form_away_at_away
+    if selection == home:
+        return diff * home_away_form_coef
+    if selection == away:
+        return -diff * home_away_form_coef
+    return 0.0
+
+
 def team_avg_scored(
     team: str,
     results: list[dict],

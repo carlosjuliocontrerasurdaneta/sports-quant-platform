@@ -173,6 +173,11 @@ class RiskConfig:
     off_def_h2h_coef: float = 0.0
     off_def_totals_coef: float = 0.0
     off_def_n: int = 10
+    # Home/away role-specific form split. Compares the home team's win rate
+    # in recent HOME games vs the away team's win rate in recent AWAY games.
+    # adj = sign * (form_home_at_home - form_away_at_away) * coef. 0 = no-op.
+    home_away_form_coef: float = 0.0
+    home_away_form_n: int = 5
 
 
 @dataclass
@@ -431,6 +436,8 @@ class Settings:
             off_def_h2h_coef=float(r.get("off_def_h2h_coef", 0.0)),
             off_def_totals_coef=float(r.get("off_def_totals_coef", 0.0)),
             off_def_n=int(r.get("off_def_n", 10)),
+            home_away_form_coef=float(r.get("home_away_form_coef", 0.0)),
+            home_away_form_n=int(r.get("home_away_form_n", 5)),
         )
         _warn_risk_divergence(r)
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
