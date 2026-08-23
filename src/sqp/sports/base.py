@@ -27,6 +27,7 @@ class SportAdapter(ABC):
             k=params.get("elo_k", 20.0),
             home_advantage=params.get("elo_home_adv", 60.0),
             mov_scaling=params.get("elo_mov", False),
+            use_home_away_split=bool(params.get("elo_home_away_split", False)),
             normalize=self.normalize,
         )
 

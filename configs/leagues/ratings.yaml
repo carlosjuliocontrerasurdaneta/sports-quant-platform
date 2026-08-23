@@ -1,4 +1,8 @@
 # Per-league rating overrides estimated by scripts/tune_ratings.py
+# elo_home_away_split: true  -- maintains separate home/away Elo ratings per
+#   team instead of a single rating + fixed home_advantage offset. The split
+#   captures teams that over/underperform dramatically at home vs away. Activate
+#   per-league only after OOS validation (default: false = unified Elo).
 # (walk-forward grid search on data/historical/, accepted only when they
 # beat the family default OUT-OF-SAMPLE under a rolling-origin holdout).
 # Re-validate on new games and re-tune after season changes.
