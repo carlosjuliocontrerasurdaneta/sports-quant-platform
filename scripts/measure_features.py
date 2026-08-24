@@ -8,6 +8,11 @@ using only results strictly before it.
 H2H features correlate with home-win outcome (1=home win, 0.5=draw, 0=away win).
 Totals features correlate with whether the game went Over a reference total.
 
+The totals over-rate reference line defaults to the median total of the warmup
+games (a fixed, pregame-available constant). Using each game's own actual total
+as the reference is endogenous and only available via --per-game-ref for
+diagnostics; its totals correlations are spurious, not predictive signal.
+
 Usage:
     python scripts/measure_features.py --leagues mlb mls
     python scripts/measure_features.py --leagues mlb --warmup 50 --totals-ref 8.5
@@ -101,13 +106,13 @@ def _incomplete_beta(x: float, a: float, b: float, iters: int = 200) -> float:
 
 
 def _measure_league(league: str, warmup: int, totals_ref: float | None,
-                    n_form: int = 5, n_long: int = 10) -> None:
+                    n_form: int = 5, n_long: int = 10,
+                    per_game_ref: bool = False) -> None:
     results = ResultsStore(ROOT).load(league)
     if len(results) < warmup + 10:
         print(f"  [{league}] insufficient data ({len(results)} games, need {warmup + 10})")
         return
 
-    meta_path = ROOT / "configs" / "leagues"
     try:
         from sqp.pipeline.daily import _league_meta
         meta = _league_meta(league)
@@ -133,17 +138,30 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
     }
     outcomes_h2h: list[float] = []
     totals_seen: list[float] = []
-    ref_line = totals_ref or 0.0  # updated per game when totals_ref is None
 
-    # Prime the index with warmup games
+    # Prime the index with warmup games and collect their totals so we can derive
+    # a FIXED, pregame-available reference line (median of past totals). Using the
+    # game's own actual total as the reference (per_game_ref) is endogenous: a high
+    # actual total mechanically lowers the measured historical over-rate, producing
+    # a spurious negative correlation with the target. That mode is diagnostic only.
+    warmup_totals: list[float] = []
     for r in results[:warmup]:
         try:
             hn = normalize(str(r.get("home", "")))
             an = normalize(str(r.get("away", "")))
             team_hist[hn].append(r)
             team_hist[an].append(r)
-        except Exception:
+            warmup_totals.append(float(r["home_score"]) + float(r["away_score"]))
+        except (KeyError, TypeError, ValueError):
             pass
+
+    if totals_ref is not None:
+        ref_line = totals_ref
+    elif warmup_totals:
+        srt = sorted(warmup_totals)
+        ref_line = srt[len(srt) // 2]  # median of warmup totals (past-only, fixed)
+    else:
+        ref_line = 0.0
 
     for r in results[warmup:]:
         try:
@@ -193,10 +211,9 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
         cc_a = team_avg_conceded(away, prior_a, n_long, normalize)
         avg_tot_h = team_avg_total(home, prior_h, n_long, normalize)
         avg_tot_a = team_avg_total(away, prior_a, n_long, normalize)
-        if totals_ref is None:
-            ref_line = actual_total
-        over_h = team_over_rate(home, prior_h, ref_line, n_long, normalize)
-        over_a = team_over_rate(away, prior_a, ref_line, n_long, normalize)
+        game_ref = actual_total if per_game_ref else ref_line
+        over_h = team_over_rate(home, prior_h, game_ref, n_long, normalize)
+        over_a = team_over_rate(away, prior_a, game_ref, n_long, normalize)
 
         # H2H signals
         signals["streak_diff"].append(float(streak_h - streak_a))
@@ -229,8 +246,9 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
     print(f"  {league.upper()}  |  {len(results)} total games  |  {len(outcomes_h2h)} test games")
     if totals_seen:
         avg_t = sum(totals_seen) / len(totals_seen)
-        print(f"  Avg total in test: {avg_t:.2f}  |  Over ref line ({ref_line:.1f}): "
-              f"{sum(1 for t in totals_seen if t > ref_line)}/{len(totals_seen)}")
+        ref_mode = "per-game (ENDOGENOUS)" if per_game_ref else "fixed"
+        print(f"  Avg total in test: {avg_t:.2f}  |  Over ref line ({ref_line:.1f}, "
+              f"{ref_mode}): {sum(1 for t in totals_seen if t > ref_line)}/{len(totals_seen)}")
     print(f"{'='*60}")
 
     h2h_features = ["streak_diff", "form_diff", "h2h_home", "rest_diff",
@@ -280,8 +298,13 @@ def main() -> int:
                     help="Games used to build initial ratings before measuring (default 50)")
     ap.add_argument("--totals-ref", type=float, default=None,
                     help="Fixed totals reference line for over-rate calculation. "
-                         "Default: use each game's actual total as its own reference "
-                         "(measures whether teams tend to play in high/low scoring games).")
+                         "Default: median total of the warmup games (past-only, fixed "
+                         "and pregame-available). This avoids endogeneity.")
+    ap.add_argument("--per-game-ref", action="store_true",
+                    help="DIAGNOSTIC ONLY: use each game's actual total as its own "
+                         "over-rate reference. This is ENDOGENOUS (the reference is the "
+                         "target) and yields spurious correlations; do not treat its "
+                         "totals numbers as predictive signal.")
     ap.add_argument("--n-form", type=int, default=5,
                     help="Window for form/streak features (default 5)")
     ap.add_argument("--n-long", type=int, default=10,
@@ -292,8 +315,17 @@ def main() -> int:
     print("Correlation with outcome. * p<0.10  ** p<0.05  *** p<0.01")
     print("suggested coef is conservative (r * 0.05); validate OOS before using.\n")
 
+    if args.per_game_ref and args.totals_ref is not None:
+        print("error: --per-game-ref and --totals-ref are mutually exclusive",
+              file=sys.stderr)
+        return 2
+    if args.per_game_ref:
+        print("WARNING: --per-game-ref is ENDOGENOUS; totals correlations are not "
+              "predictive signal.\n")
+
     for league in args.leagues:
-        _measure_league(league, args.warmup, args.totals_ref, args.n_form, args.n_long)
+        _measure_league(league, args.warmup, args.totals_ref, args.n_form,
+                        args.n_long, per_game_ref=args.per_game_ref)
     return 0
 
 
