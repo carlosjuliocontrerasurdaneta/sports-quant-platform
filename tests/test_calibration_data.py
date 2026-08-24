@@ -9,6 +9,33 @@ def _write_settled(bets_dir, name, rows):
     pd.DataFrame(rows).to_csv(bets_dir / f"settled_{name}.csv", index=False)
 
 
+def test_adjusted_probability_is_the_training_target_when_present(tmp_path):
+    # The calibrator is applied to _p_adj at serve; training must mirror it, so
+    # adjusted_probability (the served pre-blend belief) is the training target
+    # when present -- not the raw model_probability nor the blended estimate.
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "model_probability": 0.62, "adjusted_probability": 0.70,
+         "estimated_probability": 0.58, "result": "win",
+         "event_id": "e1", "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert "adjusted_probability" in TRAINING_COLS
+    assert out.loc[0, "adjusted_probability"] == pytest.approx(0.70)
+    assert out.loc[0, "model_probability"] == pytest.approx(0.62)  # raw kept for the gate
+
+
+def test_adjusted_probability_falls_back_to_model_probability(tmp_path):
+    # Old-schema rows (before adjusted_probability existed) train on the raw
+    # model_probability, where _p_adj == model anyway (Σadj was tiny).
+    _write_settled(tmp_path, "mlb", [
+        {"market": "h2h", "model_probability": 0.62, "estimated_probability": 0.58,
+         "result": "win", "event_id": "e1", "game_date": "2026-06-20",
+         "generated_at": "2026-06-20T12:00:00Z"},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert out.loc[0, "adjusted_probability"] == pytest.approx(0.62)
+
+
 def test_projects_to_training_schema(tmp_path):
     _write_settled(tmp_path, "mlb", [
         {"market": "h2h", "model_probability": 0.62, "estimated_probability": 0.58, "result": "win",

@@ -28,7 +28,7 @@ from sqp.audit.report import load_all_settled
 from sqp.config import ROOT
 
 TRAINING_COLS = ["league", "market", "event_id", "date",
-                 "model_probability", "result"]
+                 "model_probability", "adjusted_probability", "result"]
 _KEY_COL = "_dedup_key"
 
 
@@ -43,13 +43,19 @@ def _iso_day(s: pd.Series) -> pd.Series:
 def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFrame:
     """Project graded rows (settled bets or served stream) onto TRAINING_COLS.
 
-    The training target is the PURE model probability (pre market-blend), not
-    the blended ``estimated_probability``: calibrating the blend forces the
-    calibrator to correct the model through a channel diluted 50% by the
-    already-well-calibrated no-vig market. On settled data the reblended
-    ``(1-s)*cal(p_model) + s*fair`` dominated ``cal(p_used)`` on BOTH OOS ECE
-    and Brier at every temporal cut (docs/research/2026-07-02). Serving mirrors
-    this: ``daily._decision_probability`` calibrates p_model before the shrink.
+    The training target is the served PRE-BLEND belief ``adjusted_probability``
+    (= ``_p_adj`` = model prob + feature adjustments), NOT the blended
+    ``estimated_probability``: calibrating the blend forces the calibrator to
+    correct the model through a channel diluted 50% by the already-well-calibrated
+    no-vig market. On settled data the reblended ``(1-s)*cal(.)+s*fair`` dominated
+    ``cal(p_used)`` on BOTH OOS ECE and Brier at every temporal cut
+    (docs/research/2026-07-02). Serving mirrors this exactly:
+    ``daily._decision_probability`` calibrates ``_p_adj`` before the shrink, so the
+    calibrator is fit on and applied to the same quantity (train==serve; the earlier
+    ``model_probability`` target skewed by the feature-adjustment layer added
+    2026-08-23, docs/research/2026-08-24-preregistro-calibracion-train-serve.md).
+    Old-schema rows lacking ``adjusted_probability`` fall back to
+    ``model_probability``.
 
     ``date`` is the real game date (``game_date``, falling back to
     ``generated_at``) truncated to YYYY-MM-DD, so the temporal split in
@@ -86,6 +92,16 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
             frame["model_probability"], errors="coerce")
     else:
         out["model_probability"] = pd.Series(float("nan"), index=frame.index)
+    # Training target = the served pre-blend belief `_p_adj` (adjusted_probability),
+    # the SAME quantity `daily._decision_probability` calibrates at serve. Old-schema
+    # rows lack the column and fall back to model_probability, where _p_adj == model
+    # anyway (the feature-adjustment layer post-dates them). model_probability is
+    # kept raw for the prediction gate (2026-08-17), which must see the pure model.
+    if "adjusted_probability" in frame:
+        adj = pd.to_numeric(frame["adjusted_probability"], errors="coerce")
+        out["adjusted_probability"] = adj.where(adj.notna(), out["model_probability"])
+    else:
+        out["adjusted_probability"] = out["model_probability"]
     out["result"] = frame["result"].astype(str) if "result" in frame else ""
     if with_key:
         empty = pd.Series("", index=frame.index)
@@ -103,7 +119,7 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
         # against each other -- only complete keys participate in the dedup.
         incomplete = (eid.str.len() == 0) | (gen.str[:10].str.len() < 10)
         out[_KEY_COL] = key.where(~incomplete, other=pd.NA)
-    out = out.dropna(subset=["model_probability", "date"]).reset_index(drop=True)
+    out = out.dropna(subset=["adjusted_probability", "date"]).reset_index(drop=True)
     return out
 
 
@@ -180,5 +196,8 @@ def stage_calibrators_from_settled(settings) -> list[dict]:
     hist = load_calibration_training_history()
     if hist.empty:
         return []
-    # staging=True by default; serve-anchored sources calibrate the PURE model prob.
-    return train_market_calibrators(hist, prob_col="model_probability")
+    # staging=True by default; serve-anchored sources calibrate the served
+    # pre-blend belief `_p_adj` (adjusted_probability), the same quantity serve
+    # calibrates -- see `_project_training`. Falls back to model_probability for
+    # old-schema rows via the projection.
+    return train_market_calibrators(hist, prob_col="adjusted_probability")

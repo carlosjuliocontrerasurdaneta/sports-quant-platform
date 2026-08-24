@@ -840,6 +840,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 "market": key[0], "selection": key[1], "line": key[2],
                 "price_decimal": price, "bookmaker": "consensus_median",
                 "model_probability": round(p_model, 4),
+                "adjusted_probability": round(_p_adj, 4),
                 "estimated_probability": round(p_used, 4),
                 "calibrated_probability": round(p_decision, 4),
                 "implied_probability_novig": round(fair, 4) if fair is not None else float("nan"),

@@ -30,7 +30,8 @@ log = get_logger("sqp.served_store")
 
 COLUMNS = ["league", "event_id", "home", "away", "start_time", "game_date",
            "market", "selection", "line", "price_decimal", "bookmaker",
-           "model_probability", "estimated_probability", "calibrated_probability",
+           "model_probability", "adjusted_probability",
+           "estimated_probability", "calibrated_probability",
            "implied_probability_novig", "estimated_edge", "books_count",
            "stake", "data_label", "flags", "generated_at"]
 
