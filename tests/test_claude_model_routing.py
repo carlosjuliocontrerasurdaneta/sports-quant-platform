@@ -42,7 +42,11 @@ def test_main_model_matches_the_authorized_policy():
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
-    assert settings["model"] == "sonnet"
+    # Main conversation model: claude-fable-5 by explicit human decision 2026-08-24
+    # (supersedes sonnet 2026-08-18). Separate from the ROUTE default below, which
+    # stays sonnet -- normal work is routed to sonnet ("Prefer Sonnet for normal
+    # work"); only the interactive settings.json model changed.
+    assert settings["model"] == "claude-fable-5"
     assert CONFIG["default"]["model"] == "sonnet"
 
     # RUTAS: sonnet es la norma; opus y haiku son las excepciones declaradas.
@@ -70,7 +74,7 @@ def test_main_model_matches_the_authorized_policy():
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
         encoding="utf-8"
     )
-    assert "**Conversación principal:** `sonnet`" in policy
+    assert "**Conversación principal:** `claude-fable-5`" in policy
 
 
 def test_every_route_references_an_existing_loop_and_agents():
