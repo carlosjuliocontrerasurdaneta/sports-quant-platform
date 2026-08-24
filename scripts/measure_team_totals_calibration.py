@@ -65,7 +65,8 @@ def _ece(ps: list[float], ys: list[float], bins: int = 10) -> float:
     return tot
 
 
-def _measure(league: str, warmup: int) -> int:
+def _measure(league: str, warmup: int, home_bonus: float | None = None,
+             zero_sum: bool = False) -> int:
     results = ResultsStore(ROOT).load(league)
     from sqp.pipeline.daily import _league_meta
     meta = _league_meta(league)
@@ -76,6 +77,18 @@ def _measure(league: str, warmup: int) -> int:
         return 2
     max_score = adapter.params.get("max_score", 15)
     disp_k = adapter.params.get("dispersion_k")
+
+    # Candidate model tweaks (reversible, offline only; the registry is untouched).
+    # Home-only bonus override recomputes lambdas inside the adapter. Zero-sum keeps
+    # the configured bonus b but shifts b/2 from home to away, conserving the gap
+    # while lowering the total -- so it can be compared head to head.
+    base_bonus = float(adapter.params.get("home_scoring_bonus", 0.0))
+    if home_bonus is not None:
+        adapter.params["home_scoring_bonus"] = home_bonus
+    zs_shift = base_bonus / 2.0 if zero_sum else 0.0
+    tag = ("baseline" if home_bonus is None and not zero_sum
+           else f"zero_sum(b={base_bonus})" if zero_sum
+           else f"home_bonus={home_bonus}")
 
     # engine probs/outcomes and walk-forward base-rate, per (side, line)
     ep: dict[tuple, list[float]] = {}
@@ -96,6 +109,8 @@ def _measure(league: str, warmup: int) -> int:
                        home_pitcher=r.get("home_starter"),
                        away_pitcher=r.get("away_starter"))
             lam_h, lam_a = adapter._rates(ev)
+            if zs_shift:
+                lam_h, lam_a = max(0.1, lam_h - zs_shift), max(0.1, lam_a - zs_shift)
             for side, lam, runs in (("home", lam_h, hs), ("away", lam_a, aws)):
                 for L in LINES:
                     key = (side, L)
@@ -113,7 +128,7 @@ def _measure(league: str, warmup: int) -> int:
     # Report
     print(f"\n{'='*72}")
     print(f"  {league.upper()} team_totals marginal calibration (walk-forward)")
-    print(f"  max_score={max_score}  dispersion_k={disp_k}  warmup={warmup}")
+    print(f"  max_score={max_score}  dispersion_k={disp_k}  warmup={warmup}  [{tag}]")
     print(f"{'='*72}")
     print(f"{'side/line':<12} {'n':>6} {'estOver':>8} {'obsOver':>8} "
           f"{'bias':>7} {'Brier':>7} {'BrierBase':>9} {'skill':>6}")
@@ -171,8 +186,17 @@ def main() -> int:
     ap.add_argument("--league", default="mlb", help="League id (default mlb)")
     ap.add_argument("--warmup", type=int, default=200,
                     help="Games to fit before measuring (default 200)")
+    ap.add_argument("--home-bonus", type=float, default=None,
+                    help="OFFLINE candidate: override home-only home_scoring_bonus.")
+    ap.add_argument("--zero-sum", action="store_true",
+                    help="OFFLINE candidate: shift the configured bonus b/2 from "
+                         "home to away (conserves the gap, lowers the total).")
     args = ap.parse_args()
-    return _measure(args.league, args.warmup)
+    if args.zero_sum and args.home_bonus is not None:
+        print("error: --zero-sum and --home-bonus are mutually exclusive",
+              file=sys.stderr)
+        return 2
+    return _measure(args.league, args.warmup, args.home_bonus, args.zero_sum)
 
 
 if __name__ == "__main__":
