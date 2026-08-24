@@ -183,6 +183,45 @@ class BaseballAdapter(PoissonAdapter):
                       event.away_pitcher, f_vs_home_starter, event.home_pitcher, pf)
         return max(0.1, lam_h * f_vs_away_starter * pf), max(0.1, lam_a * f_vs_home_starter * pf)
 
+    def f5_rates(self, event) -> tuple[float, float]:
+        """Per-team run rates for the FIRST 5 INNINGS.
+
+        F5 is starter-dominated (the starter throws ~all of innings 1-5, the
+        bullpen governs 6-9). A pure proration `phi * lam_full` is a deterministic
+        rescale of the full-game view and adds NO edge over it, so the starter
+        factor is applied with a tunable emphasis: `amp = 1 + emphasis*(f-1)`.
+        `f5_starter_emphasis = 1.0` recovers pure proration (edge-neutral); values
+        > 1 encode the hypothesis that the starter matters more in F5 than the
+        full-game model, where the bullpen dilutes him. Both params are read with
+        defaults so the production config is untouched until an OOS check on
+        backfilled inning-level data justifies tuning them.
+        """
+        base_h, base_a = super()._rates(event)  # offense baseline, no starter/park
+        phi = self.params.get("f5_innings_fraction", 5.0 / 9.0)
+        emph = self.params.get("f5_starter_emphasis", 1.0)
+        pf = self.park.factor(event.home)
+        amp_away = 1.0 + emph * (self.starters.factor(event.away_pitcher) - 1.0)
+        amp_home = 1.0 + emph * (self.starters.factor(event.home_pitcher) - 1.0)
+        lam_h5 = base_h * phi * amp_away * pf
+        lam_a5 = base_a * phi * amp_home * pf
+        return max(0.05, lam_h5), max(0.05, lam_a5)
+
+    def estimate_f5(self, event, total_line: float | None = None,
+                    spread_line: float | None = None) -> dict[str, float]:
+        """F5 market probabilities from the starter-isolated run distribution.
+
+        Three-way moneyline (a tie after 5 is a real outcome, unlike the full game
+        which resolves in extras), plus F5 total O/U and F5 team spread. Reuses the
+        same Poisson/NegBin grid as the full game; `dispersion_k` is inherited as a
+        first cut and flagged for re-estimation on F5 counts once data exists.
+        """
+        lam_h5, lam_a5 = self.f5_rates(event)
+        return dist.poisson_match_probs(
+            lam_h5, lam_a5, spread_line, total_line, three_way=True,
+            max_goals=self.params.get("max_score", 25),
+            dispersion_k=self.params.get("f5_dispersion_k",
+                                         self.params.get("dispersion_k")))
+
     def reliability_warning(self, event: Event, min_games: int = 10) -> str | None:
         base = super().reliability_warning(event, min_games)
         unknown = [n for n, p in ((event.home, event.home_pitcher),
