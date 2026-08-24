@@ -179,6 +179,17 @@ def test_market_shrink_blends_model_toward_market():
     s = settings.risk.market_shrink
     assert 0.0 <= s <= 1.0
     settings.pick_mode = "edge"  # necesita candidatos multi-mercado del selector por edge
+    # The market-shrink blend operates on the feature-ADJUSTED probability
+    # (_p_adj = model_probability + Σ p-adjustments in daily.py), not on the raw
+    # model_probability column stored for calibration. To verify the shrink
+    # formula in isolation we zero those adjustment coefs so _p_adj == model
+    # (each adjustment has its own tests). Otherwise estimated - blend = (1-s)*Σadj.
+    for _coef in ("rest_days_coef", "recent_form_coef", "h2h_coef",
+                  "totals_tendency_coef", "streak_coef", "off_def_h2h_coef",
+                  "off_def_totals_coef", "home_away_form_coef", "margin_coef",
+                  "over_under_rate_coef"):
+        if hasattr(settings.risk, _coef):
+            setattr(settings.risk, _coef, 0.0)
     run_league("nba", settings, mode="demo")
     c = pd.read_csv(ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv")
     # Where a market anchor exists, the used probability is the convex blend
