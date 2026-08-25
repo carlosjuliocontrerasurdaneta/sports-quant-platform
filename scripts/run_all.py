@@ -122,17 +122,10 @@ def main() -> int:
     # DIARIO_COMPLETO.bat (tarea diaria 11:00) encadena SETTLE -> RUN, so the
     # ledger already reflects yesterday's graded bets (comentario corregido en
     # la auditoria 2026-07-24, M-8; el cronograma real vive en los BAT).
-    if args.mode != "demo" and settings.bankroll_dynamic:
-        from sqp.risk.bankroll import BankrollLedger
-        bal = BankrollLedger(root=ROOT, initial=settings.bankroll).current_balance()
-        log.info("Banca dinámica: inicial %.2f -> balance actual %.2f (PnL realizado + ajustes).",
-                 settings.bankroll, bal)
-        if bal <= 0:
-            log.warning("Balance de banca <= 0 (%.2f): no se dimensionará ninguna apuesta.", bal)
-        # Piso en 0: una banca negativa propagaba stakes NEGATIVOS al stake plano
-        # del modo precision, y settle.py grada una perdida como pnl = -stake, es
-        # decir POSITIVO, realimentando el ledger (auditoria 2026-07-29, B-06).
-        settings.bankroll = max(0.0, bal)
+    # Helper compartido con run_daily.py: ese segundo entrypoint no lo aplicaba y
+    # dimensionaba sobre la cifra nominal estatica (KI-016).
+    from sqp.risk.bankroll import apply_dynamic_bankroll
+    apply_dynamic_bankroll(settings, ROOT, args.mode)
     supported = _supported_leagues()
     if args.mode == "demo":
         selected = [lg for lg in DEFAULT_PRIORITY if lg in supported]

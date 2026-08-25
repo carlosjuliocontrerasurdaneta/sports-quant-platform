@@ -123,3 +123,32 @@ class BankrollLedger:
             "realized_roi": round(pnl / staked, 4) if staked else 0.0,
             "max_drawdown": self._max_drawdown(),
         }
+
+
+def apply_dynamic_bankroll(settings, root: Path, mode: str | None) -> float:
+    """Fija `settings.bankroll` al balance real corriente y lo devuelve.
+
+    Vivia inline en `scripts/run_all.py`. Se extrae aqui porque `run_daily.py
+    --mode live` NO lo aplicaba y dimensionaba sobre la cifra nominal estatica:
+    con inicial 1000 y balance real 915,75 eso infla TODOS los stakes un 9,2%.
+    Con shadow_mode activo era inocuo; desde el 2026-08-16 ya no (KI-016).
+    Duplicar las diez lineas en el segundo entrypoint habria repetido la causa
+    raiz que la auditoria 2026-08-05 registro (implementaciones divergentes,
+    F-10/F-15): un unico helper es la unica forma de que no puedan separarse.
+
+    Demo conserva la banca estatica a proposito: no toca dinero real. Si
+    `bankroll_dynamic` esta desactivado, no hace nada.
+    """
+    if mode == "demo" or not getattr(settings, "bankroll_dynamic", False):
+        return settings.bankroll
+    bal = BankrollLedger(root=root, initial=settings.bankroll).current_balance()
+    log.info("Banca dinamica: inicial %.2f -> balance actual %.2f "
+             "(PnL realizado + ajustes).", settings.bankroll, bal)
+    if bal <= 0:
+        log.warning("Balance de banca <= 0 (%.2f): no se dimensionara ninguna "
+                    "apuesta.", bal)
+    # Piso en 0: una banca negativa propagaba stakes NEGATIVOS al stake plano del
+    # modo precision, y settle.py grada una perdida como pnl = -stake, es decir
+    # POSITIVO, realimentando el ledger (auditoria 2026-07-29, B-06).
+    settings.bankroll = max(0.0, bal)
+    return settings.bankroll
