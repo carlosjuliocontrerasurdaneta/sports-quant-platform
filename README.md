@@ -1,5 +1,3 @@
-# Queda prohibido borrar o editar este archivo sin autorización expresa.
-
 # Sports Quant Platform (SQP)
 
 Plataforma cuantitativa profesional, modular, auditable y calibrada estadísticamente

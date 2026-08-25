@@ -1,6 +1,6 @@
 # Selección de modelos Claude por complejidad de tarea
 
-Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arquitectura/auditoría/incidentes, Haiku para lookups acotados.
+Política activa del proyecto (`CLAUDE.md`): Fable 5 por defecto, Opus para arquitectura/auditoría/incidentes, Sonnet 5 para trabajo diario de ingeniería, Haiku para lookups acotados.
 
 ---
 
@@ -17,7 +17,7 @@ Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arqui
 
 ---
 
-## Sonnet 4.6 — trabajo diario de ingeniería
+## Sonnet 5 — trabajo diario de ingeniería
 
 **Cuándo:** la mayoría del tiempo — implementar funciones, añadir tests, corregir bugs, revisar código con contexto claro, analizar un módulo concreto, generar configuraciones o scripts pequeños.
 
@@ -31,7 +31,7 @@ Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arqui
 
 ---
 
-## Opus 4.8 — decisiones de alto impacto
+## Opus 5 — decisiones de alto impacto
 
 **Cuándo activarlo explícitamente:**
 - **Arquitectura crítica:** rediseñar el flujo de `pipeline/daily.py`, decidir cómo separar el `prediction_gate` de producción
@@ -46,7 +46,7 @@ Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arqui
 
 ## Fable 5 — trabajo complejo de larga duración
 
-**Cuándo:** tareas que combinan múltiples dominios, sesiones largas con mucho contexto acumulado, o cuando se necesita razonamiento extendido sobre decisiones complejas de arquitectura o cuantitativas.
+**Cuándo:** tareas que combinan múltiples dominios, sesiones largas con mucho contexto acumulado, o cuando se necesita máximo razonamiento sobre decisiones complejas de arquitectura o cuantitativas.
 
 **Activar con:** `/model fable` o `claude --model claude-fable-5`
 
@@ -64,9 +64,9 @@ Política activa del proyecto (`CLAUDE.md`): Sonnet por defecto, Opus para arqui
 
 **Desde la CLI:**
 ```
-claude --model claude-opus-4-8
-claude --model claude-sonnet-4-6
-claude --model claude-haiku-4-5-20251001
+claude --model claude-opus-5
+claude --model claude-sonnet-5
+claude --model claude-haiku-4.5
 claude --model claude-fable-5
 ```
 
