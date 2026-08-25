@@ -22,10 +22,17 @@ def atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
         # nombre bueno apuntando a datos incompletos. Estos stores se reconstruyen
         # solo con re-fetches lentos (ESPN, 365 dias), que es justo el coste que
         # este modulo existe para evitar (auditoria 2026-08-05, COR-07).
-        with tmp.open("w", newline="", encoding="utf-8") as fh:
-            df.to_csv(fh, index=False)
-            fh.flush()
-            os.fsync(fh.fileno())
+        df.to_csv(tmp, index=False)
+        # Se reabre en vez de escribir sobre un handle propio: `to_csv` debe
+        # seguir recibiendo una RUTA. Los consumidores parchean `to_csv` para
+        # simular fallos a mitad de escritura y esperan poder hacer
+        # `Path(path_or_buf)` (tests/test_settle_persist.py). Tras el cierre de
+        # to_csv los datos estan en cache del SO; este fsync los lleva al disco.
+        fd = os.open(tmp, os.O_RDWR)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)  # no-op after a successful replace
