@@ -29,6 +29,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from sqp.evaluation.bootstrap import cluster_bootstrap_ci
+
 # Fuera de (0,1) el log loss es infinito y un solo caso arruinaria el segmento.
 _EPS = 1e-6
 
@@ -48,19 +50,13 @@ def log_loss_safe(p: np.ndarray, y: np.ndarray) -> float:
 def _cluster_bootstrap_ci(diff: np.ndarray, events: np.ndarray, *,
                           n_boot: int, seed: int,
                           alpha: float = 0.05) -> tuple[float, float]:
-    """IC de la diferencia media, remuestreando EVENTOS enteros (no filas)."""
-    uniq = pd.unique(events)
-    if len(uniq) < 2:
-        return (float("nan"), float("nan"))
-    idx_by_event = {e: np.flatnonzero(events == e) for e in uniq}
-    rng = np.random.default_rng(seed)
-    means = np.empty(n_boot)
-    for b in range(n_boot):
-        drawn = rng.choice(uniq, size=len(uniq), replace=True)
-        take = np.concatenate([idx_by_event[e] for e in drawn])
-        means[b] = diff[take].mean()
-    lo, hi = np.quantile(means, [alpha / 2, 1 - alpha / 2])
-    return (float(lo), float(hi))
+    """IC de la diferencia media, remuestreando EVENTOS enteros (no filas).
+
+    Alias fino sobre `evaluation.bootstrap.cluster_bootstrap_ci`, que es la unica
+    implementacion. Se conserva el nombre porque es el punto de entrada historico
+    de este modulo.
+    """
+    return cluster_bootstrap_ci(diff, events, n_boot=n_boot, seed=seed, alpha=alpha)
 
 
 def score_model_vs_market(df: pd.DataFrame,
