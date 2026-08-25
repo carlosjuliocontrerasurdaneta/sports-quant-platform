@@ -6,6 +6,34 @@ El enrutamiento tiene dos capas independientes:
 2. `UserPromptSubmit` clasifica la solicitud e inyecta una recomendación de loop y
    subagente. Cada subagente usa el modelo declarado en su frontmatter.
 
+## PRINCIPIO RECTOR
+
+> **Priorizar siempre el modelo superior para las tareas que requieran el máximo
+> nivel de razonamiento, y delegar las demás en función de su complejidad y de
+> las áreas en las que cada modelo ofrezca mejor rendimiento.**
+
+Orden de decisión del operador (2026-08-25). **Gobierna toda esta política**: si
+alguna regla concreta de abajo entra en conflicto con él, manda el principio y la
+regla se corrige, no al revés.
+
+Consecuencias vinculantes:
+
+- La pregunta correcta ante una tarea **no** es "¿cuál es el modelo más barato
+  que probablemente baste?" sino **"¿cuánto razonamiento exige de verdad?"**. El
+  coste es una restricción, no el criterio.
+- Ante la duda entre dos escalones en una tarea de razonamiento alto, **se sube**.
+  Infra-asignar el modelo en trabajo cuantitativo crítico —calibración, detección
+  de fuga, diseño de experimentos, decisiones de riesgo— sale más caro que el
+  modelo, porque el error entra en producción y contamina las cifras con las que
+  se decide.
+- Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
+  acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
+- Jerarquía de capacidad vigente en este proyecto:
+  `claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`.
+- Un modelo inferior **no deshace ni renegocia** trabajo o decisiones producidas
+  por uno superior. Si detecta un problema, lo **reporta**; no lo revierte por
+  iniciativa propia.
+
 ## Política autorizada
 
 - **Conversación principal:** `claude-fable-5`, por decisión humana explícita del

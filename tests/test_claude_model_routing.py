@@ -162,3 +162,29 @@ def test_documentation_routes_to_haiku():
     route = MODULE.classify("Actualiza la documentación README", CONFIG)
     assert route["id"] == "documentation"
     assert route["model"] == "haiku"
+
+
+def test_governing_principle_is_declared_and_takes_precedence():
+    """PRINCIPIO RECTOR (orden del operador, 2026-08-25).
+
+    "Priorizar siempre el modelo superior para las tareas que requieran el
+    maximo nivel de razonamiento y delegar las demas segun complejidad y
+    fortaleza de cada modelo." Se ancla aqui porque una politica que solo vive
+    en prosa se erosiona sin que nada lo señale -- que es el modo de fallo que
+    este archivo entero existe para impedir.
+    """
+    policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## PRINCIPIO RECTOR" in policy
+    for fragment in (
+        "Priorizar siempre el modelo superior",
+        "nivel de razonamiento",
+        "Gobierna toda esta política",
+        "Ante la duda entre dos escalones",
+        "no deshace ni renegocia",
+    ):
+        assert fragment in policy, f"falta del principio rector: {fragment!r}"
+    # La jerarquia de capacidad debe quedar explicita: sin ella "modelo superior"
+    # es interpretable y el principio no es accionable.
+    assert "`claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`" in policy
