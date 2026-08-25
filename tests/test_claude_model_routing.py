@@ -182,9 +182,47 @@ def test_governing_principle_is_declared_and_takes_precedence():
         "nivel de razonamiento",
         "Gobierna toda esta política",
         "Ante la duda entre dos escalones",
-        "no deshace ni renegocia",
+        "no revierte unilateralmente",
     ):
         assert fragment in policy, f"falta del principio rector: {fragment!r}"
     # La jerarquia de capacidad debe quedar explicita: sin ella "modelo superior"
     # es interpretable y el principio no es accionable.
     assert "`claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`" in policy
+
+
+def test_escalation_trigger_is_observable_and_not_self_assessed():
+    """Enmienda 2026-08-25. Un principio que dice "escala si la tarea es dificil"
+    lo evalua el propio modelo que va a ejecutarla, y uno mas debil subestima la
+    dificultad porque no ve lo que no ve. El disparador tiene que ser observable
+    ex ante y no admitir juicio, o el principio no es incumplible de forma
+    detectable -- es un deseo, no una politica.
+    """
+    policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Disparador de escalado" in policy
+    assert "por CLASE de tarea, no por dificultad percibida" in policy
+    # Las cinco clases observables.
+    for clase in ("irreversible", "parámetros de riesgo", "cifras publicables",
+                  "contradiga una decisión previa registrada",
+                  "contrato de un artefacto persistido"):
+        assert clase in policy, f"falta una clase del disparador: {clase!r}"
+    # Precedencia sobre la ruta: sin esto la tabla por palabras clave gana y el
+    # disparador queda decorativo.
+    assert "precedencia sobre la ruta asignada" in policy
+
+
+def test_measurement_outranks_model_capability():
+    """Enmienda 2026-08-25. En este proyecto la restriccion vinculante nunca ha
+    sido la capacidad de razonamiento sino la disciplina de medicion: las seis
+    mediciones negativas salieron de EJECUTAR algo. Un modelo superior es mas
+    peligroso sin datos, no menos -- produce narrativas mas convincentes sobre lo
+    que no ha medido.
+    """
+    policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Ningún escalón de modelo sustituye una medición" in policy
+    assert "se mide antes de razonar" in policy
+    # "superior" != "correcto": la no-reversion es regla de PROCESO, no de fondo.
+    assert '"superior" ≠ "correcto"' in policy

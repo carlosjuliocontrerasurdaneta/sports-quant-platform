@@ -16,6 +16,28 @@ Orden de decisión del operador (2026-08-25). **Gobierna toda esta política**: 
 alguna regla concreta de abajo entra en conflicto con él, manda el principio y la
 regla se corrige, no al revés.
 
+**Relación con la tabla de rutas, dicha sin ambigüedad.** El principio y el
+`default: sonnet` de `model-routing.json` **no** se contradicen, y conviene que
+conste por qué: el principio dice "el modelo superior para lo que exige máximo
+razonamiento", no "el modelo superior para todo". La tabla codifica el reparto
+del trabajo **de razonamiento medio**, que es la mayoría del volumen. Lo que la
+tabla **no** puede codificar es el disparador de abajo, porque clasifica por
+palabras clave y las cinco clases de escalado no son léxicas. Por tanto:
+
+- La tabla es el **suelo** por defecto, no el techo.
+- El disparador de escalado tiene **precedencia sobre la ruta asignada**: si una
+  tarea cae en cualquiera de las cinco clases, se sube aunque la ruta diga
+  `sonnet` y aunque la clasificación por palabras clave no la haya detectado.
+- Ese escalado se **registra** en `current-task.md`, igual que la excepción de
+  `CLAUDE_CODE_SUBAGENT_MODEL`.
+
+Por qué este principio y no "el modelo más barato que pase las pruebas": porque
+**en este dominio los tests no detectan el modo de fallo dominante**. Un
+`NameError` lo caza `ruff`. Un juicio cuantitativo plausible-pero-equivocado
+—"esta correlación es señal", "este bucket con p<0,05 vale", "esta referencia no
+es endógena"— pasa la suite entera, entra en producción y contamina las cifras
+con las que se decide si el sistema gana dinero.
+
 Consecuencias vinculantes:
 
 - La pregunta correcta ante una tarea **no** es "¿cuál es el modelo más barato
@@ -30,9 +52,55 @@ Consecuencias vinculantes:
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
 - Jerarquía de capacidad vigente en este proyecto:
   `claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`.
-- Un modelo inferior **no deshace ni renegocia** trabajo o decisiones producidas
-  por uno superior. Si detecta un problema, lo **reporta**; no lo revierte por
-  iniciativa propia.
+- Un modelo inferior **no revierte unilateralmente** trabajo o decisiones
+  producidas por uno superior. Si detecta un problema, lo **reporta**.
+
+### Disparador de escalado: por CLASE de tarea, no por dificultad percibida
+
+"Máximo nivel de razonamiento" no puede evaluarlo el propio modelo que va a
+ejecutar la tarea: hace falta razonamiento para saber cuánto razonamiento hace
+falta, y un modelo más débil **subestima sistemáticamente** la dificultad porque
+no ve lo que no ve. Registrado con un caso real: el 2026-08-25 se clasificó
+"alinear el candado de modelo" como trámite mecánico cuando era una decisión de
+gobernanza sobre trabajo de un modelo superior; el clasificador era el propio
+modelo que se equivocaba.
+
+Por eso el disparador es **observable *ex ante*** y no admite juicio. Es de
+máximo razonamiento, por definición y sin evaluar su dificultad aparente, toda
+tarea que:
+
+1. sea **irreversible** o difícil de revertir;
+2. toque **parámetros de riesgo, modelo, estrategia, umbrales o gates**;
+3. produzca **cifras publicables** (ROI, calibración, hit rate, edge, CLV);
+4. **contradiga una decisión previa registrada** en la bitácora, `Tareas.md` o el
+   registro de decisiones;
+5. modifique el **contrato de un artefacto persistido** (esquemas, streams,
+   ledger, settlement).
+
+Que una de estas parezca trivial es irrelevante — y es precisamente la señal de
+alarma.
+
+### Subordinación a la medición
+
+**Ningún escalón de modelo sustituye una medición.** Si la pregunta es
+empíricamente resoluble con los datos ya guardados, **se mide antes de razonar**,
+con el modelo que sea.
+
+No es retórica: en este proyecto la restricción vinculante nunca ha sido la
+capacidad de razonamiento sino la disciplina de medición. Las seis mediciones
+negativas acumuladas salieron de *ejecutar algo*, no de pensar más fuerte — el
+hallazgo de la escalera de `min_edge` (2026-08-25) esperaba en un módulo que
+nadie había ejecutado nunca, y la señal fantasma de totals NBA (2026-08-24) la
+destapó una contraprueba, no un argumento.
+
+Un modelo superior es **más** peligroso aquí, no menos: produce narrativas más
+convincentes sobre datos que no ha medido. La capacidad se aplica a **diseñar la
+medición y a interpretarla**, nunca a sustituirla.
+
+Corolario: "superior" ≠ "correcto". Un modelo inferior **con la medición delante
+puede tener razón** contra un modelo superior sin ella. La cláusula de no
+reversión de arriba es una regla de **proceso** (no revertir por iniciativa
+propia), jamás un argumento de autoridad sobre el fondo.
 
 ## Política autorizada
 
