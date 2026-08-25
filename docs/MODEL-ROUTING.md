@@ -66,7 +66,7 @@ Política activa del proyecto (`CLAUDE.md`): Fable 5 por defecto, Opus para arqu
 ```
 claude --model claude-opus-5
 claude --model claude-sonnet-5
-claude --model claude-haiku-4.5
+claude --model claude-haiku-4-5
 claude --model claude-fable-5
 ```
 
