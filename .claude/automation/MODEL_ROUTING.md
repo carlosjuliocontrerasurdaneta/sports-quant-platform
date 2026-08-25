@@ -8,12 +8,12 @@ El enrutamiento tiene dos capas independientes:
 
 ## Política autorizada
 
-- **Conversación principal:** `claude-opus-5`, por decisión humana explícita del
-  2026-08-25. Supersede a `claude-fable-5` (2026-08-24), que había superseduo a
-  `sonnet` (2026-08-18), este a `claude-opus-5` (2026-08-04) y este a
-  `claude-fable-5` ese mismo día. Afecta solo al modelo interactivo de
-  `settings.json`; el escalón de las rutas sigue en `sonnet` para el trabajo normal
-  (abajo). El hook no debe afirmar que cambia este modelo.
+- **Conversación principal:** `claude-fable-5`, por decisión humana explícita del
+  2026-08-24. Supersede a `sonnet` (2026-08-18), que había superseduo a
+  `claude-opus-5` (2026-08-04) y este a `claude-fable-5` ese mismo día. Afecta solo
+  al modelo interactivo de `settings.json`; el escalón de las rutas sigue en
+  `sonnet` para el trabajo normal (abajo). El hook no debe afirmar que cambia este
+  modelo.
 - **Escalón de las rutas** (`model-routing.json`), el lever de coste:
   - `opus` — **solo** `full-audit`, `incident` y `quant-incident`: auditorías
     exhaustivas e incidentes críticos.
