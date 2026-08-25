@@ -21,6 +21,14 @@ echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) === >> logs\validate_oos.l
 "%SQP_PYTHON%" scripts\validate_oos.py >> logs\validate_oos.log 2>&1
 if errorlevel 1 goto :error
 
+REM Marcador modelo-vs-mercado y escalera de min_edge (2026-08-25). Responde si
+REM batimos al mercado y si el edge declarado tiene valor realizado. Solo lee
+REM datos guardados: no gasta cuota ni escribe en data/. BEST-EFFORT a proposito
+REM -- es medicion, no validacion, y no debe poder tumbar la corrida mensual.
+echo --- Marcador modelo vs mercado --- >> logs\validate_oos.log
+"%SQP_PYTHON%" scripts\model_vs_market_report.py >> logs\validate_oos.log 2>&1
+if errorlevel 1 echo *** AVISO: el marcador modelo-vs-mercado fallo (no bloqueante) *** >> logs\validate_oos.log
+
 echo === DONE ===
 endlocal
 goto :eof
