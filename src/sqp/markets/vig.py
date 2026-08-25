@@ -55,7 +55,12 @@ def remove_vig_power(implied: list[float]) -> list[float]:
     try:
         k = brentq(f, 0.5, 5.0)
         return [p ** k for p in implied]
-    except ValueError:
+    except (ValueError, RuntimeError):
+        # ValueError = no hay cambio de signo en [0.5, 5]. RuntimeError = brentq
+        # agoto iteraciones sin converger; solo capturaba el primero, asi que el
+        # segundo habria propagado hasta tumbar el run diario en vez de degradar
+        # al fallback ya documentado (auditoria 2026-08-05, COR-06). Medido: 0
+        # RuntimeError en 200k entradas validas con scipy 1.17.1 -- preventivo.
         log.warning("power de-vig found no root for implied=%s; "
                     "falling back to proportional", implied)
         return remove_vig_proportional(implied)

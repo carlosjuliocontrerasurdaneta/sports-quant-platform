@@ -60,3 +60,24 @@ def test_proportional_rejects_negative_element():
 def test_power_rejects_negative_element():
     with pytest.raises(ValueError):
         remove_vig_power([-0.1, 0.9])
+
+
+def test_power_falls_back_when_brentq_raises_runtimeerror(monkeypatch):
+    """COR-06 (auditoria 2026-08-05, verificado 2026-08-25).
+
+    `remove_vig_power` solo capturaba ValueError. `brentq` tambien puede lanzar
+    RuntimeError al no converger, y eso propagaria hasta tumbar el run diario en
+    vez de degradar al fallback proporcional ya documentado. Alcanzabilidad
+    MEDIDA: 0 RuntimeError en 200k entradas validas aleatorias con scipy 1.17.1,
+    asi que es endurecimiento preventivo. Se fuerza con monkeypatch porque el
+    camino real no es alcanzable hoy.
+    """
+    import sqp.markets.vig as vig_mod
+
+    def boom(*a, **k):
+        raise RuntimeError("failed to converge")
+
+    monkeypatch.setattr(vig_mod, "brentq", boom)
+    fair = vig_mod.remove_vig_power([0.55, 0.50])
+    assert sum(fair) == pytest.approx(1.0, abs=1e-9)
+    assert fair[0] > fair[1]

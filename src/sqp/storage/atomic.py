@@ -16,7 +16,16 @@ import pandas as pd
 def atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
     tmp = out.with_suffix(out.suffix + ".tmp")
     try:
-        df.to_csv(tmp, index=False)
+        # ``os.replace`` da ATOMICIDAD (nadie ve un archivo a medias), pero no
+        # DURABILIDAD: sin fsync el contenido del temporal puede seguir en cache
+        # del SO cuando el rename ya se aplico, y un corte de energia deja el
+        # nombre bueno apuntando a datos incompletos. Estos stores se reconstruyen
+        # solo con re-fetches lentos (ESPN, 365 dias), que es justo el coste que
+        # este modulo existe para evitar (auditoria 2026-08-05, COR-07).
+        with tmp.open("w", newline="", encoding="utf-8") as fh:
+            df.to_csv(fh, index=False)
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)  # no-op after a successful replace

@@ -94,7 +94,14 @@ def _novig_probs(cons: dict, market: str, point=None,
     probabilities. Incomplete markets return {} so callers flag them instead
     of blending a fabricated fair probability (audit 2026-07-24, C-1)."""
     if market == "h2h":
-        keys = [k for k in cons if k[0] == "h2h"]
+        # El `point` DEBE ser None en h2h: es el contrato del mercado. Recoger
+        # todas las claves h2h sin mirarlo mezclaba lineas de puntos distintos y
+        # de-vig-eaba 4 desenlaces como si fueran 2 (auditoria 2026-08-05,
+        # QNT-08). Filtrar degrada a "mercado incompleto" -- el camino
+        # default-deny ya probado -- en vez de adivinar el emparejamiento.
+        # Alcanzabilidad medida el 2026-08-25: 0 de 2.091.866 lineas h2h reales
+        # traen `point`, asi que hoy es un no-op y manana un guard.
+        keys = [k for k in cons if k[0] == "h2h" and k[2] is None]
         required = 3 if three_way else 2
     else:
         keys = [k for k in cons if k[0] == market and k[2] == point]

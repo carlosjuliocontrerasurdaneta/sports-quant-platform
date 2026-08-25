@@ -84,3 +84,29 @@ def test_lock_timeout_degrades_with_warning(tmp_path, caplog):
             pass  # degrada en vez de bloquear
     assert any("degraded" in r.getMessage()
                for r in caplog.records if r.name == "sqp.storage.lock")
+
+
+def test_atomic_write_csv_fsyncs_before_replace(tmp_path, monkeypatch):
+    """COR-07 (auditoria 2026-08-05, cerrado 2026-08-25).
+
+    `os.replace` da atomicidad, no durabilidad: sin fsync el rename puede
+    aplicarse mientras el contenido sigue en cache del SO. Se afirma el ORDEN
+    (fsync antes que replace), que es lo que hace la escritura recuperable.
+    """
+    import os as os_mod
+
+    from sqp.storage.atomic import atomic_write_csv
+
+    calls: list[str] = []
+    real_fsync, real_replace = os_mod.fsync, os_mod.replace
+    monkeypatch.setattr(os_mod, "fsync",
+                        lambda fd: (calls.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(os_mod, "replace",
+                        lambda a, b: (calls.append("replace"), real_replace(a, b))[1])
+
+    out = tmp_path / "x.csv"
+    atomic_write_csv(pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}), out)
+
+    assert calls == ["fsync", "replace"]
+    assert pd.read_csv(out)["a"].tolist() == [1, 2]
+    assert not (tmp_path / "x.csv.tmp").exists()

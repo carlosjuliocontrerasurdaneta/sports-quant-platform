@@ -44,3 +44,29 @@ def test_totals_complete_pair_sums_to_one():
     fair = _novig_probs(cons, "totals", 8.5)
     assert set(fair) == {"Over", "Under"}
     assert sum(fair.values()) == pytest.approx(1.0, abs=1e-9)
+
+
+# --- QNT-08 (auditoria 2026-08-05, verificado 2026-08-25) -------------------
+# `_novig_probs` recogia TODAS las claves h2h sin mirar el `point`. El contrato
+# de h2h es que no lleva punto; si un proveedor emitiera uno, la lista mezclaba
+# lineas de puntos distintos y `remove_vig_power` de-vig-eaba 4 desenlaces como
+# si fueran un mercado de 2. Alcanzabilidad MEDIDA sobre datos reales: 0 de
+# 2.091.866 lineas h2h con `point` no nulo en 55 archivos de data/odds. Es
+# endurecimiento preventivo, no un bug vivo -- y la direccion correcta es
+# degradar a "mercado incompleto" (default-deny), no adivinar el emparejamiento.
+
+def test_h2h_with_a_point_is_ignored_instead_of_corrupting_the_devig():
+    cons = {("h2h", "Home", None): 1.91,
+            ("h2h", "Away", None): 2.05,
+            ("h2h", "Home", -1.5): 3.40,
+            ("h2h", "Away", -1.5): 1.33}
+    fair = _novig_probs(cons, "h2h")
+    assert set(fair) == {"Home", "Away"}
+    assert sum(fair.values()) == pytest.approx(1.0, abs=1e-9)
+    # La cara sin punto manda: 1.91 vs 2.05 deja al local favorito.
+    assert fair["Home"] > fair["Away"]
+
+
+def test_h2h_quoted_only_with_a_point_degrades_to_incomplete_market():
+    cons = {("h2h", "Home", -1.5): 3.40, ("h2h", "Away", -1.5): 1.33}
+    assert _novig_probs(cons, "h2h") == {}
