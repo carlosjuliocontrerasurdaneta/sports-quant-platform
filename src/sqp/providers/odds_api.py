@@ -15,7 +15,11 @@ from typing import cast
 import requests
 from sqp.exceptions import ProviderNotConfiguredError
 from sqp.domain.models import Event, EventOdds, MarketLine
+from sqp.logging_config import get_logger
+from sqp.markets.odds import is_usable_price
 from sqp.providers.odds_cache import FileCache
+
+log = get_logger("sqp.odds_api")
 
 BASE = "https://api.the-odds-api.com/v4"
 
@@ -174,8 +178,27 @@ class OddsAPIClient:
         return None if sport is None else bool(sport.get("active", False))
 
     def _parse_events(self, raw: list, sport_key: str, league_id: str) -> list[EventOdds]:
-        """Shared parser for live and historical odds payloads (same event shape)."""
+        """Shared parser for live and historical odds payloads (same event shape).
+
+        Las cotizaciones degeneradas (``price_decimal <= 1.0``, "sin pago") se
+        CUENTAN y se avisan, pero NO se descartan. La decision es deliberada y
+        tiene dos patas:
+
+        - Descartarlas no cambia ningun calculo: el lado de LECTURA ya las filtra
+          con el predicado unico ``markets.odds.is_usable_price`` desde `c210a22`
+          (auditoria 2026-08-05, F-01). Un filtro aqui seria redundante.
+        - Descartarlas SI destruiria evidencia de que el proveedor las emite, y
+          `data-integrity-rules.md` prohibe la mutacion oculta de datos crudos.
+          Mismo criterio que el guard de CLV no finito, que tambien avisa sin
+          descartar la fila: el defecto queda audible, no corregido.
+
+        Lo que faltaba era justamente eso: audibilidad. Medido el 2026-08-25
+        sobre el historico persistido, 1.611 de 3.866.927 lineas (0,042%) tienen
+        precio <= 1.0 -- concentradas en mlb y tenis -- y ninguna habia dejado
+        rastro en ningun contador (hallazgo del primer run OOS, 2026-07-24).
+        """
         out: list[EventOdds] = []
+        degenerate = 0
         for ev in raw:
             event = Event(event_id=ev["id"], sport_key=sport_key, league=league_id,
                           home=ev["home_team"], away=ev["away_team"],
@@ -184,10 +207,20 @@ class OddsAPIClient:
             for bm in ev.get("bookmakers", []):
                 for mk in bm.get("markets", []):
                     for oc in mk.get("outcomes", []):
+                        price = float(oc["price"])
+                        if not is_usable_price(price):
+                            degenerate += 1
                         lines.append(MarketLine(
                             market=mk["key"], bookmaker=bm["key"], outcome=oc["name"],
-                            price_decimal=float(oc["price"]), point=oc.get("point")))
+                            price_decimal=price, point=oc.get("point")))
             out.append(EventOdds(event=event, lines=lines))
+        if degenerate:
+            # Agregado por llamada, no por linea: con 1.611 casos en el historico
+            # un aviso por fila seria ruido que nadie lee.
+            log.warning("[%s] %d cotizacion(es) degeneradas (precio <= 1.0 o no "
+                        "finito) recibidas del proveedor y persistidas. El "
+                        "consenso las descarta al leer; se avisa aqui para que el "
+                        "problema sea visible en su ORIGEN.", league_id, degenerate)
         return out
 
     def fetch_odds(self, league_id: str, sport_key: str, markets: str = "h2h,spreads,totals") -> list[EventOdds]:
