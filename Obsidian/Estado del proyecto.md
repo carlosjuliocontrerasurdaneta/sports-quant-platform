@@ -1,13 +1,43 @@
 ---
 tags: [estado, sqp]
 creada: 2026-07-07
-actualizada: 2026-08-16
+actualizada: 2026-08-25
 ---
 
 # Estado del proyecto — Sports Quant Platform
 
-> Snapshot al 2026-08-04. Punto de entrada: [[00 - Inicio]].
+> Snapshot al 2026-08-04, con la actualización del 2026-08-25 abajo. Punto de entrada: [[00 - Inicio]].
 > Las cifras de probabilidad son siempre **probabilidades estimadas**, nunca certezas; el ROI esperado es una estimación y el ROI realizado es el observado.
+
+## Actualización 2026-08-25 — auditoría integral
+
+**Software sano, sin ventaja.** `ruff` limpio, `mypy` 95 archivos sin
+incidencias, `pip-audit` 0 vulnerabilidades, `health_check` OK, suite completa
+en verde.
+
+**Los dos números que gobiernan el proyecto hoy** (medidos sobre 13.861 filas
+servidas / 1.200 eventos, IC95 clusterizado por evento):
+
+1. **El mercado bate al modelo y es significativo.** Brier calibrado 0,23261 vs
+   0,23013, diff **+0,00248 IC95 [+0,00051, +0,00444]**. El `market_shrink`
+   óptimo walk-forward es **1,00 en los cuatro cortes** — el modelo no aporta
+   información sobre el consenso sin vig en ningún momento medido.
+2. **La escalera de `min_edge` va al revés.** Subir el umbral empeora
+   monótonamente hit rate (0,430 → 0,301) y ROI (−11,0% → −23,9%). Donde el
+   modelo declara ≥8% de ventaja, el ROI realizado es **−23,9% [−41,0%, −5,4%]**.
+
+Es la sexta medición negativa independiente, y la más específica: no solo no hay
+ventaja, sino que **el criterio de selección apunta al lado equivocado** y la
+palanca canónica para corregirlo es contraproducente. Ver [[Bitácora/2026-08-25]].
+
+**Lo que cambió operativamente:** la pregunta fundacional ahora **se mide sola**
+cada mes (`scripts/model_vs_market_report.py`, enganchado a `VALIDATE_OOS.bat`
+en best-effort). Antes existía el código y no lo corría nadie.
+
+**Sin cambios en producción:** `shadow_mode` sigue en `true`, stakes en 0,
+`configs/default.yaml` intacto, ningún parámetro de modelo, riesgo o estrategia
+tocado. El gate de predicción sigue en **0 de 32 aprobados**, y `mls|h2h` —
+primer corte en completar la ventana n≥300 — dio `no_bate_al_mercado`.
 
 ## Objetivo sacrosanto: GANAR DINERO (directiva 2026-08-02)
 
