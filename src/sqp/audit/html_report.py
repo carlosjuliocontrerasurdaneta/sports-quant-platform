@@ -1,12 +1,16 @@
 """Self-contained HTML dashboard for the daily run.
 
-Five tabs in one file (no external assets, no network):
+Six tabs in one file (no external assets, no network):
   - Picks del Dia: sortable table with filters (event date / sport / market /
     min EV) and a stats bar (best EV, average EV, average Kelly) recomputed over
     the filtered rows. The run keeps every event inside the 7-day horizon (early
     lines feed the CLV audit), so picks are grouped by LOCAL event date behind
     toggle pills defaulting to "Hoy". EV is the estimated edge (p*price-1);
     Kelly is the fractional-Kelly stake pct already capped by the risk engine.
+  - Todos los Picks: TODAS las caras priceadas del dia (stream servido),
+    ordenadas por probabilidad estimada descendente, con breakeven y margen al
+    lado. Cumple la REGLA FUNDAMENTAL del operador (2026-08-26). Distinta de
+    "Picks del Dia", que solo muestra los CANDIDATOS que superaron min_edge.
   - Auditoria: realized-ROI segments (overall / per league / per market) plus an
     estimated-vs-realized calibration check, from settled bets.
   - Diagnostico: current auto-pause state from the degradation monitor plus the
@@ -419,6 +423,75 @@ def _run_alert_banner(root: Path | None = None) -> str:
         "</div>")
 
 
+def _todos_section(cal_dir: Path | None = None, *, top: int = 400) -> str:
+    """Pestana "Todos los Picks": TODAS las caras priceadas del dia, ordenadas
+    por probabilidad estimada descendente.
+
+    REGLA FUNDAMENTAL del operador (2026-08-26, SACROSANTA E INAMOVIBLE):
+    "generar picks para todos los deportes y mercados, priorizando aquellos con
+    las mayores probabilidades".
+
+    Existe aparte de la pestana "Picks del Dia" porque esa muestra los
+    CANDIDATOS -- lo que supero `min_edge` y llego al motor de riesgo, 63 filas
+    el 2026-08-26 -- y la regla exige TODOS los mercados: 541 ese mismo dia. Las
+    dos vistas responden preguntas distintas y ninguna sustituye a la otra.
+
+    `breakeven = 1/precio` y `margen = prob_est - breakeven` van al lado de cada
+    probabilidad y no son opcionales: ordenar por probabilidad a secas es el
+    `pick_mode: accuracy` revertido el 2026-07-31, donde un favorito a cuota 1.07
+    acierta el 90% y pierde dinero igual. La tabla hace ese hecho visible.
+
+    No lleva stakes. Generar picks y apostarlos son cosas distintas.
+    """
+    cal_dir = cal_dir or (ROOT / "data" / "calibration")
+    frames = []
+    for f in sorted(cal_dir.glob("served_*.csv")):
+        try:
+            d = pd.read_csv(f)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError):
+            continue
+        if not d.empty:
+            frames.append(d)
+    if not frames:
+        return '<p class="gen">Sin stream servido todavia.</p>'
+    df = pd.concat(frames, ignore_index=True)
+    if "generated_at" in df.columns:
+        day = df["generated_at"].astype(str).str[:10]
+        df = df[day == day.max()]
+
+    p = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
+    price = pd.to_numeric(df.get("price_decimal"), errors="coerce")
+    be = 1.0 / price.where(price > 1.0)
+    out = pd.DataFrame({
+        "Liga": df.get("league"), "Mercado": df.get("market"),
+        "Seleccion": df.get("selection"), "Linea": df.get("line"),
+        "Cuota": price.round(3), "Prob. est.": p.round(4),
+        "Breakeven": be.round(4), "Margen": (p - be).round(4),
+        "Prob. mercado": pd.to_numeric(
+            df.get("implied_probability_novig"), errors="coerce").round(4),
+        "Libros": df.get("books_count"),
+    })
+    out = out[p.notna() & be.notna()].sort_values(
+        "Prob. est.", ascending=False).reset_index(drop=True)
+    n_pos = int((out["Margen"] > 0).sum())
+    cards = (_card("Selecciones", str(len(out)), "todas las caras priceadas")
+             + _card("Ligas", str(out["Liga"].nunique()), "en juego hoy")
+             + _card("Margen positivo", str(n_pos),
+                     "prob. estimada > breakeven"))
+    nota = (
+        '<p class="gen"><strong>Ordenadas por probabilidad estimada.</strong> '
+        "<code>Breakeven = 1/cuota</code> es el acierto que la CUOTA exige para "
+        "no perder dinero; <code>Margen = Prob. est. &minus; Breakeven</code>. "
+        "Un margen negativo pierde a largo plazo <em>por alta que sea la "
+        "probabilidad</em>: a cuota 1.07 hace falta acertar el 93.5%. "
+        "Estas lineas <strong>no llevan stake</strong>.</p>")
+    tabla = _df_to_html_table(out.head(top), empty_msg="Sin selecciones hoy.")
+    extra = (f'<p class="gen">Mostradas {top} de {len(out)}; la lista completa '
+             f"en <code>data/predictions/picks_ranked_*.md</code>.</p>"
+             if len(out) > top else "")
+    return f'<div class="stats">{cards}</div>{nota}{tabla}{extra}'
+
+
 def html_dashboard(predictions_dir: Path | None = None,
                    bets_dir: Path | None = None,
                    *, make_latest: bool = True,
@@ -447,6 +520,7 @@ def html_dashboard(predictions_dir: Path | None = None,
         run_alert=_run_alert_banner(),
         day=html.escape(day),
         generated=html.escape(ts),
+        todos=_todos_section(),
         audit=_audit_section(bets_dir),
         diagnostics=_diagnostics_section(bets_dir),
         patterns=_patterns_section(patterns_path),
@@ -529,6 +603,7 @@ _TEMPLATE = """<!DOCTYPE html>
 {run_alert}
 <nav class="tabs">
   <div class="tab active" data-tab="picks">Picks del Dia</div>
+  <div class="tab" data-tab="todos">Todos los Picks</div>
   <div class="tab" data-tab="audit">Auditoria</div>
   <div class="tab" data-tab="diagnostics">Diagnostico</div>
   <div class="tab" data-tab="patterns">Patrones</div>
@@ -546,6 +621,7 @@ _TEMPLATE = """<!DOCTYPE html>
     </div>
     <table class="grid" id="picksTable"><thead></thead><tbody></tbody></table>
   </section>
+  <section class="panel" id="todos">{todos}</section>
   <section class="panel" id="audit">{audit}</section>
   <section class="panel" id="diagnostics">{diagnostics}</section>
   <section class="panel" id="patterns">{patterns}</section>
