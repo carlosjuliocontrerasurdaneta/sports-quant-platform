@@ -163,18 +163,35 @@ def test_dashboard_patterns_tab_empty_is_safe(tmp_path, monkeypatch):
     assert "Sin historial consolidado" in text
 
 
-def test_dashboard_embeds_only_actionable_picks(tmp_path):
+def test_dashboard_embeds_every_candidate_with_its_state(tmp_path):
+    """CONTRATO CAMBIADO el 2026-08-26 por decision del operador.
+
+    Antes se llamaba `test_dashboard_embeds_only_actionable_picks` y exigia lo
+    contrario: que la pestana mostrara SOLO los accionables. Ese contrato dejo
+    la pestana EN BLANCO desde el 2026-08-16, cuando al levantar shadow_mode
+    desaparecio el flag que mantenia visibles los picks de stake 0. El operador
+    paso 53 dias creyendo que el sistema no generaba nada; generaba 63
+    candidatos al dia, ninguno con dinero.
+
+    Ahora se embeben TODOS los candidatos y cada uno lleva en `estado` la razon
+    de su stake. El contador `Total accionables` del reporte markdown sigue
+    contando solo los que llevarian dinero -- ver
+    tests/test_picks_del_dia.py::TestNoSeTocoElContadorDeAccionables.
+    """
     pred, bets = _write_inputs(tmp_path)
     path = html_dashboard(pred, bets)
     text = open(path, encoding="utf-8").read()
     start = text.index("const DATA = ") + len("const DATA = ")
     end = text.index(";\nconst COLS", start)
     data = json.loads(text[start:end])
-    # the flagged 0.75-edge pick is excluded; only the two actionable picks remain
-    assert len(data["picks"]) == 2
-    assert all(p["league"] == "nba" for p in data["picks"])
-    assert 0.75 not in {p["estimated_edge"] for p in data["picks"]}
-    # partido is built from home/away
+    # el pick flageado de edge 0.75 ahora SI aparece, con su razon
+    assert len(data["picks"]) == 3
+    assert 0.75 in {p["estimated_edge"] for p in data["picks"]}
+    flageado = next(p for p in data["picks"] if p["estimated_edge"] == 0.75)
+    assert flageado["estado"] not in ("", "con stake")
+    # y los accionables siguen marcados como tales
+    assert any(p["estado"] == "con stake" for p in data["picks"])
+    # partido se construye desde home/away
     assert any(" @ " in p["partido"] for p in data["picks"])
 
 

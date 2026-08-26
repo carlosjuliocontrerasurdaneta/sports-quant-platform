@@ -1,9 +1,11 @@
 """Self-contained HTML dashboard for the daily run.
 
 Six tabs in one file (no external assets, no network):
-  - Picks del Dia: sortable table with filters (event date / sport / market /
-    min EV) and a stats bar (best EV, average EV, average Kelly) recomputed over
-    the filtered rows. The run keeps every event inside the 7-day horizon (early
+  - Picks del Dia: TODOS los candidatos del dia (los que superaron min_edge y
+    llegaron al motor de riesgo), con la razon de su stake en la columna Estado.
+    Sortable table with filters (event date / sport / market / min EV) and a
+    stats bar (best EV, average EV, average Kelly) recomputed over the filtered
+    rows. The run keeps every event inside the 7-day horizon (early
     lines feed the CLV audit), so picks are grouped by LOCAL event date behind
     toggle pills defaulting to "Hoy". EV is the estimated edge (p*price-1);
     Kelly is the fractional-Kelly stake pct already capped by the risk engine.
@@ -36,7 +38,7 @@ import pandas as pd
 from sqp.audit.patterns import (conclusions, load_pick_history,
                                 pattern_breakdowns)
 from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
-                              load_all_settled, rank_candidates)
+                              load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
 from sqp.sports.team_names import normalize_key
@@ -56,17 +58,36 @@ _PICK_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("estimated_edge", "EV (edge)", "pct"),
     ("kelly_stake_pct", "Kelly %", "pct"),
     ("stake", "Stake", "num"),
+    ("estado", "Estado", "txt"),
 )
 
 
 def _picks_records(predictions_dir: Path,
                    generated_day: str | None = None) -> list[dict]:
-    """Actionable picks (stake>0, not flagged) ranked by estimated edge, as plain
-    JSON-serializable dicts for the client-side table."""
+    """TODOS los candidatos del dia, ordenados por edge estimado, con la razon
+    por la que cada uno lleva (o no) stake en la columna `estado`.
+
+    Antes mostraba solo los ACCIONABLES via `rank_candidates` (stake>0 o flag
+    `shadow_mode`). Al levantar shadow el 2026-08-16 ese flag dejo de emitirse y
+    **la pestana que se abre por defecto quedo en blanco**, sin que nada lo
+    señalara: el operador paso 53 dias creyendo que el sistema no generaba
+    nada. Generaba 63 candidatos al dia; ninguno llevaba dinero.
+
+    Se cambia AQUI y no en `rank_candidates` a proposito: esa funcion define
+    "accionable" y alimenta el contador `Total accionables` del reporte
+    markdown, que debe seguir contando solo los que llevarian dinero.
+    """
     df = load_all_candidates(predictions_dir, generated_day=generated_day)
     if df.empty:
         return []
-    ranked = rank_candidates(df)
+    ranked = df.sort_values("estimated_edge", ascending=False).copy()
+    # `estado` explica el 0: sin el, 63 filas a stake 0 parecen una averia.
+    flags = (ranked["flags"].fillna("").astype(str)
+             if "flags" in ranked.columns
+             else pd.Series("", index=ranked.index))
+    stake = pd.to_numeric(ranked.get("stake"), errors="coerce").fillna(0.0)
+    ranked["estado"] = [f if f else ("con stake" if s > 0 else "sin stake")
+                        for s, f in zip(stake, flags)]
     if ranked.empty:
         return []
     if "home" in ranked.columns and "away" in ranked.columns:
