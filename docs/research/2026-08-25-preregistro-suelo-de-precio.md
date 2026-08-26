@@ -86,6 +86,8 @@ favorito-longshot y no el filtro.
   produce las dos escaleras (con y sin suelo) y **no consume cuota de API**.
 - **No se despliega nada al pre-registrar.** `shadow_mode` sigue en `true`, los
   stakes en 0 y `configs/default.yaml` sin tocar.
+- **CORRECCION 2026-08-26.** La linea de arriba decia que `shadow_mode` sigue en `true`. **Es FALSO**: esta en `false` desde el 2026-08-16, cuando el gate de prediccion paso a ser la regla rectora. El error se hereda de `REPO_DESCRIPTION.md` y de la auditoria del 2026-08-05, y se propago sin leer el YAML. Lo que SI se sostiene y es lo que importaba aqui: **los stakes siguen en 0**, pero por los gates, no por shadow (`prediction_gate.json` tiene 0 de 32 mercados en `allowed: true`).
+
 - Una eventual adopción exigiría, además de ACEPTAR: aprobación explícita del
   operador, un parámetro nuevo en `configs/default.yaml` con su comentario del
   efecto **compuesto** (lección F-05) y su propio test de propiedad.

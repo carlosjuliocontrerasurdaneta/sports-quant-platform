@@ -73,16 +73,24 @@ z(i) = Φ⁻¹(F(i))
 
 Se elige esta forma y no una cópula exacta por tres razones:
 
-1. **Preserva las marginales exactamente.** Sumando en `j`, el término de
-   corrección telescopa a `φ(+∞) − φ(−∞) = 0`. Las tasas por equipo, el modelo
-   de anotación y el moneyline de un solo lado quedan intactos.
+1. **Preserva las marginales.** Sumando en `j`, el término de corrección
+   telescopa a `φ(+∞) − φ(−∞) = 0`. Las tasas por equipo, el modelo de anotación
+   y el moneyline de un solo lado quedan intactos. *(Corrección tras implementar:
+   exacto en aritmética real, **no** en punto flotante — el recorte de celdas
+   negativas en la cola sesga las marginales. Medido: 1,4e-10 en el punto de
+   trabajo de NHL y 4,7e-7 en `|ρ|=0,12`; en MLB con NegBin sube a ~1e-4, que es
+   otra razón para no usarlo ahí.)*
 2. **Es barato**: dos vectores de 16 entradas y un producto externo, frente a
    ~289 evaluaciones de la normal bivariante por evento. Corre en el pipeline
    diario y en backtests de miles de partidos.
 3. **Es la aproximación correcta en el régimen medido** (`|ρ| ≈ 0,06`). Para `ρ`
-   grande la expansión de primer orden degrada; se acota `|score_rho| ≤ 0,25` y
-   se recortan probabilidades negativas antes de la renormalización que el grid
-   ya hace.
+   grande la expansión de primer orden degrada; se acota `|score_rho| ≤ 0,15`
+   *(bajado desde 0,25 tras medir: pasado 0,15 el sesgo del recorte crece a
+   1e-3)* y se recortan probabilidades negativas antes de la renormalización que
+   el grid ya hace. **Descartado por medición:** amortiguar la corrección entera
+   por un escalar en vez de recortar preservaría las marginales exactamente, pero
+   el factor sale proporcional a `1/ρ` y el resultado queda idéntico para todo
+   `ρ` — el parámetro deja de tener efecto. Queda registrado para no reintentarlo.
 
 Compone con `dc_rho` (que sigue actuando solo en la esquina baja) y con
 `dispersion_k` (que sigue moviendo ambos mercados en el mismo sentido).
@@ -129,6 +137,8 @@ Compone con `dc_rho` (que sigue actuando solo en la esquina baja) y con
   Revertir = borrar esa línea.
 - **Nada se despliega al implementar.** `shadow_mode` sigue en `true` y los
   stakes en 0; esto no cambia con este trabajo.
+- **CORRECCION 2026-08-26.** La linea de arriba decia que `shadow_mode` sigue en `true`. **Es FALSO**: esta en `false` desde el 2026-08-16, cuando el gate de prediccion paso a ser la regla rectora. El error se hereda de `REPO_DESCRIPTION.md` y de la auditoria del 2026-08-05, y se propago sin leer el YAML. Lo que SI se sostiene y es lo que importaba aqui: **los stakes siguen en 0**, pero por los gates, no por shadow (`prediction_gate.json` tiene 0 de 32 mercados en `allowed: true`).
+
 
 ## Expectativa declarada
 

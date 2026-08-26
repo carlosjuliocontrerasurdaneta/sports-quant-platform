@@ -110,7 +110,8 @@ class PoissonAdapter(SportAdapter):
                                          three_way=self.three_way,
                                          max_goals=self.params.get("max_score", 15),
                                          dc_rho=self.params.get("dc_rho", 0.0),
-                                         dispersion_k=self.params.get("dispersion_k"))
+                                         dispersion_k=self.params.get("dispersion_k"),
+                                         score_rho=self.params.get("score_rho", 0.0))
         return EstimatedProbabilities(
             home_win_estimated_probability=probs["home_win"],
             away_win_estimated_probability=probs["away_win"],

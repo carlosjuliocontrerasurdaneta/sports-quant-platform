@@ -34,7 +34,8 @@ palanca canónica para corregirlo es contraproducente. Ver [[Bitácora/2026-08-2
 cada mes (`scripts/model_vs_market_report.py`, enganchado a `VALIDATE_OOS.bat`
 en best-effort). Antes existía el código y no lo corría nadie.
 
-**Sin cambios en producción:** `shadow_mode` sigue en `true`, stakes en 0,
+**Sin cambios en producción:** stakes en 0 (`shadow_mode` está en **`false`**
+desde el 2026-08-16 — ver abajo; quien mantiene el stake en 0 es el gate),
 `configs/default.yaml` intacto, ningún parámetro de modelo, riesgo o estrategia
 tocado. El gate de predicción sigue en **0 de 32 aprobados**, y `mls|h2h` —
 primer corte en completar la ventana n≥300 — dio `no_bate_al_mercado`.
@@ -45,7 +46,7 @@ Directiva de Carlos, textual: **"El fin del sistema es ganar dinero, eso
 escríbelo sobre piedra. Es sacrosanto."** La rentabilidad realizada es el fin
 último; supersede el pivot a hit rate del 2026-07-27. El hit rate se reporta
 siempre contra el breakeven por cuota, nunca en absoluto. (Objetivo ≠ logro:
-a esta fecha no hay edge demostrado — shadow activo, gate de CLV vacío.)
+a esta fecha no hay edge demostrado. **Corrección 2026-08-26:** shadow NO está activo desde el 2026-08-16; quien mantiene el stake en 0 es el gate de predicción, 0 de 32 mercados aprobados.)
 
 ## Modo de selección: EDGE (revertido el 2026-07-31)
 
