@@ -469,7 +469,7 @@ def _todos_section(cal_dir: Path | None = None, *, top: int = 400) -> str:
         "Breakeven": be.round(4), "Margen": (p - be).round(4),
         "Prob. mercado": pd.to_numeric(
             df.get("implied_probability_novig"), errors="coerce").round(4),
-        "Libros": df.get("books_count"),
+        "Casas": df.get("books_count"),
     })
     out = out[p.notna() & be.notna()].sort_values(
         "Prob. est.", ascending=False).reset_index(drop=True)
@@ -484,7 +484,12 @@ def _todos_section(cal_dir: Path | None = None, *, top: int = 400) -> str:
         "no perder dinero; <code>Margen = Prob. est. &minus; Breakeven</code>. "
         "Un margen negativo pierde a largo plazo <em>por alta que sea la "
         "probabilidad</em>: a cuota 1.07 hace falta acertar el 93.5%. "
-        "Estas lineas <strong>no llevan stake</strong>.</p>")
+        "Estas lineas <strong>no llevan stake</strong>. "
+        "<code>Casas</code> es cuantas casas de apuestas cotizan esa "
+        "linea: la cuota usada es la MEDIANA de todas ellas, asi que con "
+        "muchas casas el consenso es solido y con una o dos es la opinion "
+        "de un solo operador. Un margen grande con pocas casas fia menos "
+        "que uno pequeno con sesenta.</p>")
     tabla = _df_to_html_table(out.head(top), empty_msg="Sin selecciones hoy.")
     extra = (f'<p class="gen">Mostradas {top} de {len(out)}; la lista completa '
              f"en <code>data/predictions/picks_ranked_*.md</code>.</p>"

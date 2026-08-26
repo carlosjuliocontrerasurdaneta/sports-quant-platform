@@ -57,7 +57,7 @@ import pandas as pd
 from sqp.config import ROOT
 
 COLS = ["#", "liga", "mercado", "seleccion", "linea", "precio", "prob_est",
-        "breakeven", "margen", "prob_mercado", "edge", "libros", "estado"]
+        "breakeven", "margen", "prob_mercado", "edge", "casas", "estado"]
 
 
 def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
@@ -133,7 +133,7 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         "prob_mercado": pd.to_numeric(
             d.get("implied_probability_novig"), errors="coerce").round(4),
         "edge": pd.to_numeric(d.get("estimated_edge"), errors="coerce").round(4),
-        "libros": d.get("books_count"),
+        "casas": d.get("books_count"),
         "estado": [("STAKE %.2f" % s) if s > 0 else (f or "sin stake")
                    for s, f in zip(stake, flags)],
     })
