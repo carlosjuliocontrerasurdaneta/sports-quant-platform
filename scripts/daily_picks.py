@@ -86,7 +86,8 @@ def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
 
 
 def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
-               market: str | None = None) -> pd.DataFrame:
+               market: str | None = None,
+               min_margin: float | None = None) -> pd.DataFrame:
     """Ordena por probabilidad estimada DESCENDENTE y anota el breakeven.
 
     `margen = prob_est - 1/precio`. Positivo significa que la probabilidad
@@ -107,6 +108,12 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         d = d[d["_p"] >= min_prob]
     if market:
         d = d[d["market"] == market]
+    # `margen = prob_est - 1/precio`. Filtrar por el > 0 deja solo las lineas
+    # cuya probabilidad estimada supera lo que la cuota exige. NO es una lista
+    # de apuestas: sigue sin llevar stake, y el edge declarado ya se midio
+    # anti-informativo (bitacora 2026-08-25).
+    if min_margin is not None:
+        d = d[d["_margen"] >= min_margin]
     d = d.sort_values("_p", ascending=False).reset_index(drop=True)
 
     flags = d.get("flags", pd.Series([""] * len(d))).fillna("").astype(str)
@@ -181,6 +188,9 @@ def main() -> int:
     ap.add_argument("--min-prob", type=float, default=0.0,
                     help="probabilidad estimada minima")
     ap.add_argument("--market", default=None, help="h2h | spreads | totals")
+    ap.add_argument("--min-margin", type=float, default=None,
+                    help="margen minimo (prob_est - 1/precio); usa 0 para ver "
+                         "solo las que superan su punto de equilibrio")
     ap.add_argument("--all-days", action="store_true",
                     help="no limitar al dia mas reciente")
     ap.add_argument("--out", type=Path, default=None)
@@ -193,7 +203,8 @@ def main() -> int:
               "Corre RUN_DIARIO_ALL.bat primero.")
         return 1
     day = str(df["generated_at"].astype(str).str[:10].max()) if "generated_at" in df else "?"
-    ranked = rank_picks(df, min_prob=args.min_prob, market=args.market)
+    ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
+                        min_margin=args.min_margin)
     report = build_report(ranked, top=args.top, source_day=day)
 
     out = args.out or pred_dir / f"picks_ranked_{date.today():%Y%m%d}.md"

@@ -27,6 +27,27 @@ echo [2/2] Ejecutando run diario multi-liga...
 call "%~dp0RUN_DIARIO_ALL.bat"
 if errorlevel 1 goto :error_run
 
+REM [3/3] REGLA FUNDAMENTAL (operador 2026-08-26, SACROSANTA E INAMOVIBLE):
+REM "generar picks para todos los deportes y mercados, priorizando aquellos con
+REM las mayores probabilidades". Dos vistas sobre lo que el run acaba de
+REM escribir: la lista COMPLETA y la de margen positivo. Solo LEEN el stream
+REM servido -- no generan nada, no tocan stakes ni gates, no gastan cuota.
+REM BEST-EFFORT a proposito: son vistas, y no deben poder tumbar el flujo que ya
+REM produjo los picks y el reporte.
+echo [3/3] Generando la lista diaria de picks...
+set PYTHONPATH=src
+"%SQP_PYTHON%" scripts\daily_picks.py --top 0 >> logs\run_diario.log 2>&1
+if errorlevel 1 echo [AVISO] daily_picks.py fallo (no bloqueante) >> logs\run_diario.log
+
+REM Segunda vista: solo las lineas cuya probabilidad estimada supera su punto de
+REM equilibrio (margen = prob_est - 1/precio > 0). NO es una lista de apuestas:
+REM sigue sin llevar stake. Los margenes mas grandes concentran el riesgo -- ocho
+REM de los diez mayores del 2026-08-26 eran ncaaf/brasileirao con handicaps de
+REM +31/+38.5, justo el perfil que el cap de plausibilidad marca y que rinde
+REM -22.6% frente al -5.6% de lo que el cap deja pasar.
+"%SQP_PYTHON%" scripts\daily_picks.py --min-margin 0 --top 0 --out data\predictions\picks_margen_positivo.md >> logs\run_diario.log 2>&1
+if errorlevel 1 echo [AVISO] daily_picks --min-margin fallo (no bloqueante) >> logs\run_diario.log
+
 REM Run correcto: limpia el centinela para que el health check deje de
 REM reportar ERROR (auditoria 2026-07-29, S-1).
 "%SQP_PYTHON%" scripts\run_status.py --clear

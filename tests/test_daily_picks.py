@@ -134,3 +134,44 @@ class TestFuenteYFiltros:
 
     def test_frame_vacio_no_revienta(self):
         assert daily_picks.rank_picks(pd.DataFrame()).empty
+
+
+class TestEnganchadoAlFlujoDiario:
+    """La regla dice DIARIAMENTE. Un script que nadie invoca no la cumple.
+
+    Motivo real de estos tests: el 2026-08-26 afirme haber enganchado
+    `daily_picks.py` a DIARIO_COMPLETO.bat y NO era cierto -- el patron de
+    reemplazo no hizo match porque el .bat usa CRLF, y sin `assert` el script
+    imprimio "ok" igualmente. La lista habria dejado de generarse sola sin que
+    nada lo señalara.
+    """
+
+    def _bat(self) -> str:
+        return (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8",
+                                                        errors="replace")
+
+    def test_el_orquestador_diario_invoca_daily_picks(self):
+        assert "daily_picks.py" in self._bat(), (
+            "DIARIO_COMPLETO.bat no invoca daily_picks.py: la lista dejaria de "
+            "generarse a diario y la REGLA FUNDAMENTAL quedaria incumplida")
+
+    def test_genera_las_dos_vistas(self):
+        bat = self._bat()
+        assert "--top 0" in bat, "falta la vista COMPLETA"
+        assert "--min-margin 0" in bat, "falta la vista de margen positivo"
+
+    def test_es_best_effort_y_no_puede_tumbar_el_run(self):
+        """Son vistas: un fallo suyo no debe abortar el flujo que ya produjo los
+        picks. Se comprueba que no hay `goto :error` colgando de su errorlevel."""
+        bat = self._bat()
+        for linea in bat.splitlines():
+            if "daily_picks.py" in linea:
+                continue
+            if "daily_picks" in linea and "errorlevel" in linea:
+                assert "goto" not in linea.lower(), (
+                    f"daily_picks no es best-effort: {linea!r}")
+
+    def test_corre_despues_del_run_no_antes(self):
+        """Lee lo que el run escribe. Invocarlo antes daria la lista de ayer."""
+        bat = self._bat()
+        assert bat.index("RUN_DIARIO_ALL.bat") < bat.index("daily_picks.py")
