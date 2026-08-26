@@ -102,8 +102,12 @@ class TestOppositeEffectOnMarginAndTotal:
         base, corr = _grid(3.1, 2.7, 0.0), _grid(3.1, 2.7, -0.10)
         _, _, vh, va, cov0 = _moments(base)
         _, _, _, _, cov1 = _moments(corr)
-        var_margin = lambda cov: vh + va - 2 * cov
-        var_total = lambda cov: vh + va + 2 * cov
+        def var_margin(cov):
+            return vh + va - 2 * cov
+
+        def var_total(cov):
+            return vh + va + 2 * cov
+
         assert var_margin(cov1) > var_margin(cov0)
         assert var_total(cov1) < var_total(cov0)
 

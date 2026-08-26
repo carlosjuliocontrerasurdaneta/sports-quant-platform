@@ -35,7 +35,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT
-from sqp.evaluation.edge_information import DEFAULT_THRESHOLDS, edge_ladder, edge_signal
+from sqp.evaluation.edge_information import (
+    DEFAULT_THRESHOLDS,
+    cap_ladder,
+    edge_ladder,
+    edge_signal,
+)
 from sqp.evaluation.model_vs_market import score_model_vs_market
 from sqp.storage.served_store import ServedStore
 
@@ -115,9 +120,22 @@ def build_report(df: pd.DataFrame, *, price_floor: float, n_boot: int,
         lines += [f"### Suelo de probabilidad implicita = {floor:.2f}", "",
                   _md_table(lad), ""]
 
+    lines += [
+        "## 4. Cap de plausibilidad: esta cortando lo peor o picks buenos?", "",
+        "`risk.max_plausible_edge` descarta candidatos cuyo edge declarado es "
+        "implausible. Es el control con MAS trabajo efectivo del sistema: en un "
+        "run real el 63% de las filas descartadas llevan su flag, mas que el "
+        "gate de prediccion. Un cap util corta lo que rinde PEOR.", "",
+        "AVISO: el techo se barre sobre la misma muestra que se evalua, asi que "
+        "el mejor punto esta sesgado al alza. Sirve para VIGILAR que el cap "
+        "sigue funcionando, no para optimizarlo.", "",
+        _md_table(cap_ladder(df, n_boot=n_boot, seed=seed)),
+        "",
+    ]
+
     sig = edge_signal(df, n_boot=n_boot, seed=seed)
     lines += [
-        "## 4. Contraste directo de la seleccion",
+        "## 5. Contraste directo de la seleccion",
         "",
         f"- ROI donde el modelo apuesta (edge>0): **{sig['roi_picked']:+.4f}** "
         f"(n={int(sig['n_picked'])})",

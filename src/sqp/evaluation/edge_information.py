@@ -38,6 +38,8 @@ from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 # Escalera por defecto. Empieza en 0 (todo lo que el modelo considera favorable)
 # y llega a 0.12: por encima, la muestra historica se queda sin filas utiles.
 DEFAULT_THRESHOLDS: tuple[float, ...] = (0.0, 0.02, 0.05, 0.08, 0.12)
+# Techos para la escalera del cap de plausibilidad. El ultimo es "sin cap".
+DEFAULT_CAPS: tuple[float, ...] = (0.05, 0.075, 0.10, 0.15, 0.20, 0.30, float("inf"))
 # Con menos filas que esto el ROI es anecdota, no medicion: se emite la fila con
 # el intervalo en NaN en vez de omitirla, para que el hueco sea visible.
 MIN_ROWS = 40
@@ -173,4 +175,55 @@ def edge_signal(df: pd.DataFrame, *, n_boot: int = 1000, seed: int = 42,
     lo, hi = cluster_bootstrap_ci(order, d["event_id"].to_numpy(),
                                   n_boot=n_boot, seed=seed, stat=delta_of)
     out["delta_lo"], out["delta_hi"] = lo, hi
+    return out
+
+
+def cap_ladder(df: pd.DataFrame, *,
+               caps: tuple[float, ...] = DEFAULT_CAPS,
+               n_boot: int = 1000, seed: int = 42,
+               **prep_kwargs: str) -> pd.DataFrame:
+    """ROI realizado de lo que SOBREVIVE al cap de plausibilidad, por techo.
+
+    `risk.max_plausible_edge` descarta candidatos cuyo edge declarado es
+    implausiblemente grande. Es el control de riesgo con MAS trabajo efectivo del
+    sistema —el 63% de las filas descartadas de un run real llevan su flag, mas
+    que el gate de prediccion— y hasta 2026-08-26 nadie habia medido si acierta.
+
+    Medido entonces sobre el stream servido: lo que el cap CORTA rinde −22,6% de
+    ROI plano frente al −5,6% de lo que deja pasar, y la escalera es monotona
+    (sin cap −10,9%; apretandolo mejora). Es la escalera de `min_edge` vista
+    desde el otro lado: edge declarado alto = ROI realizado peor.
+
+    Devuelve, por cada techo, el ROI de las filas que pasan Y el de las que
+    corta, con IC95 clusterizado por evento. Un cap util es aquel cuyo grupo
+    CORTADO rinde peor que el que pasa; si rindiera igual o mejor, el cap estaria
+    destruyendo picks buenos.
+
+    AVISO: esta tabla NO justifica por si sola mover el parametro. El techo se
+    barre sobre la misma muestra que se evalua, asi que el mejor punto esta
+    sesgado al alza. Sirve para vigilar que el cap sigue haciendo su trabajo, no
+    para optimizarlo; cambiarlo exige pre-registro, como cualquier parametro de
+    negocio.
+    """
+    d = prepare(df, **prep_kwargs)
+    sel = d[d["_edge"] > 0]          # lo que el selector por edge elegiria
+    rows = []
+    for c in caps:
+        passes, blocked = sel[sel["_edge"] <= c], sel[sel["_edge"] > c]
+        lo, hi = _roi_ci(passes, n_boot=n_boot, seed=seed)
+        blo, bhi = _roi_ci(blocked, n_boot=n_boot, seed=seed)
+        rows.append({
+            "cap": c,
+            "n_pasan": len(passes),
+            "roi_pasan": round(float(passes["_roi"].mean()), 5) if len(passes) else float("nan"),
+            "roi_pasan_lo": round(lo, 5), "roi_pasan_hi": round(hi, 5),
+            "n_cortadas": len(blocked),
+            "roi_cortadas": round(float(blocked["_roi"].mean()), 5) if len(blocked) else float("nan"),
+            "roi_cortadas_lo": round(blo, 5), "roi_cortadas_hi": round(bhi, 5),
+        })
+    out = pd.DataFrame(rows)
+    out["veredicto"] = np.where(
+        out["n_cortadas"] == 0, "sin cap",
+        np.where(out["roi_cortadas"] < out["roi_pasan"],
+                 "el cap corta lo peor", "el cap corta picks buenos"))
     return out

@@ -14,6 +14,7 @@ import pytest
 from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 from sqp.evaluation.edge_information import (
     MIN_ROWS,
+    cap_ladder,
     edge_ladder,
     edge_signal,
     prepare,
@@ -155,3 +156,54 @@ class TestClusterBootstrap:
         lo, hi = cluster_bootstrap_ci(v, c, n_boot=200, seed=9,
                                       stat=lambda x: float(np.median(x)))
         assert lo < 50 < hi
+
+
+class TestCapLadder:
+    """El cap de plausibilidad (`risk.max_plausible_edge`) es el control con mas
+    trabajo efectivo del sistema -- el 63% de las filas descartadas de un run
+    real llevan su flag, mas que el gate de prediccion -- y hasta 2026-08-26
+    nadie habia medido si acierta."""
+
+    def _mixed(self, n_events: int = 300) -> pd.DataFrame:
+        """Edges pequenos que ganan al 60%, edges grandes que ganan al 25%.
+        Es la forma medida: edge declarado alto => ROI realizado peor."""
+        rng = np.random.default_rng(11)
+        rows = []
+        for i in range(n_events):
+            for edge, p in ((0.03, 0.60), (0.30, 0.25)):
+                rows.append({
+                    "league": "t", "market": "h2h", "event_id": f"e{i}",
+                    "price_decimal": 2.0, "estimated_edge": edge,
+                    "result": "win" if rng.random() < p else "loss",
+                })
+        return pd.DataFrame(rows)
+
+    def test_flags_a_cap_that_cuts_the_worst_picks(self):
+        row = cap_ladder(self._mixed(), caps=(0.10,), n_boot=300, seed=1).iloc[0]
+        assert row.roi_cortadas < row.roi_pasan
+        assert row.veredicto == "el cap corta lo peor"
+
+    def test_flags_a_cap_that_cuts_good_picks(self):
+        """Contraprueba: con la relacion invertida el veredicto debe cambiar.
+        Sin este test, uno que siempre dijera 'corta lo peor' pasaria igual."""
+        df = self._mixed()
+        df["estimated_edge"] = df["estimated_edge"].map({0.03: 0.30, 0.30: 0.03})
+        lad = cap_ladder(df, caps=(0.10,), n_boot=300, seed=1)
+        assert lad.iloc[0].veredicto == "el cap corta picks buenos"
+
+    def test_infinite_cap_blocks_nothing(self):
+        row = cap_ladder(self._mixed(), caps=(float("inf"),),
+                         n_boot=200, seed=1).iloc[0]
+        assert row.n_cortadas == 0
+        assert row.veredicto == "sin cap"
+
+    def test_only_positive_edge_rows_enter_the_ladder(self):
+        """El cap actua sobre lo que el selector elegiria, no sobre todo el
+        stream: incluir edges negativos falsearia el denominador."""
+        df = self._mixed()
+        extra = df.head(50).copy()
+        extra["estimated_edge"] = -0.20
+        extra["event_id"] = extra["event_id"] + "_neg"
+        row = cap_ladder(pd.concat([df, extra]), caps=(float("inf"),),
+                         n_boot=200, seed=1).iloc[0]
+        assert row.n_pasan == len(df)
