@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sqp.audit.html_report import _todos_section, html_dashboard
+from sqp.audit.html_report import _todos_records, html_dashboard
 
 
 def _served(tmp_path, rows):
@@ -21,7 +21,8 @@ def _served(tmp_path, rows):
             "price_decimal": 2.0, "estimated_probability": 0.5,
             "implied_probability_novig": 0.5, "estimated_edge": 0.0,
             "books_count": 10, "stake": 0.0, "flags": "served_stream",
-            "generated_at": "2026-08-26T11:00:00+00:00"}
+            "generated_at": "2026-08-26T11:00:00+00:00",
+            "start_time": "2026-08-26T18:00:00Z"}
     df = pd.DataFrame([{**base, **r} for r in rows])
     (tmp_path / "served_mlb.csv").write_text(df.to_csv(index=False),
                                              encoding="utf-8")
@@ -30,30 +31,36 @@ def _served(tmp_path, rows):
 
 class TestTodosLosPicks:
     def test_ordena_por_probabilidad_descendente(self, tmp_path):
-        h = _todos_section(_served(tmp_path, [
+        r = _todos_records(_served(tmp_path, [
             {"selection": "BAJA", "estimated_probability": 0.20},
             {"selection": "ALTA", "estimated_probability": 0.90},
         ]))
-        assert h.index("ALTA") < h.index("BAJA")
+        assert [x["seleccion"] for x in r] == ["ALTA", "BAJA"]
 
     def test_incluye_lineas_bloqueadas_por_el_gate(self, tmp_path):
         """El nucleo: generar != apostar. Lo que el gate bloquea sigue en la
         lista; el gate quita el stake, nunca la fila."""
-        h = _todos_section(_served(tmp_path, [
+        r = _todos_records(_served(tmp_path, [
             {"selection": "BLOQUEADA", "flags": "prediction_gate",
              "estimated_edge": -0.3},
         ]))
-        assert "BLOQUEADA" in h
+        assert [x["seleccion"] for x in r] == ["BLOQUEADA"]
 
-    def test_muestra_breakeven_y_margen(self, tmp_path):
-        h = _todos_section(_served(tmp_path, [{"price_decimal": 1.07,
-                                               "estimated_probability": 0.90}]))
-        assert "Breakeven" in h and "Margen" in h
-        assert "0.9346" in h          # 1/1.07
-        assert "-0.0346" in h         # 0.90 - 0.9346 -> margen NEGATIVO
+    def test_calcula_breakeven_y_margen(self, tmp_path):
+        r = _todos_records(_served(tmp_path, [{"price_decimal": 1.07,
+                                               "estimated_probability": 0.90}]))[0]
+        assert round(r["breakeven"], 4) == 0.9346      # 1/1.07
+        assert r["margen"] < 0                          # 0.90 < 0.9346
 
     def test_sin_datos_no_revienta(self, tmp_path):
-        assert "Sin stream servido" in _todos_section(tmp_path)
+        assert _todos_records(tmp_path) == []
+
+    def test_lleva_la_fecha_del_PARTIDO_no_la_de_generacion(self, tmp_path):
+        """Sin esto la pestana no puede filtrar por dia de partido, que es el
+        fallo que el operador detecto el 2026-08-26."""
+        r = _todos_records(_served(tmp_path, [
+            {"start_time": "2026-08-29T18:00:00Z"}]))[0]
+        assert r["fecha"] == "2026-08-29"
 
 
 class TestEstaEnElDashboard:

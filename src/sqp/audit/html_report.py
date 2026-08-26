@@ -423,25 +423,27 @@ def _run_alert_banner(root: Path | None = None) -> str:
         "</div>")
 
 
-def _todos_section(cal_dir: Path | None = None, *, top: int = 400) -> str:
-    """Pestana "Todos los Picks": TODAS las caras priceadas del dia, ordenadas
-    por probabilidad estimada descendente.
+def _todos_records(cal_dir: Path | None = None) -> list[dict]:
+    """TODAS las caras priceadas del ultimo run, para la pestana "Todos los Picks".
 
     REGLA FUNDAMENTAL del operador (2026-08-26, SACROSANTA E INAMOVIBLE):
     "generar picks para todos los deportes y mercados, priorizando aquellos con
     las mayores probabilidades".
 
-    Existe aparte de la pestana "Picks del Dia" porque esa muestra los
-    CANDIDATOS -- lo que supero `min_edge` y llego al motor de riesgo, 63 filas
-    el 2026-08-26 -- y la regla exige TODOS los mercados: 541 ese mismo dia. Las
-    dos vistas responden preguntas distintas y ninguna sustituye a la otra.
+    Existe aparte de "Picks del Dia" porque esa muestra lo que llevaria DINERO
+    (stake>0) -- hoy CERO, porque el gate bloquea los 32 mercados -- mientras
+    esta muestra todo lo evaluado: 541 filas el 2026-08-26.
 
-    `breakeven = 1/precio` y `margen = prob_est - breakeven` van al lado de cada
-    probabilidad y no son opcionales: ordenar por probabilidad a secas es el
-    `pick_mode: accuracy` revertido el 2026-07-31, donde un favorito a cuota 1.07
-    acierta el 90% y pierde dinero igual. La tabla hace ese hecho visible.
+    `fecha` es la del PARTIDO en hora local, no la de generacion. El run guarda
+    eventos con horizonte de 7 dias, asi que "generado hoy" incluye partidos de
+    hasta 6 dias despues: de las 541 del 2026-08-26 solo 105 se jugaban ese dia.
+    Filtrar por generacion y llamarlo "picks de hoy" era enganoso.
 
-    No lleva stakes. Generar picks y apostarlos son cosas distintas.
+    `breakeven = 1/precio` y `margen = prob - breakeven` no son opcionales:
+    ordenar por probabilidad a secas es el `pick_mode: accuracy` revertido el
+    2026-07-31, donde un favorito a cuota 1.07 acierta el 90% y pierde igual.
+
+    Sin stakes. Generar picks y apostarlos son cosas distintas.
     """
     cal_dir = cal_dir or (ROOT / "data" / "calibration")
     frames = []
@@ -453,48 +455,42 @@ def _todos_section(cal_dir: Path | None = None, *, top: int = 400) -> str:
         if not d.empty:
             frames.append(d)
     if not frames:
-        return '<p class="gen">Sin stream servido todavia.</p>'
+        return []
     df = pd.concat(frames, ignore_index=True)
     if "generated_at" in df.columns:
-        day = df["generated_at"].astype(str).str[:10]
-        df = df[day == day.max()]
+        gen = df["generated_at"].astype(str).str[:10]
+        df = df[gen == gen.max()]
+    if df.empty:
+        return []
 
     p = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
     price = pd.to_numeric(df.get("price_decimal"), errors="coerce")
     be = 1.0 / price.where(price > 1.0)
+    # Fecha del PARTIDO en hora local: un partido nocturno en la costa oeste de
+    # EEUU comienza despues de las 00:00Z, asi que la fecha UTC lo archivaria
+    # como de manana (mismo criterio que la pestana "Picks del Dia").
+    st = pd.to_datetime(df.get("start_time"), errors="coerce", utc=True)
+    local_tz = datetime.now(timezone.utc).astimezone().tzinfo
+    fecha = st.dt.tz_convert(local_tz).dt.strftime("%Y-%m-%d").fillna("")
+
     out = pd.DataFrame({
-        "Liga": df.get("league"), "Mercado": df.get("market"),
-        "Seleccion": df.get("selection"), "Linea": df.get("line"),
-        "Cuota": price.round(3), "Prob. est.": p.round(4),
-        "Breakeven": be.round(4), "Margen": (p - be).round(4),
-        "Prob. mercado": pd.to_numeric(
-            df.get("implied_probability_novig"), errors="coerce").round(4),
-        "Casas": df.get("books_count"),
+        "fecha": fecha, "league": df.get("league"), "market": df.get("market"),
+        "seleccion": df.get("selection"), "linea": df.get("line"),
+        "cuota": price, "prob": p, "breakeven": be, "margen": p - be,
+        "casas": pd.to_numeric(df.get("books_count"), errors="coerce"),
     })
-    out = out[p.notna() & be.notna()].sort_values(
-        "Prob. est.", ascending=False).reset_index(drop=True)
-    n_pos = int((out["Margen"] > 0).sum())
-    cards = (_card("Selecciones", str(len(out)), "todas las caras priceadas")
-             + _card("Ligas", str(out["Liga"].nunique()), "en juego hoy")
-             + _card("Margen positivo", str(n_pos),
-                     "prob. estimada > breakeven"))
-    nota = (
-        '<p class="gen"><strong>Ordenadas por probabilidad estimada.</strong> '
-        "<code>Breakeven = 1/cuota</code> es el acierto que la CUOTA exige para "
-        "no perder dinero; <code>Margen = Prob. est. &minus; Breakeven</code>. "
-        "Un margen negativo pierde a largo plazo <em>por alta que sea la "
-        "probabilidad</em>: a cuota 1.07 hace falta acertar el 93.5%. "
-        "Estas lineas <strong>no llevan stake</strong>. "
-        "<code>Casas</code> es cuantas casas de apuestas cotizan esa "
-        "linea: la cuota usada es la MEDIANA de todas ellas, asi que con "
-        "muchas casas el consenso es solido y con una o dos es la opinion "
-        "de un solo operador. Un margen grande con pocas casas fia menos "
-        "que uno pequeno con sesenta.</p>")
-    tabla = _df_to_html_table(out.head(top), empty_msg="Sin selecciones hoy.")
-    extra = (f'<p class="gen">Mostradas {top} de {len(out)}; la lista completa '
-             f"en <code>data/predictions/picks_ranked_*.md</code>.</p>"
-             if len(out) > top else "")
-    return f'<div class="stats">{cards}</div>{nota}{tabla}{extra}'
+    out = out[p.notna() & be.notna()].sort_values("prob", ascending=False)
+    records: list[dict] = []
+    for _, row in out.iterrows():
+        rec: dict = {}
+        for k in out.columns:
+            v = row[k]
+            if k in ("fecha", "league", "market", "seleccion"):
+                rec[k] = "" if pd.isna(v) else str(v)
+            else:
+                rec[k] = None if pd.isna(v) else float(v)
+        records.append(rec)
+    return records
 
 
 def html_dashboard(predictions_dir: Path | None = None,
@@ -519,13 +515,13 @@ def html_dashboard(predictions_dir: Path | None = None,
     # whenever the file happens to be opened.
     today_local = datetime.now(timezone.utc).astimezone().date().isoformat()
     payload = json.dumps({"picks": picks, "columns": columns_meta,
-                          "today": today_local}, ensure_ascii=False)
+                          "today": today_local, "todos": _todos_records()},
+                         ensure_ascii=False)
 
     page = _TEMPLATE.format(
         run_alert=_run_alert_banner(),
         day=html.escape(day),
         generated=html.escape(ts),
-        todos=_todos_section(),
         audit=_audit_section(bets_dir),
         diagnostics=_diagnostics_section(bets_dir),
         patterns=_patterns_section(patterns_path),
@@ -626,7 +622,24 @@ _TEMPLATE = """<!DOCTYPE html>
     </div>
     <table class="grid" id="picksTable"><thead></thead><tbody></tbody></table>
   </section>
-  <section class="panel" id="todos">{todos}</section>
+  <section class="panel" id="todos">
+    <div class="stats" id="statsTodos"></div>
+    <p class="gen"><strong>Todas las caras priceadas</strong>, ordenadas por
+      probabilidad estimada. <code>Breakeven = 1/cuota</code> es el acierto que la
+      CUOTA exige para no perder dinero; <code>Margen = Prob &minus; Breakeven</code>.
+      Un margen negativo pierde a largo plazo <em>por alta que sea la
+      probabilidad</em>. <code>Casas</code> es cuantas casas de apuestas cotizan
+      esa linea: la cuota usada es la MEDIANA de todas ellas. Estas lineas
+      <strong>no llevan stake</strong>.</p>
+    <div class="filters">
+      <label>Fecha del partido<div class="tagfilter" id="dateTagsT"></div></label>
+      <label>Deporte<div class="tagfilter" id="sportTagsT"></div></label>
+      <label>Mercado<select id="fMarketT"></select></label>
+      <label>Margen minimo<input id="fMargenT" type="number" step="0.01" value="" placeholder="(todos)" style="width:100px"></label>
+      <label>&nbsp;<span class="gen" id="countT"></span></label>
+    </div>
+    <table class="grid" id="todosTable"><thead></thead><tbody></tbody></table>
+  </section>
   <section class="panel" id="audit">{audit}</section>
   <section class="panel" id="diagnostics">{diagnostics}</section>
   <section class="panel" id="patterns">{patterns}</section>
@@ -907,6 +920,95 @@ function init() {{
   refresh();
 }}
 init();
+// ---- Pestana "Todos los Picks" -------------------------------------------
+// Filtros propios (fecha del PARTIDO, deporte, mercado, margen minimo) sobre
+// TODAS las caras priceadas. Reutiliza labelFor/colorFor/dateLabel de arriba.
+// Por defecto muestra SOLO los partidos de hoy: el run guarda 7 dias de
+// horizonte, asi que sin este filtro "los picks de hoy" mezclaba seis dias.
+const TODOS = DATA.todos || [];
+let tDates = new Set(), tSports = new Set();
+
+const T_COLS = [
+  ["fecha","Fecha","txt"], ["league","Deporte","lg"], ["market","Mercado","txt"],
+  ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
+  ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
+  ["margen","Margen","pct"], ["casas","Casas","int"],
+];
+const tFmt = {{
+  txt: v => v == null ? "" : v,
+  lg:  v => labelFor(v),
+  int: v => v == null ? "" : String(Math.round(v)),
+  num: v => v == null ? "—" : (Math.round(v * 100) / 100).toString(),
+  odds: v => v == null ? "" : v.toFixed(2),
+  pct: v => v == null ? "" : (v * 100).toFixed(2) + "%",
+}};
+
+function tBuildDates() {{
+  const ds = [...new Set(TODOS.map(r => r.fecha || ""))].sort();
+  document.getElementById("dateTagsT").innerHTML = ds.map(d =>
+    `<span class="tag" style="color:${{d === DATA.today ? "var(--accent)" : "var(--ink)"}}" `
+    + `data-tdate="${{d}}" onclick="tToggleDate('${{d}}')">${{dateLabel(d)}}</span>`).join("");
+  tDates = ds.includes(DATA.today) ? new Set([DATA.today]) : new Set(ds);
+  tSync("data-tdate", tDates, e => e.dataset.tdate);
+}}
+function tBuildSports() {{
+  const lgs = [...new Set(TODOS.map(r => r.league))].filter(Boolean).sort();
+  document.getElementById("sportTagsT").innerHTML = lgs.map((lg, i) =>
+    `<span class="tag active" style="color:${{colorFor(lg, i)}}" `
+    + `data-tsport="${{lg}}" onclick="tToggleSport('${{lg}}')">${{labelFor(lg)}}</span>`).join("");
+  tSync("data-tsport", tSports, e => e.dataset.tsport);
+}}
+function tSync(attr, set, get) {{
+  document.querySelectorAll(`[${{attr}}]`).forEach(e => {{
+    const on = set.size === 0 ? true : set.has(get(e));
+    e.classList.toggle("active", on); e.classList.toggle("inactive", !on);
+  }});
+}}
+function tToggleDate(d) {{
+  if (tDates.has(d)) tDates.delete(d); else tDates.add(d);
+  tSync("data-tdate", tDates, e => e.dataset.tdate); tRefresh();
+}}
+function tToggleSport(lg) {{
+  if (tSports.has(lg)) tSports.delete(lg); else tSports.add(lg);
+  tSync("data-tsport", tSports, e => e.dataset.tsport); tRefresh();
+}}
+function tBuildMarkets() {{
+  const ms = [...new Set(TODOS.map(r => r.market))].filter(Boolean).sort();
+  document.getElementById("fMarketT").innerHTML =
+    '<option value="">(todos)</option>' + ms.map(m => `<option>${{m}}</option>`).join("");
+}}
+function tFiltered() {{
+  const mk = document.getElementById("fMarketT").value;
+  const mgRaw = document.getElementById("fMargenT").value;
+  const mg = mgRaw === "" ? null : parseFloat(mgRaw);
+  return TODOS.filter(r =>
+    (tDates.size === 0 || tDates.has(r.fecha || "")) &&
+    (tSports.size === 0 || tSports.has(r.league)) &&
+    (!mk || r.market === mk) &&
+    (mg == null || (r.margen != null && r.margen >= mg)));
+}}
+function tRefresh() {{
+  const rows = tFiltered();
+  const pos = rows.filter(r => r.margen > 0).length;
+  const lig = new Set(rows.map(r => r.league)).size;
+  document.getElementById("statsTodos").innerHTML =
+      `<div class="card"><div class="k">Selecciones</div><div class="v">${{rows.length}}</div></div>`
+    + `<div class="card"><div class="k">Ligas</div><div class="v">${{lig}}</div></div>`
+    + `<div class="card"><div class="k">Margen positivo</div><div class="v">${{pos}}</div></div>`;
+  document.getElementById("countT").textContent = `${{rows.length}} de ${{TODOS.length}}`;
+  const tbl = document.getElementById("todosTable");
+  tbl.querySelector("thead").innerHTML =
+    "<tr>" + T_COLS.map(c => `<th>${{c[1]}}</th>`).join("") + "</tr>";
+  tbl.querySelector("tbody").innerHTML = rows.length
+    ? rows.slice(0, 500).map(r => "<tr>" + T_COLS.map(c =>
+        `<td>${{tFmt[c[2]](r[c[0]])}}</td>`).join("") + "</tr>").join("")
+    : `<tr><td colspan="${{T_COLS.length}}">Sin selecciones con estos filtros.</td></tr>`;
+}}
+tBuildDates(); tBuildSports(); tBuildMarkets();
+document.getElementById("fMarketT").addEventListener("change", tRefresh);
+document.getElementById("fMargenT").addEventListener("input", tRefresh);
+tRefresh();
+
 </script>
 </body>
 </html>

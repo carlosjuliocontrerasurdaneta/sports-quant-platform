@@ -31,7 +31,8 @@ def _served(rows: list[dict]) -> pd.DataFrame:
             "price_decimal": 2.0, "estimated_probability": 0.5,
             "implied_probability_novig": 0.5, "estimated_edge": 0.0,
             "books_count": 10, "stake": 0.0, "flags": "served_stream",
-            "generated_at": "2026-08-26T11:00:00+00:00"}
+            "generated_at": "2026-08-26T11:00:00+00:00",
+            "start_time": "2026-08-26T18:00:00Z"}
     return pd.DataFrame([{**base, **r} for r in rows])
 
 
@@ -175,3 +176,39 @@ class TestEnganchadoAlFlujoDiario:
         """Lee lo que el run escribe. Invocarlo antes daria la lista de ayer."""
         bat = self._bat()
         assert bat.index("RUN_DIARIO_ALL.bat") < bat.index("daily_picks.py")
+
+
+class TestFiltroPorFechaDelPartido:
+    """El run guarda 7 dias de horizonte, asi que "generado hoy" incluye
+    partidos de hasta 6 dias despues: de las 541 filas del 2026-08-26 solo 105
+    se jugaban ese dia. Llamar "picks de hoy" a las 541 era enganoso, y es
+    exactamente lo que hice antes de que el operador lo detectara."""
+
+    def _dias(self):
+        return _served([
+            {"selection": "HOY", "start_time": "2026-08-26T18:00:00Z"},
+            {"selection": "EN_3_DIAS", "start_time": "2026-08-29T18:00:00Z"},
+        ])
+
+    def test_filtra_por_fecha_del_partido_no_de_generacion(self):
+        out = daily_picks.rank_picks(self._dias(), game_date="2026-08-26")
+        assert list(out["seleccion"]) == ["HOY"]
+
+    def test_sin_filtro_devuelve_todo_el_horizonte(self):
+        out = daily_picks.rank_picks(self._dias())
+        assert set(out["seleccion"]) == {"HOY", "EN_3_DIAS"}
+
+    def test_filtro_por_liga(self):
+        out = daily_picks.rank_picks(_served([
+            {"league": "mlb"}, {"league": "epl"},
+        ]), league="epl")
+        assert set(out["liga"]) == {"epl"}
+
+    def test_los_tres_filtros_componen(self):
+        out = daily_picks.rank_picks(_served([
+            {"league": "mlb", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
+            {"league": "mlb", "market": "totals", "start_time": "2026-08-26T18:00:00Z"},
+            {"league": "epl", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
+            {"league": "mlb", "market": "h2h", "start_time": "2026-08-29T18:00:00Z"},
+        ]), league="mlb", market="h2h", game_date="2026-08-26")
+        assert len(out) == 1

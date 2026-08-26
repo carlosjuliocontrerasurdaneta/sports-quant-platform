@@ -24,7 +24,9 @@ RUN_DIARIO_ALL.bat.
 
   python scripts/daily_picks.py
   python scripts/daily_picks.py --top 20 --min-prob 0.60
-  python scripts/daily_picks.py --market h2h --all-days
+  python scripts/daily_picks.py --market h2h --liga mlb
+  python scripts/daily_picks.py --dia todos          # los 7 dias de horizonte
+  python scripts/daily_picks.py --dia 2026-08-29
 
 ## Por que la columna `breakeven` no es opcional
 
@@ -47,7 +49,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -85,9 +87,25 @@ def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
     return df
 
 
+def game_date_local(df: pd.DataFrame) -> pd.Series:
+    """Fecha del PARTIDO en hora local, no la de generacion.
+
+    El run guarda eventos con horizonte de 7 dias, asi que "generado hoy"
+    incluye partidos de hasta 6 dias despues: de las 541 filas del 2026-08-26
+    solo 105 se jugaban ese dia. Llamar "picks de hoy" a las 541 era enganoso.
+    Se usa hora LOCAL porque un partido nocturno en la costa oeste de EEUU
+    comienza despues de las 00:00Z y en UTC caeria en el dia siguiente.
+    """
+    st = pd.to_datetime(df.get("start_time"), errors="coerce", utc=True)
+    tz = datetime.now(timezone.utc).astimezone().tzinfo
+    return st.dt.tz_convert(tz).dt.strftime("%Y-%m-%d").fillna("")
+
+
 def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
                market: str | None = None,
-               min_margin: float | None = None) -> pd.DataFrame:
+               min_margin: float | None = None,
+               league: str | None = None,
+               game_date: str | None = None) -> pd.DataFrame:
     """Ordena por probabilidad estimada DESCENDENTE y anota el breakeven.
 
     `margen = prob_est - 1/precio`. Positivo significa que la probabilidad
@@ -108,6 +126,10 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         d = d[d["_p"] >= min_prob]
     if market:
         d = d[d["market"] == market]
+    if league:
+        d = d[d["league"] == league]
+    if game_date:
+        d = d[game_date_local(d) == game_date]
     # `margen = prob_est - 1/precio`. Filtrar por el > 0 deja solo las lineas
     # cuya probabilidad estimada supera lo que la cuota exige. NO es una lista
     # de apuestas: sigue sin llevar stake, y el edge declarado ya se midio
@@ -191,8 +213,14 @@ def main() -> int:
     ap.add_argument("--min-margin", type=float, default=None,
                     help="margen minimo (prob_est - 1/precio); usa 0 para ver "
                          "solo las que superan su punto de equilibrio")
+    ap.add_argument("--liga", default=None,
+                    help="filtrar por liga (mlb, epl, wnba, ...)")
+    ap.add_argument("--dia", default="hoy",
+                    help="fecha del PARTIDO: 'hoy' (default), 'todos', o "
+                         "YYYY-MM-DD. No es la fecha de generacion: el run "
+                         "guarda 7 dias de horizonte.")
     ap.add_argument("--all-days", action="store_true",
-                    help="no limitar al dia mas reciente")
+                    help="no limitar al ultimo run (fecha de GENERACION)")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
@@ -203,9 +231,13 @@ def main() -> int:
               "Corre RUN_DIARIO_ALL.bat primero.")
         return 1
     day = str(df["generated_at"].astype(str).str[:10].max()) if "generated_at" in df else "?"
+    hoy = datetime.now(timezone.utc).astimezone().date().isoformat()
+    dia = None if args.dia == "todos" else (hoy if args.dia == "hoy" else args.dia)
     ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
-                        min_margin=args.min_margin)
-    report = build_report(ranked, top=args.top, source_day=day)
+                        min_margin=args.min_margin, league=args.liga,
+                        game_date=dia)
+    etiqueta = f"{day} (generado) - partidos del {dia}" if dia else f"{day} (generado) - todas las fechas"
+    report = build_report(ranked, top=args.top, source_day=etiqueta)
 
     out = args.out or pred_dir / f"picks_ranked_{date.today():%Y%m%d}.md"
     out.write_text(report, encoding="utf-8")
