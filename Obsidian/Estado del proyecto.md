@@ -40,6 +40,32 @@ desde el 2026-08-16 — ver abajo; quien mantiene el stake en 0 es el gate),
 tocado. El gate de predicción sigue en **0 de 32 aprobados**, y `mls|h2h` —
 primer corte en completar la ventana n≥300 — dio `no_bate_al_mercado`.
 
+## REGLA FUNDAMENTAL: generar picks, NO apostar (directiva 2026-08-26)
+
+Directiva de Carlos, textual, declarada **SACROSANTA E INAMOVIBLE**: **"No
+quiero que realice apuestas, sino que genere picks para todos los deportes y
+mercados, priorizando aquellos con las mayores probabilidades."**
+
+Separa dos capas que el proyecto tenía fundidas. Los gates *default-deny*
+impedían apostar y, por el camino, **también impedían ver**: 53 días seguidos con
+0 picks accionables. A partir de ahora:
+
+- **La lista sale siempre y completa**, pase lo que pase con los gates. Un gate
+  cerrado deja las líneas sin stake; **nunca** vacía la lista.
+- **Todos los deportes y mercados**, ordenados por probabilidad estimada
+  descendente. Fuente: el **stream servido** (todas las caras priceadas: 533 el
+  2026-08-26), no `candidates_*.csv` (63 ese mismo día).
+- `scripts/daily_picks.py`, enganchado a `DIARIO_COMPLETO.bat` en best-effort.
+  13 tests en `tests/test_daily_picks.py` anclan la regla.
+
+**Salvaguarda inseparable:** junto a cada probabilidad va `breakeven = 1/precio`
+y el `margen`. Ordenar por probabilidad a secas es el `pick_mode: accuracy` que
+se revirtió el 2026-07-31: un favorito a cuota 1,07 acierta el 90% y pierde
+igual. La lista cumple la regla **y** hace visible ese hecho.
+
+**La regla no autoriza poner dinero.** Relajar el gate para que salgan picks con
+stake sería violarla, no cumplirla.
+
 ## Objetivo sacrosanto: GANAR DINERO (directiva 2026-08-02)
 
 Directiva de Carlos, textual: **"El fin del sistema es ganar dinero, eso
