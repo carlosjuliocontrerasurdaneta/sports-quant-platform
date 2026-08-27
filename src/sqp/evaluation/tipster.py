@@ -45,6 +45,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from sqp.evaluation.labels import match_label
+
 # Minimos por nivel. Son PROXIES de lo que el documento pide y estan calibrados
 # con lo medido en este proyecto, no elegidos a ojo:
 #   - casas: calidad del dato / liquidez. Con <10 el "consenso" son unas pocas
@@ -105,6 +107,9 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
 
     out = pd.DataFrame({
         "fecha": d.get("game_date"), "liga": d.get("league"),
+        # En `totals` la seleccion es "Over"/"Under": sin el partido, la fila no
+        # dice de que encuentro habla (operador, 2026-08-26).
+        "partido": match_label(d),
         "mercado": d.get("market"), "seleccion": d.get("selection"),
         "linea": d.get("line"), "cuota": price,
         "prob_est": p, "prob_implicita": 1.0 / price.where(price > 1.0),

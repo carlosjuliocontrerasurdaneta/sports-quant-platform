@@ -59,8 +59,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT
+from sqp.evaluation.labels import match_label
 
-COLS = ["#", "liga", "mercado", "seleccion", "linea", "precio", "prob_est",
+COLS = ["#", "liga", "partido", "mercado", "seleccion", "linea", "precio", "prob_est",
         "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado"]
 
 
@@ -157,6 +158,9 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     out = pd.DataFrame({
         "#": range(1, len(d) + 1),
         "liga": d["league"],
+        # Sin el partido, una fila de `totals` decia solo "Over 8.5": ni el
+        # mercado ni la seleccion identifican el encuentro (operador, 2026-08-26).
+        "partido": match_label(d),
         "mercado": d["market"],
         "seleccion": d["selection"],
         "linea": d.get("line"),

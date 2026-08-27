@@ -41,6 +41,7 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
+from sqp.evaluation.labels import match_label
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -94,11 +95,7 @@ def _picks_records(predictions_dir: Path,
                         for s, f in zip(stake, flags)]
     if ranked.empty:
         return []
-    if "home" in ranked.columns and "away" in ranked.columns:
-        ranked = ranked.assign(
-            partido=ranked["away"].astype(str) + " @ " + ranked["home"].astype(str))
-    else:
-        ranked = ranked.assign(partido=ranked.get("event_id", "").astype(str))
+    ranked = ranked.assign(partido=match_label(ranked))
     # Event date in LOCAL time: a US west-coast night game commences after
     # 00:00Z, so the UTC date would file today's game under "tomorrow".
     if "start_time" in ranked.columns:
@@ -499,7 +496,11 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     fecha = st.dt.tz_convert(local_tz).dt.strftime("%Y-%m-%d").fillna("")
 
     out = pd.DataFrame({
-        "fecha": fecha, "league": df.get("league"), "market": df.get("market"),
+        "fecha": fecha, "league": df.get("league"),
+        # Sin esto una fila de `totals` decia solo "Over 8.5": el mercado y la
+        # seleccion no identifican el partido (operador, 2026-08-26).
+        "partido": match_label(df),
+        "market": df.get("market"),
         "seleccion": df.get("selection"), "linea": df.get("line"),
         "cuota": price, "prob": p, "breakeven": be, "margen": p - be,
         # ROI esperado por unidad apostada: p*cuota - 1. Es el `estimated_edge`
@@ -533,7 +534,8 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         rec: dict = {}
         for k in out.columns:
             v = row[k]
-            if k in ("fecha", "league", "market", "seleccion", "tier", "motivo"):
+            if k in ("fecha", "league", "partido", "market", "seleccion",
+                     "tier", "motivo"):
                 rec[k] = "" if pd.isna(v) else str(v)
             else:
                 rec[k] = None if pd.isna(v) else float(v)
@@ -1003,7 +1005,8 @@ const TODOS = DATA.todos || [];
 let tDates = new Set(), tSports = new Set();
 
 const T_COLS = [
-  ["fecha","Fecha","txt"], ["league","Deporte","lg"], ["market","Mercado","txt"],
+  ["fecha","Fecha","txt"], ["league","Deporte","lg"], ["partido","Partido","txt"],
+  ["market","Mercado","txt"],
   ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
   ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
   ["margen","Margen","pct"], ["roi_esp","ROI esp.","pct"], ["casas","Casas","int"],

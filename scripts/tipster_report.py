@@ -25,7 +25,7 @@ import pandas as pd
 from sqp.config import ROOT, Settings
 from sqp.evaluation.tipster import tipster_summary, tipster_table
 
-COLS = ["tier", "fecha", "liga", "mercado", "seleccion", "linea", "cuota",
+COLS = ["tier", "fecha", "liga", "partido", "mercado", "seleccion", "linea", "cuota",
         "prob_est", "cuota_justa", "prob_mercado", "edge_pp", "ev", "casas",
         "correlacionado", "motivo"]
 
