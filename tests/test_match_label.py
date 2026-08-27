@@ -134,3 +134,51 @@ class TestGameDateLocal:
         t = tipster_table(d)
         assert t["fecha"].iloc[0] == nocturno["esperado_local"].iloc[0]
         assert t["fecha"].iloc[0] != nocturno["game_date"].iloc[0]
+
+
+class TestTierNoSeCruzaEntrePartidos:
+    """El dashboard reasociaba los tiers por (liga, mercado, seleccion, cuota).
+    Esa tupla NO identifica una fila: "wnba | totals | Over | 1.87" describe
+    varios partidos, asi que unas filas heredaban el tier de otras. El
+    2026-08-27, 541 filas producian 512 claves y 4 tenian tiers en conflicto.
+    """
+
+    @pytest.fixture
+    def colision(self) -> pd.DataFrame:
+        """Dos partidos DISTINTOS con la misma (liga, mercado, seleccion,
+        cuota) y clasificacion opuesta: uno con EV positivo y consenso profundo
+        (tier A), otro con EV negativo (NO BET)."""
+        base = dict(league="mlb", market="totals", selection="Over", line=8.5,
+                    price_decimal=1.85, generated_at="2026-08-26T12:00:00Z")
+        return pd.DataFrame([
+            {**base, "event_id": "e1", "home": "Marlins", "away": "Red Sox",
+             "start_time": "2026-08-26T23:05:00Z",
+             "estimated_probability": 0.56, "implied_probability_novig": 0.51,
+             "books_count": 39},
+            {**base, "event_id": "e2", "home": "Giants", "away": "Reds",
+             "start_time": "2026-08-26T23:05:00Z",
+             "estimated_probability": 0.51, "implied_probability_novig": 0.52,
+             "books_count": 35},
+        ])
+
+    def test_la_clave_antigua_era_ambigua(self, colision):
+        """Documenta POR QUE fallaba: la tupla colisiona por construccion."""
+        claves = set(zip(colision.league, colision.market,
+                         colision.selection, colision.price_decimal))
+        assert len(claves) == 1 and len(colision) == 2
+
+    def test_cada_partido_conserva_su_tier(self, tmp_path, colision):
+        from sqp.audit import html_report
+
+        colision.to_csv(tmp_path / "served_mlb.csv", index=False)
+        recs = html_report._todos_records(cal_dir=tmp_path)
+        tier = {r["partido"]: r["tier"] for r in recs}
+
+        assert tier["Red Sox @ Marlins"] == "A"
+        assert tier["Reds @ Giants"] == "NO BET"
+
+    def test_tipster_table_conserva_el_indice_de_entrada(self, colision):
+        """La propiedad de la que depende el alineado. Si alguien vuelve a
+        meter un `reset_index`, esto lo caza."""
+        d = colision.set_index(pd.Index([7, 42]))
+        assert sorted(tipster_table(d).index) == [7, 42]

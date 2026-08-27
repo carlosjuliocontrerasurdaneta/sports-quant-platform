@@ -503,14 +503,13 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         from sqp.config import Settings
         from sqp.evaluation.tipster import tipster_table
         tt = tipster_table(df, max_plausible_ev=Settings.load().risk.max_plausible_edge)
-        mapa = {tuple(r[c] for c in ("liga", "mercado", "seleccion", "cuota")):
-                (r["tier"], r["motivo"]) for _, r in tt.iterrows()}
-        out["tier"] = [mapa.get((a, b, c, d_), ("", ""))[0]
-                       for a, b, c, d_ in zip(df.get("league"), df.get("market"),
-                                              df.get("selection"), price)]
-        out["motivo"] = [mapa.get((a, b, c, d_), ("", ""))[1]
-                         for a, b, c, d_ in zip(df.get("league"), df.get("market"),
-                                                df.get("selection"), price)]
+        # Alineado por INDICE, no por (liga, mercado, seleccion, cuota): esa
+        # tupla no identifica una fila -- el 2026-08-27, 541 filas producian 512
+        # claves y 4 de ellas tenian tiers EN CONFLICTO, asi que el dashboard
+        # mostraba el tier de otro partido. `tipster_table` conserva el indice
+        # de `df` justo para esto.
+        out["tier"] = tt["tier"].reindex(out.index).fillna("")
+        out["motivo"] = tt["motivo"].reindex(out.index).fillna("")
     except Exception:
         out["tier"] = ""
         out["motivo"] = ""

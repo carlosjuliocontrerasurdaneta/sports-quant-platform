@@ -140,10 +140,15 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
     out["correlacionado"] = out["event_id"].map(por_evento).fillna(0).gt(1)
 
     # Orden: TIER y luego EV. Sin formula compuesta -- ver docstring del modulo.
+    # El INDICE de `df` se conserva a proposito (no hay `reset_index`): es la
+    # unica clave que identifica una fila sin perdida. El dashboard reasociaba
+    # los tiers por (liga, mercado, seleccion, cuota) y esa tupla NO es unica --
+    # "wnba | totals | Over | 1.87" describe varios partidos--, asi que unas
+    # filas heredaban el tier de otras. Alinear por indice lo hace imposible.
     orden = {"A": 0, "B": 1, "C": 2, "NO BET": 3}
     out["_o"] = out["tier"].map(orden)
     return (out.sort_values(["_o", "ev"], ascending=[True, False])
-            .drop(columns=["_o"]).reset_index(drop=True))
+            .drop(columns=["_o"]))
 
 
 def tipster_summary(table: pd.DataFrame) -> dict[str, int]:
