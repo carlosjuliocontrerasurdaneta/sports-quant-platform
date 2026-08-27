@@ -259,3 +259,56 @@ class TestProbabilidadYRoi:
         out = daily_picks.rank_picks(self._mix())
         assert out.iloc[0]["roi_esp"] < 0      # FAVORITO: 0.90*1.05 - 1 = -0.055
         assert out.iloc[1]["roi_esp"] > 0      # UNDERDOG: 0.40*3.00 - 1 = +0.20
+
+
+class TestCriterioDelOperador:
+    """Criterio fijado el 2026-08-26: probabilidad >= 0.60 Y ROI esperado > 0.
+
+    Produce 8 picks de los 105 partidos de ese dia. Se genera solo cada dia
+    (`picks_seleccion.md`) y hay un boton en el dashboard que lo aplica.
+    """
+
+    def _tres(self):
+        return _served([
+            # cumple: prob alta Y ROI positivo
+            {"selection": "CUMPLE", "estimated_probability": 0.70,
+             "price_decimal": 1.60},
+            # prob alta pero ROI negativo (favorito a cuota corta)
+            {"selection": "PROB_SIN_ROI", "estimated_probability": 0.90,
+             "price_decimal": 1.05},
+            # ROI positivo pero prob baja (underdog)
+            {"selection": "ROI_SIN_PROB", "estimated_probability": 0.40,
+             "price_decimal": 3.00},
+        ])
+
+    def test_exige_las_dos_condiciones_a_la_vez(self):
+        out = daily_picks.rank_picks(self._tres(), min_prob=0.60, min_roi=0)
+        assert list(out["seleccion"]) == ["CUMPLE"]
+
+    def test_min_roi_es_estrictamente_mayor(self):
+        """`ROI > 0`, no `>= 0`: una linea que solo empata con su breakeven no
+        aporta nada y no debe colarse."""
+        out = daily_picks.rank_picks(_served([
+            {"selection": "EMPATA", "estimated_probability": 0.50,
+             "price_decimal": 2.0},          # 0.5*2 - 1 = exactamente 0
+        ]), min_roi=0)
+        assert out.empty
+
+    def test_min_roi_0_equivale_a_min_margin_0(self):
+        """p*cuota-1 > 0 <=> p > 1/cuota <=> margen > 0. Si divergieran, una de
+        las dos vistas del run diario estaria mintiendo."""
+        df = self._tres()
+        por_roi = daily_picks.rank_picks(df, min_roi=0)
+        por_margen = daily_picks.rank_picks(df, min_margin=0)
+        # min_margin usa >=, asi que se compara sobre las estrictamente positivas
+        assert set(por_roi["seleccion"]) == set(
+            por_margen[por_margen["margen"] > 0]["seleccion"])
+
+
+class TestElCriterioSeGeneraCadaDia:
+    def test_el_orquestador_produce_la_lista_del_criterio(self):
+        bat = (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8",
+                                                       errors="replace")
+        assert "--min-prob 0.60 --min-roi 0" in bat, (
+            "DIARIO_COMPLETO.bat no genera la lista del criterio del operador")
+        assert "picks_seleccion.md" in bat

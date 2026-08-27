@@ -27,6 +27,8 @@ RUN_DIARIO_ALL.bat.
   python scripts/daily_picks.py --market h2h --liga mlb
   python scripts/daily_picks.py --dia todos          # los 7 dias de horizonte
   python scripts/daily_picks.py --dia 2026-08-29
+  # Criterio del operador (2026-08-26): probabilidad >= 0.60 y ROI esperado > 0
+  python scripts/daily_picks.py --min-prob 0.60 --min-roi 0
 
 ## Por que la columna `breakeven` no es opcional
 
@@ -104,6 +106,7 @@ def game_date_local(df: pd.DataFrame) -> pd.Series:
 def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
                market: str | None = None,
                min_margin: float | None = None,
+               min_roi: float | None = None,
                league: str | None = None,
                game_date: str | None = None,
                orden: str = "prob") -> pd.DataFrame:
@@ -138,6 +141,11 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     # anti-informativo (bitacora 2026-08-25).
     if min_margin is not None:
         d = d[d["_margen"] >= min_margin]
+    # `roi_esp > 0` equivale EXACTAMENTE a `margen > 0`: p*cuota-1 > 0 <=>
+    # p > 1/cuota <=> p - breakeven > 0. Se expone igual porque el operador
+    # razona en terminos de ROI y la equivalencia no es obvia leyendo la tabla.
+    if min_roi is not None:
+        d = d[d["_roi_esp"] > min_roi]
     # Por defecto manda la PROBABILIDAD (regla fundamental del operador). `roi` y
     # `margen` existen porque el operador pidio "sin dejar de considerar el ROI":
     # apuntan en sentidos OPUESTOS a la probabilidad en estos datos.
@@ -221,6 +229,9 @@ def main() -> int:
     ap.add_argument("--orden", default="prob", choices=("prob", "roi", "margen"),
                     help="criterio de orden: prob (default, regla fundamental), "
                          "roi (ROI esperado) o margen")
+    ap.add_argument("--min-roi", type=float, default=None,
+                    help="ROI esperado ESTRICTAMENTE mayor que este valor. "
+                         "--min-roi 0 equivale a --min-margin 0 (mismo filtro).")
     ap.add_argument("--min-margin", type=float, default=None,
                     help="margen minimo (prob_est - 1/precio); usa 0 para ver "
                          "solo las que superan su punto de equilibrio")
@@ -245,7 +256,8 @@ def main() -> int:
     hoy = datetime.now(timezone.utc).astimezone().date().isoformat()
     dia = None if args.dia == "todos" else (hoy if args.dia == "hoy" else args.dia)
     ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
-                        min_margin=args.min_margin, league=args.liga,
+                        min_margin=args.min_margin, min_roi=args.min_roi,
+                        league=args.liga,
                         game_date=dia, orden=args.orden)
     etiqueta = f"{day} (generado) - partidos del {dia}" if dia else f"{day} (generado) - todas las fechas"
     report = build_report(ranked, top=args.top, source_day=etiqueta)

@@ -48,6 +48,14 @@ REM -22.6% frente al -5.6% de lo que el cap deja pasar.
 "%SQP_PYTHON%" scripts\daily_picks.py --min-margin 0 --top 0 --out data\predictions\picks_margen_positivo.md >> logs\run_diario.log 2>&1
 if errorlevel 1 echo [AVISO] daily_picks --min-margin fallo (no bloqueante) >> logs\run_diario.log
 
+REM Tercera vista: el CRITERIO DEL OPERADOR (2026-08-26) -- probabilidad >= 0.60
+REM Y ROI esperado > 0. Es la lista corta del dia: 8 de 105 partidos el
+REM 2026-08-26. Nota: `--min-roi 0` y `--min-margin 0` son el MISMO filtro
+REM (p*cuota-1 > 0 <=> p > 1/cuota); se usa la forma de ROI porque es como el
+REM operador lo pidio. Sigue sin llevar stake.
+"%SQP_PYTHON%" scripts\daily_picks.py --min-prob 0.60 --min-roi 0 --top 0 --out data\predictions\picks_seleccion.md >> logs\run_diario.log 2>&1
+if errorlevel 1 echo [AVISO] daily_picks --min-prob/--min-roi fallo (no bloqueante) >> logs\run_diario.log
+
 REM Run correcto: limpia el centinela para que el health check deje de
 REM reportar ERROR (auditoria 2026-07-29, S-1).
 "%SQP_PYTHON%" scripts\run_status.py --clear

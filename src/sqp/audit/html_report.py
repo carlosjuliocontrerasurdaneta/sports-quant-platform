@@ -665,7 +665,9 @@ _TEMPLATE = """<!DOCTYPE html>
       <label>Fecha del partido<div class="tagfilter" id="dateTagsT"></div></label>
       <label>Deporte<div class="tagfilter" id="sportTagsT"></div></label>
       <label>Mercado<select id="fMarketT"></select></label>
-      <label>Margen minimo<input id="fMargenT" type="number" step="0.01" value="" placeholder="(todos)" style="width:100px"></label>
+      <label>Prob. minima<input id="fProbT" type="number" step="0.05" value="" placeholder="(todas)" style="width:95px"></label>
+      <label>ROI esp. minimo<input id="fRoiT" type="number" step="0.01" value="" placeholder="(todos)" style="width:95px"></label>
+      <label>&nbsp;<span class="tag active" style="cursor:pointer" onclick="tPreset()">Criterio: prob&ge;0.60 y ROI&gt;0</span></label>
       <label>&nbsp;<span class="gen" id="countT"></span></label>
     </div>
     <table class="grid" id="todosTable"><thead></thead><tbody></tbody></table>
@@ -1018,13 +1020,17 @@ function tBuildMarkets() {{
 }}
 function tFiltered() {{
   const mk = document.getElementById("fMarketT").value;
-  const mgRaw = document.getElementById("fMargenT").value;
-  const mg = mgRaw === "" ? null : parseFloat(mgRaw);
+  const pRaw = document.getElementById("fProbT").value;
+  const rRaw = document.getElementById("fRoiT").value;
+  const pMin = pRaw === "" ? null : parseFloat(pRaw);
+  const rMin = rRaw === "" ? null : parseFloat(rRaw);
   return TODOS.filter(r =>
     (tDates.size === 0 || tDates.has(r.fecha || "")) &&
     (tSports.size === 0 || tSports.has(r.league)) &&
     (!mk || r.market === mk) &&
-    (mg == null || (r.margen != null && r.margen >= mg)));
+    (pMin == null || (r.prob != null && r.prob >= pMin)) &&
+    // ROI esperado ESTRICTAMENTE mayor: `> 0` equivale a "supera su breakeven".
+    (rMin == null || (r.roi_esp != null && r.roi_esp > rMin)));
 }}
 function tRefresh() {{
   const rows = tFiltered();
@@ -1053,9 +1059,17 @@ function tRefresh() {{
         `<td>${{tFmt[c[2]](r[c[0]])}}</td>`).join("") + "</tr>").join("")
     : `<tr><td colspan="${{T_COLS.length}}">Sin selecciones con estos filtros.</td></tr>`;
 }}
+// Criterio fijado por el operador el 2026-08-26. Un clic lo aplica; borrando
+// los campos se vuelve a la lista completa.
+function tPreset() {{
+  document.getElementById("fProbT").value = "0.60";
+  document.getElementById("fRoiT").value = "0";
+  tRefresh();
+}}
 tBuildDates(); tBuildSports(); tBuildMarkets();
 document.getElementById("fMarketT").addEventListener("change", tRefresh);
-document.getElementById("fMargenT").addEventListener("input", tRefresh);
+document.getElementById("fProbT").addEventListener("input", tRefresh);
+document.getElementById("fRoiT").addEventListener("input", tRefresh);
 tRefresh();
 
 </script>
