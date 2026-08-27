@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.config import ROOT
+from sqp.evaluation.labels import game_date_local
 
 DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado "
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
@@ -302,7 +303,21 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
 # --- History loader (closed + open union for dashboard) -----------------------
 
 _HISTORY_COLS = ["fecha", "league", "market", "line", "home", "away",
-                 "selection", "price_decimal", "stake", "result", "pnl", "is_closed"]
+                 "selection", "price_decimal", "stake", "estado", "result",
+                 "pnl", "is_closed"]
+
+
+def _estado(df: pd.DataFrame, *, is_closed: bool) -> pd.Series:
+    """Por que una fila abierta lleva (o no) dinero. Sin esto, una lista entera
+    a stake 0 parece una averia; es la misma columna que ya explica el 0 en
+    "Picks del Dia"."""
+    if is_closed:
+        return pd.Series("cerrado", index=df.index, dtype=str)
+    flags = (df["flags"].fillna("").astype(str) if "flags" in df.columns
+             else pd.Series("", index=df.index, dtype=str))
+    stake = pd.to_numeric(df.get("stake"), errors="coerce").fillna(0.0)
+    return pd.Series([f if f else ("con stake" if s > 0 else "sin stake")
+                      for s, f in zip(stake, flags)], index=df.index, dtype=str)
 
 
 def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool) -> pd.DataFrame:
@@ -313,27 +328,37 @@ def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool) -
         out[col] = df[col].astype(str) if col in df.columns else ""
     for col in ("line", "price_decimal", "stake", "pnl"):
         out[col] = pd.to_numeric(df[col], errors="coerce") if col in df.columns else float("nan")
+    out["estado"] = _estado(df, is_closed=is_closed)
     out["is_closed"] = is_closed
     return out[_HISTORY_COLS]
 
 
 def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
-    """Union of closed (settled) bets and open actionable candidates, projected
-    onto a common column set. Closed rows carry result/pnl; open rows do not.
-    `fecha` is the game date (settled: game_date, fallback generated_at; open:
-    start_time)."""
+    """Union of closed (settled) bets and open candidates, projected onto a
+    common column set. Closed rows carry result/pnl; open rows do not.
+
+    Las filas abiertas son TODOS los candidatos, no solo los accionables. Un
+    gate quita el stake, nunca la fila (REGLA FUNDAMENTAL del operador): al
+    filtrar por `rank_candidates` el historial se quedaba sin un solo pick
+    abierto en cuanto el `prediction_gate` bloqueaba los 32 mercados -- 64
+    candidatos, 0 filas el 2026-08-27. Es la misma averia que vacio "Picks del
+    Dia" durante 53 dias; `rank_candidates` sigue definiendo "accionable" para
+    el contador del reporte markdown, que si debe contar solo lo que lleva
+    dinero. La columna `estado` dice por que cada fila esta a stake 0.
+
+    `fecha` es la fecha del partido en hora LOCAL (`game_date_local`).
+    """
     frames = []
     closed = load_all_settled(bets_dir)
     if not closed.empty:
-        gd = closed["game_date"] if "game_date" in closed.columns else pd.Series("", index=closed.index)
         gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
+        gd = game_date_local(closed)
         fecha = gd.where(gd.astype(str).str.len() >= 10, gen)
         frames.append(_normalize_history(closed, fecha=fecha, is_closed=True))
-    cands = load_all_candidates(predictions_dir)
-    open_df = rank_candidates(cands) if not cands.empty else cands
+    open_df = load_all_candidates(predictions_dir)
     if not open_df.empty:
-        st = open_df["start_time"] if "start_time" in open_df.columns else pd.Series("", index=open_df.index)
-        frames.append(_normalize_history(open_df, fecha=st, is_closed=False))
+        frames.append(_normalize_history(open_df, fecha=game_date_local(open_df),
+                                         is_closed=False))
     if not frames:
         return pd.DataFrame(columns=_HISTORY_COLS)
     return pd.concat(frames, ignore_index=True)

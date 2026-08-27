@@ -315,8 +315,8 @@ _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("market", "Mercado", True), ("line", "Linea", False),
     ("home", "Home", True), ("away", "Away", True),
     ("selection", "Seleccion", True), ("price_decimal", "Cuota", False),
-    ("stake", "Stake", False), ("result", "Resultado", True),
-    ("pnl", "PnL", False),
+    ("stake", "Stake", False), ("estado", "Estado", True),
+    ("result", "Resultado", True), ("pnl", "PnL", False),
 )
 
 
@@ -343,11 +343,12 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
     """Unified history: closed bets + open actionable picks, with filters
     (sport/market/condition/team/home/away/date) and totals cards (picks,
     closed, wins, losses, hit-rate %) recomputed client-side over the visible
-    rows. The team / home / away option lists cascade from the selected sport.
+    rows. "Abierto" incluye TODOS los candidatos, con la razon del stake 0 en
+    la columna `estado` (ver `load_history`). The team / home / away option lists cascade from the selected sport.
     Past picks that never settled are hidden (not deleted)."""
-    from datetime import date
     from sqp.audit.report import load_history, visible_history
-    today = today or date.today().isoformat()
+    from sqp.evaluation.labels import local_today
+    today = today or local_today()
     df = visible_history(load_history(predictions_dir, bets_dir), today)
     if df.empty:
         return '<p class="empty">Sin historial de picks.</p>'
