@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -59,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT
-from sqp.evaluation.labels import match_label
+from sqp.evaluation.labels import game_date_local, local_today, match_label
 
 COLS = ["#", "liga", "partido", "mercado", "seleccion", "linea", "precio", "prob_est",
         "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado"]
@@ -88,20 +87,6 @@ def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
         newest = day.max()
         df = df[day == newest]
     return df
-
-
-def game_date_local(df: pd.DataFrame) -> pd.Series:
-    """Fecha del PARTIDO en hora local, no la de generacion.
-
-    El run guarda eventos con horizonte de 7 dias, asi que "generado hoy"
-    incluye partidos de hasta 6 dias despues: de las 541 filas del 2026-08-26
-    solo 105 se jugaban ese dia. Llamar "picks de hoy" a las 541 era enganoso.
-    Se usa hora LOCAL porque un partido nocturno en la costa oeste de EEUU
-    comienza despues de las 00:00Z y en UTC caeria en el dia siguiente.
-    """
-    st = pd.to_datetime(df.get("start_time"), errors="coerce", utc=True)
-    tz = datetime.now(timezone.utc).astimezone().tzinfo
-    return st.dt.tz_convert(tz).dt.strftime("%Y-%m-%d").fillna("")
 
 
 def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
@@ -257,8 +242,8 @@ def main() -> int:
               "Corre RUN_DIARIO_ALL.bat primero.")
         return 1
     day = str(df["generated_at"].astype(str).str[:10].max()) if "generated_at" in df else "?"
-    hoy = datetime.now(timezone.utc).astimezone().date().isoformat()
-    dia = None if args.dia == "todos" else (hoy if args.dia == "hoy" else args.dia)
+    dia = (None if args.dia == "todos"
+           else (local_today() if args.dia == "hoy" else args.dia))
     ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
                         min_margin=args.min_margin, min_roi=args.min_roi,
                         league=args.liga,
@@ -266,7 +251,7 @@ def main() -> int:
     etiqueta = f"{day} (generado) - partidos del {dia}" if dia else f"{day} (generado) - todas las fechas"
     report = build_report(ranked, top=args.top, source_day=etiqueta)
 
-    out = args.out or pred_dir / f"picks_ranked_{date.today():%Y%m%d}.md"
+    out = args.out or pred_dir / f"picks_ranked_{local_today().replace('-', '')}.md"
     out.write_text(report, encoding="utf-8")
     print(report)
     print(f"\nEscrito en: {out}")

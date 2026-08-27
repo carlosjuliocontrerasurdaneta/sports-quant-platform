@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -23,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT, Settings
+from sqp.evaluation.labels import game_date_local, local_today
 from sqp.evaluation.tipster import tipster_summary, tipster_table
 
 COLS = ["tier", "fecha", "liga", "partido", "mercado", "seleccion", "linea", "cuota",
@@ -62,14 +62,13 @@ def main() -> int:
     gen = df["generated_at"].astype(str).str[:10]
     df = df[gen == gen.max()]
 
-    tz = datetime.now(timezone.utc).astimezone().tzinfo
-    st = pd.to_datetime(df.get("start_time"), errors="coerce", utc=True)
-    fecha = st.dt.tz_convert(tz).dt.strftime("%Y-%m-%d").fillna("")
-    hoy = datetime.now(timezone.utc).astimezone().date().isoformat()
-    dia = None if args.dia == "todos" else (hoy if args.dia == "hoy" else args.dia)
+    fecha = game_date_local(df)
+    dia = (None if args.dia == "todos"
+           else (local_today() if args.dia == "hoy" else args.dia))
     if dia:
         df = df[fecha == dia]
-    df = df.assign(game_date=fecha.reindex(df.index))
+    # Ya NO se sobrescribe `game_date`: `tipster_table` hace ella misma la
+    # conversion a hora local, asi que el resultado no depende de este llamador.
 
     cap = Settings.load().risk.max_plausible_edge
     tab = tipster_table(df, max_plausible_ev=cap)

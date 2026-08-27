@@ -45,7 +45,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from sqp.evaluation.labels import match_label
+from sqp.evaluation.labels import game_date_local, match_label
 
 # Minimos por nivel. Son PROXIES de lo que el documento pide y estan calibrados
 # con lo medido en este proyecto, no elegidos a ojo:
@@ -106,7 +106,11 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
     casas = pd.to_numeric(d.get("books_count"), errors="coerce")
 
     out = pd.DataFrame({
-        "fecha": d.get("game_date"), "liga": d.get("league"),
+        # Hora LOCAL, calculada aqui. Antes se leia `game_date` en crudo (UTC) y
+        # solo salia bien porque `tipster_report.py` la sobrescribia antes de
+        # llamar: cualquier otro llamador se llevaba fechas corridas un dia en
+        # silencio. La conversion ya no depende de quien llame.
+        "fecha": game_date_local(d), "liga": d.get("league"),
         # En `totals` la seleccion es "Over"/"Under": sin el partido, la fila no
         # dice de que encuentro habla (operador, 2026-08-26).
         "partido": match_label(d),

@@ -8,7 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from sqp.evaluation.labels import match_label
+from sqp.evaluation.labels import game_date_local, match_label
 from sqp.evaluation.tipster import tipster_table
 
 
@@ -86,3 +86,51 @@ class TestLasVistasNombranElPartido:
         out = daily_picks.rank_picks(served)
         assert not out.empty, "rank_picks no devolvio filas"
         assert set(out["partido"]) == {"Boston Red Sox @ New York Yankees"}
+
+
+class TestGameDateLocal:
+    """`game_date` la escribe el proveedor en UTC. Un WNBA a las 22:00 hora
+    local (UTC-4) empieza a las 02:00Z del dia SIGUIENTE, asi que leer esa
+    columna en crudo corre el partido un dia."""
+
+    @pytest.fixture
+    def nocturno(self) -> pd.DataFrame:
+        """Partido de las 22:00 locales: en UTC ya es el dia siguiente."""
+        import datetime as _dt
+
+        tz = _dt.datetime.now(_dt.timezone.utc).astimezone().tzinfo
+        local = _dt.datetime(2026, 8, 27, 22, 0, tzinfo=tz)
+        utc = local.astimezone(_dt.timezone.utc)
+        return pd.DataFrame({
+            "start_time": [utc.strftime("%Y-%m-%dT%H:%M:%SZ")],
+            "game_date": [utc.date().isoformat()],
+            "esperado_local": [local.date().isoformat()],
+        })
+
+    def test_usa_start_time_y_no_la_columna_game_date(self, nocturno):
+        assert (game_date_local(nocturno).iloc[0]
+                == nocturno["esperado_local"].iloc[0])
+
+    def test_sin_start_time_cae_a_game_date(self, nocturno):
+        d = nocturno.drop(columns=["start_time"])
+        assert game_date_local(d).iloc[0] == nocturno["game_date"].iloc[0]
+
+    def test_start_time_ilegible_cae_a_game_date(self, nocturno):
+        d = nocturno.assign(start_time=["no-es-una-fecha"])
+        assert game_date_local(d).iloc[0] == nocturno["game_date"].iloc[0]
+
+    def test_sin_ninguna_de_las_dos_no_revienta(self, nocturno):
+        d = nocturno.drop(columns=["start_time", "game_date"])
+        assert game_date_local(d).tolist() == [""]
+
+    def test_el_tipster_no_depende_de_que_el_llamador_convierta(self, nocturno):
+        """La regresion concreta: `tipster_table` leia `game_date` en crudo y
+        solo salia bien porque `tipster_report.py` se la sobrescribia antes."""
+        d = nocturno.assign(
+            league="wnba", market="totals", selection="Over", line=167.5,
+            price_decimal=1.89, estimated_probability=0.535,
+            implied_probability_novig=0.5028, books_count=30,
+            home="Phoenix Mercury", away="Washington Mystics", event_id="e1")
+        t = tipster_table(d)
+        assert t["fecha"].iloc[0] == nocturno["esperado_local"].iloc[0]
+        assert t["fecha"].iloc[0] != nocturno["game_date"].iloc[0]

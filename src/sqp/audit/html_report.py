@@ -41,7 +41,7 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
-from sqp.evaluation.labels import match_label
+from sqp.evaluation.labels import game_date_local, local_today, match_label
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -96,15 +96,7 @@ def _picks_records(predictions_dir: Path,
     if ranked.empty:
         return []
     ranked = ranked.assign(partido=match_label(ranked))
-    # Event date in LOCAL time: a US west-coast night game commences after
-    # 00:00Z, so the UTC date would file today's game under "tomorrow".
-    if "start_time" in ranked.columns:
-        st = pd.to_datetime(ranked["start_time"], errors="coerce", utc=True)
-        local_tz = datetime.now(timezone.utc).astimezone().tzinfo
-        ranked = ranked.assign(
-            fecha=st.dt.tz_convert(local_tz).dt.strftime("%Y-%m-%d").fillna(""))
-    else:
-        ranked = ranked.assign(fecha="")
+    ranked = ranked.assign(fecha=game_date_local(ranked))
     records: list[dict] = []
     for _, row in ranked.iterrows():
         rec: dict = {}
@@ -488,12 +480,7 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     p = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
     price = pd.to_numeric(df.get("price_decimal"), errors="coerce")
     be = 1.0 / price.where(price > 1.0)
-    # Fecha del PARTIDO en hora local: un partido nocturno en la costa oeste de
-    # EEUU comienza despues de las 00:00Z, asi que la fecha UTC lo archivaria
-    # como de manana (mismo criterio que la pestana "Picks del Dia").
-    st = pd.to_datetime(df.get("start_time"), errors="coerce", utc=True)
-    local_tz = datetime.now(timezone.utc).astimezone().tzinfo
-    fecha = st.dt.tz_convert(local_tz).dt.strftime("%Y-%m-%d").fillna("")
+    fecha = game_date_local(df)
 
     out = pd.DataFrame({
         "fecha": fecha, "league": df.get("league"),
@@ -578,7 +565,7 @@ def html_dashboard(predictions_dir: Path | None = None,
                     for k, h, kind in _PICK_COLUMNS]
     # Local generation day: anchors the "Hoy" date pill to the run, not to
     # whenever the file happens to be opened.
-    today_local = datetime.now(timezone.utc).astimezone().date().isoformat()
+    today_local = local_today()
     payload = json.dumps({"picks": picks, "columns": columns_meta,
                           "today": today_local, "todos": _todos_records()},
                          ensure_ascii=False)
