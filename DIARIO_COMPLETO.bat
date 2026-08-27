@@ -56,6 +56,14 @@ REM operador lo pidio. Sigue sin llevar stake.
 "%SQP_PYTHON%" scripts\daily_picks.py --min-prob 0.60 --min-roi 0 --top 0 --out data\predictions\picks_seleccion.md >> logs\run_diario.log 2>&1
 if errorlevel 1 echo [AVISO] daily_picks --min-prob/--min-roi fallo (no bloqueante) >> logs\run_diario.log
 
+REM Cuarta vista: clasificacion del TIPSTER (AGENTS Tipster.md) -- tiers
+REM A/B/C/NO BET con cuota justa, EV, edge sobre el mercado sin vig y aviso de
+REM correlacion. DETERMINISTA a proposito: un agente LLM no puede dispararse
+REM desde el Programador de tareas, vive dentro de una sesion de Claude. El
+REM dashboard resalta los A en verde y los B en ambar.
+"%SQP_PYTHON%" scripts\tipster_report.py >> logs\run_diario.log 2>&1
+if errorlevel 1 echo [AVISO] tipster_report.py fallo (no bloqueante) >> logs\run_diario.log
+
 REM Run correcto: limpia el centinela para que el health check deje de
 REM reportar ERROR (auditoria 2026-07-29, S-1).
 "%SQP_PYTHON%" scripts\run_status.py --clear

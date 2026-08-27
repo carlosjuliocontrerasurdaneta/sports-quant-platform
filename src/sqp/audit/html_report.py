@@ -504,13 +504,32 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         "roi_esp": p * price - 1.0,
         "casas": pd.to_numeric(df.get("books_count"), errors="coerce"),
     })
+    # Tier del Tipster (AGENTS Tipster.md, encargo del operador 2026-08-26).
+    # Determinista, no LLM: un agente no puede dispararse desde el Programador
+    # de tareas. Best-effort -- la tabla debe salir aunque la clasificacion falle.
+    try:
+        from sqp.config import Settings
+        from sqp.evaluation.tipster import tipster_table
+        tt = tipster_table(df, max_plausible_ev=Settings.load().risk.max_plausible_edge)
+        mapa = {tuple(r[c] for c in ("liga", "mercado", "seleccion", "cuota")):
+                (r["tier"], r["motivo"]) for _, r in tt.iterrows()}
+        out["tier"] = [mapa.get((a, b, c, d_), ("", ""))[0]
+                       for a, b, c, d_ in zip(df.get("league"), df.get("market"),
+                                              df.get("selection"), price)]
+        out["motivo"] = [mapa.get((a, b, c, d_), ("", ""))[1]
+                         for a, b, c, d_ in zip(df.get("league"), df.get("market"),
+                                                df.get("selection"), price)]
+    except Exception:
+        out["tier"] = ""
+        out["motivo"] = ""
+
     out = out[p.notna() & be.notna()].sort_values("prob", ascending=False)
     records: list[dict] = []
     for _, row in out.iterrows():
         rec: dict = {}
         for k in out.columns:
             v = row[k]
-            if k in ("fecha", "league", "market", "seleccion"):
+            if k in ("fecha", "league", "market", "seleccion", "tier", "motivo"):
                 rec[k] = "" if pd.isna(v) else str(v)
             else:
                 rec[k] = None if pd.isna(v) else float(v)
@@ -667,7 +686,9 @@ _TEMPLATE = """<!DOCTYPE html>
       <label>Mercado<select id="fMarketT"></select></label>
       <label>Prob. minima<input id="fProbT" type="number" step="0.05" value="" placeholder="(todas)" style="width:95px"></label>
       <label>ROI esp. minimo<input id="fRoiT" type="number" step="0.01" value="" placeholder="(todos)" style="width:95px"></label>
-      <label>&nbsp;<span class="tag active" style="cursor:pointer" onclick="tPreset()">Criterio: prob&ge;0.60 y ROI&gt;0</span></label>
+      <label>Tier<select id="fTierT"><option value="">(todos)</option><option>A</option><option>B</option><option>C</option><option>NO BET</option></select></label>
+      <label>&nbsp;<span class="tag active" style="cursor:pointer" onclick="tPreset()">Criterio: prob&ge;0.60 y ROI&gt;0</span>
+        <span class="tag active" style="cursor:pointer" onclick="tTipster()">Tipster: A y B</span></label>
       <label>&nbsp;<span class="gen" id="countT"></span></label>
     </div>
     <table class="grid" id="todosTable"><thead></thead><tbody></tbody></table>
@@ -965,6 +986,7 @@ const T_COLS = [
   ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
   ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
   ["margen","Margen","pct"], ["roi_esp","ROI esp.","pct"], ["casas","Casas","int"],
+  ["tier","Tier","txt"],
 ];
 // Orden por defecto: PROBABILIDAD descendente (regla fundamental del operador).
 // Pinchando una cabecera se reordena -- asi "mayor probabilidad" y "mejor ROI"
@@ -1020,6 +1042,7 @@ function tBuildMarkets() {{
 }}
 function tFiltered() {{
   const mk = document.getElementById("fMarketT").value;
+  const tk = document.getElementById("fTierT").value;
   const pRaw = document.getElementById("fProbT").value;
   const rRaw = document.getElementById("fRoiT").value;
   const pMin = pRaw === "" ? null : parseFloat(pRaw);
@@ -1030,7 +1053,9 @@ function tFiltered() {{
     (!mk || r.market === mk) &&
     (pMin == null || (r.prob != null && r.prob >= pMin)) &&
     // ROI esperado ESTRICTAMENTE mayor: `> 0` equivale a "supera su breakeven".
-    (rMin == null || (r.roi_esp != null && r.roi_esp > rMin)));
+    (rMin == null || (r.roi_esp != null && r.roi_esp > rMin)) &&
+    (!tk || r.tier === tk) &&
+    (!tOnlyAB || r.tier === "A" || r.tier === "B"));
 }}
 function tRefresh() {{
   const rows = tFiltered();
@@ -1055,12 +1080,29 @@ function tRefresh() {{
       return `<th style="cursor:pointer" onclick="tSort('${{c[0]}}')">${{c[1]}}${{on}}</th>`;
     }}).join("") + "</tr>";
   tbl.querySelector("tbody").innerHTML = rows.length
-    ? rows.slice(0, 500).map(r => "<tr>" + T_COLS.map(c =>
-        `<td>${{tFmt[c[2]](r[c[0]])}}</td>`).join("") + "</tr>").join("")
+    ? rows.slice(0, 500).map(r => {{
+        // Resaltado por tier del Tipster: A verde, B ambar, C atenuado.
+        const st = r.tier === "A" ? ' style="background:rgba(63,185,80,.13)"'
+                 : r.tier === "B" ? ' style="background:rgba(210,153,34,.11)"'
+                 : r.tier === "C" ? ' style="opacity:.62"' : "";
+        const tt = r.motivo ? ` title="${{r.motivo}}"` : "";
+        return `<tr${{st}}${{tt}}>` + T_COLS.map(c =>
+          `<td>${{tFmt[c[2]](r[c[0]])}}</td>`).join("") + "</tr>";
+      }}).join("")
     : `<tr><td colspan="${{T_COLS.length}}">Sin selecciones con estos filtros.</td></tr>`;
 }}
 // Criterio fijado por el operador el 2026-08-26. Un clic lo aplica; borrando
 // los campos se vuelve a la lista completa.
+// Seleccion del Tipster: solo A y B. Se implementa como filtro de tier con un
+// truco de dos pasadas porque el <select> es de valor unico.
+function tTipster() {{
+  document.getElementById("fProbT").value = "";
+  document.getElementById("fRoiT").value = "";
+  document.getElementById("fTierT").value = "";
+  tOnlyAB = !tOnlyAB;
+  tRefresh();
+}}
+let tOnlyAB = false;
 function tPreset() {{
   document.getElementById("fProbT").value = "0.60";
   document.getElementById("fRoiT").value = "0";
@@ -1070,6 +1112,7 @@ tBuildDates(); tBuildSports(); tBuildMarkets();
 document.getElementById("fMarketT").addEventListener("change", tRefresh);
 document.getElementById("fProbT").addEventListener("input", tRefresh);
 document.getElementById("fRoiT").addEventListener("input", tRefresh);
+document.getElementById("fTierT").addEventListener("change", tRefresh);
 tRefresh();
 
 </script>
