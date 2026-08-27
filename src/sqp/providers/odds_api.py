@@ -33,6 +33,19 @@ _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
 _BACKOFF_SECONDS = 2.0  # multiplied by attempt number (linear backoff)
 
+# Un servidor que RESPONDE 5xx/429 se recupera rapido, y las esperas de arriba
+# bastan. Un servidor INALCANZABLE (corte de red, DNS, caida del proveedor) es
+# otra cosa: el 2026-08-27 el run diario perdio el dia entero porque cada
+# llamada agotaba sus 3 intentos en ~6 segundos y el corte duro al menos 2m17s
+# (11:03:25 a 11:05:42). No se genero ni un pick; el tablero se quedo con los
+# candidatos de ayer. Estas esperas cubren ~2 minutos por llamada.
+_CONNECTION_BACKOFF: tuple[float, ...] = (5.0, 15.0, 40.0, 60.0)
+# ...pero un corte REAL no se puede pagar en cada llamada: 20 ligas x 2 min
+# convertirian un fallo rapido en un run colgado media hora. El cliente lleva un
+# presupuesto TOTAL de espera por conexion; agotado, vuelve al fallo rapido y el
+# run termina a tiempo con su banner rojo.
+_CONNECTION_WAIT_BUDGET = 180.0
+
 _TRUTHY = ("1", "true", "yes", "on")
 
 
@@ -80,6 +93,8 @@ class OddsAPIClient:
         # network call, no credit spent). Lets callers skip side effects that must
         # happen once per real fetch (e.g. persisting an odds snapshot).
         self.last_response_cached: bool = False
+        # Segundos de espera por errores de CONEXION que le quedan al cliente.
+        self._connection_wait_left: float = _CONNECTION_WAIT_BUDGET
         # On-disk TTL cache for paid endpoints: re-running within the TTL costs no
         # credits. Wired to .env (ODDS_CACHE_TTL_SECONDS / FORCE_REFRESH /
         # OFFLINE_MODE); the free /sports list is never cached.
@@ -91,6 +106,25 @@ class OddsAPIClient:
             from sqp.config import ROOT
             cache_dir = ROOT / "data" / "cache" / "odds"
         self._cache = FileCache(cache_dir)
+
+    def _retry_wait(self, attempt: int, *, unreachable: bool) -> float | None:
+        """Segundos a esperar antes del intento siguiente, o `None` para rendirse.
+
+        Dos regimenes distintos porque son dos averias distintas: un 5xx/429 lo
+        contesta un servidor vivo y se reintenta rapido; un servidor inalcanzable
+        necesita minutos, no segundos (ver `_CONNECTION_BACKOFF`). La espera por
+        conexion sale de un presupuesto del cliente para que un corte real no
+        cuelgue el run entero.
+        """
+        if not unreachable:
+            return _BACKOFF_SECONDS * attempt if attempt < _MAX_ATTEMPTS else None
+        if attempt > len(_CONNECTION_BACKOFF):
+            return None
+        espera = min(_CONNECTION_BACKOFF[attempt - 1], self._connection_wait_left)
+        if espera <= 0:
+            return None
+        self._connection_wait_left -= espera
+        return espera
 
     def _require_key(self):
         if not self.api_key:
@@ -118,23 +152,28 @@ class OddsAPIClient:
         params["apiKey"] = self.api_key
         r = None
         last_error = ""
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        attempt = 0
+        while True:
+            attempt += 1
+            unreachable = False
             try:
                 r = self.session.get(f"{BASE}{path}", params=params, timeout=30)
             except (requests.Timeout, requests.ConnectionError) as exc:
                 # Class name only: requests exception messages carry the full
                 # URL including apiKey= (audit 2026-07-24, I-1).
-                r, last_error = None, exc.__class__.__name__
+                r, last_error, unreachable = None, exc.__class__.__name__, True
             # getattr: test fakes/sessions may omit status_code; treat as final.
             if r is not None and getattr(r, "status_code", None) not in _RETRY_STATUS:
                 break
             if r is not None:
                 last_error = f"{r.status_code} {getattr(r, 'reason', '')}"
-            if attempt < _MAX_ATTEMPTS:
-                time.sleep(_BACKOFF_SECONDS * attempt)
+            espera = self._retry_wait(attempt, unreachable=unreachable)
+            if espera is None:
+                break
+            time.sleep(espera)
         if r is None:
             raise requests.ConnectionError(
-                f"could not reach {BASE}{path} after {_MAX_ATTEMPTS} attempts "
+                f"could not reach {BASE}{path} after {attempt} attempts "
                 f"({last_error}; query redacted)")
         try:
             r.raise_for_status()
