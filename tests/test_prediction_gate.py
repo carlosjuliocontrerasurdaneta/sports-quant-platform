@@ -19,12 +19,19 @@ from sqp.risk.prediction_gate import (VALIDATION_START, evaluate_markets,
 
 def _rows(n_win: int, n_loss: int, *, p_model: float, p_market: float,
           price: float, league: str = "brasileirao", market: str = "totals",
-          game_date: str = "2026-09-01") -> pd.DataFrame:
-    """Filas graduadas sinteticas: n_win ganadas y n_loss perdidas."""
+          game_date: str = "2026-09-01",
+          event_prefix: str | None = None) -> pd.DataFrame:
+    """Filas graduadas sinteticas: n_win ganadas y n_loss perdidas.
+
+    Cada fila lleva su PROPIO `event_id`: estas pruebas quieren n observaciones
+    independientes, y desde que el gate colapsa por evento
+    (`_independent_units`) eso hay que decirlo explicitamente en el dato."""
+    prefix = event_prefix or f"{league}-{market}-{game_date}"
     recs = []
     for result, count in (("win", n_win), ("loss", n_loss)):
         for _ in range(count):
             recs.append({"league": league, "market": market,
+                         "event_id": f"{prefix}-{len(recs)}",
                          "model_probability": p_model,
                          "implied_probability_novig": p_market,
                          "price_decimal": price, "result": result,
@@ -112,6 +119,50 @@ def test_exact_ties_are_excluded_from_the_sample():
     empates = _rows(50, 50, p_model=0.5, p_market=0.5, price=2.0)
     out = evaluate_markets(pd.concat([reales, empates], ignore_index=True))
     assert int(out.iloc[0]["n"]) == 400
+
+
+# --- independencia de los ensayos ---------------------------------------------
+
+def _serving(event_id: str, selection: str, *, result: str, p_model: float,
+             p_market: float, price: float, generated_at: str) -> dict:
+    return {"league": "mls", "market": "h2h", "event_id": event_id,
+            "selection": selection, "line": 0.0, "model_probability": p_model,
+            "implied_probability_novig": p_market, "price_decimal": price,
+            "result": result, "game_date": "2026-09-01",
+            "generated_at": generated_at}
+
+
+def test_repeated_servings_of_the_same_pick_count_once():
+    """`append_served` deduplica solo dentro del mismo dia de run, asi que un
+    pick dentro del horizonte de 7 dias entra una vez por dia. Medido el
+    2026-08-27: `mls|h2h` tenia 348 filas de 21 eventos con el umbral en 300."""
+    filas = [_serving("e1", "LA Galaxy", result="win", p_model=0.6,
+                      p_market=0.5, price=2.0,
+                      generated_at=f"2026-08-2{d}T12:00:00Z") for d in range(1, 8)]
+    out = evaluate_markets(pd.DataFrame(filas))
+    assert int(out.iloc[0]["n"]) == 1, "siete servidas del mismo pick son UN evento"
+
+
+def test_both_sides_of_the_same_market_count_once():
+    """Con probabilidades complementarias, `(p'-y')^2 == (p-y)^2`: el lado
+    contrario da EXACTAMENTE el mismo `d` y no aporta ni un bit."""
+    filas = [
+        _serving("e1", "LA Galaxy", result="win", p_model=0.6, p_market=0.5,
+                 price=2.0, generated_at="2026-08-21T12:00:00Z"),
+        _serving("e1", "Austin FC", result="loss", p_model=0.4, p_market=0.5,
+                 price=2.0, generated_at="2026-08-21T12:00:00Z"),
+    ]
+    out = evaluate_markets(pd.DataFrame(filas))
+    assert int(out.iloc[0]["n"]) == 1
+
+
+def test_rows_without_event_id_are_denied():
+    """Sin identidad de evento no se puede verificar la independencia, y un
+    p-valor sobre filas correlacionadas no significa nada: default-deny."""
+    df = _rows(240, 160, p_model=0.6, p_market=0.5, price=2.0).drop(
+        columns=["event_id"])
+    out = evaluate_markets(df)
+    assert out.empty or bool(out.iloc[0]["allowed"]) is False
 
 
 # --- condicion 2: EV neto de vig ----------------------------------------------

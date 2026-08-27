@@ -42,6 +42,35 @@ def _stream(n_events: int, *, edge_wins: bool, price: float = 2.0,
     return pd.DataFrame(rows)
 
 
+class TestUnaFilaPorApuesta:
+    """El stream sirve el mismo pick una vez por dia de horizonte; una apuesta
+    se hace UNA vez. Medido el 2026-08-27: 13.999 filas para 6.379 picks."""
+
+    def _servings(self, dias: int) -> pd.DataFrame:
+        base = _stream(1, edge_wins=True)
+        out = pd.concat([base.assign(generated_at=f"2026-08-2{d}T12:00:00Z")
+                         for d in range(1, dias + 1)], ignore_index=True)
+        return out
+
+    def test_repeated_servings_collapse_to_one_row(self):
+        assert len(prepare(self._servings(7))) == 2  # dos caras, un evento
+
+    def test_the_kept_serving_is_the_first_one(self):
+        d = self._servings(5)
+        d.loc[d["generated_at"] == "2026-08-21T12:00:00Z", "price_decimal"] = 3.0
+        assert set(prepare(d)["price_decimal"]) == {3.0}
+
+    def test_a_stream_without_generated_at_still_collapses(self):
+        d = self._servings(4).drop(columns=["generated_at"])
+        assert len(prepare(d)) == 2
+
+    def test_without_selection_nothing_is_collapsed(self):
+        """Colapsar por una clave incompleta fusionaria picks DISTINTOS del
+        mismo partido: borrar informacion es peor que contarla dos veces."""
+        d = self._servings(3).drop(columns=["selection"])
+        assert len(prepare(d)) == 6
+
+
 class TestPrepare:
     def test_excludes_push_and_void(self):
         df = _stream(30, edge_wins=True)

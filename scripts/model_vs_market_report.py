@@ -40,6 +40,7 @@ from sqp.evaluation.edge_information import (
     cap_ladder,
     edge_ladder,
     edge_signal,
+    one_row_per_pick,
 )
 from sqp.evaluation.model_vs_market import score_model_vs_market
 from sqp.storage.served_store import ServedStore
@@ -77,12 +78,21 @@ def build_report(df: pd.DataFrame, *, price_floor: float, n_boot: int,
     lines: list[str] = [
         "# Modelo vs mercado y valor del edge",
         "",
-        f"Generado: {date.today().isoformat()} - filas graduadas: {len(df)} - "
+        f"Generado: {date.today().isoformat()} - filas servidas: {len(df)} - "
+        f"picks unicos: {len(one_row_per_pick(df))} - "
         f"eventos: {df['event_id'].nunique()}",
         "",
         "Fuente: stream servido (`data/calibration/graded_*.csv`), todas las "
         "caras priceadas antes de cualquier filtro de stake. Intervalos al 95% "
         "por bootstrap agrupado por evento.",
+        "",
+        "**Unidades.** El stream guarda una fila por dia de horizonte, asi que "
+        "el mismo pick aparece varias veces (2,19x el 2026-08-27). Las secciones "
+        "de ROI (3, 4 y 5) miden POLITICA y colapsan a **una fila por apuesta** "
+        "-- una apuesta se hace una vez. La seccion 1 (Brier) se queda sobre "
+        "todas las servidas a proposito: cada servida es una prediccion distinta "
+        "a un precio distinto, la comparacion es pareada contra el mercado en la "
+        "misma fila y el IC ya agrupa por evento.",
         "",
         "ROI REALIZADO sobre muestra historica. NO es una promesa de ganancia.",
         "",

@@ -12,6 +12,8 @@ Un (liga, mercado) lleva stake real solo si cumple LAS DOS condiciones:
    n >= min_n y p < alpha. Se usa ``model_probability`` y no la mezcla ni la
    calibrada porque ambas contienen el precio dentro: compararlas con el mercado
    no diria si el modelo aporta algo propio.
+   ``n`` cuenta OBSERVACIONES INDEPENDIENTES, una por (evento, mercado, linea),
+   no filas del stream: ver ``_independent_units``.
 2. Su EV a stake plano es positivo. Acertar mas que el precio no basta si el
    margen no cubre el vig (leccion de pick_mode accuracy, favoritos a 1.07).
 
@@ -59,10 +61,15 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     df = graded[graded["result"].isin(["win", "loss"])].copy()
     if df.empty:
         return df.assign(y=pd.Series(dtype=int))
-    if "game_date" not in df.columns:
-        log.warning("prediction_gate: columna 'game_date' ausente — "
-                    "todas las filas filtradas (default-deny).")
-        return df.iloc[0:0].assign(y=pd.Series(dtype=int))
+    for col in ("game_date", "event_id"):
+        if col not in df.columns:
+            # `event_id` es tan obligatorio como `game_date`: sin identidad de
+            # evento no se puede colapsar a observaciones independientes
+            # (`_independent_units`) y el test de signo dejaria de ser valido.
+            # Default-deny antes que un p-valor que no significa nada.
+            log.warning("prediction_gate: columna '%s' ausente — todas las "
+                        "filas filtradas (default-deny).", col)
+            return df.iloc[0:0].assign(y=pd.Series(dtype=int))
     fecha = df["game_date"].astype(str)
     df = df[fecha > validation_start]
     for col in _REQUIRED:
@@ -74,15 +81,48 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     return df
 
 
+def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
+    """Una observacion por (evento, mercado, linea): `d` y `ev` promediados.
+
+    El test de signo asume ENSAYOS INDEPENDIENTES, y las filas del stream servido
+    no lo son, por dos vias que se multiplican:
+
+    - **Repeticion diaria.** `append_served` deduplica solo dentro del mismo dia
+      de run, asi que un pick dentro del horizonte de 7 dias se sirve una vez por
+      dia. Medido el 2026-08-27: 13.999 filas graduadas para 6.379 picks (2,19x),
+      y en la ventana del gate `mls|h2h` tenia **348 filas de 21 eventos** (16,6
+      por evento) con el umbral en 300.
+    - **Las dos caras del mismo mercado.** Si las probabilidades del lado
+      contrario son complementarias (`p' = 1-p`, `y' = 1-y`), entonces
+      `(p'-y')^2 = (p-y)^2` y `d` es EXACTAMENTE el mismo: el lado B duplica n
+      sin aportar ni un bit.
+
+    Contar esas filas como ensayos independientes infla `n` y hunde el p-valor
+    del binomial. El 2026-08-27 `mls|h2h` estaba en `p = 0,0600` con alpha 0,05 y
+    `brasileirao|h2h` en `p = 0,000039` sobre **8 eventos**: el gate estaba a un
+    paso de autorizar dinero real sobre un test invalido. Colapsar es siempre
+    CONSERVADOR -- solo puede reducir n y subir el p-valor, nunca abrir una
+    puerta que estuviera cerrada.
+    """
+    d = ((g["implied_probability_novig"] - g["y"]) ** 2
+         - (g["model_probability"] - g["y"]) ** 2)
+    ev = (g["model_probability"] * (g["price_decimal"] - 1.0)
+          - (1.0 - g["model_probability"]))
+    units = pd.DataFrame({"d": d, "ev": ev})
+    keys = [c for c in ("event_id", "market", "line") if c in g.columns]
+    for k in keys:
+        units[k] = g[k]
+    return units.groupby(keys, dropna=False, sort=False)[["d", "ev"]].mean().reset_index()
+
+
 def _decide(g: pd.DataFrame, min_n: int, alpha: float) -> dict:
     """Evalua un (liga, mercado) ya filtrado. Orden de las razones: la muestra
     manda sobre el signo, y el signo sobre el EV."""
-    d = ((g["implied_probability_novig"] - g["y"]) ** 2
-         - (g["model_probability"] - g["y"]) ** 2)
+    units = _independent_units(g)
+    d = units["d"]
     n = int((d != 0).sum())
     wins = int((d > 0).sum())
-    ev = float((g["model_probability"] * (g["price_decimal"] - 1.0)
-                - (1.0 - g["model_probability"])).mean())
+    ev = float(units["ev"].mean())
     p = (float(binomtest(wins, n, 0.5, alternative="greater").pvalue)
          if n > 0 else float("nan"))
     if n < min_n:

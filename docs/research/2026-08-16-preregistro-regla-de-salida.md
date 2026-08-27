@@ -43,6 +43,31 @@ así que no lo distorsiona que unos partidos sean más predecibles que otros.
 - **n ≥ 300** filas no empatadas.
 - **p < 0,05**.
 
+> **CORRECCIÓN 2026-08-27 — qué cuenta como una observación.** Este criterio se
+> escribió diciendo «filas», y el código lo implementó literalmente: filas del
+> stream servido. Esas filas **no son ensayos independientes**, que es justo lo
+> que el test de signo asume, por dos vías que se multiplican:
+>
+> 1. `append_served` deduplica solo dentro del mismo día de run, así que un pick
+>    dentro del horizonte de 7 días se sirve una vez por día. Medido hoy: 13.999
+>    filas graduadas para 6.379 picks (2,19×).
+> 2. Las dos caras del mismo mercado dan el **mismo** `d`: si `p' = 1−p` e
+>    `y' = 1−y`, entonces `(p'−y')² = (p−y)²`. El lado contrario duplica `n` sin
+>    aportar información.
+>
+> Efecto real: `mls|h2h` acumulaba **348 filas procedentes de 21 eventos** (16,6
+> por evento) con el umbral en 300, y su p-valor iba por **0,0600** contra un
+> alpha de 0,05; `brasileirao|h2h` marcaba **p = 0,000039 sobre 8 eventos**. El
+> gate estaba a un paso de autorizar dinero real sobre un test inválido.
+>
+> A partir de hoy **`n` cuenta observaciones independientes: una por (evento,
+> mercado, línea)**, promediando `d` y el EV dentro de cada una. El umbral 300 y
+> el alpha 0,05 **no se tocan**. La corrección es estrictamente **conservadora**
+> —solo puede reducir `n` y subir el p-valor, nunca abrir una puerta cerrada— y
+> por eso se aplica sin nuevo pre-registro. Tras aplicarla, el mercado con más
+> evidencia es `mlb|spreads` con **n = 156** y `p = 0,76`: ninguno se acerca al
+> umbral, y los dos que parecían acercarse eran artefacto de la duplicación.
+
 ### Condición 2 — EV neto de vig positivo
 
 Sobre las mismas filas, a **stake plano** de 1 unidad:

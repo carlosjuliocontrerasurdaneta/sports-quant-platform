@@ -34,6 +34,9 @@ import numpy as np
 import pandas as pd
 
 from sqp.evaluation.bootstrap import cluster_bootstrap_ci
+from sqp.logging_config import get_logger
+
+log = get_logger(__name__)
 
 # Escalera por defecto. Empieza en 0 (todo lo que el modelo considera favorable)
 # y llega a 0.12: por encima, la muestra historica se queda sin filas utiles.
@@ -43,6 +46,38 @@ DEFAULT_CAPS: tuple[float, ...] = (0.05, 0.075, 0.10, 0.15, 0.20, 0.30, float("i
 # Con menos filas que esto el ROI es anecdota, no medicion: se emite la fila con
 # el intervalo en NaN en vez de omitirla, para que el hueco sea visible.
 MIN_ROWS = 40
+# Que identifica una APUESTA. El stream servido guarda una fila por dia de
+# horizonte, no una por pick.
+PICK_KEY: tuple[str, ...] = ("event_id", "market", "line", "selection")
+
+
+def one_row_per_pick(df: pd.DataFrame) -> pd.DataFrame:
+    """Una fila por apuesta: la PRIMERA vez que se sirvio cada pick.
+
+    `append_served` deduplica solo dentro del mismo dia de run, asi que un pick
+    dentro del horizonte de 7 dias entra una vez por dia: 13.999 filas graduadas
+    para 6.379 picks (2,19x, medido el 2026-08-27). Para una medicion de ROI eso
+    es contar N veces una apuesta que se hace UNA, y pondera el resultado por
+    cuantos dias estuvo el partido en el horizonte -- los de horizonte largo
+    mandan sobre los del mismo dia sin razon que lo justifique.
+
+    Se conserva la primera servida y no la ultima a proposito: es el momento en
+    que el pick aparece en la lista, sin mirar hacia el precio de cierre.
+
+    Sin `event_id` y `selection` no hay con que distinguir dos apuestas de la
+    misma jornada, y colapsar por una clave incompleta fusionaria picks
+    DISTINTOS -- borrar informacion es peor que contarla dos veces. En ese caso
+    se devuelve el frame intacto y se avisa.
+    """
+    faltan = {"event_id", "selection"} - set(df.columns)
+    if faltan:
+        log.warning("one_row_per_pick: sin %s no se puede identificar una "
+                    "apuesta; se mide sobre servidas, no sobre picks",
+                    sorted(faltan))
+        return df
+    keys = [c for c in PICK_KEY if c in df.columns]
+    d = df.sort_values("generated_at") if "generated_at" in df.columns else df
+    return d.drop_duplicates(keys, keep="first")
 
 
 def prepare(df: pd.DataFrame, *,
@@ -53,13 +88,17 @@ def prepare(df: pd.DataFrame, *,
     Conserva solo `win`/`loss`: push y void no tienen resultado binario ni P&L
     que puntuar. Si falta `edge_col` lo reconstruye como `p * precio - 1` sobre
     `prob_col`, que es la definicion que usa produccion.
+
+    Colapsa a **una fila por apuesta** (`one_row_per_pick`): todo lo que sale de
+    aqui es una medicion de ROI de una politica, y una apuesta se hace una vez
+    por mucho que el stream la sirva siete dias seguidos.
     """
     needed = {"result", "price_decimal", "event_id"}
     missing = needed - set(df.columns)
     if missing:
         raise ValueError(f"faltan columnas obligatorias: {sorted(missing)}")
 
-    d = df[df["result"].isin(["win", "loss"])].copy()
+    d = one_row_per_pick(df[df["result"].isin(["win", "loss"])]).copy()
     price = pd.to_numeric(d["price_decimal"], errors="coerce")
     if edge_col in d.columns:
         edge = pd.to_numeric(d[edge_col], errors="coerce")

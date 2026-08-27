@@ -51,6 +51,21 @@ que el modelo acierte mejor en favoritos, sino que **se equivoca más barato**.
   generar la hipótesis quedan excluidas por construcción.
 - **`n` mínimo:** 800 filas graduadas y **≥ 250 eventos distintos** en el brazo
   con filtro. Por debajo no se evalúa; se espera.
+
+  > **CORRECCIÓN 2026-08-27, antes de que la ventana tenga datos** (hoy lleva 60
+  > filas y 8 eventos). «Filas» aquí son *servidas*, y el stream repite el mismo
+  > pick una vez por día de horizonte: 13.999 filas graduadas corresponden a
+  > 6.379 picks únicos (2,19×). Un umbral de 800 servidas equivale a unos 365
+  > picks, bastante menos información independiente de la que se pretendía exigir.
+  > **El umbral pasa a ser 800 picks únicos** por `(evento, mercado, línea,
+  > selección)`, manteniendo los 250 eventos. Es un endurecimiento, decidido
+  > antes de mirar ningún dato de la ventana, así que no puede sesgar hacia la
+  > aceptación. El umbral de precio sigue **congelado en 0,35**.
+  >
+  > Comprobado hoy que la duplicación **no** explica el hallazgo que motivó este
+  > pre-registro: al colapsar a un pick por fila, la escalera de `min_edge` sigue
+  > invertida y se refuerza (ROI −8,4 % en `min_edge ≥ 0` → −28,2 % en `≥ 0,12`,
+  > IC95 [−0,474, −0,067], que ahora **excluye** el cero donde antes lo cruzaba).
 - **Sin re-barrido de umbral.** El umbral queda **congelado en 0,35**. Si al
   re-medir otro valor luce mejor, es información para una hipótesis futura, no
   para esta.
