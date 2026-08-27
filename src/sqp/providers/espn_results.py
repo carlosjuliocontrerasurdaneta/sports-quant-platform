@@ -7,11 +7,12 @@ counts to make silent breakage visible.
 """
 from __future__ import annotations
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 import requests
 from sqp.exceptions import ProviderNotConfiguredError
 from sqp.logging_config import get_logger
 from .base import ResultsProvider
+from .date_window import fetch_window
 
 log = get_logger("sqp.espn")
 
@@ -73,8 +74,8 @@ class ESPNResultsProvider(ResultsProvider):
             raise ProviderNotConfiguredError(
                 f"No ESPN scoreboard path registered for league '{league}'. "
                 "Add it to ESPN_PATHS in sqp/providers/espn_results.py.")
-        end = date.today()
-        start = end - timedelta(days=days_back)
+        # Anclado en UTC y con un dia de margen por lado: ver date_window.py.
+        start, end = fetch_window(days_back)
         out: list[dict] = []
         if cfg.get("day_by_day", False):
             day = start

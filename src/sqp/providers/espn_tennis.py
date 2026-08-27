@@ -14,11 +14,12 @@ provider is keyed by tour (atp/wta) derived from the league/sport key.
 """
 from __future__ import annotations
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 import requests
 from sqp.exceptions import ProviderNotConfiguredError
 from sqp.logging_config import get_logger
 from .base import ResultsProvider
+from .date_window import fetch_window
 
 log = get_logger("sqp.espn_tennis")
 
@@ -88,8 +89,8 @@ class ESPNTennisResultsProvider(ResultsProvider):
         if tour is None:
             raise ProviderNotConfiguredError(
                 f"Cannot derive an ESPN tennis tour (atp/wta) from league '{league}'.")
-        end = date.today()
-        start = end - timedelta(days=days_back)
+        # Anclado en UTC y con un dia de margen por lado: ver date_window.py.
+        start, end = fetch_window(days_back)
         since = start.isoformat()
         by_id: dict[str, dict] = {}
         day = start

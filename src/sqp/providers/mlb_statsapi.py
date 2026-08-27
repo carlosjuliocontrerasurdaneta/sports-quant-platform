@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 import requests
 from .base import ResultsProvider
+from .date_window import fetch_window
 
 BASE = "https://statsapi.mlb.com/api/v1"
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -38,9 +39,8 @@ class MLBStatsProvider(ResultsProvider):
         self.session = session or requests.Session()
 
     def fetch_results(self, league: str = "mlb", days_back: int = 365) -> list[dict]:
-        from datetime import date, timedelta
-        end = date.today()
-        start = end - timedelta(days=days_back)
+        # Anclado en UTC y con un dia de margen por lado: ver date_window.py.
+        start, end = fetch_window(days_back)
         r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R"}, timeout=60)
@@ -72,9 +72,7 @@ class MLBStatsProvider(ResultsProvider):
         """Starter map per game keyed by gamePk. Uses probablePitcher hydration:
         for past games it reflects the announced starter (per-game boxscore
         confirmation is the planned upgrade)."""
-        from datetime import date, timedelta
-        end = date.today()
-        start = end - timedelta(days=days_back)
+        start, end = fetch_window(days_back)
         r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R", "hydrate": "probablePitcher"}, timeout=120)
@@ -97,10 +95,8 @@ class MLBStatsProvider(ResultsProvider):
         this is a one-off backfill, not a per-run fetch. Returns rows:
         {game_id, date, home_starter, home_starter_fip, away_starter,
         away_starter_fip}; a side with no identifiable start or IP=0 gets None."""
-        from datetime import date, timedelta
         from sqp.models.fip import fip_from_line
-        end = date.today()
-        start = end - timedelta(days=days_back)
+        start, end = fetch_window(days_back)
         r = _get_with_retry(self.session, f"{BASE}/schedule", params={
             "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
             "gameType": "R"}, timeout=120)
