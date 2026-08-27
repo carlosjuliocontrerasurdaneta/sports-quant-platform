@@ -59,7 +59,7 @@ import pandas as pd
 from sqp.config import ROOT
 
 COLS = ["#", "liga", "mercado", "seleccion", "linea", "precio", "prob_est",
-        "breakeven", "margen", "prob_mercado", "edge", "casas", "estado"]
+        "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado"]
 
 
 def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
@@ -105,7 +105,8 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
                market: str | None = None,
                min_margin: float | None = None,
                league: str | None = None,
-               game_date: str | None = None) -> pd.DataFrame:
+               game_date: str | None = None,
+               orden: str = "prob") -> pd.DataFrame:
     """Ordena por probabilidad estimada DESCENDENTE y anota el breakeven.
 
     `margen = prob_est - 1/precio`. Positivo significa que la probabilidad
@@ -121,6 +122,7 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     d["_price"] = price
     d["_be"] = 1.0 / price.where(price > 1.0)
     d["_margen"] = d["_p"] - d["_be"]
+    d["_roi_esp"] = d["_p"] * d["_price"] - 1.0
     d = d[d["_p"].notna() & d["_be"].notna()]
     if min_prob > 0:
         d = d[d["_p"] >= min_prob]
@@ -136,7 +138,11 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     # anti-informativo (bitacora 2026-08-25).
     if min_margin is not None:
         d = d[d["_margen"] >= min_margin]
-    d = d.sort_values("_p", ascending=False).reset_index(drop=True)
+    # Por defecto manda la PROBABILIDAD (regla fundamental del operador). `roi` y
+    # `margen` existen porque el operador pidio "sin dejar de considerar el ROI":
+    # apuntan en sentidos OPUESTOS a la probabilidad en estos datos.
+    clave = {"prob": "_p", "roi": "_roi_esp", "margen": "_margen"}[orden]
+    d = d.sort_values(clave, ascending=False).reset_index(drop=True)
 
     flags = d.get("flags", pd.Series([""] * len(d))).fillna("").astype(str)
     stake = pd.to_numeric(d.get("stake"), errors="coerce").fillna(0.0)
@@ -154,7 +160,9 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         "margen": d["_margen"].round(4),
         "prob_mercado": pd.to_numeric(
             d.get("implied_probability_novig"), errors="coerce").round(4),
-        "edge": pd.to_numeric(d.get("estimated_edge"), errors="coerce").round(4),
+        # ROI esperado por unidad apostada = p*cuota - 1. Es el `estimated_edge`
+        # de siempre, llamado por su nombre (encargo del operador 2026-08-26).
+        "roi_esp": (d["_p"] * d["_price"] - 1.0).round(4),
         "casas": d.get("books_count"),
         "estado": [("STAKE %.2f" % s) if s > 0 else (f or "sin stake")
                    for s, f in zip(stake, flags)],
@@ -210,6 +218,9 @@ def main() -> int:
     ap.add_argument("--min-prob", type=float, default=0.0,
                     help="probabilidad estimada minima")
     ap.add_argument("--market", default=None, help="h2h | spreads | totals")
+    ap.add_argument("--orden", default="prob", choices=("prob", "roi", "margen"),
+                    help="criterio de orden: prob (default, regla fundamental), "
+                         "roi (ROI esperado) o margen")
     ap.add_argument("--min-margin", type=float, default=None,
                     help="margen minimo (prob_est - 1/precio); usa 0 para ver "
                          "solo las que superan su punto de equilibrio")
@@ -235,7 +246,7 @@ def main() -> int:
     dia = None if args.dia == "todos" else (hoy if args.dia == "hoy" else args.dia)
     ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
                         min_margin=args.min_margin, league=args.liga,
-                        game_date=dia)
+                        game_date=dia, orden=args.orden)
     etiqueta = f"{day} (generado) - partidos del {dia}" if dia else f"{day} (generado) - todas las fechas"
     report = build_report(ranked, top=args.top, source_day=etiqueta)
 

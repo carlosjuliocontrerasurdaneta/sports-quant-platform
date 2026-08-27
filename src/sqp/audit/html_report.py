@@ -498,6 +498,10 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         "fecha": fecha, "league": df.get("league"), "market": df.get("market"),
         "seleccion": df.get("selection"), "linea": df.get("line"),
         "cuota": price, "prob": p, "breakeven": be, "margen": p - be,
+        # ROI esperado por unidad apostada: p*cuota - 1. Es el `estimated_edge`
+        # de siempre, llamado por su nombre. El operador pidio "sin dejar de
+        # considerar el ROI" (2026-08-26) y resulta que ya se calculaba.
+        "roi_esp": p * price - 1.0,
         "casas": pd.to_numeric(df.get("books_count"), errors="coerce"),
     })
     out = out[p.notna() & be.notna()].sort_values("prob", ascending=False)
@@ -650,7 +654,12 @@ _TEMPLATE = """<!DOCTYPE html>
       CUOTA exige para no perder dinero; <code>Margen = Prob &minus; Breakeven</code>.
       Un margen negativo pierde a largo plazo <em>por alta que sea la
       probabilidad</em>. <code>Casas</code> es cuantas casas de apuestas cotizan
-      esa linea: la cuota usada es la MEDIANA de todas ellas. Estas lineas
+      esa linea: la cuota usada es la MEDIANA de todas ellas.
+      <code>ROI esp.</code> es el retorno esperado por unidad apostada
+      (<code>prob &times; cuota &minus; 1</code>). <strong>Pincha cualquier
+      cabecera para reordenar</strong>: por defecto manda la probabilidad, pero
+      probabilidad y ROI apuntan en sentidos OPUESTOS &mdash; el favorito mas
+      probable suele tener ROI esperado negativo. Estas lineas
       <strong>no llevan stake</strong>.</p>
     <div class="filters">
       <label>Fecha del partido<div class="tagfilter" id="dateTagsT"></div></label>
@@ -953,8 +962,17 @@ const T_COLS = [
   ["fecha","Fecha","txt"], ["league","Deporte","lg"], ["market","Mercado","txt"],
   ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
   ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
-  ["margen","Margen","pct"], ["casas","Casas","int"],
+  ["margen","Margen","pct"], ["roi_esp","ROI esp.","pct"], ["casas","Casas","int"],
 ];
+// Orden por defecto: PROBABILIDAD descendente (regla fundamental del operador).
+// Pinchando una cabecera se reordena -- asi "mayor probabilidad" y "mejor ROI"
+// son dos clics, no dos vistas. Van en sentidos opuestos en estos datos: el
+// favorito mas probable suele tener ROI esperado NEGATIVO.
+let tSortKey = "prob", tSortDir = -1;
+function tSort(k) {{
+  if (tSortKey === k) {{ tSortDir = -tSortDir; }} else {{ tSortKey = k; tSortDir = -1; }}
+  tRefresh();
+}}
 const tFmt = {{
   txt: v => v == null ? "" : v,
   lg:  v => labelFor(v),
@@ -1017,9 +1035,19 @@ function tRefresh() {{
     + `<div class="card"><div class="k">Ligas</div><div class="v">${{lig}}</div></div>`
     + `<div class="card"><div class="k">Margen positivo</div><div class="v">${{pos}}</div></div>`;
   document.getElementById("countT").textContent = `${{rows.length}} de ${{TODOS.length}}`;
+  rows.sort((a, b) => {{
+    const x = a[tSortKey], y = b[tSortKey];
+    if (x == null) return 1;
+    if (y == null) return -1;
+    if (typeof x === "string") return tSortDir * x.localeCompare(y);
+    return tSortDir * (x - y);
+  }});
   const tbl = document.getElementById("todosTable");
   tbl.querySelector("thead").innerHTML =
-    "<tr>" + T_COLS.map(c => `<th>${{c[1]}}</th>`).join("") + "</tr>";
+    "<tr>" + T_COLS.map(c => {{
+      const on = c[0] === tSortKey ? (tSortDir < 0 ? " ▼" : " ▲") : "";
+      return `<th style="cursor:pointer" onclick="tSort('${{c[0]}}')">${{c[1]}}${{on}}</th>`;
+    }}).join("") + "</tr>";
   tbl.querySelector("tbody").innerHTML = rows.length
     ? rows.slice(0, 500).map(r => "<tr>" + T_COLS.map(c =>
         `<td>${{tFmt[c[2]](r[c[0]])}}</td>`).join("") + "</tr>").join("")

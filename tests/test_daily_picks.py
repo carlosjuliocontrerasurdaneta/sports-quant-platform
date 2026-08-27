@@ -212,3 +212,50 @@ class TestFiltroPorFechaDelPartido:
             {"league": "mlb", "market": "h2h", "start_time": "2026-08-29T18:00:00Z"},
         ]), league="mlb", market="h2h", game_date="2026-08-26")
         assert len(out) == 1
+
+
+class TestProbabilidadYRoi:
+    """El operador (2026-08-26): "picks con la mayor probabilidad de acierto
+    posible, sin dejar de considerar el ROI, ya que tambien es un factor
+    importante".
+
+    Los dos criterios apuntan en sentidos OPUESTOS: el favorito mas probable
+    suele tener ROI esperado negativo, porque la cuota ya lo descuenta. Por eso
+    ambos se reportan SIEMPRE y el orden es conmutable, en vez de inventar una
+    ponderacion que el operador no pidio.
+    """
+
+    def _mix(self):
+        # favorito muy probable a cuota corta (ROI negativo) vs underdog
+        # menos probable a cuota larga (ROI positivo).
+        return _served([
+            {"selection": "FAVORITO", "estimated_probability": 0.90,
+             "price_decimal": 1.05},
+            {"selection": "UNDERDOG", "estimated_probability": 0.40,
+             "price_decimal": 3.00},
+        ])
+
+    def test_roi_esperado_es_prob_por_cuota_menos_uno(self):
+        out = daily_picks.rank_picks(_served([
+            {"estimated_probability": 0.60, "price_decimal": 2.0}]))
+        assert out.iloc[0]["roi_esp"] == pytest.approx(0.20)   # 0.6*2 - 1
+
+    def test_por_defecto_manda_la_probabilidad(self):
+        out = daily_picks.rank_picks(self._mix())
+        assert out.iloc[0]["seleccion"] == "FAVORITO"
+
+    def test_orden_por_roi_da_otra_lista(self):
+        out = daily_picks.rank_picks(self._mix(), orden="roi")
+        assert out.iloc[0]["seleccion"] == "UNDERDOG"
+
+    def test_los_dos_criterios_se_reportan_siempre(self):
+        """Aunque se ordene por uno, el otro tiene que estar visible: sin eso el
+        ranking miente por omision."""
+        for orden in ("prob", "roi", "margen"):
+            out = daily_picks.rank_picks(self._mix(), orden=orden)
+            assert {"prob_est", "roi_esp", "margen", "breakeven"} <= set(out.columns)
+
+    def test_el_mas_probable_puede_tener_roi_negativo(self):
+        out = daily_picks.rank_picks(self._mix())
+        assert out.iloc[0]["roi_esp"] < 0      # FAVORITO: 0.90*1.05 - 1 = -0.055
+        assert out.iloc[1]["roi_esp"] > 0      # UNDERDOG: 0.40*3.00 - 1 = +0.20
