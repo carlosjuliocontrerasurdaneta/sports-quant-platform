@@ -551,8 +551,21 @@ def html_dashboard(predictions_dir: Path | None = None,
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     day = ts[:8]
 
-    generated_day = f"{day[:4]}-{day[4:6]}-{day[6:8]}"
+    # El dia de los candidatos se resuelve en HORA LOCAL, no en UTC. Con UTC, a
+    # partir de las 22:00 en Espana (00:00Z) el dashboard buscaba los candidatos
+    # del dia SIGUIENTE, no encontraba ninguno y mostraba "sin candidatos" cada
+    # noche hasta el run de la manana. Detectado por el operador el 2026-08-26 a
+    # las 22:15 locales (02:15Z del 27). Mismo fallo -- UTC donde tocaba local --
+    # que ya se habia corregido en la pestana "Todos los Picks".
+    #
+    # Fallback al dia mas reciente disponible: si el run todavia no ha corrido
+    # hoy, es preferible mostrar los candidatos de ayer ETIQUETADOS que dejar el
+    # tablero en blanco, que es lo que hizo creer al operador durante 53 dias que
+    # el sistema no generaba nada.
+    generated_day = datetime.now(timezone.utc).astimezone().date().isoformat()
     picks = _picks_records(predictions_dir, generated_day=generated_day)
+    if not picks:
+        picks = _picks_records(predictions_dir, generated_day=None)
     columns_meta = [{"key": k, "header": h, "kind": kind}
                     for k, h, kind in _PICK_COLUMNS]
     # Local generation day: anchors the "Hoy" date pill to the run, not to
@@ -966,7 +979,9 @@ function init() {{
   if (!DATA.picks.length) {{
     document.querySelector("#picks .filters").style.display = "none";
     document.getElementById("picksTable").outerHTML =
-      '<p class="empty">Sin candidatos accionables hoy.</p>';
+      '<p class="empty">El run diario todavia no ha generado candidatos. '
+      + 'Ejecuta DIARIO_COMPLETO.bat, o mira la pestana <b>Todos los Picks</b>, '
+      + 'que trae todas las caras evaluadas.</p>';
     renderStats([]);
     return;
   }}

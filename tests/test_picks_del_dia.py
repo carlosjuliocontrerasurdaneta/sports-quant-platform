@@ -90,3 +90,56 @@ class TestNoSeTocoElContadorDeAccionables:
             {"stake": 3.0, "flags": "", "estimated_edge": 0.2},
         ])
         assert len(rank_candidates(df)) == 1
+
+
+class TestDiaEnHoraLocalNoUTC:
+    """El dashboard resolvia "hoy" en UTC. A partir de las 22:00 en Espana
+    (00:00Z) buscaba los candidatos del dia SIGUIENTE, no encontraba ninguno y
+    mostraba "Sin candidatos accionables hoy" -- cada noche, hasta el run de la
+    manana. Detectado por el operador el 2026-08-26 a las 22:15 locales
+    (02:15Z del 27).
+
+    Es el mismo fallo -- UTC donde tocaba hora local -- que ya se habia
+    corregido en la pestana "Todos los Picks" y quedo sin corregir aqui.
+    """
+
+    def test_usa_el_dia_local_para_buscar_candidatos(self, tmp_path, monkeypatch):
+        import sqp.audit.html_report as hr
+
+        capturado = {}
+        real = hr._picks_records
+
+        def espia(pred_dir, generated_day=None):
+            capturado.setdefault("dias", []).append(generated_day)
+            return real(pred_dir, generated_day=generated_day)
+
+        monkeypatch.setattr(hr, "_picks_records", espia)
+        hr.html_dashboard(predictions_dir=tmp_path / "p",
+                          bets_dir=tmp_path / "b", make_latest=False)
+        from datetime import datetime, timezone
+        local = datetime.now(timezone.utc).astimezone().date().isoformat()
+        assert capturado["dias"][0] == local
+
+    def test_cae_al_dia_mas_reciente_si_hoy_no_hay(self, tmp_path):
+        """Mejor los candidatos de ayer que un tablero en blanco: el blanco es
+        lo que hizo creer al operador durante 53 dias que no se generaba nada."""
+        pred = tmp_path / "p"
+        pred.mkdir()
+        df = pd.DataFrame([{
+            "event_id": "e1", "league": "mlb", "market": "h2h", "selection": "A",
+            "line": None, "price_decimal": 2.0, "estimated_probability": 0.55,
+            "implied_probability_novig": 0.5, "estimated_edge": 0.1,
+            "kelly_stake_pct": 0.0, "stake": 0.0, "home": "H", "away": "V",
+            "flags": "prediction_gate", "data_label": "real",
+            "start_time": "2020-01-01T18:00:00Z",
+            "generated_at": "2020-01-01T11:00:00+00:00"}])
+        (pred / "candidates_mlb.csv").write_text(df.to_csv(index=False),
+                                                 encoding="utf-8")
+        from sqp.audit.html_report import html_dashboard
+        import json
+        import re
+        path = html_dashboard(predictions_dir=pred, bets_dir=tmp_path / "b",
+                              make_latest=False)
+        txt = open(path, encoding="utf-8").read()
+        data = json.loads(re.search(r"const DATA = (\{.*?\});\n", txt, re.S).group(1))
+        assert len(data["picks"]) == 1

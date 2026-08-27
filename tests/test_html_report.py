@@ -333,7 +333,13 @@ def test_dashboard_empty_is_safe(tmp_path):
     pred.mkdir()
     bets.mkdir()
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()
-    assert "Sin candidatos accionables" in text
+    # Mensaje cambiado el 2026-08-26: decia "Sin candidatos accionables hoy" y
+    # era doblemente enganoso -- la pestana ya no filtra por accionables, y
+    # cuando salia no era por falta de candidatos sino porque el dia se
+    # resolvia en UTC y a partir de las 22:00 locales buscaba los del dia
+    # siguiente. Ahora dice que hacer y adonde mirar.
+    assert "todavia no ha generado candidatos" in text
+    assert "Todos los Picks" in text
     assert "Sin apuestas liquidadas" in text
     assert "Sin historial de picks." in text
 
