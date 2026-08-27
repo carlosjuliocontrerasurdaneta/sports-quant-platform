@@ -80,6 +80,10 @@ def _picks_records(predictions_dir: Path,
     df = load_all_candidates(predictions_dir, generated_day=generated_day)
     if df.empty:
         return []
+    # Sin `generated_day` explicito, se muestra el dia MAS RECIENTE presente.
+    if generated_day is None and "generated_at" in df.columns:
+        dias = df["generated_at"].astype(str).str[:10]
+        df = df[dias == dias.max()]
     ranked = df.sort_values("estimated_edge", ascending=False).copy()
     # `estado` explica el 0: sin el, 63 filas a stake 0 parecen una averia.
     flags = (ranked["flags"].fillna("").astype(str)
@@ -562,10 +566,12 @@ def html_dashboard(predictions_dir: Path | None = None,
     # hoy, es preferible mostrar los candidatos de ayer ETIQUETADOS que dejar el
     # tablero en blanco, que es lo que hizo creer al operador durante 53 dias que
     # el sistema no generaba nada.
-    generated_day = datetime.now(timezone.utc).astimezone().date().isoformat()
-    picks = _picks_records(predictions_dir, generated_day=generated_day)
-    if not picks:
-        picks = _picks_records(predictions_dir, generated_day=None)
+    # El dia de los candidatos se toma del DATO mas reciente, no de "ahora".
+    # Calcularlo en UTC vaciaba el tablero cada noche a partir de las 20:00
+    # locales (00:00Z); calcularlo en hora local lo arregla hoy pero volveria a
+    # romperse si el run corriera cerca de medianoche. Leerlo de los datos es
+    # inmune al huso horario (auditoria de UTC, 2026-08-26).
+    picks = _picks_records(predictions_dir, generated_day=None)
     columns_meta = [{"key": k, "header": h, "kind": kind}
                     for k, h, kind in _PICK_COLUMNS]
     # Local generation day: anchors the "Hoy" date pill to the run, not to

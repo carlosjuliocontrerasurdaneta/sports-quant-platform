@@ -103,7 +103,11 @@ class TestDiaEnHoraLocalNoUTC:
     corregido en la pestana "Todos los Picks" y quedo sin corregir aqui.
     """
 
-    def test_usa_el_dia_local_para_buscar_candidatos(self, tmp_path, monkeypatch):
+    def test_no_calcula_el_dia_a_partir_de_ahora(self, tmp_path, monkeypatch):
+        """La solucion final NO es usar hora local sino no calcular el dia en
+        absoluto: se toma el mas reciente presente en los datos. Local arreglaba
+        el sintoma de hoy pero volveria a romperse si el run corriera cerca de
+        medianoche. Leerlo del dato es inmune al huso."""
         import sqp.audit.html_report as hr
 
         capturado = {}
@@ -116,9 +120,7 @@ class TestDiaEnHoraLocalNoUTC:
         monkeypatch.setattr(hr, "_picks_records", espia)
         hr.html_dashboard(predictions_dir=tmp_path / "p",
                           bets_dir=tmp_path / "b", make_latest=False)
-        from datetime import datetime, timezone
-        local = datetime.now(timezone.utc).astimezone().date().isoformat()
-        assert capturado["dias"][0] == local
+        assert capturado["dias"] == [None]
 
     def test_cae_al_dia_mas_reciente_si_hoy_no_hay(self, tmp_path):
         """Mejor los candidatos de ayer que un tablero en blanco: el blanco es

@@ -106,9 +106,31 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
     predictions_dir = predictions_dir or (ROOT / "data" / "predictions")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     day = ts[:8]
-    generated_day = f"{day[:4]}-{day[4:6]}-{day[6:8]}"
-    df = load_all_candidates(predictions_dir, generated_day=generated_day)
+    # El dia de los candidatos NO se calcula a partir de "ahora": se toma el mas
+    # reciente presente en los datos. Calcularlo en UTC dejaba el reporte vacio
+    # cada noche a partir de las 20:00 locales (00:00Z), porque buscaba el dia
+    # siguiente; calcularlo en hora local funcionaria hoy pero volveria a
+    # romperse si el run se ejecutara cerca de medianoche. Leerlo de los datos es
+    # inmune al huso (auditoria de UTC, 2026-08-26).
+    df = load_all_candidates(predictions_dir, generated_day=None)
+    dia_datos = ""
+    if not df.empty and "generated_at" in df.columns:
+        dias = df["generated_at"].astype(str).str[:10]
+        dia_datos = str(dias.max())
+        df = df[dias == dia_datos].copy()
+    # Si los candidatos NO son de hoy, hay que DECIRLO. Vaciar el reporte
+    # (comportamiento anterior) dejaba al operador sin informacion y sin saber
+    # por que; mostrarlos en silencio seria peor: presentaria picks de partidos
+    # ya jugados como si fueran de hoy. Se muestran, etiquetados.
+    hoy_local = datetime.now(timezone.utc).astimezone().date().isoformat()
+    aviso = ""
+    if dia_datos and dia_datos != hoy_local:
+        aviso = (f"> **ATENCION: estos candidatos son del {dia_datos}, no de hoy "
+                 f"({hoy_local}).** El run diario no ha corrido todavia hoy. "
+                 f"Los partidos pueden haberse jugado ya.")
     lines = [f"# Reporte consolidado de picks - {day}", f"Generado: {ts}", ""]
+    if aviso:
+        lines += [aviso, ""]
     if df.empty:
         lines += ["(sin candidatos generados)", "", f"> {DISCLAIMER}"]
     else:

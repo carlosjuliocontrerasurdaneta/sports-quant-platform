@@ -80,7 +80,16 @@ def test_consolidated_report_excludes_prior_day_candidates(tmp_path, monkeypatch
     import sqp.audit.report as report
     monkeypatch.setattr(report, "datetime", _Now)
     path = consolidated_report(tmp_path)
-    assert "sin candidatos generados" in open(path, encoding="utf-8").read()
+    texto = open(path, encoding="utf-8").read()
+    # CONTRATO CAMBIADO el 2026-08-26. Antes se exigia que el reporte quedara
+    # VACIO ("sin candidatos generados") cuando los candidatos no eran de hoy.
+    # Ese vaciado dejaba al operador sin informacion y sin saber por que -- es
+    # el mismo silencio que le hizo creer durante 53 dias que el sistema no
+    # generaba nada. Ahora se MUESTRAN, con un aviso explicito de que son de
+    # otro dia; lo que no se puede es presentarlos como si fueran de hoy.
+    assert "ATENCION" in texto
+    assert "2026-07-09" in texto
+    assert "no de hoy" in texto
 
 
 def test_settlement_audit_report(tmp_path):
