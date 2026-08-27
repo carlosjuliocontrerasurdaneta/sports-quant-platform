@@ -21,7 +21,9 @@ Six tabs in one file (no external assets, no network):
   - Patrones: hit-rate / frequency breakdowns from the consolidated pick history
     backtest (by market, situation, home/away, Over/Under, per team) with a
     short data-driven reading.
-  - Historial: chronological list of every graded bet.
+  - Historial: linea de tiempo unica -- apuestas cerradas (resultado y PnL) mas
+    los picks abiertos de hoy y de los proximos dias, con la razon de su stake.
+    Es la unica vista que mezcla pasado y futuro; las otras miran solo hoy.
 
 All numbers are estimated probabilities / estimated edges, never certainties.
 """
@@ -665,6 +667,11 @@ _TEMPLATE = """<!DOCTYPE html>
 <main>
   <section class="panel active" id="picks">
     <div class="stats" id="statsBar"></div>
+    <p class="gen"><strong>Los candidatos del dia</strong>: las caras que
+      superaron <code>min_edge</code> y llegaron al motor de riesgo. Es un
+      SUBCONJUNTO de &laquo;Todos los Picks&raquo;, que trae todas las caras
+      priceadas. La columna <code>Estado</code> dice por que cada fila lleva (o
+      no) stake.</p>
     <div class="filters">
       <label>Fecha del evento<div class="tagfilter" id="dateTags"></div></label>
       <label>Deporte<div class="tagfilter" id="sportTags"></div></label>
@@ -704,7 +711,15 @@ _TEMPLATE = """<!DOCTYPE html>
   <section class="panel" id="audit">{audit}</section>
   <section class="panel" id="diagnostics">{diagnostics}</section>
   <section class="panel" id="patterns">{patterns}</section>
-  <section class="panel" id="history">{history}</section>
+  <section class="panel" id="history">
+    <p class="gen"><strong>La linea de tiempo</strong>: apuestas ya CERRADAS
+      (con resultado y PnL) junto a los picks ABIERTOS de hoy y de los proximos
+      dias, con la razon de su stake en <code>Estado</code>. Las otras pestanas
+      de picks miran solo el dia de hoy; esta es la unica que mezcla pasado y
+      futuro. Un pick abierto cuya fecha ya paso sin liquidarse se oculta, no se
+      borra.</p>
+    {history}
+  </section>
 </main>
 <footer>{disclaimer}</footer>
 <script>
