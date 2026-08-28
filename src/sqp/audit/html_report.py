@@ -192,17 +192,74 @@ _SEGMENT_COLS: tuple[str, ...] = (
     "mean_est_prob", "gap", "brier_model", "brier_market", "roi_flat", "flags")
 
 
+def _calibration_pending_block() -> str:
+    """Calibradores aceptados que estan esperando en staging.
+
+    El reentreno diario NO promueve: escribe candidatos a `data/models/staging/`
+    y la promocion es un paso manual deliberado (`scripts/promote_calibration.py`)
+    para que un ajuste degenerado no se instale solo. Correcto, pero el aviso
+    vivia en una linea de log entre miles, asi que la espera se acumulaba en
+    silencio.
+
+    Y no es cosmetica: sin entrada en el registro LIVE, `method='auto'` es un
+    no-op y ese mercado se sirve **sin calibrar**. La calibracion cierra el 72%
+    de la brecha de Brier contra el mercado (medicion del 2026-08-25), asi que
+    cada clave pendiente es rendimiento medido que no se esta usando. El
+    2026-08-28 habia 4 calibradores vivos y 6 mercados servidos en crudo con
+    candidato aceptado esperando.
+    """
+    from sqp.calibration.calibrator import _load_method_registry
+    live = _load_method_registry(staging=False)
+    staged = _load_method_registry(staging=True)
+    if not staged and not live:
+        return ""
+    nuevos = sorted(k for k in staged if k not in live)
+    cambian = sorted(k for k in staged if k in live and staged[k] != live[k])
+    parts = ["<h3>Calibradores</h3>",
+             '<div class="cards">',
+             _card("En produccion", str(len(live)), "registro live"),
+             _card("Candidatos en staging", str(len(staged)),
+                   "del ultimo reentreno"),
+             _card("Servidos SIN calibrar", str(len(nuevos)),
+                   "con candidato aceptado esperando"),
+             "</div>"]
+    if nuevos:
+        detalle = ", ".join(f"<code>{html.escape(k)}</code> &rarr; "
+                            f"{html.escape(str(staged[k]))}" for k in nuevos)
+        parts.append(f'<p class="note"><strong>Sin calibrador vivo:</strong> '
+                     f'{detalle}. Hoy se sirven en crudo.</p>')
+    if cambian:
+        detalle = ", ".join(
+            f"<code>{html.escape(k)}</code>: {html.escape(str(live[k]))} &rarr; "
+            f"{html.escape(str(staged[k]))}" for k in cambian)
+        parts.append(f'<p class="note"><strong>Cambiarian de metodo:</strong> '
+                     f'{detalle}.</p>')
+    if nuevos or cambian:
+        parts.append('<p class="note">Revisar y promover con '
+                     '<code>python scripts/promote_calibration.py</code> '
+                     '(sin argumentos es dry-run: ensena el mapa de cada '
+                     'candidato antes de tocar produccion).</p>')
+    else:
+        parts.append('<p class="note">Nada pendiente de promover.</p>')
+    return "".join(parts)
+
+
 def _diagnostics_section(bets_dir: Path) -> str:
     """Estado del loop de autoevaluacion: auto-pausas vigentes del monitor de
     degradacion (degradation_pause.json) + segmentos con desviacion sistematica
     del diagnostico por segmentos (segment_diagnostics_latest.csv). Solo
     observabilidad sobre probabilidades estimadas; las pausas ya las aplico el
-    run diario, aqui solo se muestran."""
+    run diario, aqui solo se muestran.
+
+    Incluye los calibradores pendientes de promover: es la otra mitad del mismo
+    loop -- el sistema se autoevalua y produce un candidato mejor, y hasta que
+    alguien lo promueve ese mercado se sirve sin calibrar."""
     # local imports: sqp.risk.degradation/sqp.audit.segments importan
     # sqp.audit.report; locales evitan acoplar la carga del modulo
     from sqp.audit.segments import SEGMENTS_CSV
     from sqp.risk.degradation import load_degradation_registry
-    parts: list[str] = ["<h3>Monitor de degradacion (auto-pausa por liga/mercado)</h3>"]
+    parts: list[str] = [_calibration_pending_block(),
+                        "<h3>Monitor de degradacion (auto-pausa por liga/mercado)</h3>"]
     markets = load_degradation_registry(bets_dir)
     if not markets:
         parts.append('<p class="empty">El monitor de degradacion aun no ha '
