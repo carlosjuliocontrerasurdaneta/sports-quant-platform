@@ -42,7 +42,8 @@ from sqp.evaluation.edge_information import (
     edge_signal,
     one_row_per_pick,
 )
-from sqp.evaluation.model_vs_market import score_model_vs_market
+from sqp.evaluation.model_vs_market import (flattened_segments,
+                                            score_model_vs_market)
 from sqp.storage.served_store import ServedStore
 
 _MODEL_COLS = ("model_probability", "calibrated_probability")
@@ -117,6 +118,15 @@ def build_report(df: pd.DataFrame, *, price_floor: float, n_boot: int,
     lines += ["", "## 2. Por (liga, mercado)", "",
               "Atencion a las comparaciones multiples: con ~38 segmentos y "
               "alpha=0.05, un par de veredictos extremos son ruido esperado.", ""]
+    planos = flattened_segments(df)
+    if not planos.empty:
+        lines += [
+            "**AVISO: estos segmentos se sirvieron con la probabilidad "
+            "CALIBRADA aplanada**, asi que su veredicto de abajo no puntua al "
+            "modelo sino a una constante. Huella de un calibrador colapsado en "
+            "produccion (`calibrator._keeps_resolution`).", "",
+            _md_table(planos), "",
+        ]
     seg = score_model_vs_market(df, model_col="calibrated_probability",
                                 n_boot=n_boot, seed=seed)
     lines += [_md_table(seg[_SEG_COLS]), ""]

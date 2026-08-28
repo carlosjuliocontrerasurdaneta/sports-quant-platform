@@ -35,6 +35,46 @@ from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 _EPS = 1e-6
 
 
+def flattened_segments(df: pd.DataFrame, *, min_range: float = 0.10,
+                       model_min_range: float = 0.20,
+                       min_rows: int = 6) -> pd.DataFrame:
+    """Segmentos servidos con la probabilidad CALIBRADA aplanada.
+
+    Un dia-segmento cuenta como aplanado cuando el modelo discrimina
+    (`model_probability` con recorrido > `model_min_range`) pero lo calibrado
+    sale casi constante (recorrido < `min_range`). Es la huella de un calibrador
+    colapsado en produccion, y hay que verla ANTES de leer el veredicto del
+    segmento: lo que se puntuo ahi no es el modelo, es una constante.
+
+    No es teorico. `wnba_totals` sirvio asi del 2026-07-22 al 2026-08-27 (34
+    dias, 412 filas) y `mlb_totals` del 2026-07-28 al 2026-08-23 (14 dias, 342);
+    en total 754 filas del stream, con sus veredictos por segmento calculados
+    sobre un predictor plano. Ver `calibration.calibrator._keeps_resolution`.
+
+    Devuelve una fila por (liga, mercado) afectado: dias, filas y ventana.
+    Frame vacio -- el caso sano -- si no hay ninguno.
+    """
+    cols = {"league", "market", "generated_at", "calibrated_probability",
+            "model_probability"}
+    if df.empty or not cols.issubset(df.columns):
+        return pd.DataFrame(columns=["league", "market", "dias", "filas",
+                                     "desde", "hasta"])
+    d = df.assign(_dia=df["generated_at"].astype(str).str[:10])
+    g = d.groupby(["league", "market", "_dia"]).agg(
+        filas=("calibrated_probability", "size"),
+        cal_rec=("calibrated_probability", lambda s: s.max() - s.min()),
+        mod_rec=("model_probability", lambda s: s.max() - s.min()))
+    malo = g[(g["cal_rec"] < min_range) & (g["mod_rec"] > model_min_range)
+             & (g["filas"] >= min_rows)].reset_index()
+    if malo.empty:
+        return pd.DataFrame(columns=["league", "market", "dias", "filas",
+                                     "desde", "hasta"])
+    return (malo.groupby(["league", "market"])
+            .agg(dias=("_dia", "nunique"), filas=("filas", "sum"),
+                 desde=("_dia", "min"), hasta=("_dia", "max"))
+            .reset_index().sort_values("filas", ascending=False))
+
+
 def brier(p: np.ndarray, y: np.ndarray) -> float:
     """Error cuadratico medio entre probabilidad estimada y resultado (0/1)."""
     return float(np.mean((np.asarray(p, float) - np.asarray(y, float)) ** 2))
