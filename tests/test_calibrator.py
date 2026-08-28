@@ -191,6 +191,20 @@ def test_keeps_resolution_guard():
         lambda x: 0.35 + 0.3 * np.asarray(x, dtype=float)) is True
 
 
+def test_keeps_resolution_rejects_a_map_flat_where_the_picks_live():
+    """El candidato de `wnba_totals` del 2026-08-28: recorrido 0,2121 sobre
+    [0,05, 0,95] -- por encima del umbral -- pero constante en 0,499 de 0,25 a
+    0,75. Todo el recorrido lo compraban las colas, donde casi no hay picks."""
+    def colas(x):
+        x = np.asarray(x, dtype=float)
+        return np.where(x < 0.20, 0.333, np.where(x > 0.80, 0.545, 0.499))
+
+    assert cal._keeps_resolution(colas, min_range=0.10) is False
+    # Contraprueba: el mismo recorrido total repartido POR la banda si vale.
+    assert cal._keeps_resolution(
+        lambda x: 0.39 + 0.21 * np.asarray(x, dtype=float)) is True
+
+
 def test_a_constant_map_passes_the_other_four_gates():
     """El motivo de existir de la quinta, escrito como prueba: si alguna de las
     otras cuatro cazara la constante, esta condicion sobraria."""

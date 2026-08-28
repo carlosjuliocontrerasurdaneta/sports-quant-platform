@@ -96,10 +96,20 @@ def _no_extreme_expansion(predict, lo: float = 0.05, hi: float = 0.95,
 # los candidatos de hoy.
 MIN_CALIBRATED_RANGE = 0.10
 
+# La banda donde viven de verdad las probabilidades estimadas, y el recorrido
+# minimo que hay que conservar DENTRO de ella. El umbral es el vig por lado de
+# un mercado a dos caras (sobrerredondeo tipico del 4-5%): un calibrador que
+# reparte menos de eso entre una estimacion de 0,25 y una de 0,75 no puede
+# cambiar ninguna decision de apuesta, por mucho recorrido que tenga en las
+# colas. Tampoco sale de mirar los candidatos de hoy.
+OPERATING_BAND = (0.25, 0.75)
+MIN_BAND_RANGE = 0.025
+
 
 def _keeps_resolution(predict, lo: float = 0.05, hi: float = 0.95,
                       n: int = 19,
-                      min_range: float = MIN_CALIBRATED_RANGE) -> bool:
+                      min_range: float = MIN_CALIBRATED_RANGE,
+                      min_band_range: float = MIN_BAND_RANGE) -> bool:
     """True cuando el calibrador conserva algo de RESOLUCION: su recorrido sobre
     `[lo, hi]` es de al menos `min_range`.
 
@@ -124,10 +134,22 @@ def _keeps_resolution(predict, lo: float = 0.05, hi: float = 0.95,
     Si el modelo de verdad no discrimina, lo honesto es quedarse en no-op y que
     hable el modelo crudo, no instalar una constante que convierte el edge en el
     precio.
+
+    **El recorrido total no basta**, y lo enseño el candidato de `wnba_totals`
+    del 2026-08-28: recorrido 0,2121 sobre [0,05, 0,95] -- por encima del umbral
+    -- pero **exactamente constante en 0,499 de 0,25 a 0,75**. Todo su recorrido
+    lo compraban las colas, donde casi no hay picks. Habria pasado el gate y
+    aplanado el mercado igual que el que acababa de sustituir. De ahi la segunda
+    condicion, sobre la banda operativa: los calibradores legitimos reparten ahi
+    entre 0,09 y 0,42, y los colapsados exactamente 0,00.
     """
     grid = np.linspace(lo, hi, n)
     vals = np.asarray(predict(grid), dtype=float)
-    return bool(float(vals.max() - vals.min()) >= min_range)
+    if float(vals.max() - vals.min()) < min_range:
+        return False
+    banda = np.linspace(OPERATING_BAND[0], OPERATING_BAND[1], 51)
+    en_banda = np.asarray(predict(banda), dtype=float)
+    return bool(float(en_banda.max() - en_banda.min()) >= min_band_range)
 
 
 def calibrator_resolution(key: str, method: str, *,
@@ -698,9 +720,10 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
         return probs
     cal = _load_calibrator(str(path))
     if not _keeps_resolution(cal.predict):
-        log.warning("[%s] calibrador live COLAPSADO (recorrido < %.2f): se "
-                    "ignora y se sirve en crudo. Revisar con "
-                    "scripts/promote_calibration.py.", sport, MIN_CALIBRATED_RANGE)
+        log.warning("[%s] calibrador live COLAPSADO (recorrido < %.2f, o < %.3f "
+                    "dentro de [%.2f, %.2f]): se ignora y se sirve en crudo. "
+                    "Revisar con scripts/promote_calibration.py.",
+                    sport, MIN_CALIBRATED_RANGE, MIN_BAND_RANGE, *OPERATING_BAND)
         return probs
     return np.clip(cal.predict(probs), 0.01, 0.99)
 
