@@ -216,6 +216,17 @@ class _ConstantCalibrator:
         return np.full(np.shape(probs), 0.50)
 
 
+class _ShrinkingCalibrator:
+    """Encoge fuerte pero conserva recorrido: legitimo, debe seguir aplicandose.
+    A nivel de modulo porque joblib no serializa clases locales de un test."""
+
+    def fit(self, probs, outcomes):
+        return self
+
+    def predict(self, probs):
+        return 0.25 + 0.5 * np.asarray(probs, dtype=float)
+
+
 class _ExtremePushingBeta:
     """Monotone calibrator that pushes favorites >= 0.75 to 0.99 -- the phantom
     -edge shape that passed ECE, Brier AND monotonicity on a small split."""
@@ -286,6 +297,36 @@ def test_train_drops_a_collapsed_calibrator_despite_good_metrics(tmp_path, monke
     # edge en una funcion del precio.
     assert cal.apply_calibration(np.array([0.8]), sport="unit_colapso",
                                  method="auto")[0] == 0.8
+
+
+def test_a_collapsed_live_calibrator_is_ignored_at_apply_time(tmp_path, monkeypatch):
+    """El registro LIVE no se reevalua nunca: lo escribe la promocion y ahi se
+    queda. El 2026-08-28 `wnba_totals` llevaba dias en produccion mandando toda
+    probabilidad a 0,490, con el `estimated_edge` de ese mercado correlacionando
+    0,97 con la CUOTA. El gate de entrenamiento no lo habria salvado: es
+    anterior. Por eso se comprueba tambien al aplicar."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ConstantCalibrator(), str(cal._model_path("liga_totals", "iso")))
+    cal._set_best_method("liga_totals", "isotonic")
+
+    probs = np.array([0.30, 0.50, 0.70])
+    out = cal.apply_calibration(probs, sport="liga_totals", method="auto")
+    assert np.allclose(out, probs), "se sirve en crudo, no aplanado"
+
+
+def test_a_healthy_live_calibrator_still_applies(tmp_path, monkeypatch):
+    """Contraprueba: sin ella, un guard que ignorase SIEMPRE pasaria igual."""
+    import joblib
+
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ShrinkingCalibrator(), str(cal._model_path("liga_h2h", "iso")))
+    cal._set_best_method("liga_h2h", "isotonic")
+
+    out = cal.apply_calibration(np.array([0.80]), sport="liga_h2h", method="auto")
+    assert out[0] == pytest.approx(0.65)
 
 
 def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):

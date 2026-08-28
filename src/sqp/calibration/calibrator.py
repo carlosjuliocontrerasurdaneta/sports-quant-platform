@@ -130,17 +130,19 @@ def _keeps_resolution(predict, lo: float = 0.05, hi: float = 0.95,
     return bool(float(vals.max() - vals.min()) >= min_range)
 
 
-def staged_resolution(key: str, method: str) -> float | None:
-    """Recorrido del candidato en staging de `key`, o None si no se puede leer.
+def calibrator_resolution(key: str, method: str, *,
+                          staging: bool = True) -> float | None:
+    """Recorrido del calibrador de `key`, o None si no se puede leer.
 
-    Lo usa el tablero para avisar de los mapas colapsados que ya estan escritos
-    en staging: la quinta condicion impide que se acepten NUEVOS, pero los
-    aceptados antes siguen ahi hasta el proximo reentreno, y
-    `promote_calibration.py --yes` los instalaria."""
+    Lo usa el tablero para dos avisos distintos: los candidatos colapsados que
+    ya estan escritos en staging -- la quinta condicion impide que se acepten
+    NUEVOS, pero los aceptados antes siguen ahi hasta el proximo reentreno, y
+    `promote_calibration.py --yes` los instalaria-- y los que estan en el
+    registro LIVE, que no se reevalua nunca."""
     name = {"isotonic": "iso", "beta": "beta"}.get(method)
     if name is None:
         return None
-    path = _model_path(key, name, staging=True)
+    path = _model_path(key, name, staging=staging)
     try:
         model = _load_calibrator(str(path))
     except Exception:  # fichero ausente, corrupto o de otra version de joblib
@@ -671,7 +673,18 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     ``method='auto'`` resolves the per-(league, market) winner recorded at
     training time (``calibration_methods.json``); an unregistered group, an
     unknown method, or a missing model all fall back to returning the input
-    probabilities unchanged (safe no-op)."""
+    probabilities unchanged (safe no-op).
+
+    Un mapa COLAPSADO se ignora aunque este en el registro live. El gate de
+    entrenamiento solo protege lo que se acepta a partir de ahora, y el registro
+    live no se reevalua nunca: lo escribe la promocion y ahi se queda. El
+    2026-08-28 `wnba_totals` llevaba dias en produccion mandando TODA
+    probabilidad a 0,490 -- el modelo estimaba entre 0,33 y 0,67 y salia plano --
+    con el resultado de que el `estimated_edge` de ese mercado correlacionaba
+    **0,97 con la cuota**: sus picks se ordenaban por precio. Comprobarlo aqui
+    hace la proteccion independiente de quien escribio el registro, incluido un
+    `promote_calibration.py --yes` sobre un candidato degenerado.
+    """
     if method == "auto":
         resolved = _load_method_registry().get(sport)
         if resolved is None:
@@ -684,6 +697,11 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     if not path.exists():
         return probs
     cal = _load_calibrator(str(path))
+    if not _keeps_resolution(cal.predict):
+        log.warning("[%s] calibrador live COLAPSADO (recorrido < %.2f): se "
+                    "ignora y se sirve en crudo. Revisar con "
+                    "scripts/promote_calibration.py.", sport, MIN_CALIBRATED_RANGE)
+        return probs
     return np.clip(cal.predict(probs), 0.01, 0.99)
 
 

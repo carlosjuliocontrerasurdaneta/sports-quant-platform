@@ -16,7 +16,17 @@ import json
 
 import pytest
 
+import numpy as np
+
 from sqp.audit.html_report import _calibration_pending_block
+
+
+class _Constante:
+    """Mapa colapsado. A nivel de modulo porque joblib no serializa clases
+    locales de un test."""
+
+    def predict(self, p):
+        return np.full(np.shape(p), 0.49)
 
 
 @pytest.fixture
@@ -59,6 +69,22 @@ def test_sin_nada_pendiente_lo_dice(registros):
     registros({"mlb_totals": "isotonic"}, {"mlb_totals": "isotonic"})
     html = _calibration_pending_block()
     assert "Nada pendiente de promover" in html
+
+
+def test_señala_un_calibrador_colapsado_ya_en_produccion(registros, tmp_path):
+    """El caso de `wnba_totals` el 2026-08-28: llevaba dias en produccion
+    mandando toda probabilidad a 0,490. El pipeline ya lo ignora al aplicar,
+    pero el tablero tiene que decir que ESTA ahi."""
+    import joblib
+
+    import sqp.calibration.calibrator as cal
+
+    registros({"wnba_totals": "isotonic"}, {})
+    joblib.dump(_Constante(), str(cal._model_path("wnba_totals", "iso")))
+    cal._load_calibrator.cache_clear()
+    html = _calibration_pending_block()
+    assert "EN PRODUCCION pero ignorado por colapso" in html
+    assert "wnba_totals" in html
 
 
 def test_un_calibrador_vivo_sin_candidato_hoy_no_se_reporta_como_pendiente(registros):

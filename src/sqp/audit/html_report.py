@@ -217,16 +217,21 @@ def _calibration_pending_block() -> str:
     """
     from sqp.calibration.calibrator import (MIN_CALIBRATED_RANGE,
                                             _load_method_registry,
-                                            staged_resolution)
+                                            calibrator_resolution)
+
+    def colapsados(reg: dict, *, staging: bool) -> list[str]:
+        return sorted(k for k, m in reg.items()
+                      if (r := calibrator_resolution(k, m, staging=staging))
+                      is not None and r < MIN_CALIBRATED_RANGE)
+
     live = _load_method_registry(staging=False)
     staged = _load_method_registry(staging=True)
     if not staged and not live:
         return ""
     nuevos = sorted(k for k in staged if k not in live)
     cambian = sorted(k for k in staged if k in live and staged[k] != live[k])
-    pobres = sorted(k for k in staged
-                    if (r := staged_resolution(k, staged[k])) is not None
-                    and r < MIN_CALIBRATED_RANGE)
+    pobres = colapsados(staged, staging=True)
+    live_pobres = colapsados(live, staging=False)
     parts = ["<h3>Calibradores</h3>",
              '<div class="cards">',
              _card("En produccion", str(len(live)), "registro live"),
@@ -235,6 +240,14 @@ def _calibration_pending_block() -> str:
              _card("Servidos SIN calibrar", str(len(nuevos)),
                    "con candidato aceptado esperando"),
              "</div>"]
+    if live_pobres:
+        detalle = ", ".join(f"<code>{html.escape(k)}</code>" for k in live_pobres)
+        parts.append(
+            f'<p class="note"><strong>EN PRODUCCION pero ignorado por '
+            f'colapso:</strong> {detalle}. Su mapa manda toda probabilidad al '
+            f'mismo valor, asi que el pipeline lo salta y sirve en crudo '
+            f'(<code>apply_calibration</code> lo comprueba al aplicar). Sale de '
+            f'la lista en cuanto se promueva un candidato con resolucion.</p>')
     if nuevos:
         detalle = ", ".join(f"<code>{html.escape(k)}</code> &rarr; "
                             f"{html.escape(str(staged[k]))}" for k in nuevos)
