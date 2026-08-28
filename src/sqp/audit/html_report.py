@@ -439,6 +439,52 @@ def open_in_browser(path: str | Path) -> bool:
         return False
 
 
+def _coverage_note(cal_dir: Path | None = None) -> str:
+    """Que ligas trae el run de HOY y cuales siguen con datos de otro dia.
+
+    Desde que las vistas muestran todo lo vigente y no solo el ultimo run
+    (`picks_vigentes`), una liga sin refrescar ya no desaparece -- pero su cuota
+    es vieja, y eso hay que verlo de un vistazo y no fila a fila. La degradacion
+    era silenciosa: el 2026-08-27 el guardian de presupuesto aplazo **14 ligas**
+    al no poder leer la cuota de la API, y nada en el tablero lo decia.
+    """
+    cal_dir = cal_dir or (ROOT / "data" / "calibration")
+    ultimo: dict[str, str] = {}
+    for f in sorted(cal_dir.glob("served_*.csv")):
+        try:
+            d = pd.read_csv(f, usecols=lambda c: c in ("league", "generated_at",
+                                                       "start_time", "game_date"))
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError, ValueError):
+            continue
+        if d.empty or "generated_at" not in d.columns:
+            continue
+        # Solo cuentan las ligas con algo por jugar. Un torneo terminado no se
+        # va a refrescar nunca mas, y listarlo como "sin refrescar" convertiria
+        # el aviso en ruido permanente -- que es como muere un aviso.
+        if picks_vigentes(d).empty:
+            continue
+        liga = (str(d["league"].iloc[0]) if "league" in d.columns
+                else f.stem.replace("served_", ""))
+        ultimo[liga] = str(d["generated_at"].astype(str).str[:10].max())
+    if not ultimo:
+        return ""
+    hoy = local_today()
+    viejas = sorted((lg, dia) for lg, dia in ultimo.items() if dia != hoy)
+    frescas = len(ultimo) - len(viejas)
+    if not viejas:
+        return (f'<p class="gen">Cobertura del run: <strong>{frescas} de '
+                f'{len(ultimo)} ligas</strong> refrescadas hoy.</p>')
+    detalle = ", ".join(f"{html.escape(lg)} ({html.escape(dia)})"
+                        for lg, dia in viejas[:12])
+    if len(viejas) > 12:
+        detalle += f" y {len(viejas) - 12} mas"
+    return ('<p class="gen">Cobertura del run: <strong>'
+            f'{frescas} de {len(ultimo)} ligas</strong> refrescadas hoy. '
+            f'<strong>Sin refrescar ({len(viejas)}):</strong> {detalle}. '
+            'Sus picks siguen en la lista si el partido no se ha jugado, pero '
+            'con la cuota de ese dia &mdash; columna <code>Generado</code>.</p>')
+
+
 def _run_alert_banner(root: Path | None = None) -> str:
     """Banner rojo cuando el ultimo run diario fallo; cadena vacia si no.
 
@@ -615,6 +661,7 @@ def html_dashboard(predictions_dir: Path | None = None,
 
     page = _TEMPLATE.format(
         run_alert=_run_alert_banner(),
+        coverage=_coverage_note(),
         day=html.escape(day),
         generated=html.escape(ts),
         audit=_audit_section(bets_dir),
@@ -695,6 +742,7 @@ _TEMPLATE = """<!DOCTYPE html>
 <header>
   <h1>Sports Quant Platform &mdash; Reporte diario {day}</h1>
   <div class="gen">Generado (UTC): {generated}</div>
+  {coverage}
 </header>
 {run_alert}
 <nav class="tabs">
