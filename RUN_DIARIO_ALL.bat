@@ -30,6 +30,14 @@ REM se escribe igual; abrir data\predictions\report_latest.html como bookmark.
 "%SQP_PYTHON%" scripts\run_all.py --mode live >> logs\run_diario.log 2>&1
 if errorlevel 1 goto :error
 
+REM Run correcto: limpia el centinela de la etapa "run". Sin esto, recuperarse a
+REM mano con el orden documentado (SETTLE_ALL + RUN_DIARIO_ALL) dejaba el banner
+REM rojo "el ultimo run FALLO" sobre un tablero ya sano, y una alarma que sigue
+REM sonando despues del arreglo es una alarma que se aprende a ignorar.
+REM --only-stage no toca un fallo de LIQUIDACION, que sigue vivo hasta que se
+REM arregle: son dos averias con consecuencias distintas.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage run
+
 echo === DONE ===
 endlocal
 goto :eof

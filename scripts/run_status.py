@@ -4,7 +4,8 @@
 Lo invocan los BAT de produccion:
 
     python scripts/run_status.py --fail --stage settle --exit-code 1
-    python scripts/run_status.py --clear
+    python scripts/run_status.py --clear                    # las dos etapas
+    python scripts/run_status.py --clear --only-stage run   # solo esa etapa
 
 Siempre sale con 0: este script es instrumentacion de la alerta, y un fallo suyo
 no debe alterar el codigo de salida real del pipeline ni enmascarar el error que
@@ -30,13 +31,18 @@ def main() -> int:
                    help="borrar el centinela tras un run correcto")
     ap.add_argument("--stage", default="run", choices=["settle", "run"],
                     help="etapa que fallo (default: run)")
+    ap.add_argument("--only-stage", default=None, choices=["settle", "run"],
+                    help="con --clear, borrar solo si el fallo registrado es de "
+                         "esa etapa (para los BAT que arreglan una sola)")
     ap.add_argument("--exit-code", type=int, default=1)
     args = ap.parse_args()
 
     try:
         if args.clear:
-            clear_run_status(ROOT)
-            print("Centinela de run limpiado (ultimo run OK).")
+            if clear_run_status(ROOT, args.only_stage):
+                print("Centinela de run limpiado (ultimo run OK).")
+            else:
+                print("Sin centinela que limpiar para esa etapa.")
         else:
             path = record_run_failure(ROOT, stage=args.stage, exit_code=args.exit_code)
             print(f"FALLO registrado en {path}")

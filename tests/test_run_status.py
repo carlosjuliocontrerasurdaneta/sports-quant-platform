@@ -65,6 +65,38 @@ def test_clear_is_idempotent_without_sentinel(tmp_path):
     assert read_run_status(tmp_path) is None
 
 
+# --- Borrado por etapa --------------------------------------------------------
+#
+# El centinela solo se limpiaba desde DIARIO_COMPLETO.bat. Recuperarse a mano con
+# el orden que manda el proyecto (SETTLE_ALL + RUN_DIARIO_ALL) dejaba el banner
+# rojo "el ultimo run FALLO" sobre un tablero ya sano: paso el 2026-08-27. Una
+# alarma que sigue sonando despues del arreglo se aprende a ignorar.
+
+def test_clear_by_stage_removes_only_its_own_failure(tmp_path):
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+    assert clear_run_status(tmp_path, "run") is True
+    assert read_run_status(tmp_path) is None
+
+
+def test_clear_by_stage_respects_the_other_stage(tmp_path):
+    """Arreglar el run no arregla una liquidacion rota: son averias distintas,
+    y la de liquidacion ABORTA el dia siguiente."""
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    assert clear_run_status(tmp_path, "run") is False
+    assert (read_run_status(tmp_path) or {})["stage"] == "settle"
+
+
+def test_clear_without_stage_removes_any_failure(tmp_path):
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    assert clear_run_status(tmp_path) is True
+    assert read_run_status(tmp_path) is None
+
+
+def test_clear_reports_when_there_was_nothing_to_clear(tmp_path):
+    assert clear_run_status(tmp_path) is False
+    assert clear_run_status(tmp_path, "run") is False
+
+
 # --- Lectura ------------------------------------------------------------------
 
 def test_read_returns_none_when_no_sentinel(tmp_path):

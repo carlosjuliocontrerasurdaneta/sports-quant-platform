@@ -25,6 +25,11 @@ echo === SQP - SETTLE ALL + AUDITORIA (%DATE% %TIME%) === >> logs\settle_all.log
 "%SQP_PYTHON%" scripts\settle_all.py --days-from 3 >> logs\settle_all.log 2>&1
 if errorlevel 1 goto :error
 
+REM Liquidacion correcta: limpia el centinela SOLO si el fallo registrado era de
+REM esta etapa. Un fallo del run diario sigue avisando hasta que el run vuelva a
+REM terminar bien.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage settle
+
 echo === DONE ===
 endlocal
 goto :eof

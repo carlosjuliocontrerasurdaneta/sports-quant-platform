@@ -52,9 +52,26 @@ def record_run_failure(root: Path, stage: str, exit_code: int) -> Path:
     return out
 
 
-def clear_run_status(root: Path) -> None:
-    """Borra el centinela tras un run correcto. Idempotente."""
-    _path(root).unlink(missing_ok=True)
+def clear_run_status(root: Path, stage: str | None = None) -> bool:
+    """Borra el centinela tras un run correcto. Idempotente.
+
+    Con `stage` borra SOLO si el fallo registrado es de esa etapa. Lo necesitan
+    los BAT parciales: `SETTLE_ALL.bat` y `RUN_DIARIO_ALL.bat` arreglan una
+    etapa cada uno, y borrar el centinela entero dejaria el fallo de la otra sin
+    avisar. Sin `stage` se borra siempre, que es lo correcto para
+    `DIARIO_COMPLETO.bat`, que ejecuta las dos.
+
+    Devuelve True si habia centinela y se borro.
+    """
+    p = _path(root)
+    if not p.exists():
+        return False
+    if stage is not None:
+        st = read_run_status(root)
+        if st and str(st.get("stage")) != stage:
+            return False
+    p.unlink(missing_ok=True)
+    return True
 
 
 def read_run_status(root: Path) -> dict | None:
