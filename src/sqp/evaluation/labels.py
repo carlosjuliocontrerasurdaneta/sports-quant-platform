@@ -43,6 +43,34 @@ def local_today() -> str:
     return datetime.now(timezone.utc).astimezone().date().isoformat()
 
 
+def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
+    """Filas cuyo PARTIDO no se ha jugado todavia (fecha local >= hoy).
+
+    Es el filtro correcto para una lista de picks, y no «lo generado en el ultimo
+    run», que era lo que hacian las vistas. La diferencia no es teorica: el run
+    guarda 7 dias de horizonte y las ligas no se refrescan todas cada dia -- el
+    guardian de presupuesto aplazo 14 ligas el 2026-08-27, y un run que cruza la
+    medianoche parte los candidatos en dos dias de generacion. Medido el
+    2026-08-28: «Todos los Picks» mostraba **82 filas de UNA liga** mientras
+    quedaban **577 filas de 13 ligas con el partido por jugar**, invisibles solo
+    porque otra liga se sirvio despues.
+
+    Esconder un pick vigente contradice la REGLA FUNDAMENTAL del operador (la
+    lista es de TODOS los deportes y mercados). Lo que si hay que decir es de
+    cuando es cada fila: la vista muestra la fecha de generacion al lado, para
+    que una cuota de hace tres dias no se lea como fresca.
+
+    Una fila SIN fecha conocida se conserva. No poder fechar un partido no
+    demuestra que se haya jugado, y borrar filas porque falta una columna es la
+    averia que este proyecto lleva repitiendo -- el mismo esquema legado que
+    `game_date_local` ya tolera devolviendo cadena vacia.
+    """
+    if df.empty:
+        return df
+    fecha = game_date_local(df)
+    return df[(fecha == "") | (fecha >= (hoy or local_today()))]
+
+
 def game_date_local(df: pd.DataFrame) -> pd.Series:
     """Fecha del PARTIDO en hora local (`YYYY-MM-DD`), alineada con `df`.
 

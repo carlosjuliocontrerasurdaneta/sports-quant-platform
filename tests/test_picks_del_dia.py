@@ -12,10 +12,20 @@ por el gate" transmiten cosas MUY distintas. Estos tests fijan la segunda.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pandas as pd
 
 from sqp.audit.html_report import _picks_records
 from sqp.audit.report import rank_candidates
+
+
+def _en_dias(n: int) -> str:
+    """Instante UTC a mediodia dentro de `n` dias. Las fechas fijas ya no valen:
+    la pestana filtra por PARTIDO no jugado (`picks_vigentes`), asi que un
+    fixture anclado al pasado describe una lista que nadie deberia ver."""
+    return (datetime.now(timezone.utc) + timedelta(days=n)).strftime(
+        "%Y-%m-%dT12:00:00Z")
 
 
 def _cands(tmp_path, rows):
@@ -24,8 +34,8 @@ def _cands(tmp_path, rows):
             "estimated_probability": 0.55, "implied_probability_novig": 0.5,
             "estimated_edge": 0.10, "kelly_stake_pct": 0.0, "stake": 0.0,
             "home": "H", "away": "V", "flags": "", "data_label": "real",
-            "start_time": "2026-08-26T18:00:00Z",
-            "generated_at": "2026-08-26T11:00:00+00:00"}
+            "start_time": _en_dias(1),
+            "generated_at": _en_dias(0)}
     df = pd.DataFrame([{**base, **r} for r in rows])
     (tmp_path / "candidates_mlb.csv").write_text(df.to_csv(index=False),
                                                  encoding="utf-8")
@@ -77,6 +87,36 @@ class TestColumnaEstado:
     def test_sin_flag_y_sin_stake_dice_sin_stake(self, tmp_path):
         recs = _picks_records(_cands(tmp_path, [{"stake": 0.0, "flags": ""}]))
         assert recs[0]["estado"] == "sin stake"
+
+
+class TestVigenciaPorPartidoNoPorRun:
+    """La pestana filtraba por DIA DE GENERACION mas reciente. Como las ligas no
+    se refrescan todas cada dia -- el guardian de presupuesto aplazo 14 el
+    2026-08-27, y un run que cruza la medianoche parte los candidatos en dos
+    dias -- eso escondia picks perfectamente vigentes. Medido el 2026-08-28:
+    82 filas de UNA liga visibles, 577 filas de 13 ligas por jugar ocultas."""
+
+    def test_un_pick_de_ayer_con_partido_manana_sigue_en_la_lista(self, tmp_path):
+        recs = _picks_records(_cands(tmp_path, [
+            {"selection": "FRESCO", "generated_at": _en_dias(0)},
+            {"selection": "DE_AYER", "generated_at": _en_dias(-1),
+             "estimated_edge": 0.05},
+        ]))
+        assert sorted(r["selection"] for r in recs) == ["DE_AYER", "FRESCO"]
+
+    def test_un_pick_de_un_partido_ya_jugado_desaparece(self, tmp_path):
+        recs = _picks_records(_cands(tmp_path, [
+            {"selection": "JUGADO", "start_time": _en_dias(-2)},
+            {"selection": "POR_JUGAR"},
+        ]))
+        assert [r["selection"] for r in recs] == ["POR_JUGAR"]
+
+    def test_la_fila_dice_de_cuando_es(self, tmp_path):
+        """Mezclar runs sin decirlo haria leer una cuota de hace tres dias como
+        fresca."""
+        recs = _picks_records(_cands(tmp_path, [
+            {"selection": "DE_AYER", "generated_at": _en_dias(-1)}]))
+        assert recs[0]["generado"] == _en_dias(-1)[:10]
 
 
 class TestNoSeTocoElContadorDeAccionables:

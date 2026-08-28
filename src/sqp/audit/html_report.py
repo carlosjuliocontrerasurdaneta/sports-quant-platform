@@ -43,7 +43,8 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
-from sqp.evaluation.labels import game_date_local, local_today, match_label
+from sqp.evaluation.labels import (game_date_local, local_today, match_label,
+                                   picks_vigentes)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -62,6 +63,10 @@ _PICK_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("kelly_stake_pct", "Kelly %", "pct"),
     ("stake", "Stake", "num"),
     ("estado", "Estado", "txt"),
+    # De cuando es la fila. Al dejar de filtrar por dia de generacion
+    # (`picks_vigentes`) la lista puede mezclar runs, y una cuota de hace tres
+    # dias no debe leerse como fresca.
+    ("generado", "Generado", "txt"),
 )
 
 
@@ -79,14 +84,28 @@ def _picks_records(predictions_dir: Path,
     Se cambia AQUI y no en `rank_candidates` a proposito: esa funcion define
     "accionable" y alimenta el contador `Total accionables` del reporte
     markdown, que debe seguir contando solo los que llevarian dinero.
+
+    Sin `generated_day` explicito se muestran todos los picks **vigentes** (el
+    partido no se ha jugado), no los del ultimo dia de generacion: ver
+    `picks_vigentes`. La columna `generado` dice de cuando es cada fila.
+
+    Si no queda NINGUNO vigente se cae al ultimo dia generado, aunque sus
+    partidos ya se hayan jugado: un tablero en blanco es lo que hizo creer al
+    operador durante 53 dias que el sistema no generaba nada, y la fecha del
+    partido va en su propia columna para que no se confunda con hoy.
     """
     df = load_all_candidates(predictions_dir, generated_day=generated_day)
     if df.empty:
         return []
-    # Sin `generated_day` explicito, se muestra el dia MAS RECIENTE presente.
-    if generated_day is None and "generated_at" in df.columns:
-        dias = df["generated_at"].astype(str).str[:10]
-        df = df[dias == dias.max()]
+    if generated_day is None:
+        vigentes = picks_vigentes(df)
+        if vigentes.empty and "generated_at" in df.columns:
+            dias = df["generated_at"].astype(str).str[:10]
+            df = df[dias == dias.max()]
+        else:
+            df = vigentes
+        if df.empty:
+            return []
     ranked = df.sort_values("estimated_edge", ascending=False).copy()
     # `estado` explica el 0: sin el, 63 filas a stake 0 parecen una averia.
     flags = (ranked["flags"].fillna("").astype(str)
@@ -99,6 +118,9 @@ def _picks_records(predictions_dir: Path,
         return []
     ranked = ranked.assign(partido=match_label(ranked))
     ranked = ranked.assign(fecha=game_date_local(ranked))
+    ranked = ranked.assign(
+        generado=(ranked["generated_at"].astype(str).str[:10]
+                  if "generated_at" in ranked.columns else ""))
     records: list[dict] = []
     for _, row in ranked.iterrows():
         rec: dict = {}
@@ -474,11 +496,26 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     if not frames:
         return []
     df = pd.concat(frames, ignore_index=True)
-    if "generated_at" in df.columns:
+    # Vigencia por PARTIDO, no por dia de generacion (`picks_vigentes`): filtrar
+    # por el ultimo run dejaba la lista en 82 filas de UNA liga con 577 filas de
+    # 13 ligas por jugar escondidas (2026-08-28). Sin nada vigente se cae al
+    # ultimo dia servido antes que dejar la vista en blanco.
+    vigentes = picks_vigentes(df)
+    if vigentes.empty and "generated_at" in df.columns:
         gen = df["generated_at"].astype(str).str[:10]
         df = df[gen == gen.max()]
+    else:
+        df = vigentes
     if df.empty:
         return []
+    # El stream ACUMULA una servida por dia, asi que sin esto el mismo pick
+    # saldria tantas veces como dias lleve en el horizonte. Se conserva la mas
+    # RECIENTE: aqui el precio que importa es el ultimo conocido, al reves que
+    # en la medicion de ROI, donde vale el del momento de decidir.
+    claves = [c for c in ("event_id", "market", "line", "selection")
+              if c in df.columns]
+    if claves and "generated_at" in df.columns:
+        df = df.sort_values("generated_at").drop_duplicates(claves, keep="last")
 
     p = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
     price = pd.to_numeric(df.get("price_decimal"), errors="coerce")
@@ -498,6 +535,10 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         # considerar el ROI" (2026-08-26) y resulta que ya se calculaba.
         "roi_esp": p * price - 1.0,
         "casas": pd.to_numeric(df.get("books_count"), errors="coerce"),
+        # De cuando es la cuota. Al mostrar todo lo vigente la lista puede
+        # mezclar runs, y tres dias de antiguedad no se ven en el precio.
+        "generado": (df["generated_at"].astype(str).str[:10]
+                     if "generated_at" in df.columns else ""),
     })
     # Tier del Tipster (AGENTS Tipster.md, encargo del operador 2026-08-26).
     # Determinista, no LLM: un agente no puede dispararse desde el Programador
@@ -524,7 +565,7 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         for k in out.columns:
             v = row[k]
             if k in ("fecha", "league", "partido", "market", "seleccion",
-                     "tier", "motivo"):
+                     "tier", "motivo", "generado"):
                 rec[k] = "" if pd.isna(v) else str(v)
             else:
                 rec[k] = None if pd.isna(v) else float(v)
@@ -1012,7 +1053,7 @@ const T_COLS = [
   ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
   ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
   ["margen","Margen","pct"], ["roi_esp","ROI esp.","pct"], ["casas","Casas","int"],
-  ["tier","Tier","txt"],
+  ["tier","Tier","txt"], ["generado","Generado","txt"],
 ];
 // Orden por defecto: PROBABILIDAD descendente (regla fundamental del operador).
 // Pinchando una cabecera se reordena -- asi "mayor probabilidad" y "mejor ROI"
