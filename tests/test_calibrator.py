@@ -175,6 +175,47 @@ def test_no_extreme_expansion_guard():
         lambda x: np.clip(np.asarray(x, dtype=float), 0.04, 0.96)) is True
 
 
+def test_keeps_resolution_guard():
+    """La quinta condicion. Las otras cuatro vigilan el exceso de confianza; el
+    fallo simetrico -- colapsar a una constante -- las pasaba todas."""
+    # La identidad conserva toda la resolucion.
+    assert cal._keeps_resolution(lambda x: np.asarray(x, dtype=float)) is True
+    # `ligamx_spreads` del 2026-08-28: TODO a 0,500, aceptado en staging.
+    assert cal._keeps_resolution(lambda x: np.full(np.shape(x), 0.50)) is False
+    # `ligue1_spreads`: 0,455-0,545. Cabe entero en un bin de ECE.
+    assert cal._keeps_resolution(
+        lambda x: 0.455 + 0.09 * (np.asarray(x, dtype=float) >= 0.5)) is False
+    # Un encogimiento fuerte pero con recorrido real sigue siendo legitimo: dice
+    # que el modelo discrimina poco, no que no discrimina nada.
+    assert cal._keeps_resolution(
+        lambda x: 0.35 + 0.3 * np.asarray(x, dtype=float)) is True
+
+
+def test_a_constant_map_passes_the_other_four_gates():
+    """El motivo de existir de la quinta, escrito como prueba: si alguna de las
+    otras cuatro cazara la constante, esta condicion sobraria."""
+    constante = lambda x: np.full(np.shape(x), 0.50)  # noqa: E731
+    assert cal._is_monotone_increasing(constante) is True
+    assert cal._no_extreme_expansion(constante) is True
+    # ECE y Brier son las otras dos, y con tasa base 0,5 una constante 0,5 da
+    # ECE 0 y Brier 0,25 -- que en estos mercados bate al modelo crudo.
+    from sqp.calibration.metrics import expected_calibration_error
+    y = np.array([1.0, 0.0] * 50)
+    p = np.full(100, 0.50)
+    assert expected_calibration_error(p, y) == pytest.approx(0.0, abs=1e-9)
+    assert float(np.mean((p - y) ** 2)) == pytest.approx(0.25)
+
+
+class _ConstantCalibrator:
+    """Mapa colapsado: la forma que pasaba las cuatro condiciones anteriores."""
+
+    def fit(self, probs, outcomes):
+        return self
+
+    def predict(self, probs):
+        return np.full(np.shape(probs), 0.50)
+
+
 class _ExtremePushingBeta:
     """Monotone calibrator that pushes favorites >= 0.75 to 0.99 -- the phantom
     -edge shape that passed ECE, Brier AND monotonicity on a small split."""
@@ -216,6 +257,37 @@ def test_train_drops_extreme_pushing_calibrator_despite_good_metrics(tmp_path, m
     assert cal.apply_calibration(np.array([0.8]), sport="unit_extreme", method="auto")[0] == 0.8
 
 
+def test_train_drops_a_collapsed_calibrator_despite_good_metrics(tmp_path, monkeypatch):
+    """El caso real: un mapa constante con ECE y Brier mejores que el crudo. Es
+    lo que estaba ACEPTADO en staging para `ligamx_spreads` el 2026-08-28."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._load_calibrator.cache_clear()
+    monkeypatch.setattr(cal, "calibration_report",
+                        lambda probs, outcomes: {"ece": 1.0, "brier_score": 1.0})
+    ece_calls = {"n": 0}
+
+    def fake_ece(*a, **k):
+        ece_calls["n"] += 1
+        return 0.5 if ece_calls["n"] == 1 else 0.0
+
+    monkeypatch.setattr(cal, "expected_calibration_error", fake_ece)
+    monkeypatch.setattr(cal, "brier_score", lambda *a, **k: 0.1)
+    monkeypatch.setattr(cal, "BetaCalibrator", _ConstantCalibrator)
+
+    res = cal.train_calibration(_miscalibrated(), sport="unit_colapso")
+
+    assert res["beta_gate"]["ece_ok"] is True
+    assert res["beta_gate"]["brier_ok"] is True
+    assert res["beta_gate"]["monotone_ok"] is True
+    assert res["beta_gate"]["extreme_ok"] is True
+    assert res["beta_gate"]["resolution_ok"] is False, "solo la quinta lo caza"
+    assert res["beta_persisted"] is False
+    # Sin calibrador, el mercado se sirve en crudo: honesto, y no convierte el
+    # edge en una funcion del precio.
+    assert cal.apply_calibration(np.array([0.8]), sport="unit_colapso",
+                                 method="auto")[0] == 0.8
+
+
 def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):
     """Observabilidad del gate: el resultado debe decir CUAL condicion paso/fallo
     (ECE / Brier / monotonia) por modelo. El 2026-07-02 un mlb_spreads que
@@ -226,7 +298,8 @@ def test_train_reports_per_gate_verdicts(tmp_path, monkeypatch):
     cal._load_calibrator.cache_clear()
     res = cal.train_calibration(_miscalibrated(), sport="unit_gates")
     for key in ("iso_gate", "beta_gate"):
-        assert set(res[key]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
+        assert set(res[key]) == {"ece_ok", "brier_ok", "monotone_ok",
+                                 "extreme_ok", "resolution_ok"}
         for v in res[key].values():
             assert isinstance(v, bool)
     assert res["iso_persisted"] == all(res["iso_gate"].values())

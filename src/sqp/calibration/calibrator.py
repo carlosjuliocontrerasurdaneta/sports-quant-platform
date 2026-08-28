@@ -83,10 +83,73 @@ def _no_extreme_expansion(predict, lo: float = 0.05, hi: float = 0.95,
     high side is guarded: picks exist where estimated > implied, so inflating
     probabilities creates phantom edges, whereas a downward correction (e.g.
     0.10 -> 0.02 for a genuinely overconfident model) merely suppresses picks
-    and must stay allowed. Compression toward the middle always passes."""
+    and must stay allowed. Compression toward the middle always passes
+    -- de eso se ocupa `_keeps_resolution`."""
     grid = np.linspace(lo, hi, n)
     vals = np.asarray(predict(grid), dtype=float)
     return not bool(np.any((grid <= 0.90) & (vals >= 0.95)))
+
+
+# Ancho de un bin de ECE: `expected_calibration_error` usa 10 bins sobre [0,1].
+# Un mapa cuyo recorrido ENTERO cabe en un bin no pudo mostrarle ninguna
+# resolucion al gate de ECE que lo acepto. El umbral sale de ahi, no de mirar
+# los candidatos de hoy.
+MIN_CALIBRATED_RANGE = 0.10
+
+
+def _keeps_resolution(predict, lo: float = 0.05, hi: float = 0.95,
+                      n: int = 19,
+                      min_range: float = MIN_CALIBRATED_RANGE) -> bool:
+    """True cuando el calibrador conserva algo de RESOLUCION: su recorrido sobre
+    `[lo, hi]` es de al menos `min_range`.
+
+    Las otras tres condiciones vigilan el exceso de confianza. Ninguna ve el
+    fallo simetrico, que es el colapso: un mapa que manda TODO a 0,50 pasa las
+    cuatro puertas de calle. ECE perfecto si la tasa base ronda 0,5 (una sola
+    prediccion, un solo bin, observado 0,5); Brier exactamente 0,25, que en
+    estos mercados suele batir al del modelo crudo; monotono, porque una
+    constante no decrece; y jamas infla nada hacia la certeza.
+
+    No es hipotetico. El 2026-08-28 el candidato de `ligamx_spreads` mapeaba
+    0,10 y 0,90 -- y todo lo de en medio -- a **0,500** exactos, y estaba
+    ACEPTADO en staging esperando promocion, junto con `ligamx_totals` (0,077 de
+    recorrido) y `ligue1_spreads` (0,091).
+
+    Por que importa mas que un Brier: con la probabilidad fijada en una
+    constante, `edge = p * cuota - 1` pasa a ser funcion **solo del precio**, asi
+    que el mercado entero ordena sus picks por cuota descendente. Es la peor
+    politica conocida a la luz de la escalera de `min_edge` invertida. Y la lista
+    del operador, que se ordena por probabilidad, se queda plana.
+
+    Si el modelo de verdad no discrimina, lo honesto es quedarse en no-op y que
+    hable el modelo crudo, no instalar una constante que convierte el edge en el
+    precio.
+    """
+    grid = np.linspace(lo, hi, n)
+    vals = np.asarray(predict(grid), dtype=float)
+    return bool(float(vals.max() - vals.min()) >= min_range)
+
+
+def staged_resolution(key: str, method: str) -> float | None:
+    """Recorrido del candidato en staging de `key`, o None si no se puede leer.
+
+    Lo usa el tablero para avisar de los mapas colapsados que ya estan escritos
+    en staging: la quinta condicion impide que se acepten NUEVOS, pero los
+    aceptados antes siguen ahi hasta el proximo reentreno, y
+    `promote_calibration.py --yes` los instalaria."""
+    name = {"isotonic": "iso", "beta": "beta"}.get(method)
+    if name is None:
+        return None
+    path = _model_path(key, name, staging=True)
+    try:
+        model = _load_calibrator(str(path))
+    except Exception:  # fichero ausente, corrupto o de otra version de joblib
+        return None
+    if model is None:
+        return None
+    grid = np.linspace(0.05, 0.95, 19)
+    vals = np.asarray(model.predict(grid), dtype=float)
+    return float(vals.max() - vals.min())
 
 
 def _hash_sidecar(path: Path) -> Path:
@@ -320,14 +383,21 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     # and the daily-run log can say WHY a candidate was dropped -- on 2026-07-02
     # an mlb_spreads fit that improved OOS ECE was dropped and the log gave no
     # reason (it was the Brier), forcing a manual re-fit to diagnose.
+    # Y las CUATRO miran hacia el mismo lado: el exceso de confianza. El fallo
+    # simetrico -- el colapso a una constante -- las pasa todas de calle, y el
+    # 2026-08-28 habia tres candidatos asi ACEPTADOS en staging esperando
+    # promocion (`ligamx_spreads` mandaba absolutamente todo a 0,500). De ahi la
+    # quinta: ver `_keeps_resolution`.
     iso_gate = {"ece_ok": bool(val_metrics["ece"] <= raw_val_ece),
                 "brier_ok": bool(val_metrics["brier_score"] <= raw_val_brier),
                 "monotone_ok": _is_monotone_increasing(iso.predict),
-                "extreme_ok": _no_extreme_expansion(iso.predict)}
+                "extreme_ok": _no_extreme_expansion(iso.predict),
+                "resolution_ok": _keeps_resolution(iso.predict)}
     beta_gate = {"ece_ok": bool(beta_val_ece <= raw_val_ece),
                  "brier_ok": bool(beta_val_brier <= raw_val_brier),
                  "monotone_ok": _is_monotone_increasing(beta.predict),
-                 "extreme_ok": _no_extreme_expansion(beta.predict)}
+                 "extreme_ok": _no_extreme_expansion(beta.predict),
+                 "resolution_ok": _keeps_resolution(beta.predict)}
     iso_persisted = _persist_or_remove(iso, iso_path, all(iso_gate.values()))
     beta_persisted = _persist_or_remove(beta, beta_path, all(beta_gate.values()))
     _load_calibrator.cache_clear()  # drop any stale cached model at these paths

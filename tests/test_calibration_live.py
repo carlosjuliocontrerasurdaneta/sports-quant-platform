@@ -117,8 +117,10 @@ def test_group_summaries_propagate_gate_verdicts_and_brier(tmp_path, monkeypatch
                if r.get("trained")]
     assert trained
     for r in trained:
-        assert set(r["iso_gate"]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
-        assert set(r["beta_gate"]) == {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok"}
+        esperado = {"ece_ok", "brier_ok", "monotone_ok", "extreme_ok",
+                    "resolution_ok"}
+        assert set(r["iso_gate"]) == esperado
+        assert set(r["beta_gate"]) == esperado
         assert "raw_val_brier" in r
 
 

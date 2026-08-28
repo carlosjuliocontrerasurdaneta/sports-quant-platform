@@ -201,20 +201,32 @@ def _calibration_pending_block() -> str:
     vivia en una linea de log entre miles, asi que la espera se acumulaba en
     silencio.
 
-    Y no es cosmetica: sin entrada en el registro LIVE, `method='auto'` es un
-    no-op y ese mercado se sirve **sin calibrar**. La calibracion cierra el 72%
-    de la brecha de Brier contra el mercado (medicion del 2026-08-25), asi que
-    cada clave pendiente es rendimiento medido que no se esta usando. El
-    2026-08-28 habia 4 calibradores vivos y 6 mercados servidos en crudo con
-    candidato aceptado esperando.
+    Sin entrada en el registro LIVE, `method='auto'` es un no-op y ese mercado se
+    sirve **sin calibrar**; la calibracion cierra el 72% de la brecha de Brier
+    contra el mercado (medicion del 2026-08-25), asi que una clave pendiente
+    PUEDE ser rendimiento sin usar. El 2026-08-28: 4 calibradores vivos, 6
+    mercados en crudo con candidato esperando.
+
+    "Puede", no "es": revisando esos candidatos aparecieron tres **degenerados**
+    -- mapas casi constantes, uno de ellos exactamente 0,500 para toda entrada --
+    que habian pasado las cuatro condiciones de aceptacion. Por eso esta vista
+    marca la resolucion de cada candidato: invitar a promover sin decir cual
+    colapsa seria peor que no invitar. La quinta condicion
+    (`calibrator._keeps_resolution`) evita que vuelvan a aceptarse, pero los ya
+    escritos en staging siguen ahi hasta el proximo reentreno.
     """
-    from sqp.calibration.calibrator import _load_method_registry
+    from sqp.calibration.calibrator import (MIN_CALIBRATED_RANGE,
+                                            _load_method_registry,
+                                            staged_resolution)
     live = _load_method_registry(staging=False)
     staged = _load_method_registry(staging=True)
     if not staged and not live:
         return ""
     nuevos = sorted(k for k in staged if k not in live)
     cambian = sorted(k for k in staged if k in live and staged[k] != live[k])
+    pobres = sorted(k for k in staged
+                    if (r := staged_resolution(k, staged[k])) is not None
+                    and r < MIN_CALIBRATED_RANGE)
     parts = ["<h3>Calibradores</h3>",
              '<div class="cards">',
              _card("En produccion", str(len(live)), "registro live"),
@@ -234,11 +246,24 @@ def _calibration_pending_block() -> str:
             f"{html.escape(str(staged[k]))}" for k in cambian)
         parts.append(f'<p class="note"><strong>Cambiarian de metodo:</strong> '
                      f'{detalle}.</p>')
+    if pobres:
+        detalle = ", ".join(f"<code>{html.escape(k)}</code>" for k in pobres)
+        parts.append(
+            f'<p class="note"><strong>NO promover ({len(pobres)}):</strong> '
+            f'{detalle}. Su mapa es casi constante &mdash; recorrido menor que '
+            f'un bin de ECE. Con la probabilidad fija, <code>edge = p &times; '
+            f'cuota &minus; 1</code> pasa a depender <em>solo del precio</em> y '
+            f'ese mercado ordenaria sus picks por cuota descendente. Se '
+            f'aceptaron antes de existir la condicion de resolucion; el proximo '
+            f'reentreno ya no los aceptara.</p>')
     if nuevos or cambian:
         parts.append('<p class="note">Revisar y promover con '
                      '<code>python scripts/promote_calibration.py</code> '
                      '(sin argumentos es dry-run: ensena el mapa de cada '
-                     'candidato antes de tocar produccion).</p>')
+                     'candidato antes de tocar produccion). Con '
+                     '<code>--keys</code> se promueve una seleccion; '
+                     '<code>--yes</code> promoveria TODO, incluido lo de '
+                     'arriba.</p>')
     else:
         parts.append('<p class="note">Nada pendiente de promover.</p>')
     return "".join(parts)
