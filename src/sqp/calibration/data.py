@@ -27,8 +27,14 @@ import pandas as pd
 from sqp.audit.report import load_all_settled
 from sqp.config import ROOT
 
+# `implied_probability_novig` viaja aunque el entrenamiento no la use: la
+# metrica primaria del pre-registro del 2026-08-24 es el ECE de la probabilidad
+# REBLENDEADA `(1-s)*cal(.)+s*fair`, y sin la probabilidad justa esta historia
+# -- que es justo el dataset que ese pre-registro nombra, "served union settled,
+# dedup" -- no basta para evaluar su propio criterio de aceptacion.
 TRAINING_COLS = ["league", "market", "event_id", "date",
-                 "model_probability", "adjusted_probability", "result"]
+                 "model_probability", "adjusted_probability",
+                 "implied_probability_novig", "result"]
 _KEY_COL = "_dedup_key"
 
 
@@ -102,6 +108,10 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
         out["adjusted_probability"] = adj.where(adj.notna(), out["model_probability"])
     else:
         out["adjusted_probability"] = out["model_probability"]
+    out["implied_probability_novig"] = (
+        pd.to_numeric(frame["implied_probability_novig"], errors="coerce")
+        if "implied_probability_novig" in frame
+        else pd.Series(float("nan"), index=frame.index))
     out["result"] = frame["result"].astype(str) if "result" in frame else ""
     if with_key:
         empty = pd.Series("", index=frame.index)
