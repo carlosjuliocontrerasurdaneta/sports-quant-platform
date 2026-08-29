@@ -43,8 +43,8 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
-from sqp.evaluation.labels import (game_date_local, local_today, match_label,
-                                   picks_vigentes)
+from sqp.evaluation.labels import (game_date_local, local_date, local_today,
+                                   match_label, picks_vigentes)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -119,7 +119,7 @@ def _picks_records(predictions_dir: Path,
     ranked = ranked.assign(partido=match_label(ranked))
     ranked = ranked.assign(fecha=game_date_local(ranked))
     ranked = ranked.assign(
-        generado=(ranked["generated_at"].astype(str).str[:10]
+        generado=(local_date(ranked["generated_at"])
                   if "generated_at" in ranked.columns else ""))
     records: list[dict] = []
     for _, row in ranked.iterrows():
@@ -560,7 +560,11 @@ def _coverage_note(cal_dir: Path | None = None) -> str:
             continue
         liga = (str(d["league"].iloc[0]) if "league" in d.columns
                 else f.stem.replace("served_", ""))
-        ultimo[liga] = str(d["generated_at"].astype(str).str[:10].max())
+        # Fecha LOCAL: `generated_at` lo escribe el pipeline en UTC y truncarlo
+        # para compararlo con `local_today` declaraba "0 de N ligas refrescadas
+        # hoy" cada noche a partir de las 20:00 locales (00:00Z), horas despues
+        # de un run correcto.
+        ultimo[liga] = str(local_date(d["generated_at"]).max())
     if not ultimo:
         return ""
     hoy = local_today()
@@ -676,9 +680,10 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
         # considerar el ROI" (2026-08-26) y resulta que ya se calculaba.
         "roi_esp": p * price - 1.0,
         "casas": pd.to_numeric(df.get("books_count"), errors="coerce"),
-        # De cuando es la cuota. Al mostrar todo lo vigente la lista puede
-        # mezclar runs, y tres dias de antiguedad no se ven en el precio.
-        "generado": (df["generated_at"].astype(str).str[:10]
+        # De cuando es la cuota, en fecha LOCAL como el resto de la tabla. Al
+        # mostrar todo lo vigente la lista puede mezclar runs, y tres dias de
+        # antiguedad no se ven en el precio.
+        "generado": (local_date(df["generated_at"])
                      if "generated_at" in df.columns else ""),
     })
     # Tier del Tipster (AGENTS Tipster.md, encargo del operador 2026-08-26).

@@ -43,6 +43,25 @@ def local_today() -> str:
     return datetime.now(timezone.utc).astimezone().date().isoformat()
 
 
+def local_date(valores: pd.Series) -> pd.Series:
+    """Fecha LOCAL (`YYYY-MM-DD`) de una serie de instantes UTC.
+
+    Para `generated_at` y demas sellos que el pipeline escribe en UTC. Truncarlos
+    con `str[:10]` da la fecha UTC, y compararla contra `local_today` vuelve a
+    introducir el desfase que este modulo existe para eliminar: a partir de las
+    20:00 locales (00:00Z) el sello dice manana. Medido el 2026-08-28 a las 20:26
+    locales, el aviso de cobertura del tablero declaraba "0 de 14 ligas
+    refrescadas hoy" horas despues de un run correcto.
+
+    Donde no parsee, cae al truncado en crudo: una fecha aproximada informa, una
+    celda vacia no.
+    """
+    ts = pd.to_datetime(valores, errors="coerce", utc=True)
+    tz = datetime.now(timezone.utc).astimezone().tzinfo
+    fecha = ts.dt.tz_convert(tz).dt.strftime("%Y-%m-%d")
+    return fecha.fillna(valores.astype(str).str[:10]).astype(str)
+
+
 def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
     """Filas cuyo PARTIDO no se ha jugado todavia (fecha local >= hoy).
 

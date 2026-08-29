@@ -16,11 +16,21 @@ from sqp.audit.html_report import _coverage_note
 
 
 def _dia(n: int) -> str:
-    return (datetime.now(timezone.utc) + timedelta(days=n)).strftime("%Y-%m-%d")
+    """Fecha LOCAL desplazada `n` dias. Local y no UTC a proposito: la nota
+    compara contra `local_today`, y fabricar el fixture en UTC hacia que estas
+    pruebas pasaran de dia y fallaran de noche -- a partir de las 20:00 locales
+    (00:00Z) la fecha UTC ya es la de manana."""
+    return (datetime.now(timezone.utc).astimezone()
+            + timedelta(days=n)).strftime("%Y-%m-%d")
 
 
 def _servido(tmp_path, liga: str, dia: str, *, partido: str | None = None) -> None:
-    pd.DataFrame([{"league": liga, "generated_at": f"{dia}T11:00:00+00:00",
+    """`generated_at` va en UTC, como lo escribe el pipeline: a mediodia local,
+    que cae en el mismo dia local en cualquier huso."""
+    inst = (datetime.strptime(dia, "%Y-%m-%d")
+            .replace(hour=12, tzinfo=datetime.now(timezone.utc).astimezone().tzinfo)
+            .astimezone(timezone.utc))
+    pd.DataFrame([{"league": liga, "generated_at": inst.isoformat(),
                    "start_time": f"{partido or _dia(1)}T18:00:00Z"}]).to_csv(
         tmp_path / f"served_{liga}.csv", index=False)
 
@@ -52,6 +62,25 @@ def test_un_torneo_terminado_no_cuenta_como_sin_refrescar(tmp_path):
     nota = _coverage_note(tmp_path)
     assert "1 de 1 ligas" in nota
     assert "tennis_atp_viejo" not in nota
+
+
+def test_un_run_de_esta_noche_cuenta_como_de_hoy(tmp_path):
+    """Regresion del 2026-08-28: `generated_at` es UTC y se comparaba truncado
+    contra `local_today`. A las 20:26 locales (00:26Z del dia siguiente) la nota
+    declaraba "0 de N ligas refrescadas hoy" horas despues de un run correcto.
+    Este fixture fija un instante que YA cruzo la medianoche UTC pero sigue
+    siendo hoy en local."""
+    local_hoy = _dia(0)
+    esta_noche = (datetime.strptime(local_hoy, "%Y-%m-%d")
+                  .replace(hour=23, minute=30,
+                           tzinfo=datetime.now(timezone.utc).astimezone().tzinfo)
+                  .astimezone(timezone.utc))
+    pd.DataFrame([{"league": "mlb", "generated_at": esta_noche.isoformat(),
+                   "start_time": f"{_dia(1)}T18:00:00Z"}]).to_csv(
+        tmp_path / "served_mlb.csv", index=False)
+    nota = _coverage_note(tmp_path)
+    assert "1 de 1 ligas" in nota
+    assert "Sin refrescar" not in nota
 
 
 def test_sin_stream_no_inventa_nada(tmp_path):
