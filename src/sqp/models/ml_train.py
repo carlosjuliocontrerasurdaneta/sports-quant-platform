@@ -93,10 +93,21 @@ def _persist(root: Path, model, features: list[str], sport: str, name: str,
     _models_dir(root).mkdir(parents=True, exist_ok=True)
     path = _models_dir(root) / f"{sport}_{name}_model.joblib"
     joblib.dump({"model": model, "features": features}, str(path))
+    # Ruta RELATIVA a la raiz del proyecto: la absoluta no sobrevive a mover la
+    # carpeta ni a otra maquina, y el registro acumulaba entradas apuntando a dos
+    # ubicaciones anteriores -- 32 de 68 el 2026-08-28 (auditoria AUD-LOW-004).
+    # Nadie lee este campo para cargar (`ml_predict` recompone la ruta desde
+    # `root`), asi que no rompe nada; lo que arregla es la trazabilidad, que es
+    # justo para lo que existe el registro. Las entradas historicas se quedan
+    # como estan: son el registro de lo que paso.
+    try:
+        ruta = str(path.relative_to(root))
+    except ValueError:
+        ruta = str(path)
     _register(root, {
         "sport": sport, "model": name,
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "path": str(path), "n_features": len(features), "metrics": metrics,
+        "path": ruta, "n_features": len(features), "metrics": metrics,
     })
     log.info("[%s] %s model saved: %s", sport, name, metrics)
     return path

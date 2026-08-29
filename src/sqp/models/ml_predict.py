@@ -1,4 +1,20 @@
-"""Inference with the trained ML models (parallel to the simulation path)."""
+"""Inference with the trained ML models (parallel to the simulation path).
+
+NO ESTA CONECTADO AL PIPELINE DE PICKS (auditoria 2026-08-28, AUD-LOW-003).
+`predict_moneyline` y `predict_total` no tienen ningun llamador en `src/` ni en
+`scripts/`: solo los ejercita `tests/test_ml_models.py`. Las probabilidades que
+llegan a los candidatos las produce la ruta de simulacion
+(`sqp.sports.adapters` -> Elo/Poisson/ratings), no estos modelos.
+
+Sin embargo los modelos SI se reentrenan de forma programada: la tarea
+`SQP_Refresh_ML_Cdev` ejecuta `REFRESH_ML.bat` -> `scripts/train_models.py`. Es
+decir, se gasta computo periodico en artefactos que nadie consume, y el nombre
+de la tarea sugiere lo contrario a quien mire el Programador.
+
+Decision pendiente del operador: conectar la mezcla (para eso existe el
+`--oos` de `train_models.py`, que mide si compensa) o retirar la tarea. No se
+toca el Programador de tareas sin orden explicita.
+"""
 from __future__ import annotations
 
 import hashlib

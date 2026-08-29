@@ -91,3 +91,54 @@ def test_h2h_three_way_tie_team_loses_draw_wins():
     assert _grade(_row("h2h", "Arsenal"), 1, 1, "Arsenal", three_way=True) == "loss"
     assert _grade(_row("h2h", "Chelsea"), 1, 1, "Arsenal", three_way=True) == "loss"
     assert _grade(_row("h2h", "Draw"), 1, 1, "Arsenal", three_way=True) == "win"
+
+
+# --- Seleccion que no casa con NINGUNO de los dos equipos ---------------------
+#
+# `sel_is_home` False significaba "es el visitante", asi que una seleccion que no
+# era ninguno de los dos se graduaba con el resultado del visitante: una apuesta
+# al LOCAL escrita de otra forma salia "loss" con el local ganando (reproducido
+# en la auditoria del 2026-08-28, AUD-LOW-001). Un resultado fabricado entra en
+# el ROI realizado y en las etiquetas de calibracion como evidencia valida.
+
+
+def _row2(market, selection, line=0.0, away="New York Yankees"):
+    return pd.Series({"market": market, "selection": selection, "line": line,
+                      "away": away})
+
+
+def test_h2h_selection_matching_neither_side_is_void():
+    # Local "Boston Red Sox" gana 5-3; la seleccion no casa con ninguno.
+    assert _grade(_row2("h2h", "Red Sox"), 5, 3, "Boston Red Sox") == "void"
+    assert _grade(_row2("h2h", "EQUIPO INEXISTENTE"), 5, 3, "Boston Red Sox") == "void"
+
+
+def test_spreads_selection_matching_neither_side_is_void():
+    assert _grade(_row2("spreads", "Red Sox", -1.5), 5, 3, "Boston Red Sox") == "void"
+
+
+def test_both_real_sides_still_grade_normally():
+    """Premisa: el guard no puede tragarse el camino normal."""
+    assert _grade(_row2("h2h", "Boston Red Sox"), 5, 3, "Boston Red Sox") == "win"
+    assert _grade(_row2("h2h", "New York Yankees"), 5, 3, "Boston Red Sox") == "loss"
+    assert _grade(_row2("spreads", "Boston Red Sox", -1.5), 5, 3, "Boston Red Sox") == "win"
+
+
+def test_totals_is_not_side_dependent_and_is_untouched():
+    """En totals la seleccion es Over/Under: no casa con ningun equipo NUNCA."""
+    assert _grade(_row2("totals", "Over", 7.5), 5, 3, "Boston Red Sox") == "win"
+    assert _grade(_row2("totals", "Under", 7.5), 5, 3, "Boston Red Sox") == "loss"
+
+
+def test_three_way_draw_is_not_voided():
+    """El empate cotizado no es ninguno de los dos equipos, y es legitimo."""
+    row = pd.Series({"market": "h2h", "selection": "Draw", "line": 0.0,
+                     "away": "Chelsea"})
+    assert _grade(row, 1, 1, "Arsenal", three_way=True) == "win"
+
+
+def test_a_row_without_away_keeps_the_previous_behaviour():
+    """Sin la columna no se puede verificar la correspondencia, y no se inventa:
+    un esquema legado sigue graduando como antes."""
+    row = pd.Series({"market": "h2h", "selection": "Red Sox", "line": 0.0})
+    assert _grade(row, 5, 3, "Boston Red Sox") == "loss"

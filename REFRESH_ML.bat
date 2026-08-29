@@ -4,6 +4,13 @@ REM RUN_DIARIO_ALL.bat por la via de simulacion). Aqui solo se mantienen frescos
 REM los datasets de features y los modelos ML, y se reporta la comparacion
 REM sim-vs-ML (evidencia para decidir el blend) + salud del pipeline.
 REM Correr semanal, despues de un backfill de resultados reciente.
+REM
+REM ESTADO (auditoria 2026-08-28, AUD-LOW-003): la inferencia ML sigue SIN
+REM conectar. `predict_moneyline`/`predict_total` no tienen ningun llamador en
+REM src/ ni en scripts/, asi que lo que se entrena aqui no influye en ningun
+REM pick. La comparacion sim-vs-ML que produce este bat es exactamente la
+REM evidencia para decidir si conectarlo; hasta que se decida, esto es
+REM mantenimiento de un artefacto que nadie consume.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src

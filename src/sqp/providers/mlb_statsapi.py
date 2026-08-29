@@ -14,10 +14,22 @@ BASE = "https://statsapi.mlb.com/api/v1"
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
 _BACKOFF_SECONDS = 2.0
+# Red de seguridad, no la politica: cada llamada declara el suyo segun lo que
+# pide (60 s una consulta simple, 120 s una hidratada). Este default solo evita
+# que una llamada futura sin timeout cuelgue el run para siempre.
+_DEFAULT_TIMEOUT_S = 60
 
 
 def _get_with_retry(session: requests.Session, url: str, **kwargs) -> requests.Response:
-    """GET with linear backoff on transient errors, mirroring the ESPN/odds-api pattern."""
+    """GET with linear backoff on transient errors, mirroring the ESPN/odds-api pattern.
+
+    Con `timeout` por defecto: los cuatro llamadores actuales pasan el suyo
+    (60-120 s), pero sin default un quinto que lo olvide cuelga el run diario
+    SIN limite -- `requests` no tiene timeout implicito. El resto de proveedores
+    fija el suyo en la propia llamada; aqui la llamada es compartida, asi que el
+    default vive aqui (auditoria 2026-08-28, AUD-LOW-002).
+    """
+    kwargs.setdefault("timeout", _DEFAULT_TIMEOUT_S)
     last_exc: Exception | None = None
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:

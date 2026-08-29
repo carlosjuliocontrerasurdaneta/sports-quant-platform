@@ -28,6 +28,22 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str,
     # differently than `home` (accents, casing) must not silently misgrade a
     # home-side bet (2026-06-28 WTA Wimbledon review).
     sel_is_home = normalize_key(sel) == normalize_key(home)
+    # Si la seleccion no casa con NINGUNO de los dos equipos, `sel_is_home` es
+    # False y el grading seguia como si fuera el visitante: una apuesta al local
+    # escrita de otra forma salia "loss" con el local GANANDO (reproducido en la
+    # auditoria del 2026-08-28, AUD-LOW-001). Un resultado fabricado es peor que
+    # una fila sin graduar: entra en el ROI realizado y en las etiquetas de
+    # calibracion como evidencia valida.
+    #
+    # Hoy no es alcanzable -- cuotas y marcadores vienen del MISMO proveedor y
+    # las 783 filas liquidadas casan --, pero el modulo ya anticipa un proveedor
+    # secundario de resultados para tenis, que es justo cuando los nombres
+    # divergen. Solo aplica a los mercados que dependen del lado; en `totals` la
+    # seleccion es Over/Under y en 1X2 el empate no es ningun equipo.
+    if m in ("h2h", "spreads") and not sel_is_home and not (three_way and sel == "Draw"):
+        away = row.get("away")
+        if away is not None and str(away) != "" and normalize_key(sel) != normalize_key(away):
+            return "void"
     if m == "h2h":
         if margin == 0:
             if sel == "Draw": return "win"
