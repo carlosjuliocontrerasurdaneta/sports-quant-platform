@@ -215,14 +215,29 @@ def _calibration_pending_block() -> str:
     (`calibrator._keeps_resolution`) evita que vuelvan a aceptarse, pero los ya
     escritos en staging siguen ahi hasta el proximo reentreno.
     """
-    from sqp.calibration.calibrator import (MIN_CALIBRATED_RANGE,
+    from sqp.calibration.calibrator import (AUTO_PROMOTE_MIN_N_VAL,
                                             _load_method_registry,
-                                            calibrator_resolution)
+                                            _load_staging_meta,
+                                            calibrator_defect)
 
-    def colapsados(reg: dict, *, staging: bool) -> list[str]:
-        return sorted(k for k, m in reg.items()
-                      if (r := calibrator_resolution(k, m, staging=staging))
-                      is not None and r < MIN_CALIBRATED_RANGE)
+    def colapsados(reg: dict, *, staging: bool) -> dict[str, str]:
+        """Mismo predicado que el gate de entrenamiento y que la promocion.
+        Cuando esta vista tenia su propio umbral, divergieron: el candidato de
+        `wnba_totals` estaba rechazado por el gate y aqui no salia marcado."""
+        return {k: d for k, m in reg.items()
+                if (d := calibrator_defect(k, m, staging=staging)) is not None}
+
+    def eventos_de_validacion(key: str) -> int | None:
+        """Eventos independientes del holdout, o `None` si no hay metadatos.
+
+        `None` NO significa muestra pequena: `promote_calibrators` solo aplica el
+        guard cuando el fichero existe, asi que sin metadatos la promocion SI
+        promueve. Contarlo como "esperando" seria reintroducir el desajuste entre
+        lo que la vista dice y lo que la herramienta hace."""
+        meta = _load_staging_meta(key)
+        if meta is None:
+            return None
+        return int(meta.get("n_val_events", meta.get("n_val", 0)) or 0)
 
     live = _load_method_registry(staging=False)
     staged = _load_method_registry(staging=True)
@@ -232,6 +247,12 @@ def _calibration_pending_block() -> str:
     cambian = sorted(k for k in staged if k in live and staged[k] != live[k])
     pobres = colapsados(staged, staging=True)
     live_pobres = colapsados(live, staging=False)
+    # La promocion tambien salta los ajustados sobre pocos eventos
+    # independientes. Sin decirlo, la vista invitaba a promover candidatos que
+    # el propio `promote_calibration.py` rechaza en silencio.
+    esperando = {k: n for k in staged if k not in pobres
+                 and (n := eventos_de_validacion(k)) is not None
+                 and n < AUTO_PROMOTE_MIN_N_VAL}
     parts = ["<h3>Calibradores</h3>",
              '<div class="cards">',
              _card("En produccion", str(len(live)), "registro live"),
@@ -241,13 +262,14 @@ def _calibration_pending_block() -> str:
                    "con candidato aceptado esperando"),
              "</div>"]
     if live_pobres:
-        detalle = ", ".join(f"<code>{html.escape(k)}</code>" for k in live_pobres)
+        detalle = ", ".join(f"<code>{html.escape(k)}</code> ({html.escape(d)})"
+                            for k, d in sorted(live_pobres.items()))
         parts.append(
-            f'<p class="note"><strong>EN PRODUCCION pero ignorado por '
-            f'colapso:</strong> {detalle}. Su mapa manda toda probabilidad al '
-            f'mismo valor, asi que el pipeline lo salta y sirve en crudo '
-            f'(<code>apply_calibration</code> lo comprueba al aplicar). Sale de '
-            f'la lista en cuanto se promueva un candidato con resolucion.</p>')
+            f'<p class="note"><strong>EN PRODUCCION pero ignorado:</strong> '
+            f'{detalle}. El pipeline lo salta y sirve en crudo '
+            f'(<code>apply_calibration</code> lo comprueba al aplicar) y el '
+            f'proximo reentreno lo degradara del registro. Sale de la lista en '
+            f'cuanto se promueva uno valido.</p>')
     if nuevos:
         detalle = ", ".join(f"<code>{html.escape(k)}</code> &rarr; "
                             f"{html.escape(str(staged[k]))}" for k in nuevos)
@@ -259,24 +281,34 @@ def _calibration_pending_block() -> str:
             f"{html.escape(str(staged[k]))}" for k in cambian)
         parts.append(f'<p class="note"><strong>Cambiarian de metodo:</strong> '
                      f'{detalle}.</p>')
-    if pobres:
-        detalle = ", ".join(f"<code>{html.escape(k)}</code>" for k in pobres)
+    if esperando:
+        detalle = ", ".join(
+            f"<code>{html.escape(k)}</code> ({n}/{AUTO_PROMOTE_MIN_N_VAL} eventos)"
+            for k, n in sorted(esperando.items()))
         parts.append(
-            f'<p class="note"><strong>NO promover ({len(pobres)}):</strong> '
-            f'{detalle}. Su mapa es casi constante &mdash; recorrido menor que '
-            f'un bin de ECE. Con la probabilidad fija, <code>edge = p &times; '
-            f'cuota &minus; 1</code> pasa a depender <em>solo del precio</em> y '
-            f'ese mercado ordenaria sus picks por cuota descendente. Se '
-            f'aceptaron antes de existir la condicion de resolucion; el proximo '
-            f'reentreno ya no los aceptara.</p>')
+            f'<p class="note"><strong>Esperando muestra ({len(esperando)}):</strong> '
+            f'{detalle}. La promocion los salta: un mapa ajustado sobre pocos '
+            f'eventos independientes no es evidencia. Siguen acumulando en cada '
+            f'reentreno; no hay nada que hacer con ellos hoy.</p>')
+    if pobres:
+        detalle = ", ".join(f"<code>{html.escape(k)}</code> ({html.escape(d)})"
+                            for k, d in sorted(pobres.items()))
+        parts.append(
+            f'<p class="note"><strong>NO promovibles ({len(pobres)}):</strong> '
+            f'{detalle}. La promocion los RECHAZA &mdash; mismo criterio que el '
+            f'gate de entrenamiento, y no lo salta <code>--yes</code> ni '
+            f'<code>force</code>. Con un mapa constante la probabilidad se fija '
+            f'y <code>edge = p &times; cuota &minus; 1</code> pasa a depender '
+            f'<em>solo del precio</em>: ese mercado ordenaria sus picks por '
+            f'cuota descendente.</p>')
     if nuevos or cambian:
         parts.append('<p class="note">Revisar y promover con '
                      '<code>python scripts/promote_calibration.py</code> '
                      '(sin argumentos es dry-run: ensena el mapa de cada '
                      'candidato antes de tocar produccion). Con '
-                     '<code>--keys</code> se promueve una seleccion; '
-                     '<code>--yes</code> promoveria TODO, incluido lo de '
-                     'arriba.</p>')
+                     '<code>--keys</code> se promueve una seleccion y con '
+                     '<code>--yes</code> todo lo promovible: los dos bloques de '
+                     'arriba quedan fuera en cualquier caso.</p>')
     else:
         parts.append('<p class="note">Nada pendiente de promover.</p>')
     return "".join(parts)

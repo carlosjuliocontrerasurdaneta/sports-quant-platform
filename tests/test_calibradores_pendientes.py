@@ -83,8 +83,10 @@ def test_señala_un_calibrador_colapsado_ya_en_produccion(registros, tmp_path):
     joblib.dump(_Constante(), str(cal._model_path("wnba_totals", "iso")))
     cal._load_calibrator.cache_clear()
     html = _calibration_pending_block()
-    assert "EN PRODUCCION pero ignorado por colapso" in html
+    assert "EN PRODUCCION pero ignorado" in html
     assert "wnba_totals" in html
+    # El motivo va al lado: "ignorado" sin decir por que no es accionable.
+    assert "colapsado" in html
 
 
 def test_un_calibrador_vivo_sin_candidato_hoy_no_se_reporta_como_pendiente(registros):
@@ -93,3 +95,76 @@ def test_un_calibrador_vivo_sin_candidato_hoy_no_se_reporta_como_pendiente(regis
     registros({"wnba_totals": "isotonic"}, {})
     html = _calibration_pending_block()
     assert "Nada pendiente de promover" in html
+
+
+# --- El tablero usa el MISMO predicado que el gate y que la promocion ---------
+#
+# Cuando esta vista tenia su propio umbral, divergieron: el 2026-08-29 el
+# candidato de `wnba_totals` estaba RECHAZADO por el gate -- constante en toda la
+# banda operativa -- y sin embargo el tablero no lo marcaba, porque solo miraba
+# el recorrido ancho, que las colas le compraban.
+
+
+class _Sano:
+    """Encoge pero conserva resolucion: promovible."""
+
+    def predict(self, p):
+        return 0.25 + 0.5 * np.asarray(p, dtype=float)
+
+
+class _PlanoEnLaBanda:
+    """Recorrido ancho suficiente, pero constante donde viven los picks."""
+
+    def predict(self, p):
+        p = np.asarray(p, dtype=float)
+        return np.where(p < 0.20, 0.333, np.where(p > 0.80, 0.545, 0.499))
+
+
+def test_marca_un_candidato_que_la_promocion_rechazaria(registros, tmp_path):
+    import joblib
+
+    import sqp.calibration.calibrator as cal
+
+    registros({}, {"wnba_totals": "isotonic"})
+    joblib.dump(_PlanoEnLaBanda(),
+                str(cal._model_path("wnba_totals", "iso", staging=True)))
+    cal._load_calibrator.cache_clear()
+
+    # Premisa: el gate lo rechaza de verdad.
+    assert cal.calibrator_defect("wnba_totals", "isotonic", staging=True) is not None
+
+    html = _calibration_pending_block()
+    assert "NO promovibles" in html
+    assert "wnba_totals" in html
+
+
+def test_marca_los_que_esperan_muestra(registros, tmp_path):
+    """La vista invitaba a promover candidatos que `promote_calibration.py`
+    rechaza en silencio por `n_val_events` corto."""
+    import joblib
+
+    import sqp.calibration.calibrator as cal
+
+    registros({}, {"epl_spreads": "isotonic"})
+    joblib.dump(_Sano(), str(cal._model_path("epl_spreads", "iso", staging=True)))
+    cal._write_staging_meta("epl_spreads", n_val=24, n_val_events=2)
+    cal._load_calibrator.cache_clear()
+
+    html = _calibration_pending_block()
+    assert "Esperando muestra (1)" in html
+    assert "2/30 eventos" in html
+
+
+def test_sin_metadatos_no_se_declara_espera(registros, tmp_path):
+    """Sin fichero de metadatos `promote_calibrators` NO aplica el guard: si
+    promoviera, decir 'esperando' seria justo el desajuste que se corrige."""
+    import joblib
+
+    import sqp.calibration.calibrator as cal
+
+    registros({}, {"liga_h2h": "isotonic"})
+    joblib.dump(_Sano(), str(cal._model_path("liga_h2h", "iso", staging=True)))
+    cal._load_calibrator.cache_clear()
+
+    html = _calibration_pending_block()
+    assert "Esperando muestra" not in html

@@ -584,3 +584,87 @@ def test_revalidate_never_promotes(tmp_path, monkeypatch):
 
     cal.revalidate_live_registry()
     assert cal._load_method_registry(staging=False) == {}
+
+
+def test_promotion_refuses_a_structurally_defective_candidate(tmp_path, monkeypatch):
+    """El agujero real: el tablero invita a `promote_calibration.py`, y `--yes`
+    habria instalado en produccion un mapa que el propio gate de entrenamiento
+    rechaza. Paso con el candidato de `wnba_totals` el 2026-08-29."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ConstantCalibrator(),
+                str(cal._model_path("liga_totals", "iso", staging=True)))
+    cal._set_best_method("liga_totals", "isotonic", staging=True)
+    cal._write_staging_meta("liga_totals", n_val=500, n_val_events=200)
+
+    assert cal.promote_calibrators(keys=["liga_totals"]) == []
+    assert cal._load_method_registry(staging=False) == {}
+
+
+def test_force_does_not_override_a_structural_defect(tmp_path, monkeypatch):
+    """`force` existe para asumir una muestra fina -- un juicio sobre la
+    evidencia --, no para instalar un artefacto invalido."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ConstantCalibrator(),
+                str(cal._model_path("liga_totals", "iso", staging=True)))
+    cal._set_best_method("liga_totals", "isotonic", staging=True)
+
+    assert cal.promote_calibrators(keys=["liga_totals"], force=True) == []
+    assert cal._load_method_registry(staging=False) == {}
+
+
+def test_promotion_still_accepts_a_healthy_candidate(tmp_path, monkeypatch):
+    """Contraprueba: sin ella, un guard que rechazara SIEMPRE pasaria igual."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ShrinkingCalibrator(),
+                str(cal._model_path("liga_h2h", "iso", staging=True)))
+    cal._set_best_method("liga_h2h", "isotonic", staging=True)
+    cal._write_staging_meta("liga_h2h", n_val=500, n_val_events=200)
+
+    assert cal.promote_calibrators(keys=["liga_h2h"]) == ["liga_h2h"]
+    assert cal._load_method_registry(staging=False) == {"liga_h2h": "isotonic"}
+
+
+def test_structural_defect_names_each_failure():
+    """Un motivo por condicion: 'invalido' a secas no es auditable."""
+    assert cal.structural_defect(lambda x: np.asarray(x, dtype=float)) is None
+    assert cal.structural_defect(
+        lambda x: (np.asarray(x, dtype=float) - 0.5) ** 2) == "no monotono"
+    assert cal.structural_defect(
+        lambda x: np.where(np.asarray(x, dtype=float) >= 0.75, 0.99, 0.50)
+    ) == "expande a extremos"
+    assert cal.structural_defect(
+        lambda x: np.full(np.shape(x), 0.50)) == "colapsado (sin resolucion)"
+
+
+def test_auto_promote_log_records_a_rejection_not_a_promotion(tmp_path, monkeypatch):
+    """El rastro de auditoria no puede afirmar una promocion que no ocurrio.
+    Antes elegible implicaba promovido; desde que la promocion rechaza defectos
+    estructurales (2026-08-29) ya no, y el log habria mentido en el fichero que
+    existe justo para poder confiar en el."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ConstantCalibrator(),
+                str(cal._model_path("liga_totals", "iso", staging=True)))
+    cal._set_best_method("liga_totals", "isotonic", staging=True)
+
+    out = cal.auto_promote_calibrators([{
+        "league": "liga", "market": "totals", "persisted": True,
+        "n_val": 500, "n_val_events": 200}])
+
+    assert out["promoted"] == []
+    registro = pd.read_csv(tmp_path / "promotion_log.csv")
+    acciones = registro["action"].tolist()
+    assert not any(a == "promoted" for a in acciones)
+    assert any(str(a).startswith("rejected:") for a in acciones)
+    assert any("colapsado" in str(a) for a in acciones)

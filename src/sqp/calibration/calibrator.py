@@ -152,6 +152,48 @@ def _keeps_resolution(predict, lo: float = 0.05, hi: float = 0.95,
     return bool(float(en_banda.max() - en_banda.min()) >= min_band_range)
 
 
+def structural_defect(predict) -> str | None:
+    """Motivo por el que un mapa es invalido, o `None` si esta sano.
+
+    Son las condiciones de aceptacion que NO necesitan etiquetas: valen igual
+    para un candidato recien ajustado, para uno que espera en staging y para uno
+    que ya lleva meses en produccion. Una sola definicion porque llegaron a haber
+    tres y divergieron: el 2026-08-29 el candidato de `wnba_totals` estaba
+    RECHAZADO por el gate y sin embargo el tablero no lo marcaba, porque
+    comparaba solo el recorrido ancho y no la banda operativa.
+
+    Las de ECE/Brier no estan aqui a proposito: exigen datos nuevos y las evalua
+    el reentreno contra su propio holdout.
+    """
+    if not _is_monotone_increasing(predict):
+        return "no monotono"
+    if not _no_extreme_expansion(predict):
+        return "expande a extremos"
+    if not _keeps_resolution(predict):
+        return "colapsado (sin resolucion)"
+    return None
+
+
+def calibrator_defect(key: str, method: str, *,
+                      staging: bool) -> str | None:
+    """`structural_defect` sobre el artefacto persistido de `key`, o el motivo
+    por el que no se puede siquiera evaluar. `None` si esta sano."""
+    name = {"isotonic": "iso", "beta": "beta"}.get(str(method))
+    if name is None:
+        return f"metodo desconocido ({method!r})"
+    path = _model_path(key, name, staging=staging)
+    if not path.exists():
+        return "sin modelo legible"
+    try:
+        modelo = _load_calibrator(str(path))
+    except Exception as exc:  # artefacto corrupto o de otra version de joblib
+        log.warning("[%s] calibrador ilegible (%s)", key, exc)
+        return "sin modelo legible"
+    if modelo is None:
+        return "sin modelo legible"
+    return structural_defect(modelo.predict)
+
+
 def calibrator_resolution(key: str, method: str, *,
                           staging: bool = True) -> float | None:
     """Recorrido del calibrador de `key`, o None si no se puede leer.
@@ -552,24 +594,8 @@ def revalidate_live_registry() -> list[str]:
     """
     degradados: list[str] = []
     for key, method in list(_load_method_registry(staging=False).items()):
-        name = {"isotonic": "iso", "beta": "beta"}.get(str(method))
-        path = _model_path(key, name, staging=False) if name else None
-        modelo = None
-        if path is not None and path.exists():
-            try:
-                modelo = _load_calibrator(str(path))
-            except Exception as exc:  # artefacto corrupto o de otra version
-                log.warning("[%s] calibrador live ilegible (%s); se degrada a "
-                            "no-op.", key, exc)
-        if modelo is None:
-            motivo = "sin modelo legible"
-        elif not _is_monotone_increasing(modelo.predict):
-            motivo = "no monotono"
-        elif not _no_extreme_expansion(modelo.predict):
-            motivo = "expande a extremos"
-        elif not _keeps_resolution(modelo.predict):
-            motivo = "colapsado (sin resolucion)"
-        else:
+        motivo = calibrator_defect(key, str(method), staging=False)
+        if motivo is None:
             continue
         log.warning("[%s] calibrador live DEGRADADO a no-op: %s. El mercado "
                     "pasa a servirse en crudo hasta que se promueva uno "
@@ -607,11 +633,26 @@ def promote_calibrators(keys: list[str] | None = None,
     ``min_n_val`` guards against promoting a calibrator fitted on a tiny
     out-of-sample split (the same guard ``auto_promote_calibrators`` applies).
     Pass ``force=True`` to override it — but document why.
+
+    Un candidato con DEFECTO ESTRUCTURAL (`calibrator_defect`) no se promueve
+    NUNCA, ni con ``force``: `force` existe para asumir una muestra fina, que es
+    un juicio sobre la evidencia, no para instalar un mapa que el propio gate de
+    entrenamiento rechaza. El agujero era real: el 2026-08-29 el candidato de
+    `wnba_totals` -- constante en toda la banda operativa -- seguia en staging, y
+    `promote_calibration.py --yes` lo habria instalado en produccion.
     """
     staged = _load_method_registry(staging=True)
     targets = staged if keys is None else {k: v for k, v in staged.items() if k in keys}
     promoted: list[str] = []
     for key, method in targets.items():
+        # No lo salta `force`: ver el docstring. Un mapa degenerado no es una
+        # muestra fina que uno pueda decidir asumir, es un artefacto invalido.
+        defecto = calibrator_defect(key, str(method), staging=True)
+        if defecto is not None:
+            log.warning("[%s] promocion RECHAZADA: %s. Es el mismo criterio que "
+                        "aplica el gate de entrenamiento; ni con force.",
+                        key, defecto)
+            continue
         if not force:
             meta = _load_staging_meta(key)
             if meta is not None:
@@ -708,10 +749,22 @@ def auto_promote_calibrators(results: list[dict], *,
             _model_path(key, name).unlink(missing_ok=True)
     _load_calibrator.cache_clear()
     now = pd.Timestamp.now(tz="UTC").isoformat()
+    # El log se construye sobre lo REALMENTE promovido, no sobre lo elegible.
+    # Antes coincidian siempre porque `auto_promote` prefiltraba por el mismo
+    # `min_n_val` que `promote_calibrators`; desde que la promocion tambien
+    # rechaza defectos estructurales (2026-08-29) un elegible puede acabar
+    # rechazado, y registrar "promoted" seria falsear el rastro de auditoria en
+    # el fichero que existe justo para poder confiar en el.
+    hechas = set(promoted)
     entries = ([{"timestamp": now, "key": k, "action": "promoted",
                  "method": staged.get(k, ""), "n_val": r.get("n_val"),
                  "n_val_events": r.get("n_val_events", r.get("n_val"))}
-                for k, r in eligible]
+                for k, r in eligible if k in hechas]
+               + [{"timestamp": now, "key": k,
+                   "action": f"rejected: {calibrator_defect(k, str(staged.get(k, '')), staging=True) or 'desconocido'}",
+                   "method": staged.get(k, ""), "n_val": r.get("n_val"),
+                   "n_val_events": r.get("n_val_events", r.get("n_val"))}
+                  for k, r in eligible if k not in hechas]
                + [{"timestamp": now, "key": k, "action": "demoted",
                    "method": "", "n_val": None, "n_val_events": None}
                   for k in demoted]
