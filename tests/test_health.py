@@ -62,3 +62,53 @@ def test_corrupt_results_file_is_logged_not_silently_counted_as_absent(tmp_path,
 
     assert any("no se pudo leer" in rec.getMessage() for rec in caplog.records), \
         "un CSV ilegible debe registrarse, no confundirse con uno ausente"
+
+
+# --- Punto ciego de las filas servidas irrecuperables -------------------------
+#
+# `_served_pending_expired` se apoyaba en `ServedStore.pending`, que descarta lo
+# anterior a 7 dias porque su proposito es acotar el trabajo de la liquidacion.
+# Heredando ese corte, el aviso solo veia la ventana de 3 a 7 dias: el 2026-08-29
+# reportaba 4 filas mientras habia 154 irrecuperables, 150 invisibles por
+# antiguas. Justo el punto ciego que su docstring decia cerrar.
+
+def _served(tmp_path, liga: str, dias_atras: list[int]):
+    """Escribe filas servidas SIN graduar cuyo evento empezo hace `dias_atras`."""
+    from datetime import datetime, timedelta, timezone
+    ahora = datetime.now(timezone.utc)
+    filas = [{
+        "league": liga, "event_id": f"e{d}", "market": "h2h",
+        "selection": "A", "line": 0.0,
+        "start_time": (ahora - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "price_decimal": 2.0, "model_probability": 0.5,
+    } for d in dias_atras]
+    cal = tmp_path / "data" / "calibration"
+    cal.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(filas).to_csv(cal / f"served_{liga}.csv", index=False)
+
+
+def test_expired_rows_older_than_the_scan_window_are_counted(tmp_path):
+    """Lo viejo ya no puede desaparecer del informe."""
+    _served(tmp_path, "mlb", [5, 30, 60])          # 1 reciente, 2 antiguas
+    r = generate_health_report(root=tmp_path)
+    assert r["served_pending_expired_total"]["mlb"] == 3
+    # y solo la reciente es accionable
+    assert r["served_pending_expired"]["mlb"] == 1
+
+
+def test_only_the_recent_expiry_raises_the_warning(tmp_path):
+    """La perdida acumulada no genera warning: no se puede arreglar, y una
+    alarma que no se apaga deja de leerse."""
+    _served(tmp_path, "mlb", [30, 60])             # ninguna reciente
+    r = generate_health_report(root=tmp_path)
+    assert r["served_pending_expired_total"]["mlb"] == 2
+    assert "mlb" not in r["served_pending_expired"]
+    assert not any("beyond the scores window" in w for w in r["warnings"])
+
+
+def test_a_game_not_yet_played_is_not_counted_as_lost(tmp_path):
+    """Premisa: un partido futuro esta pendiente, no perdido."""
+    _served(tmp_path, "mlb", [-2])
+    r = generate_health_report(root=tmp_path)
+    assert r["served_pending_expired_total"] == {}
+    assert r["served_pending_expired"] == {}

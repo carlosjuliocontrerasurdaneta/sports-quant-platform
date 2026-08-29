@@ -17,7 +17,7 @@ import pandas as pd
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
 from sqp.monitoring.run_status import read_run_status
-from sqp.storage.served_store import ServedStore
+from sqp.storage.served_store import KEY_COLS, ServedStore
 
 log = get_logger(__name__)
 
@@ -26,6 +26,10 @@ STALE_FEATURES_DAYS = 14.0
 # The Odds API /scores only lists ~3 days back: a pending served row older than
 # this will never grade from the daily settlement feed (audit 2026-07-24, M-25/M-26).
 SERVED_EXPIRED_DAYS = 3.0
+# Ventana de escaneo de `ServedStore.pending`. Se reusa aqui para separar lo
+# ACCIONABLE (una fila que acaba de expirar: el proveedor puede estar roto ahora)
+# de la perdida acumulada. No es un umbral nuevo: es el que ya define el store.
+PENDING_MAX_AGE_DAYS = 7.0
 
 
 def _rows(path: Path) -> int | None:
@@ -75,26 +79,60 @@ def _live_calibration_markets(models_dir: Path, league: str) -> list[str]:
     return sorted(out)
 
 
-def _served_pending_expired(root: Path) -> dict[str, int]:
-    """league -> count of served rows still pending whose event started more
-    than SERVED_EXPIRED_DAYS ago. Covers EVERY league with a served stream (not
-    just the 4 ML leagues), closing the blind spot where rows rot silently
-    until pending()'s 7-day cutoff drops them."""
+def _served_pending_expired(root: Path) -> tuple[dict[str, int], dict[str, int]]:
+    """(recientes, total) por liga de filas servidas que ya NO pueden graduarse.
+
+    Una fila es irrecuperable en cuanto su evento empezo hace mas de
+    ``SERVED_EXPIRED_DAYS``: el feed de marcadores deja de listarlo.
+
+    Esta funcion NO puede apoyarse en ``store.pending``, que es justo lo que
+    hacia: ese metodo descarta las filas de mas de ``PENDING_MAX_AGE_DAYS``
+    porque su proposito es acotar el trabajo de la liquidacion. Heredando ese
+    corte, el aviso solo veia la ventana de 3 a 7 dias y las mas viejas
+    desaparecian en silencio -- exactamente el punto ciego que decia cerrar.
+    Medido el 2026-08-29: reportaba 4 filas mientras habia 154 irrecuperables,
+    150 de ellas invisibles por antiguas.
+
+    Se devuelven dos conteos porque responden a preguntas distintas:
+
+    - ``recientes`` (expiradas dentro de la ventana de escaneo): ACCIONABLE. Un
+      repunte aqui significa que un proveedor puede estar roto AHORA y todavia
+      se esta a tiempo de arreglarlo. Se apaga solo.
+    - ``total``: la perdida acumulada de datos de calibracion. No es accionable
+      -- esas filas no vuelven -- pero tiene que ser visible y auditable, no un
+      numero que nadie puede ver. Va al informe, no al aviso: una alarma que no
+      se puede apagar deja de leerse.
+    """
     store = ServedStore(root)
     now = datetime.now(timezone.utc)
-    cutoff = (now - timedelta(days=SERVED_EXPIRED_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    out: dict[str, int] = {}
+    expirada = (now - timedelta(days=SERVED_EXPIRED_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    reciente = (now - timedelta(days=PENDING_MAX_AGE_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recientes: dict[str, int] = {}
+    total: dict[str, int] = {}
     for lg in store.leagues():
         try:
-            pending = store.pending(lg, now=now)
-            if pending.empty:
+            served = store._load(store.served_path(lg))
+            if served.empty or "start_time" not in served.columns:
                 continue
-            n = int((pending["start_time"].astype(str) < cutoff).sum())
-            if n:
-                out[lg] = n
+            graded = store._load(store.graded_path(lg))
+            if not graded.empty and set(KEY_COLS).issubset(graded.columns) \
+                    and set(KEY_COLS).issubset(served.columns):
+                hechas = {tuple(map(str, r))
+                          for r in graded[KEY_COLS].values.tolist()}
+                served = served[[tuple(map(str, r)) not in hechas
+                                 for r in served[KEY_COLS].values.tolist()]]
+            if served.empty:
+                continue
+            st = served["start_time"].astype(str)
+            n_total = int((st < expirada).sum())
+            if n_total:
+                total[lg] = n_total
+            n_reciente = int(((st < expirada) & (st >= reciente)).sum())
+            if n_reciente:
+                recientes[lg] = n_reciente
         except Exception as exc:
             log.warning("[%s] could not scan the served pending stream: %s", lg, exc)
-    return out
+    return recientes, total
 
 
 def generate_health_report(root: Path = ROOT) -> dict:
@@ -149,17 +187,27 @@ def generate_health_report(root: Path = ROOT) -> dict:
             f"{run_status.get('failed_at', 'fecha desconocida')}); "
             f"revisar logs/ y re-ejecutar DIARIO_COMPLETO.bat")
 
-    served_expired = _served_pending_expired(root)
+    served_expired, served_expired_total = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):
         warnings.append(f"{lg}: {n} served row(s) pending beyond the scores "
                         f"window (>{SERVED_EXPIRED_DAYS:.0f}d; will not grade "
                         f"from the daily feed)")
+    # La perdida acumulada NO es un warning: no se puede arreglar y una alarma
+    # permanente deja de leerse. Va al informe para que sea auditable y se pueda
+    # seguir su tendencia.
+    perdidas = sum(served_expired_total.values())
+    if perdidas:
+        log.info("Filas servidas irrecuperables acumuladas: %d (%s). No es "
+                 "accionable; se registra para seguimiento.", perdidas,
+                 ", ".join(f"{lg}={n}" for lg, n in sorted(
+                     served_expired_total.items())))
 
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "leagues": leagues,
         "registry_exists": (data / "models" / "registry.json").exists(),
         "served_pending_expired": served_expired,
+        "served_pending_expired_total": served_expired_total,
         "status": "ERROR" if errors else ("WARN" if warnings else "OK"),
         "errors": errors,
         "warnings": warnings,
