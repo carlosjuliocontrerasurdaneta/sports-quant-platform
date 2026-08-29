@@ -528,7 +528,57 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
         except ValueError as exc:
             rec["error"] = str(exc)
         out.append(rec)
+    revalidate_live_registry()
     return out
+
+
+def revalidate_live_registry() -> list[str]:
+    """Degrada a no-op los calibradores VIVOS que ya no pasan las condiciones
+    estructurales. Devuelve las claves degradadas.
+
+    El registro live no se reevaluaba NUNCA: lo escribe la promocion y ahi se
+    queda. La democion existia solo en la sincronizacion completa
+    (`promote_calibrators` sin `keys`), asi que promoviendo por `--keys` -- o
+    sencillamente no promoviendo -- un mapa degradado seguia sirviendo
+    indefinidamente. Paso: `wnba_totals` mando toda probabilidad a 0,490 durante
+    33 dias (auditoria 2026-08-28, AUD-MED-002).
+
+    Solo se comprueban las condiciones que NO necesitan etiquetas -- monotonia,
+    no expansion a extremos y resolucion --, que son justo las que detectan un
+    mapa degenerado. Las de ECE/Brier exigen datos nuevos y las evalua el
+    reentreno sobre su propio holdout. Es estrictamente CONSERVADOR: solo puede
+    degradar a no-op, nunca instalar ni ascender nada, asi que en el peor caso
+    un mercado se sirve en crudo, que es el comportamiento por defecto.
+    """
+    degradados: list[str] = []
+    for key, method in list(_load_method_registry(staging=False).items()):
+        name = {"isotonic": "iso", "beta": "beta"}.get(str(method))
+        path = _model_path(key, name, staging=False) if name else None
+        modelo = None
+        if path is not None and path.exists():
+            try:
+                modelo = _load_calibrator(str(path))
+            except Exception as exc:  # artefacto corrupto o de otra version
+                log.warning("[%s] calibrador live ilegible (%s); se degrada a "
+                            "no-op.", key, exc)
+        if modelo is None:
+            motivo = "sin modelo legible"
+        elif not _is_monotone_increasing(modelo.predict):
+            motivo = "no monotono"
+        elif not _no_extreme_expansion(modelo.predict):
+            motivo = "expande a extremos"
+        elif not _keeps_resolution(modelo.predict):
+            motivo = "colapsado (sin resolucion)"
+        else:
+            continue
+        log.warning("[%s] calibrador live DEGRADADO a no-op: %s. El mercado "
+                    "pasa a servirse en crudo hasta que se promueva uno "
+                    "valido.", key, motivo)
+        _set_best_method(key, None, staging=False)
+        degradados.append(key)
+    if degradados:
+        _load_calibrator.cache_clear()
+    return degradados
 
 
 # 15 -> 30 (auditoria 2026-07-24, M-28): el gate elige best_method sobre el

@@ -240,6 +240,32 @@ def _closest_probable(cands: list[dict], ev_t: datetime | None) -> dict | None:
     return cands[0] if len(cands) == 1 else None
 
 
+def _cache_ttl_acotado(ttl_actual: float | None,
+                       max_age_min: float) -> float | None:
+    """Techo de frescura para las cuotas que FUNDAMENTAN un pick. Devuelve el
+    TTL acotado, o `None` cuando no hay nada que acotar.
+
+    El TTL de cache lo fija `.env` (hoy 1200 s) y esta bien, pero es un fichero
+    NO versionado: si esa linea desaparece, el default del cliente salta a 6 h en
+    silencio y un segundo run el mismo dia -- justo lo que se hace tras un fallo,
+    como el del 2026-08-27 -- generaria picks sobre cuotas de hasta seis horas
+    antes, selladas con `generated_at` de ahora (auditoria 2026-08-28,
+    AUD-MED-003).
+
+    El limite no se inventa: el proyecto ya declara que un precio mas viejo que
+    `revalidation_price_max_age_min` no es accionable en la re-validacion
+    pre-partido. Si no vale para MANTENER un pick, no puede valer para CREARLO.
+
+    Es un TECHO, nunca un valor asignado: si el operador configura algo mas
+    estricto, se respeta. Fijarlo sin comparar habria relajado a 90 min los 20
+    que hay hoy en produccion.
+    """
+    if ttl_actual is None:
+        return None
+    limite = max_age_min * 60.0
+    return limite if float(ttl_actual) > limite else None
+
+
 def _apply_daily_exposure_cap(candidates: list[BetCandidate], bankroll: float,
                               cap_pct: float) -> float:
     """Scale staked candidates down so the day's total exposure does not exceed
@@ -583,6 +609,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         log.info("[%s] DEMO mode: synthetic data, labeled demo_synthetic.", league)
     else:
         client = OddsAPIClient(settings.odds_api_key, settings.regions, settings.odds_format)
+        # getattr: un cliente inyectado en tests puede no tener el concepto de
+        # cache, y entonces no hay nada que acotar (misma convencion que el
+        # `getattr(r, "status_code")` de odds_api ante sesiones falsas).
+        acotado = _cache_ttl_acotado(getattr(client, "cache_ttl", None),
+                                     settings.revalidation_price_max_age_min)
+        if acotado is not None:
+            log.warning("[%s] TTL de cache de cuotas %.0fs supera la politica de "
+                        "frescura (%.0fs); se acota para no generar picks sobre "
+                        "precios no accionables.",
+                        league, client.cache_ttl, acotado)
+            client.cache_ttl = acotado
         try:
             active = client.is_sport_active(meta["sport_key"])
         except Exception as exc:

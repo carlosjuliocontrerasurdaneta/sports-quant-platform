@@ -523,3 +523,64 @@ def test_train_drops_worsening_model_and_removes_stale(tmp_path, monkeypatch):
     assert not iso_path.exists()                # and the stale file is cleaned
     # live application for this market is now a safe no-op
     assert cal.apply_calibration(np.array([0.5]), sport="unit_drop")[0] == 0.5
+
+
+# --- Revalidacion del registro LIVE (auditoria 2026-08-28, AUD-MED-002) -------
+#
+# El registro live no se reevaluaba NUNCA: lo escribe la promocion y ahi se
+# queda. La democion existia solo en la sincronizacion completa
+# (`promote_calibrators` sin `keys`), asi que promoviendo por `--keys` -- o
+# sencillamente no promoviendo -- un mapa degradado seguia sirviendo. Paso:
+# `wnba_totals` mando toda probabilidad a 0,490 durante 33 dias.
+
+
+def test_revalidate_demotes_a_collapsed_live_calibrator(tmp_path, monkeypatch):
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ConstantCalibrator(), str(cal._model_path("liga_totals", "iso")))
+    cal._set_best_method("liga_totals", "isotonic")
+
+    assert cal.revalidate_live_registry() == ["liga_totals"]
+    assert cal._load_method_registry() == {}
+    # y el mercado pasa a servirse en crudo
+    assert cal.apply_calibration(np.array([0.3]), sport="liga_totals",
+                                 method="auto")[0] == 0.3
+
+
+def test_revalidate_keeps_a_healthy_live_calibrator(tmp_path, monkeypatch):
+    """Contraprueba: sin ella, uno que degradara SIEMPRE pasaria igual."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ShrinkingCalibrator(), str(cal._model_path("liga_h2h", "iso")))
+    cal._set_best_method("liga_h2h", "isotonic")
+
+    assert cal.revalidate_live_registry() == []
+    assert cal._load_method_registry() == {"liga_h2h": "isotonic"}
+
+
+def test_revalidate_demotes_a_registry_entry_without_model(tmp_path, monkeypatch):
+    """Una entrada que apunta a un fichero que ya no esta es un no-op silencioso;
+    mejor decirlo y limpiar el registro."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    cal._set_best_method("liga_spreads", "isotonic")
+
+    assert cal.revalidate_live_registry() == ["liga_spreads"]
+    assert cal._load_method_registry() == {}
+
+
+def test_revalidate_never_promotes(tmp_path, monkeypatch):
+    """Es estrictamente conservador: solo degrada. Un candidato en staging no
+    puede llegar a produccion por esta via."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ShrinkingCalibrator(),
+                str(cal._model_path("liga_h2h", "iso", staging=True)))
+    cal._set_best_method("liga_h2h", "isotonic", staging=True)
+
+    cal.revalidate_live_registry()
+    assert cal._load_method_registry(staging=False) == {}
