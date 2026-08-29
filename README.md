@@ -109,7 +109,9 @@ DIARIO_COMPLETO.bat
 - escribe el **reporte consolidado** (`data/predictions/report_<día>.md` + dashboard HTML).
 
 Otros BAT: `BACKFILL_ALL.bat` (resultados históricos, semanal), `REFRESH_ML.bat`
-(mantenimiento ML, semanal), `VALIDATE_OOS.bat` (validación OOS mensual de parámetros).
+(mantenimiento ML, **manual** desde 2026-08-29: su tarea semanal se retiró porque
+la inferencia ML no tiene ningún consumidor), `VALIDATE_OOS.bat` (validación OOS
+mensual de parámetros).
 
 
 

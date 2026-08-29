@@ -127,7 +127,7 @@ Calibración por (liga, mercado) con Brier/log-loss/ECE; backtesting walk-forwar
 | `RUN_DIARIO_ALL.bat` | `scripts/run_all.py --mode live` |
 | `CAPTURE_CLOSE.bat` | Captura cierre horaria + revalidación + intraday scan |
 | `BACKFILL_ALL.bat` | Semanal — rellena histórico |
-| `REFRESH_ML.bat` | Semanal — subsistema ML experimental |
+| `REFRESH_ML.bat` | **Manual** desde 2026-08-29 — ML experimental, sin consumidor; su tarea semanal se retiró (AUD-LOW-003) |
 | `VALIDATE_OOS.bat` | Mensual — validación out-of-sample |
 
 ### Scripts Python

@@ -3,14 +3,18 @@ REM SQP - Mantenimiento ML semanal. NO toca la generacion de picks (eso sigue en
 REM RUN_DIARIO_ALL.bat por la via de simulacion). Aqui solo se mantienen frescos
 REM los datasets de features y los modelos ML, y se reporta la comparacion
 REM sim-vs-ML (evidencia para decidir el blend) + salud del pipeline.
-REM Correr semanal, despues de un backfill de resultados reciente.
 REM
-REM ESTADO (auditoria 2026-08-28, AUD-LOW-003): la inferencia ML sigue SIN
-REM conectar. `predict_moneyline`/`predict_total` no tienen ningun llamador en
-REM src/ ni en scripts/, asi que lo que se entrena aqui no influye en ningun
-REM pick. La comparacion sim-vs-ML que produce este bat es exactamente la
-REM evidencia para decidir si conectarlo; hasta que se decida, esto es
-REM mantenimiento de un artefacto que nadie consume.
+REM MANUAL desde el 2026-08-29: ya NO hay tarea programada. La semanal
+REM `SQP_Refresh_ML_Cdev` (lunes 09:45) se retiro por orden del operador tras la
+REM auditoria integral (AUD-LOW-003): la inferencia ML no tiene ningun llamador
+REM en src/ ni en scripts/ -- `predict_moneyline`/`predict_total` solo los usan
+REM sus tests --, asi que lo que se entrenaba aqui no influia en ningun pick.
+REM Su ultimo resultado fue ademas 0xC000013A (terminacion anomala).
+REM
+REM Correr a mano cuando se quiera reevaluar el blend, despues de un backfill de
+REM resultados reciente. La comparacion sim-vs-ML que produce es la evidencia
+REM para decidir si conectarlo. Definicion de la tarea retirada, por si hay que
+REM restaurarla: docs\ops\SQP_Refresh_ML_Cdev.task.xml
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src

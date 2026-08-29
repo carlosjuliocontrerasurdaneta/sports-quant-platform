@@ -6,14 +6,15 @@ NO ESTA CONECTADO AL PIPELINE DE PICKS (auditoria 2026-08-28, AUD-LOW-003).
 llegan a los candidatos las produce la ruta de simulacion
 (`sqp.sports.adapters` -> Elo/Poisson/ratings), no estos modelos.
 
-Sin embargo los modelos SI se reentrenan de forma programada: la tarea
-`SQP_Refresh_ML_Cdev` ejecuta `REFRESH_ML.bat` -> `scripts/train_models.py`. Es
-decir, se gasta computo periodico en artefactos que nadie consume, y el nombre
-de la tarea sugiere lo contrario a quien mire el Programador.
+Hasta el 2026-08-29 los modelos SI se reentrenaban de forma programada -- la
+tarea semanal `SQP_Refresh_ML_Cdev` ejecutaba `REFRESH_ML.bat` --, gastando
+computo en artefactos que nadie consumia. **El operador retiro esa tarea el
+2026-08-29.** `REFRESH_ML.bat` sigue existiendo y funciona: ahora es manual.
 
-Decision pendiente del operador: conectar la mezcla (para eso existe el
-`--oos` de `train_models.py`, que mide si compensa) o retirar la tarea. No se
-toca el Programador de tareas sin orden explicita.
+Para conectar la mezcla algun dia, la evidencia se produce con
+`scripts/train_models.py --oos`, que mide si compensa antes de tocar nada.
+Definicion de la tarea retirada, por si hay que restaurarla:
+`docs/ops/SQP_Refresh_ML_Cdev.task.xml`.
 """
 from __future__ import annotations
 
