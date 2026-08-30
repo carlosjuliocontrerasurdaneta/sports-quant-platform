@@ -28,6 +28,7 @@ This file complements `CLAUDE.md`; permanent repository rules always have preced
 | Backtest/evaluation | `backtest.md` | leakage-detector, backtest-reviewer, sports-quant-auditor |
 | Release | `release.md` | qa-engineer, security-reviewer, devops-engineer |
 | Incident | `incident.md` | principal-orchestrator, relevant owner, qa-engineer |
+| Full audit (read-only) | `audit.md` | principal-orchestrator, repository-cartographer, sports-quant-auditor, qa-engineer, security-reviewer |
 | Documentation only | `documentation.md` | documentation-writer |
 | Quantitative operation | `quant/00-quant-operations-router.md` | principal-orchestrator, sports-quant-auditor, relevant specialist |
 

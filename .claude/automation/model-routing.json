@@ -23,7 +23,7 @@
         "todo el repositorio",
         "full audit"
       ],
-      "loop": "refactor.md",
+      "loop": "audit.md",
       "primary_agent": "principal-orchestrator",
       "model": "opus",
       "support_agents": [
