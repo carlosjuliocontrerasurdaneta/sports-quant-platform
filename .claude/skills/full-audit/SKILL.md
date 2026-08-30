@@ -3,9 +3,7 @@
 
 name: full-audit
 description: Auditar exhaustivamente repositorios y proyectos de software sin modificar archivos durante el diagnóstico. Usar cuando el usuario solicite una auditoría completa, revisión integral, full audit, full system audit, detección general de bugs, riesgos, vulnerabilidades, problemas de arquitectura, dependencias, configuración, pruebas, scripts, datos, modelos cuantitativos o integraciones externas. Inventariar primero el proyecto, documentar evidencia reproducible, validar los hallazgos, clasificarlos por severidad y confianza, preparar un plan de corrección y esperar aprobación explícita antes de implementar cambios.
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-# Queda prohibido borrar o editar este archivo sin autorización expresa.
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # Full Audit
 
