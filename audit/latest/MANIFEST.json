@@ -26,12 +26,12 @@
     "note": "2 de los 3 fallos eran una regresion introducida el 2026-08-29 por .claude/loops/audit.md (A-1); el tercero es preexistente (I-1)"
   },
   "tests_final": {
-    "passed": 1377,
-    "failed": 1,
+    "passed": 1378,
+    "failed": 0,
     "skipped": 1,
     "total": 1379,
-    "duration_s": 1381.05,
-    "note": "el unico fallo es I-1/KI-021, preexistente y sujeto a decision humana"
+    "duration_s": 910.33,
+    "note": "verde completo tras resolver KI-021 el 2026-08-30 por decision del operador"
   },
   "commands_executed": [
     {
@@ -85,6 +85,10 @@
     {
       "cmd": "requests.get/post sin timeout en src y scripts",
       "result": "cero coincidencias"
+    },
+    {
+      "cmd": "pytest tests/ -q (tras resolver KI-021)",
+      "result": "1378 passed, 1 skipped"
     }
   ],
   "tools_unavailable": [
@@ -102,9 +106,8 @@
     "INFORMATIVO": 2
   },
   "findings_by_status": {
-    "corregido": 2,
+    "corregido": 3,
     "no_corregido_por_falta_de_evidencia": 1,
-    "requiere_decision_humana": 1,
     "sin_accion_cambio_deliberado": 1
   },
   "files_modified": [
@@ -124,7 +127,9 @@
     ".claude/skills/full-audit/references/phases.md",
     ".claude/skills/full-audit/references/deliverables.md",
     ".claude/skills/full-audit/references/project-anchors.md",
-    "audit/full-audit-SKILL-reemplazado-2026-08-30.md"
+    "audit/full-audit-SKILL-reemplazado-2026-08-30.md",
+    ".claude/automation/MODEL_ROUTING.md",
+    "tests/test_claude_model_routing.py"
   ],
   "authorization_required_actions_taken": [],
   "risk_parameters_changed": false,
@@ -133,6 +138,6 @@
   "paid_api_used": false,
   "coverage_result": "PARCIAL",
   "final_result": "DEGRADED",
-  "final_result_rationale": "Los hallazgos confirmados se corrigieron y la correccion quedo verificada por prueba especifica, revalidacion independiente y suite completa (1375 -> 1377 aprobados, sin regresiones). El resultado no es PASS por dos limitaciones nombradas: la cobertura es PARCIAL (los gates de riesgo y el pipeline diario no recibieron lectura linea a linea) y persiste un fallo preexistente que exige decision humana (KI-021). Segun STATES.md, una limitacion no critica, acotada y registrada es DEGRADED, no PASS.",
+  "final_result_rationale": "Los hallazgos confirmados se corrigieron y KI-021 se cerro por decision del operador: la suite queda completamente verde (1375 -> 1378 aprobados, 3 -> 0 fallos). Sigue siendo DEGRADED y no PASS por una unica limitacion acotada y nombrada: la cobertura es PARCIAL, porque los gates de riesgo y el pipeline diario no recibieron lectura linea a linea. Segun STATES.md una limitacion no critica, acotada y registrada es DEGRADED.",
   "predictive_edge_demonstrated": false
 }

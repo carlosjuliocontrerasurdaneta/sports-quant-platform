@@ -4,20 +4,13 @@ Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
 
 ## Requiere decisión humana
 
-### D-1 · La política de modelo está aplicada a medias (I-1)
+### D-1 · La política de modelo estaba aplicada a medias (I-1) — **CERRADO**
 
-El árbol de trabajo declara Opus 5 en `.claude/settings.json` y en
-`docs/MODEL-ROUTING.md`, mientras `.claude/automation/MODEL_ROUTING.md` y el
-literal de `tests/test_claude_model_routing.py:49` siguen en `claude-fable-5`.
-El candado de tres puntas está haciendo su trabajo: la suite falla.
-
-Hay que decidir cuál es la política real y aplicarla a las cuatro puntas a la
-vez. No lo cierro yo porque ese test existe justamente para que el cambio de
-modelo principal sea un acto deliberado del operador, y cerrarlo desde dentro lo
-convertiría en trámite.
-
-Coste de no decidir: la suite queda en rojo permanente, y una suite que siempre
-tiene un fallo conocido es una suite que se deja de mirar.
+Resuelto el 2026-08-30 por decisión del operador: Opus 5 en las cuatro puntas.
+Se alinearon `.claude/automation/MODEL_ROUTING.md` y los dos literales de
+`tests/test_claude_model_routing.py`. Suite completamente verde, 1378 passed.
+La jerarquía de capacidad no cambia: `claude-fable-5` sigue siendo el techo y el
+destino de las tareas de máximo razonamiento vía el disparador de escalado.
 
 ## Cobertura pendiente (primera prioridad de la próxima auditoría)
 

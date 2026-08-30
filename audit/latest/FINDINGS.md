@@ -91,10 +91,20 @@ Alcance: repositorio completo. Resultado de cobertura: **PARCIAL** (ver
 falla porque `.claude/settings.json` declara `claude-opus-5` mientras `HEAD`
 declara `claude-fable-5`. Verificado con `git show HEAD:.claude/settings.json`:
 la divergencia ya estaba en el árbol de trabajo al abrir la sesión del
-2026-08-29. **No se toca:** el modelo principal es una decisión humana explícita
-y ese test existe para impedir que cambie por inercia. Requiere decisión del
-operador: actualizar el literal del test y `MODEL_ROUTING.md`, o revertir
-`settings.json`.
+2026-08-29, y no era deriva accidental sino un cambio deliberado aplicado a
+medias: `settings.json` y `docs/MODEL-ROUTING.md` en Opus 5, la política y el
+literal del test en Fable 5.
+
+**CERRADO el 2026-08-30 por decisión del operador:** Opus 5 en las cuatro
+puntas. Se alinearon `.claude/automation/MODEL_ROUTING.md` y los dos literales
+de `tests/test_claude_model_routing.py`. La suite queda **completamente verde:
+1378 passed, 0 fallos**. La jerarquía de capacidad no cambia —`claude-fable-5` >
+`claude-opus-5` > `sonnet` > `haiku`— y sigue afirmada por su propio test: lo que
+cambió es el punto de partida, no el techo.
+
+Nota de proceso: el candado de tres puntas hizo exactamente lo que se diseñó para
+hacer. Sostuvo la suite en rojo hasta que un humano decidió, en vez de dejar que
+un cambio a medias pasara inadvertido. Ver `known-issues.md` KI-021.
 
 ### I-2 · `shadow_mode: false` es deliberado
 

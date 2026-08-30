@@ -39,6 +39,7 @@ declarar `REVISADA`. Se declara `PARCIAL` en vez de inflar la cobertura.
 | `ruff check src scripts tests` (tras el fix) | Regresión estática | All checks passed! | 0 | `PASO` |
 | `mypy src` (tras el fix) | Regresión de tipos | no issues found in 98 source files | 0 | `PASO` |
 | `pytest tests/ -q` (final) | Regresión completa | 1 failed, 1377 passed, 1 skipped (1381 s) | 1 | `FALLO_PREEXISTENTE` |
+| `pytest tests/ -q` (tras cerrar KI-021) | Confirmar verde total | **1378 passed, 1 skipped** (910 s) | 0 | `PASO` |
 | `pip-audit` | Vulnerabilidades conocidas | no instalado en el entorno | — | `NO_EJECUTADA` |
 | Validación de los `.bat` operacionales | Scripts no Python | no cubierta por ruff/mypy/pytest | — | `NO_EJECUTADA` |
 
@@ -49,13 +50,18 @@ declarar `REVISADA`. Se declara `PARCIAL` en vez de inflar la cobertura.
   y corregidos en esta auditoría. Verificado por la prueba específica (15 passed,
   código 0), por la revalidación independiente y por la suite completa:
   1375 → 1377 aprobados, 3 → 1 fallos. Ninguna regresión nueva.
-- **Fallo preexistente que subsiste:**
-  `test_main_model_matches_the_authorized_policy` (I-1). No atribuible a esta
-  auditoría ni corregible sin decisión del operador.
+- **Fallo preexistente, ya cerrado:**
+  `test_main_model_matches_the_authorized_policy` (I-1 / KI-021). No era
+  atribuible a esta auditoría. El operador decidió Opus 5 en las cuatro puntas el
+  2026-08-30 y la suite quedó completamente verde: **1378 passed, 0 fallos**.
 
 ## Efectos secundarios
 
 `pytest` escribe `__pycache__/` y `.pytest_cache/`, ambos ignorados por git.
-`git status` antes y después no muestra ningún archivo inesperado. El hook
-`post-edit-format.sh` (`ruff check --fix`) no llegó a actuar sobre código: los
-dos archivos modificados en la corrección son Markdown.
+`git status` antes y después no muestra ningún archivo inesperado.
+
+El hook `post-edit-format.sh` (`ruff check --fix`) no actuó en la corrección de
+A-1 y M-1, cuyos dos archivos son Markdown. Sí se disparó al cerrar KI-021, que
+tocó `tests/test_claude_model_routing.py`. Revisado el diff de ese archivo: 18
+inserciones y 6 eliminaciones, de las cuales **sólo dos son lógica** —los dos
+`assert` del modelo— y el resto comentarios. El hook no alteró el parche.

@@ -36,7 +36,8 @@ modificación de stakes, bankroll, `pick_mode` o `shadow_mode`.
 | `pip check` | No broken requirements found. | 0 |
 | `scripts/health_check.py` | WARN (0 errors, 1 warning) | 0 |
 | `pytest tests/test_claude_system_contract.py -q` | 15 passed | 0 |
-| `pytest tests/ -q` (final) | **1 failed, 1377 passed, 1 skipped** | 1 |
+| `pytest tests/ -q` (final) | 1 failed, 1377 passed, 1 skipped | 1 |
+| `pytest tests/ -q` (tras cerrar KI-021) | **1378 passed, 1 skipped** | 0 |
 
 `pip-audit` NO EJECUTADO: no está instalado y instalarlo sería modificar
 dependencias, prohibido durante el diagnóstico.
@@ -54,7 +55,7 @@ dependencias, prohibido durante el diagnóstico.
 
 ## Métricas observadas con su n
 
-- Suite: 1375 → **1377** aprobados; 3 → **1** fallos, sobre 1379 tests.
+- Suite: 1375 → **1378** aprobados; 3 → **0** fallos, sobre 1379 tests.
 - `mypy`: 98 archivos, 0 issues.
 - Repositorio: 588 archivos trackeados, 275 módulos Python, 44.072 líneas.
 - Commits desde la última auditoría con informe persistido: **179**.
@@ -63,11 +64,13 @@ dependencias, prohibido durante el diagnóstico.
 
 ## Justificación del resultado `DEGRADED`
 
-No es `PASS` porque quedan dos limitaciones acotadas y nombradas: la cobertura
-es `PARCIAL` (los gates de riesgo y el pipeline diario no recibieron la lectura
-línea a línea que el procedimiento exige para marcar `REVISADA`) y persiste un
-fallo preexistente de la suite. Según `STATES.md`, una limitación no crítica,
-acotada y registrada es `DEGRADED`.
+No es `PASS` porque queda una limitación acotada y nombrada: la cobertura es
+`PARCIAL` (los gates de riesgo y el pipeline diario no recibieron la lectura
+línea a línea que el procedimiento exige para marcar `REVISADA`). Según
+`STATES.md`, una limitación no crítica, acotada y registrada es `DEGRADED`.
+
+El fallo preexistente ya no cuenta: KI-021 se cerró el 2026-08-30 por decisión
+del operador y la suite quedó completamente verde.
 
 No es `BLOCKED` porque el objetivo se cumplió: los hallazgos confirmados se
 corrigieron y la corrección quedó verificada. La decisión pendiente es posterior
@@ -77,15 +80,12 @@ y se registra abajo, no bloquea lo ya completado.
 
 Requieren aprobación humana, ninguna ejecutada:
 
-1. **Política de modelo (KI-021).** `settings.json` y `docs/MODEL-ROUTING.md`
-   declaran Opus 5; `.claude/automation/MODEL_ROUTING.md` y el literal de
-   `tests/test_claude_model_routing.py:49` siguen en Fable 5. Decidir cuál es la
-   política real y aplicarla a las cuatro puntas. Mientras tanto la suite queda
-   con un fallo conocido.
-2. Commit de esta auditoría: 12 archivos.
-3. Auditar completos los gates de riesgo (`BACKLOG.md` P-1). Con
+1. Auditar completos los gates de riesgo (`BACKLOG.md` P-1). Con
    `shadow_mode: false` son el código con más consecuencia sobre el capital.
-4. Instalar `pip-audit` para reanudar el escaneo de vulnerabilidades.
+2. Instalar `pip-audit` para reanudar el escaneo de vulnerabilidades.
+3. Merge de la rama `audit/integral-20260830` a `main`, y push si procede.
+
+KI-021 ya no está aquí: se cerró el 2026-08-30 con Opus 5 en las cuatro puntas.
 
 ## Estado del sistema (sin cambios)
 
