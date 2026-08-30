@@ -50,8 +50,27 @@ Consecuencias vinculantes:
   se decide.
 - Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
-- Jerarquía de capacidad vigente en este proyecto:
-  `claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`.
+- Jerarquía de capacidad **de Anthropic** (hecho, no política):
+  `claude-fable-5` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
+  La documentación oficial lo dice explícitamente: se empieza por Opus 5 para
+  trabajo agéntico y de empresa, y *"for the highest available capability, use
+  Claude Fable 5"*.
+
+- Reparto **operativo de este proyecto** (decisión del operador, 2026-08-30):
+  - **`claude-opus-5` es el modelo por defecto**, y el punto de partida de todo.
+  - **`claude-fable-5` se reserva para máxima capacidad de razonamiento**: es el
+    destino del disparador de escalado, no el punto de partida.
+
+  Punto de partida y techo son cosas distintas, y aquí están separados a
+  propósito. Empezar en Fable 5 costaría el doble ($10/$50 frente a $5/$25 por
+  MTok) sin que la mayoría del volumen lo necesite; no tenerlo disponible
+  dejaría el principio rector sin destino al que escalar. Por eso Opus 5 abajo
+  y Fable 5 arriba.
+
+  El principio rector queda intacto y **accionable**: "el modelo superior para
+  lo que exige máximo razonamiento" apunta a `claude-fable-5`, que es de hecho
+  el escalón superior de la jerarquía de arriba. Ante la duda, se sube a Fable 5
+  y se registra el escalado en `current-task.md`.
 - Un modelo inferior **no revierte unilateralmente** trabajo o decisiones
   producidas por uno superior. Si detecta un problema, lo **reporta**.
 
@@ -111,16 +130,20 @@ propia), jamás un argumento de autoridad sobre el fondo.
   `settings.json`; el escalón de las rutas sigue en `sonnet` para el trabajo
   normal (abajo). El hook no debe afirmar que cambia este modelo.
 
-  Que el modelo por defecto no sea el más capaz de la jerarquía **no contradice
-  el principio rector**: `claude-fable-5` sigue siendo el escalón superior y
-  sigue siendo el destino de las tareas de máximo razonamiento por el disparador
-  de escalado. Lo que cambia es el punto de partida, no el techo. El principio
-  exige subir ante la duda, no arrancar arriba siempre.
+  `claude-opus-5` es a la vez el punto de partida **y el techo**: es el modelo
+  por defecto y el destino de las tareas de máximo razonamiento. El principio
+  rector sigue intacto —"el modelo superior para lo que exige máximo
+  razonamiento"—; lo que cambió es cuál es ese modelo superior.
 
-  Esta decisión se tomó para cerrar `KI-021`: el cambio llevaba desde antes del
-  2026-08-29 aplicado a medias —`settings.json` y `docs/MODEL-ROUTING.md` en Opus
-  5, esta política y el literal del test en Fable 5— y el candado de tres puntas
-  mantenía la suite en rojo hasta que se decidiera.
+  Esta decisión se tomó en dos tiempos para cerrar `KI-021`. Primero el modelo
+  principal: el cambio llevaba desde antes del 2026-08-29 aplicado a medias
+  —`settings.json` y `docs/MODEL-ROUTING.md` en Opus 5, esta política y el
+  literal del test en Fable 5— y el candado de tres puntas mantuvo la suite en
+  rojo hasta que se decidiera. Después el techo: la primera lectura de esa
+  decisión fue que Fable 5 seguía siendo el escalón superior y sólo cambiaba el
+  punto de partida. Era una lectura errónea, y la corrigió el operador el mismo
+  día. Se deja anotado porque el matiz "cambia el defecto pero no el techo" es
+  exactamente el que se puede volver a leer al revés.
 - **Escalón de las rutas** (`model-routing.json`), el lever de coste:
   - `opus` — **solo** `full-audit`, `incident` y `quant-incident`: auditorías
     exhaustivas e incidentes críticos.

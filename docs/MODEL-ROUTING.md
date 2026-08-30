@@ -1,6 +1,6 @@
 # Selección de modelos Claude por complejidad de tarea
 
-Política activa del proyecto (`CLAUDE.md`): Opus 5 por defecto, Opus 5 para arquitectura/auditoría/incidentes, Sonnet 5 para trabajo diario de ingeniería, Haiku para lookups acotados y Fable 5 para máxima capacidad de razonamiento.
+Política activa del proyecto (`CLAUDE.md`): **Opus 5 por defecto** y para arquitectura, auditoría e incidentes; Sonnet 5 para trabajo diario de ingeniería; Haiku para lookups acotados; **Fable 5 reservado para máxima capacidad de razonamiento**.
 
 ---
 
@@ -44,9 +44,11 @@ Política activa del proyecto (`CLAUDE.md`): Opus 5 por defecto, Opus 5 para arq
 
 ---
 
-## Fable 5 — trabajo complejo de larga duración
+## Fable 5 — máxima capacidad de razonamiento
 
-**Cuándo:** tareas que combinan múltiples dominios, sesiones largas con mucho contexto acumulado, o cuando se necesita máximo razonamiento sobre decisiones complejas de arquitectura o cuantitativas.
+**Cuándo:** tareas que exigen el máximo nivel de razonamiento disponible. Es el destino del disparador de escalado de `.claude/automation/MODEL_ROUTING.md`, no el punto de partida: se llega aquí subiendo desde Opus 5, no arrancando.
+
+Es el modelo más capaz de Anthropic — la documentación oficial recomienda Fable 5 *"for the highest available capability"*. Cuesta el doble que Opus 5 ($10/$50 frente a $5/$25 por MTok), y por eso no es el defecto: la mayoría del volumen no lo necesita.
 
 **Activar con:** `/model fable` o `claude --model claude-fable-5`
 
@@ -81,4 +83,5 @@ claude --model claude-fable-5
 | "¿Qué hace X?", "¿dónde está Y?" | Haiku |
 | Fix, test, feature, explicación, análisis de módulo | Sonnet |
 | "¿Debería rediseñar Z?", auditoría cuantitativa, incidente producción | Opus |
-| Tarea larga multi-dominio, sesión con mucho contexto | Fable |
+| Tarea larga multi-dominio, sesión con mucho contexto | Opus |
+| Máximo razonamiento: decisión irreversible, parámetros de riesgo, cifras publicables | Fable |

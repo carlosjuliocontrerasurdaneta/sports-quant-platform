@@ -48,11 +48,11 @@ def test_main_model_matches_the_authorized_policy():
     # routed to sonnet ("Prefer Sonnet for normal work"); only the interactive
     # settings.json model changed.
     #
-    # Que el defecto no sea el escalon mas capaz no contradice el principio
-    # rector: claude-fable-5 sigue siendo el techo y sigue siendo el destino de
-    # las tareas de maximo razonamiento por el disparador de escalado. Cambia el
-    # punto de partida, no el techo -- por eso la jerarquia de capacidad que
-    # afirma test_governing_principle_is_declared_and_takes_precedence NO cambia.
+    # claude-opus-5 es a la vez el defecto Y el techo: el 2026-08-30 el operador
+    # saco a claude-fable-5 de la jerarquia, asi que ya no hay un escalon por
+    # encima al que escalar. El principio rector sigue intacto -- "el modelo
+    # superior para lo que exige maximo razonamiento" -- y lo que cambio es cual
+    # es ese modelo superior.
     #
     # Este literal estuvo en rojo desde antes del 2026-08-29 porque el cambio se
     # aplico a settings.json y docs/MODEL-ROUTING.md pero no aqui ni a la
@@ -199,7 +199,27 @@ def test_governing_principle_is_declared_and_takes_precedence():
         assert fragment in policy, f"falta del principio rector: {fragment!r}"
     # La jerarquia de capacidad debe quedar explicita: sin ella "modelo superior"
     # es interpretable y el principio no es accionable.
-    assert "`claude-fable-5` > `claude-opus-5` > `sonnet` > `haiku`" in policy
+    #
+    # Son DOS afirmaciones distintas y el candado exige las dos, porque
+    # confundirlas es como se rompio esto el 2026-08-30:
+    #
+    # 1. La jerarquia de CAPACIDAD es un hecho de Anthropic, no una politica de
+    #    este proyecto. claude-fable-5 es el escalon mas alto y la documentacion
+    #    oficial lo dice ("for the highest available capability, use Claude
+    #    Fable 5"). Escribirla sin Fable seria afirmar algo falso.
+    # 2. El REPARTO operativo de este proyecto (decision del operador
+    #    2026-08-30): claude-opus-5 por defecto, claude-fable-5 reservado para
+    #    maxima capacidad de razonamiento. Punto de partida y techo son cosas
+    #    distintas -- empezar en Fable costaria el doble sin que la mayoria del
+    #    volumen lo necesite, y no tenerlo disponible dejaria el principio
+    #    rector sin destino al que escalar.
+    assert "`claude-fable-5` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
+    # El candado tiene dos lados: la jerarquia real y el reparto declarado. Sin
+    # el segundo, mover el defecto o el techo en la prosa no rompe nada y la
+    # politica vuelve a divergir en silencio -- que es el modo de fallo que este
+    # archivo entero existe para impedir.
+    assert "`claude-opus-5` es el modelo por defecto" in policy
+    assert "`claude-fable-5` se reserva para máxima capacidad de razonamiento" in policy
 
 
 def test_escalation_trigger_is_observable_and_not_self_assessed():
