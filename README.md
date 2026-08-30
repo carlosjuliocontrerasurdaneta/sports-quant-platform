@@ -28,11 +28,6 @@ por familia de deporte.
 - **Cuotas**: The Odds API (plan de pago) como proveedor principal. Claves solo por `.env`.
 
 
-
-
-
-
-
 ## Arquitectura
 
 ```
@@ -63,10 +58,6 @@ implícita del mercado (sin vig) ≠ edge estimado ≠ ROI esperado ≠ ROI real
 YAML por liga / defaults de código): ver [`docs/CONFIG-PRECEDENCE.md`](docs/CONFIG-PRECEDENCE.md).
 
 
-
-
-
-
 ## Instalación
 
 ```bash
@@ -75,15 +66,7 @@ cp .env.example .env       # poner ODDS_API_KEY para modo live
 pytest -q
 ```
 
-
-
-
 ## Ejecución
-
-
-
-
-
 
 
 ### Operación diaria (producción) — Windows / Programador de tareas
@@ -114,12 +97,6 @@ la inferencia ML no tiene ningún consumidor), `VALIDATE_OOS.bat` (validación O
 mensual de parámetros).
 
 
-
-
-
-
-
-
 ### Uso manual / demo (CLI)
 
 `scripts/run_daily.py` es una herramienta **manual ligera** (lista explícita de ligas,
@@ -142,11 +119,6 @@ El criterio de selección depende de `pick_mode` (ver la sección siguiente): en
 `edge` (el modo activo en producción desde 2026-07-31), candidatos con edge ≥
 mínimo y stake por Kelly fraccional con tope; en `accuracy`, moneyline con
 probabilidad de decisión ≥ umbral y stake plano.
-
-
-
-
-
 
 
 ## Modo precisión (`pick_mode: accuracy`) — disponible, NO activo (revertido 2026-07-31)
@@ -189,9 +161,6 @@ El KPI a vigilar es el `gap` = hit rate observado − prometido, por banda de
 probabilidad, en `data/bets/segment_diagnostics_latest.csv`.
 
 
-
-
-
 ## Subsistema ML (experimental, NO en producción)
 
 `src/sqp/features/`, `src/sqp/models/ml_train.py`, `ml_predict.py`, `blend.py` y los
@@ -201,21 +170,11 @@ un blend futuro**. Hoy **la generación de picks usa la ruta de simulación/Elo*
 alimenta la salida. Mantener o integrar es una decisión abierta.
 
 
-
-
-
-
-
 ## Skills especializadas
 
 `.claude/skills/` contiene una skill por familia (quant-baseball-mlb, quant-basketball,
 quant-american-football, quant-hockey-nhl, quant-soccer, quant-tennis) con las métricas,
 ajustes y riesgos específicos que guían la evolución de cada adaptador.
-
-
-
-
-
 
 
 ## Limitaciones (honestas)
@@ -234,36 +193,4 @@ ajustes y riesgos específicos que guían la evolución de cada adaptador.
 5. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
 6. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
    key numbers con cautela.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
