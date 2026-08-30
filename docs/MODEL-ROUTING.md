@@ -1,6 +1,6 @@
 # Selección de modelos Claude por complejidad de tarea
 
-Política activa del proyecto (`CLAUDE.md`): Fable 5 por defecto, Opus para arquitectura/auditoría/incidentes, Sonnet 5 para trabajo diario de ingeniería, Haiku para lookups acotados.
+Política activa del proyecto (`CLAUDE.md`): Opus 5 por defecto, Opus para arquitectura/auditoría/incidentes, Sonnet 5 para trabajo diario de ingeniería, Haiku para lookups acotados y Fable 5 para máxima capacidad de razonamiento.
 
 ---
 
