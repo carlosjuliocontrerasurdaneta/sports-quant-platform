@@ -1,63 +1,58 @@
 {
-  "audit_id": "audit-2026-08-04",
-  "started_utc": "2026-08-05T02:15:00Z",
-  "finished_utc": "2026-08-05T03:55:00Z",
-  "branch": "fix/claude-audit-20260804",
-  "base_commit": "2a293cb",
+  "audit_id": "audit-2026-08-30",
+  "started_utc": "2026-08-30T12:20:00Z",
+  "finished_utc": "2026-08-30T14:05:00Z",
+  "branch": "main",
+  "base_commit": "19b0635",
   "commit_created": false,
-  "python_version": "3.14.4",
+  "python_version": "3.14",
   "platform": "win32",
   "git_state_initial": {
-    "modified": 3,
-    "untracked": 1,
-    "note": "arbol ya modificado por una remediacion previa inconclusa: tests escritos en rojo sin el codigo de produccion que los verdea"
+    "modified": 7,
+    "untracked": 5,
+    "note": "arbol ya modificado al abrir: la reestructuracion de la skill full-audit del 2026-08-29 sin commitear, mas un cambio de politica de modelo aplicado a medias en settings.json y docs/MODEL-ROUTING.md que no introdujo esta sesion"
   },
   "git_state_final": {
-    "modified": 14,
-    "untracked": 1,
-    "note": "claude-loops-remediation-20260804.patch sigue untracked; ahora cubierto por *.patch en .gitignore"
+    "modified": 13,
+    "untracked": 5,
+    "note": "NOTAS.md y auditoria-integral-codex.md siguen untracked y no se tocaron"
   },
   "tests_initial": {
-    "passed": 612,
-    "failed": 5,
-    "total": 617,
-    "duration_s": 220.46,
-    "note": "contradice la afirmacion 'Suite completa verde' de Obsidian/Bitacora/2026-08-04.md"
+    "passed": 1375,
+    "failed": 3,
+    "skipped": 1,
+    "total": 1379,
+    "duration_s": 1851.08,
+    "note": "2 de los 3 fallos eran una regresion introducida el 2026-08-29 por .claude/loops/audit.md (A-1); el tercero es preexistente (I-1)"
   },
   "tests_final": {
-    "passed": 618,
-    "failed": 0,
-    "total": 618,
-    "duration_s": 85.14
+    "passed": 1377,
+    "failed": 1,
+    "skipped": 1,
+    "total": 1379,
+    "duration_s": 1381.05,
+    "note": "el unico fallo es I-1/KI-021, preexistente y sujeto a decision humana"
   },
   "commands_executed": [
     {
       "cmd": "git status --short",
-      "result": "14 modified, 1 untracked"
+      "result": "12 entradas al abrir"
     },
     {
-      "cmd": "python --version",
-      "result": "Python 3.14.4"
+      "cmd": "git show HEAD:.claude/settings.json",
+      "result": "claude-fable-5 en HEAD; el arbol tiene claude-opus-5"
     },
     {
-      "cmd": "python -m compileall -q src scripts",
-      "result": "OK"
+      "cmd": "pytest tests/ -q (linea base)",
+      "result": "3 failed, 1375 passed, 1 skipped"
     },
     {
-      "cmd": "pytest tests/ -q",
-      "result": "618 passed"
-    },
-    {
-      "cmd": "ruff check .",
+      "cmd": "ruff check src scripts tests",
       "result": "All checks passed!"
     },
     {
-      "cmd": "ruff format --check .",
-      "result": "192 files would be reformatted (no es estandar del proyecto; CI no lo ejecuta)"
-    },
-    {
       "cmd": "mypy src",
-      "result": "Success: no issues found in 89 source files"
+      "result": "Success: no issues found in 98 source files"
     },
     {
       "cmd": "pip check",
@@ -65,63 +60,79 @@
     },
     {
       "cmd": "scripts/health_check.py",
-      "result": "WARN (0 errors, 2 warnings)"
+      "result": "WARN (0 errors, 1 warning)"
     },
     {
-      "cmd": "git ls-files | wc -l",
-      "result": "443"
+      "cmd": "extraccion programatica de bloques '## Common guardrails'",
+      "result": "linea base: 2 bloques distintos, audit.md sin /verification-gate"
     },
     {
-      "cmd": "secret scan sobre archivos trackeados",
-      "result": "sin coincidencias reales"
+      "cmd": "pytest tests/test_claude_system_contract.py -q",
+      "result": "15 passed"
     },
     {
-      "cmd": "integridad referencial de model-routing.json",
-      "result": "24 rutas, 0 loops inexistentes, 0 agentes inexistentes"
+      "cmd": "extraccion programatica (tras el fix)",
+      "result": "1 bloque sobre 11 loops, 0 sin /verification-gate"
     },
     {
-      "cmd": "pip-audit -s osv -r requirements.lock",
-      "result": "No known vulnerabilities found"
+      "cmd": "pytest tests/ -q (final)",
+      "result": "1 failed, 1377 passed, 1 skipped"
+    },
+    {
+      "cmd": "barrido de secretos sobre archivos trackeados",
+      "result": "sin coincidencias; solo .env.example esta en git"
+    },
+    {
+      "cmd": "requests.get/post sin timeout en src y scripts",
+      "result": "cero coincidencias"
     }
   ],
-  "tools_unavailable": [],
-  "tools_not_run": [],
+  "tools_unavailable": [
+    "pip-audit"
+  ],
+  "tools_not_run": [
+    "validacion de los .bat operacionales",
+    "backtesting / walk-forward"
+  ],
   "findings_by_severity": {
-    "CRITICO": 1,
-    "ALTO": 2,
-    "MEDIO": 2,
-    "BAJO": 2,
-    "INFORMATIVO": 3
+    "CRITICO": 0,
+    "ALTO": 1,
+    "MEDIO": 1,
+    "BAJO": 1,
+    "INFORMATIVO": 2
   },
   "findings_by_status": {
-    "corregido": 5,
-    "parcial": 1,
+    "corregido": 2,
+    "no_corregido_por_falta_de_evidencia": 1,
     "requiere_decision_humana": 1,
-    "no_corregible_automaticamente": 2,
-    "no_confirmado": 1
+    "sin_accion_cambio_deliberado": 1
   },
   "files_modified": [
-    "src/sqp/config.py",
-    "src/sqp/monitoring/health.py",
-    "scripts/settle_all.py",
-    "tests/test_config.py",
-    "tests/test_orchestrator_safety.py",
-    "tests/test_health.py",
-    "tests/test_claude_model_routing.py",
-    ".claude/settings.json",
-    ".claude/automation/MODEL_ROUTING.md",
-    ".claude/memory/project-decisions.md",
-    ".gitignore",
-    "Obsidian/Bitacora/2026-08-04.md",
-    "Obsidian/Decisiones/Registro de decisiones.md",
-    "Obsidian/Tareas.md"
+    ".claude/loops/audit.md",
+    ".claude/skills/full-audit/references/taxonomy.md",
+    ".claude/memory/known-issues.md",
+    "audit/latest/EXECUTIVE_SUMMARY.md",
+    "audit/latest/FINDINGS.md",
+    "audit/latest/VALIDATION.md",
+    "audit/latest/CHANGES.md",
+    "audit/latest/QUANT_REVIEW.md",
+    "audit/latest/BACKLOG.md",
+    "audit/latest/MANIFEST.json",
+    ".claude/automation/runtime/current-task.md",
+    "Obsidian/Bitácora/2026-08-30.md",
+    ".claude/skills/full-audit/SKILL.md",
+    ".claude/skills/full-audit/references/phases.md",
+    ".claude/skills/full-audit/references/deliverables.md",
+    ".claude/skills/full-audit/references/project-anchors.md",
+    "audit/full-audit-SKILL-reemplazado-2026-08-30.md"
   ],
   "authorization_required_actions_taken": [],
   "risk_parameters_changed": false,
   "shadow_mode_changed": false,
   "models_promoted": false,
   "paid_api_used": false,
-  "final_result": "DONE",
-  "final_result_rationale": "Todas las validaciones ejecutables terminaron en verde y quedo evidencia reproducible. El unico WARN (54 filas servidas pendientes) es un backlog de datos que requiere decision humana por consumo de cuota, no un fallo de validacion critica.",
+  "coverage_result": "PARCIAL",
+  "final_result": "DEGRADED",
+  "final_result_rationale": "Los hallazgos confirmados se corrigieron y la correccion quedo verificada por prueba especifica, revalidacion independiente y suite completa (1375 -> 1377 aprobados, sin regresiones). El resultado no es PASS por dos limitaciones nombradas: la cobertura es PARCIAL (los gates de riesgo y el pipeline diario no recibieron lectura linea a linea) y persiste un fallo preexistente que exige decision humana (KI-021). Segun STATES.md, una limitacion no critica, acotada y registrada es DEGRADED, no PASS.",
   "predictive_edge_demonstrated": false
 }

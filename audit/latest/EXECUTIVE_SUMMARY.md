@@ -1,93 +1,73 @@
-# Resumen ejecutivo — Auditoría integral 2026-08-04
+# Resumen ejecutivo — Auditoría integral 2026-08-30
 
-Sustituye el contenido de `audit/latest/` de la auditoría del 2026-08-02
-(conservada en el historial git). Alcance: código, configuración, dependencias,
-seguridad, operación, documentación, `.claude`/Quant Loops. `data/`,
-`historical/`, `logs/` y `exports/` **no se escanearon** (regla permanente del
-proyecto); la dimensión de datos se auditó a nivel de código, esquemas y health
-check.
+Sustituye el contenido de `audit/latest/` de la auditoría del 2026-08-04, que
+era el último informe persistido pese a que entre medias hubo al menos una
+auditoría más (2026-08-29) que no dejó artefactos.
 
-Rama: `fix/claude-audit-20260804` · Commit base: `2a293cb` · Python 3.14.4 ·
-**Sin commit realizado.**
+## Alcance y método
 
-## Estado general: BUENO — con un fallo de proceso confirmado y recurrente
+Repositorio completo: 588 archivos trackeados, 275 módulos Python, 44.072 líneas.
+179 commits desde la última auditoría con informe. Fases 0–3 en solo lectura
+según la skill `full-audit`; fase 4 sólo tras la autorización explícita del
+operador para "los hallazgos confirmados".
 
-Las puertas técnicas quedan verdes y verificadas por ejecución real (no por
-documentación): 618 tests, ruff limpio, mypy limpio (89 archivos), `pip check`
-limpio, `compileall` limpio. El repositorio no versiona datos, artefactos ni
-secretos: 443 archivos trackeados, `.git` de 5.8 MB.
+**Resultado de cobertura: `PARCIAL`.** Se declara así, y no `COMPLETA`, porque
+los gates de riesgo y el pipeline diario no recibieron la lectura línea a línea
+que el procedimiento exige para marcar un área `REVISADA`. Inflar la cobertura
+habría sido el fallo más caro de esta auditoría.
 
-El hallazgo rector no es de código sino de proceso.
+## Estado del proyecto
 
-## Hallazgo principal: el estado se declaraba sin verificarlo
+El repositorio está en buena forma estructural. `ruff` limpio sobre `src`,
+`scripts` y `tests`; `mypy` sin incidencias en 98 archivos; `pip check` sin
+dependencias rotas; ningún secreto versionado; ninguna petición HTTP sin
+timeout; health check en `WARN` por una advertencia conocida y declarada no
+accionable.
 
-Al iniciar la sesión, la documentación del propio día (`Bitácora/2026-08-04.md`)
-afirmaba **"Suite completa verde"** y **"Ruff y Mypy: no ejecutados porque no
-están instalados en el entorno"**. Medición real:
+La defensa contra el fallo cuantitativo más grave que este proyecto ha sufrido
+—un calibrador colapsado sirviendo en producción— está construida, unificada en
+una sola definición y cableada en las tres puertas donde importa: promoción,
+tablero y registro live. Se verificó la cadena completa hasta el run diario.
 
-| Afirmación documentada | Realidad medida |
-|---|---|
-| Suite completa verde | **5 failed, 612 passed** |
-| Ruff y Mypy no instalados | **Instalados** (ruff 0.15.14, mypy 2.1.0) y limpios |
+## Hallazgos
 
-Es el tercer caso en tres días, junto con la deriva del `pick_mode` del 07-31
-detectada el 08-02. Agravante verificado: `current-task.md` cerró esa tarea con
-`Result: PASS` en violación de la regla explícita de su propio
-`STATES.md`: *"Si no puede determinarse a partir de un artefacto o de la salida
-de un comando, el resultado es BLOCKED, nunca PASS."*
+| ID | Severidad | Estado | Resultado |
+|---|---|---|---|
+| A-1 | ALTO | `REPRODUCIDO` | **Corregido y verificado** |
+| M-1 | MEDIO | `VERIFICADO_ESTATICAMENTE` | **Corregido** (causa raíz + documentación) |
+| B-1 | BAJO | `INFERIDO` | No corregido por decisión: sin evidencia observada |
+| I-1 | INFORMATIVO | `VERIFICADO_ESTATICAMENTE` | Requiere decisión humana |
+| I-2 | INFORMATIVO | `VERIFICADO_ESTATICAMENTE` | Sin acción: cambio deliberado |
 
-## Riesgo más grave corregido: C-2, fail-open del stack de riesgo
+El hallazgo con más consecuencia, **A-1, lo introduje yo el día anterior**. Al
+reestructurar la skill `full-audit` creé `.claude/loops/audit.md` con
+guardarraíles redactados a medida en lugar del bloque canónico, y no ejecuté la
+suite completa después. Dos tests de contrato llevaban un día en rojo. La
+lección no es sobre el archivo: es que la reestructuración se validó con los
+tests que parecían relevantes (`test_claude_model_routing.py`) en vez de con la
+suite, y el contrato que se rompió vivía en otro archivo.
 
-`Settings.load()` se saltaba en silencio toda la configuración si
-`configs/default.yaml` no se resolvía. Los defaults del dataclass son inseguros:
-`shadow_mode=False`, `clv_gate_enabled=False`, `max_plausible_edge=0.15` (el
-doble del 0.075 desplegado), `paused_markets={}`. El resultado habría sido
-apuestas reales sin capa de control y sin un solo warning.
+**M-1** es el motivo por el que ese día en rojo pudo pasar inadvertido: la
+auditoría del 2026-08-29 corrigió cinco hallazgos (`AUD-HIGH-001`,
+`AUD-MED-002`, `AUD-LOW-001/002/003`) sin dejar informe. Existen los arreglos en
+`git log`, no la evidencia ni la línea base. Este directorio es la corrección.
 
-Honestidad sobre la explotabilidad: **no estaba activo**. El paquete corre desde
-fuente, `ROOT` resuelve al repositorio y el YAML existe; el CI usa `pip install
--e` (editable), que preserva la ruta. El gatillo es un `pip install .` no
-editable, que `pyproject.toml` habilita al declarar `packages.find where=["src"]`.
-Latente, no vivo. Corregido: ahora lanza `FileNotFoundError`.
+## Riesgos pendientes
 
-## Mejoras realizadas (5 correcciones de código/config, todas con prueba)
+1. **La política de modelo está aplicada a medias** y deja la suite con un fallo
+   permanente. Es lo único que exige decisión del operador. Detalle en
+   `BACKLOG.md` D-1 y en `known-issues.md` KI-021.
+2. **Los gates de riesgo no se auditaron completos.** Con `shadow_mode: false`
+   el sistema dimensiona stakes reales, así que son el código con más
+   consecuencia directa sobre el capital. Primera prioridad de la próxima
+   auditoría (`BACKLOG.md` P-1).
+3. **`pip-audit` no se ejecutó** (no instalado; instalarlo es modificar
+   dependencias, prohibido en diagnóstico). La última corrida limpia fue hace
+   179 commits.
 
-1. `src/sqp/config.py` — fail-fast en `load()` (C-2).
-2. `scripts/settle_all.py` — el abort del día deja de dispararse por fallos
-   transitorios sin picks en riesgo; reporte de auditoría pasa a best-effort.
-3. `.claude/settings.json` + `MODEL_ROUTING.md` + registros — deriva del modelo
-   principal resuelta en `claude-opus-5` por decisión del operador.
-4. `src/sqp/monitoring/health.py` — un CSV ilegible se registra en vez de
-   confundirse con uno ausente.
-5. `.gitignore` — `*.patch` ignorado (había un parche residual sin trackear en
-   la raíz, en riesgo de commit accidental).
+## Lo que esta auditoría NO establece
 
-## Riesgos principales vigentes
-
-- **54 filas servidas sin liquidar fuera de la ventana de scores** (chile 42,
-  tennis_atp_canadian_open 12). Health check en WARN. Misma clase que M-01,
-  cerrado el 08-02: son instancias nuevas, así que el fallback desde
-  `data/historical/` no cubre estas ligas. Sesga la muestra por supervivencia.
-  Requiere decisión del operador (el settle consume cuota del API).
-- **Sin ventaja predictiva demostrada.** El gate de CLV sigue vacío; ningún
-  (liga, mercado) alcanza mediana positiva con n≥30. La calidad del software no
-  es validez predictiva.
-
-## Preparación
-
-- **Shadow: PREPARADO.** Ya opera así; la medición es completa (CLV con filtro
-  de frescura, monitor de degradación, diagnóstico por segmentos, breakeven por
-  cuota, observatorio intradía v2).
-- **Dinero real: NO PREPARADO.** Ningún mercado pasa el gate de salida. No se
-  modificó `shadow_mode`, bankroll, stakes ni límites de exposición.
-
-## Conclusión
-
-El repositorio queda en verde verificado por ejecución, con dos fallos reales
-corregidos (uno de ellos crítico latente) y con la brecha de proceso
-documentada. Ninguna de las correcciones aumenta la probabilidad de que el
-sistema gane dinero: son de seguridad, integridad y observabilidad. La ausencia
-de edge demostrado permanece intacta y es el hecho dominante del proyecto.
-
-No se realizó ninguna acción que requiriera autorización: sin commit, push,
-tag, deploy, consumo de API paga, promoción de modelos ni cambios de riesgo.
+No se midió hit rate observado frente a prometido, ni ROI esperado frente a
+realizado, ni CLV, ni calibración sobre datos nuevos. **No hay ventaja
+predictiva demostrada.** Una suite verde y un calibrador defendido significan
+que el sistema está sano como software, no que gane dinero.

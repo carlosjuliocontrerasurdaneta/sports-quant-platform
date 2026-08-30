@@ -1,107 +1,73 @@
-# Backlog — Auditoría 2026-08-04
+# Backlog — Auditoría 2026-08-30
 
 Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
-Esfuerzo: S (< 1 h) · M (1–4 h) · L (> 4 h).
 
 ## Requiere decisión humana
 
-### B-0 · Liquidar las 54 filas servidas pendientes
-- **Prioridad:** alta · **Esfuerzo:** S · **Riesgo:** bajo
-- **Dependencia:** cuota del API de The Odds API (el settle la consume).
-- chile 42, tennis_atp_canadian_open 12. Health check en WARN.
-- Es la misma clase que M-01 (cerrado el 08-02) pero son instancias nuevas: el
-  fallback desde `data/historical/` no las cubre. **No puedo confirmar** si es
-  falta de backfill o ausencia de vendor de resultados para esas ligas sin
-  ejecutar el backfill.
-- **Criterio de aceptación:** `scripts/health_check.py` → OK (0/0), o las filas
-  anuladas con flag explícito y la razón registrada.
-- **Decisión necesaria:** autorizar backfill (gratis) y settle (consume cuota).
+### D-1 · La política de modelo está aplicada a medias (I-1)
 
-### B-2 · Borrar `claude-loops-remediation-20260804.patch`
-- **Prioridad:** baja · **Esfuerzo:** S · **Riesgo:** bajo
-- Verificado residuo: `git apply --check` falla en todos los hunks porque ya
-  está aplicado; su contenido está en el commit `2a293cb`.
-- **No lo borré**: es untracked, por tanto irrecuperable con git, y no lo creé.
-  Mitigado añadiendo `*.patch` a `.gitignore`.
-- **Decisión necesaria:** confirmar el borrado.
+El árbol de trabajo declara Opus 5 en `.claude/settings.json` y en
+`docs/MODEL-ROUTING.md`, mientras `.claude/automation/MODEL_ROUTING.md` y el
+literal de `tests/test_claude_model_routing.py:49` siguen en `claude-fable-5`.
+El candado de tres puntas está haciendo su trabajo: la suite falla.
 
-### B-9 · Commit de esta auditoría
-- **Prioridad:** alta · **Esfuerzo:** S
-- 14 archivos modificados + los 7 entregables regenerados. Sin autorización de
-  commit vigente.
-- **Decisión necesaria:** autorizar `git commit` (y si procede, push).
+Hay que decidir cuál es la política real y aplicarla a las cuatro puntas a la
+vez. No lo cierro yo porque ese test existe justamente para que el cambio de
+modelo principal sea un acto deliberado del operador, y cerrarlo desde dentro lo
+convertiría en trámite.
 
-## Alta prioridad
+Coste de no decidir: la suite queda en rojo permanente, y una suite que siempre
+tiene un fallo conocido es una suite que se deja de mirar.
 
-### B-1 · Control automático que impida declarar un resultado sin evidencia
-- **Prioridad:** alta · **Esfuerzo:** M · **Riesgo:** bajo
-- **Causa que lo motiva:** tres afirmaciones falsas de estado en tres días
-  (`pick_mode` 07-31 sin documentar, "suite verde" y "ruff/mypy no instalados"
-  el 08-04). `current-task.md` cerró en `PASS` violando la regla explícita de
-  `STATES.md`. La regla existe; nada la hace cumplir.
-- **Propuesta:** un test o hook que valide `current-task.md` cuando
-  `Result: PASS` — exigir al menos un comando con su código de salida y una ruta
-  de artefacto, según los 8 puntos del "Registro de evidencia" de `STATES.md`.
-- **Criterio de aceptación:** un `current-task.md` con `Result: PASS` y sin
-  bloque de comandos ejecutados hace fallar la suite.
-- **Por qué no se hizo ahora:** es una funcionalidad nueva, no una corrección;
-  merece diseño propio y no debe mezclarse con las correcciones de esta pasada.
+## Cobertura pendiente (primera prioridad de la próxima auditoría)
 
-## Media prioridad
+### P-1 · Gates de riesgo sin revisión línea a línea
 
-### B-3 · Deduplicar "Reglas comunes" de los 14 loops
-- **Prioridad:** media · **Esfuerzo:** M · **Riesgo:** medio
-- Bloque idéntico repetido en 14 archivos; cambiar una regla exige 14 ediciones
-  coherentes.
-- **Propuesta:** extraer a `.claude/loops/COMMON_RULES.md` y que cada loop lo
-  referencie, igual que ya hacen con `STATES.md`.
-- **Por qué no se hizo ahora:** los 14 archivos se remediaron el mismo día
-  (`2a293cb`); reescribirlos horas después es churn de alto riesgo. Conviene
-  dejar asentada la remediación anterior.
+`src/sqp/risk/prediction_gate.py`, `clv_gate.py`, `degradation.py`, `kelly.py` y
+`bankroll.py` quedaron `PARCIAL`. Con `shadow_mode: false` el sistema dimensiona
+stakes reales, así que son el código con más consecuencia directa sobre el
+capital y deben ser lo primero que se audite completo.
 
-### B-4 · Completar la estructura de los loops
-- **Prioridad:** media · **Esfuerzo:** L · **Riesgo:** bajo
-- Falta en todos: **inputs explícitos**, **artefactos producidos** y
-  **transición al siguiente loop**. Lo demás (propósito, precondiciones vía
-  criterio previo, comandos, validaciones, estados, evidencia, stop conditions,
-  acciones que requieren aprobación) ya está.
-- **Criterio de aceptación:** cada loop declara qué lee, qué escribe y a qué
-  loop entrega.
-- **Dependencia:** hacerlo después de B-3, para no editar dos veces.
+### P-2 · Pipeline diario, settlement, features, providers y storage
 
-### B-5 · Guard de cuotas degeneradas `price_decimal = 1.0`
-- **Prioridad:** media · **Esfuerzo:** S · **Riesgo:** bajo
-- Heredado de la auditoría 07-24. Snapshots históricos con precio 1.0 (visibles
-  por los warnings de vig M-16). Decidir si el guard va en ingestión
-  (`odds_api._parse_events`) o en lectura (`load_closing_odds`).
-- **Criterio de aceptación:** líneas con precio ≤ 1.0 descartadas con log, y un
-  test que lo demuestre.
+`PARCIAL`. Los hotspots por `git log` desde la última auditoría persistida son
+`audit/html_report.py` (21 commits), `pipeline/daily.py` (19),
+`configs/default.yaml` (17), `config.py` (16), `calibration/calibrator.py` (9),
+`features/rest_form.py` (8) y `scripts/daily_picks.py` (8). Empezar por ahí.
 
-## Baja prioridad
+### P-3 · Divergencia efectiva `.env` ↔ YAML no verificada
 
-### B-6 · `ruff format` como estándar del proyecto
-- **Prioridad:** baja · **Esfuerzo:** S (aplicar) · **Riesgo:** medio (diff masivo)
-- `ruff format --check .` reformatearía 192 de 209 archivos. El CI no lo
-  ejecuta, así que hoy no es un estándar.
-- **Decisión necesaria:** o se adopta (y entonces se aplica en un commit propio
-  aislado, y se añade al CI), o se documenta explícitamente que no se usa.
-  El estado actual —herramienta disponible, no adoptada, no documentada— es el
-  peor de los tres.
+Existe el mecanismo (`_warn_risk_divergence`, `config.py:68`) pero no se
+comprobó su salida real, porque `.env` no es legible bajo la política de
+permisos. Cerrarlo requiere ejecutar una carga de configuración que reporte
+divergencias sin exponer valores.
 
-### B-7 · `pip-audit` local
-- **Prioridad:** baja · **Esfuerzo:** S · **Riesgo:** bajo
-- El CI lo ejecuta de forma bloqueante contra `requirements.lock`; localmente no
-  se ejecutó en esta pasada. No puedo confirmar el estado de vulnerabilidades
-  desde esta sesión.
+### P-4 · Backtesting y walk-forward
 
-### B-8 · Perf: `load_closing_odds` concatena todos los meses
-- **Prioridad:** baja · **Esfuerzo:** M · **Riesgo:** bajo
-- Heredado de la auditoría 07-12. Filtrar por rango de meses relevante cuando el
-  histórico crezca.
+`COBERTURA_NO_VERIFICABLE` en esta auditoría. Requiere corridas largas.
 
-## Fuera del alcance del repositorio
+### P-5 · Scripts `.bat` sin validación
 
-- **Verificar las 6 tareas del Task Scheduler de Windows.** No puedo confirmarlo
-  desde el repositorio; requiere inspección del sistema operativo.
-- **Auditar el contenido de `data/`, `historical/`, `logs/`, `exports/`.**
-  Bloqueado por regla permanente del proyecto y por permisos `deny`.
+Ocho `.bat` operacionales en la raíz. Ni `ruff`, ni `mypy`, ni `pytest` los
+cubren, y `RUN_DIARIO_ALL.bat` orquesta el run de producción. No existe
+comprobación automática de que su encadenamiento siga siendo correcto.
+
+### P-6 · `pip-audit` no ejecutado
+
+No está instalado en este entorno. Instalarlo sería modificar dependencias, que
+la fase de diagnóstico prohíbe. La auditoría del 2026-08-04 sí lo corrió
+("No known vulnerabilities found"), pero eso fue hace 179 commits.
+
+## No accionable, en seguimiento
+
+### B-1 · Revalidación del registro live con historial vacío
+
+`INFERIDO`, confianza BAJA. Ver `FINDINGS.md`. No se corrige por falta de
+evidencia observada.
+
+### 152 filas servidas irrecuperables
+
+Acumulado histórico fuera de la ventana de scores del proveedor. El propio
+health check lo declara no accionable y lo registra para seguimiento. Cerrarlo
+exigiría backfill con consumo de cuota de API, que es una acción sujeta a
+aprobación.
