@@ -1,55 +1,92 @@
-# Archivos modificados — Auditoría 2026-08-04
+# Archivos modificados — Auditoría 2026-08-30
 
 Sin commit (pendiente de autorización). Estado exacto: `git status --short`.
-14 archivos modificados, 296 inserciones, 91 supresiones.
 
-## Código de producción
+## Corregido
 
-| Archivo | Cambio | Por qué |
-|---|---|---|
-| `src/sqp/config.py` | `load()` lanza `FileNotFoundError` si falta `configs/default.yaml`; el bloque de carga queda desanidado | C-2: el `if cfg_path.exists():` silencioso desarmaba `shadow_mode`, el gate de CLV, las pausas y duplicaba `max_plausible_edge`. El diff es grande pero mecánico: 3 líneas de lógica, el resto es dedent |
-| `scripts/settle_all.py` | Importa `unsettled_completed_picks`; aborta solo con picks en riesgo; `settlement_audit_report()` pasa a best-effort | M-1: un 5xx o cuota agotada en una liga sin nada en riesgo costaba un día completo de evidencia. `run_all.py` ya aplica el guard M2 por liga |
-| `src/sqp/monitoring/health.py` | `_rows` registra un WARNING cuando el CSV existe pero no se puede leer | B-1: "nunca ingerido" e "ingerido y ahora corrupto" eran indistinguibles en el reporte |
+### A-1 · `.claude/loops/audit.md`
 
-## Pruebas
+Cambio: se restauró bajo `## Common guardrails` el bloque canónico literal de 5
+viñetas que comparten los otros 10 loops, se movieron las restricciones
+específicas del diagnóstico a una sección propia (`## Restricciones propias del
+diagnóstico`), y se añadió `8. Finish through /verification-gate.` como paso de
+cierre.
 
-| Archivo | Cambio |
+La sección propia es necesaria porque el contrato exige identidad byte a byte
+del bloque canónico, y ese bloque incluye "Prefer the smallest reversible
+change", que en un loop de solo lectura podría leerse como permiso para cambiar
+algo. La sección nueva lo desambigua explícitamente: durante el diagnóstico el
+cambio correcto es ninguno.
+
+Verificación: `pytest tests/test_claude_system_contract.py -q` → 15 passed
+(código 0), y extracción programática → 1 bloque distinto sobre 11 loops, 0
+archivos sin `/verification-gate`.
+
+### M-1 (parte documental) · `.claude/skills/full-audit/references/taxonomy.md`
+
+Cambio: se añadió la tabla de equivalencia entre el esquema histórico
+`AUD-<NIVEL>-NNN` (usado por la auditoría del 2026-08-29, que no persistió
+informe) y el esquema vigente `C/A/M/B`, más la regla de que un ID citado en un
+commit debe poder resolverse contra un informe.
+
+La otra mitad de M-1 —la ausencia de informe— se corrige por construcción: este
+directorio `audit/latest/` es el artefacto que faltaba.
+
+## Efecto del hook de formato
+
+Ninguno. El hook `PostToolUse` ejecuta `ruff check --fix`, que sólo actúa sobre
+Python; los dos archivos modificados son Markdown. El diff es exactamente el
+parche, sin autofixes añadidos.
+
+## Lo que se decidió NO tocar
+
+| Qué | Por qué |
 |---|---|
-| `tests/test_config.py` | +1 test: config ausente debe fallar rápido en vez de desarmar el riesgo |
-| `tests/test_orchestrator_safety.py` | +3 tests: abort con picks en riesgo, no-abort transitorio, reporte best-effort |
-| `tests/test_health.py` | +1 test: un CSV ilegible se registra, no se confunde con uno ausente |
-| `tests/test_claude_model_routing.py` | Literal del modelo principal → `claude-opus-5`; test renombrado a `test_main_model_matches_the_authorized_policy`; retirada la aserción obsoleta `"Fable no se usa" not in policy` |
+| `B-1` (revalidación del registro live con historial vacío) | `INFERIDO`, confianza BAJA, no observado. La instrucción era aplicar sólo mejoras sustentadas por evidencia de la auditoría; ésta se sostiene en lectura del flujo de control, no en un caso reproducido. |
+| `I-1` / `.claude/settings.json`, `.claude/automation/MODEL_ROUTING.md`, el literal de `test_claude_model_routing.py` | El árbol contiene un cambio deliberado a medias: `settings.json` y `docs/MODEL-ROUTING.md` ya declaran Opus 5, el literal del test y `MODEL_ROUTING.md` siguen en Fable 5. Completarlo exige decidir cuál es la política real, que es una decisión del operador. El test es un candado de coste que existe para forzar esa decisión; cerrarlo yo lo anularía. |
+| `README.md`, `docs/MODEL-ROUTING.md` | Modificaciones preexistentes en el árbol al abrir esta auditoría, ajenas a ella. Regla 2: preservar el estado existente. |
+| `NOTAS.md`, `auditoria-integral-codex.md` | Untracked y ajenos al alcance. No se tocan ni se borran. |
+| Parámetros de riesgo, `shadow_mode`, `pick_mode`, promoción de modelos | Exigen aprobación humana separada. Ningún hallazgo la requería. |
 
-Nota: los tests de `test_config.py` y `test_orchestrator_safety.py` ya existían
-en el árbol de trabajo al iniciar la sesión, escritos en rojo por una
-remediación anterior que nunca implementó el código de producción. Esta
-auditoría escribió el código que los pone en verde.
+## Incidente y restauración (posterior a la corrección)
 
-## Configuración y política
+Al revisar el diff final se detectó que `.claude/skills/full-audit/` había
+cambiado durante la sesión sin intervención de esta auditoría:
 
-| Archivo | Cambio |
-|---|---|
-| `.claude/settings.json` | `model` → `claude-opus-5` (preexistente al iniciar la sesión; ratificado por el operador) |
-| `.claude/automation/MODEL_ROUTING.md` | Modelo principal autorizado → `claude-opus-5`, con la razón y la referencia al riesgo declarado de Fable 5 |
-| `.claude/memory/project-decisions.md` | Entrada de la decisión que supersede; la entrada anterior queda marcada como SUPERSEDIDA (no se reescribe el historial) |
-| `.gitignore` | `*.patch` ignorado (B-2) |
+- **09:00:54** — `SKILL.md` reemplazado por una versión de 713 líneas (monolito
+  con fases 0–5, sin mención de `audit-remediation` ni de `audit/latest/`, y con
+  el frontmatter mal formado: la línea 5 cerraba con 633 guiones en vez de `---`).
+- **09:36:41** — el directorio `references/` borrado. Era untracked, así que git
+  no podía recuperarlo.
 
-## Documentación
+Esto dejaba el sistema incoherente: `model-routing.json` manda `full-audit` a
+`audit.md`, que delega en `audit-remediation`, pero el `SKILL.md` instalado no
+conocía ninguno de los dos.
 
-| Archivo | Cambio |
-|---|---|
-| `Obsidian/Bitácora/2026-08-04.md` | Sección nueva con las salidas reales medidas; se conserva el texto original erróneo para que la corrección sea auditable |
-| `Obsidian/Decisiones/Registro de decisiones.md` | Modelo principal actualizado con la revisión del mismo día |
-| `Obsidian/Tareas.md` | Tarea nueva por las 54 filas servidas pendientes |
-| `audit/latest/*` | Los 7 entregables regenerados (el contenido del 08-02 queda en el historial git) |
+Carlos decidió restaurar la versión reestructurada. Antes de sobrescribir, la
+versión de 713 líneas —sin commitear, por tanto irrecuperable— se preservó en
+`audit/full-audit-SKILL-reemplazado-2026-08-30.md`.
 
-## No modificado deliberadamente
+Restaurados desde el contenido de la sesión: `SKILL.md` (91 líneas) y los cuatro
+archivos de `references/`. Verificado: frontmatter válido en ambas skills, todas
+las referencias con ruta resuelven, y
+`pytest tests/test_claude_system_contract.py tests/test_claude_model_routing.py -q`
+→ 26 passed, 1 failed (sólo el preexistente I-1/KI-021).
 
-- **192 archivos que `ruff format` reformatearía** (I-1): el CI no ejecuta
-  `ruff format`; sería un refactor cosmético masivo sin beneficio verificable.
-- **`claude-loops-remediation-20260804.patch`**: no borrado. Es untracked, por
-  tanto irrecuperable, y no fue creado en esta sesión.
-- **Los 14 loops con "Reglas comunes" duplicado** (I-2/I-3): remediados hace
-  horas; reescribirlos hoy es churn de alto riesgo. Ver `BACKLOG.md`.
-- **Nada de riesgo:** `shadow_mode`, `pick_mode`, bankroll, stakes, límites de
-  exposición, calibradores y modelos quedan exactamente como estaban.
+### Mejoras incorporadas en la restauración
+
+Tres, todas sustentadas por evidencia de esta misma auditoría y no por
+preferencia:
+
+1. `references/phases.md`, Fase 2: regla nueva de que una búsqueda que no
+   encuentra algo no es evidencia de que no exista, con la instrucción de
+   repetirla sin filtros —incluida la exclusión del módulo que define el
+   símbolo— antes de reportar código muerto. Origen: el falso positivo `ALTO`
+   sobre `revalidate_live_registry()` documentado en `FINDINGS.md`.
+2. `references/deliverables.md`: prohibición explícita de escribir en
+   `VALIDATION.md` o `MANIFEST.json` el resultado de un comando que aún corre.
+   Origen: en esta auditoría escribí "1 failed, 1377 passed" mientras la suite
+   seguía en ejecución y tuve que corregirlo a `NO_EJECUTADA`.
+3. `references/project-anchors.md`: entrada para
+   `tests/test_claude_system_contract.py` y `tests/test_claude_model_routing.py`
+   como lectura obligada antes de tocar `.claude/`. Origen: `A-1`.

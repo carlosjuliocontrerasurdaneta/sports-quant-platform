@@ -42,11 +42,23 @@ def test_main_model_matches_the_authorized_policy():
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
-    # Main conversation model: claude-fable-5 by explicit human decision 2026-08-24
-    # (supersedes sonnet 2026-08-18). Separate from the ROUTE default below, which
-    # stays sonnet -- normal work is routed to sonnet ("Prefer Sonnet for normal
-    # work"); only the interactive settings.json model changed.
-    assert settings["model"] == "claude-fable-5"
+    # Main conversation model: claude-opus-5 by explicit human decision 2026-08-30
+    # (supersedes claude-fable-5 2026-08-24, que superseduo a sonnet 2026-08-18).
+    # Separate from the ROUTE default below, which stays sonnet -- normal work is
+    # routed to sonnet ("Prefer Sonnet for normal work"); only the interactive
+    # settings.json model changed.
+    #
+    # Que el defecto no sea el escalon mas capaz no contradice el principio
+    # rector: claude-fable-5 sigue siendo el techo y sigue siendo el destino de
+    # las tareas de maximo razonamiento por el disparador de escalado. Cambia el
+    # punto de partida, no el techo -- por eso la jerarquia de capacidad que
+    # afirma test_governing_principle_is_declared_and_takes_precedence NO cambia.
+    #
+    # Este literal estuvo en rojo desde antes del 2026-08-29 porque el cambio se
+    # aplico a settings.json y docs/MODEL-ROUTING.md pero no aqui ni a la
+    # politica (KI-021). El candado hizo exactamente lo que debia: sostener el
+    # fallo hasta que un humano decidiera. Cerrado el 2026-08-30.
+    assert settings["model"] == "claude-opus-5"
     assert CONFIG["default"]["model"] == "sonnet"
 
     # RUTAS: sonnet es la norma; opus y haiku son las excepciones declaradas.
@@ -74,7 +86,7 @@ def test_main_model_matches_the_authorized_policy():
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
         encoding="utf-8"
     )
-    assert "**Conversación principal:** `claude-fable-5`" in policy
+    assert "**Conversación principal:** `claude-opus-5`" in policy
 
 
 def test_every_route_references_an_existing_loop_and_agents():

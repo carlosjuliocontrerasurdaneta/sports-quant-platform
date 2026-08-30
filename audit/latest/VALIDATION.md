@@ -1,150 +1,67 @@
-# Validación — Auditoría 2026-08-04
+# Validación — Auditoría 2026-08-30
 
-Todos los comandos se ejecutaron realmente; las salidas se transcriben de la
-terminal. Esta sección existe porque el hallazgo A-1 de esta misma auditoría es
-que el estado se declaraba sin medirlo.
+Códigos de salida reales. Ningún resultado se declara sin haberlo ejecutado.
 
-Entorno: Windows 11, Python 3.14.4, rama `fix/claude-audit-20260804`, commit
-base `2a293cb`.
+## Matriz de cobertura
 
-## Línea base
-
-La sesión encontró el árbol de trabajo ya modificado por una remediación previa
-inconclusa. Se registran las dos lecturas para no ocultar el punto de partida.
-
-### Al abrir la sesión (antes de cualquier cambio propio)
-
-```
-$ PYTHONPATH=src pytest tests/ -q
-5 failed, 612 passed in 220.46s (0:03:40)
-
-FAILED tests/test_claude_model_routing.py::test_fable_5_is_authorized_as_the_main_model_only
-FAILED tests/test_config.py::test_missing_config_file_fails_fast_instead_of_disarming_risk
-FAILED tests/test_orchestrator_safety.py::test_settlement_failure_with_picks_at_risk_aborts_the_day
-FAILED tests/test_orchestrator_safety.py::test_transient_settlement_failure_does_not_abort_the_day
-FAILED tests/test_orchestrator_safety.py::test_audit_report_failure_is_best_effort
-```
-
-Contradice directamente `Obsidian/Bitácora/2026-08-04.md`, que afirmaba "Suite
-completa verde".
-
-```
-$ python -m ruff --version
-ruff 0.15.14
-$ python -m mypy --version
-mypy 2.1.0 (compiled: yes)
-```
-
-Contradice directamente la afirmación "Ruff y Mypy: no ejecutados porque no
-están instalados en el entorno". **Ninguna herramienta faltó**: no hubo que
-instalar nada.
-
-### Tras corregir los 5 fallos, antes de las correcciones de esta auditoría
-
-```
-$ python --version
-Python 3.14.4
-$ python -m compileall -q src scripts
-OK
-$ python -m pip check
-No broken requirements found.
-$ python -m ruff format --check .
-192 files would be reformatted, 17 files already formatted
-$ PYTHONPATH=src pytest tests/ -q
-617 passed in 103.51s
-$ python -m ruff check .
-All checks passed!
-$ python -m mypy src
-Success: no issues found in 89 source files
-$ PYTHONPATH=src python scripts/health_check.py
-Pipeline health: WARN (0 errors, 2 warnings)
-```
-
-## Estado final
-
-```
-$ python -m compileall -q src scripts
-OK
-
-$ PYTHONPATH=src pytest tests/ -q
-618 passed in 85.14s (0:01:25)
-
-$ python -m ruff check .
-All checks passed!
-
-$ python -m mypy src
-Success: no issues found in 89 source files
-
-$ python -m pip check
-No broken requirements found.
-
-$ PYTHONPATH=src python scripts/health_check.py
-Health report: WARN (0 errors, 2 warnings)
-Pipeline health: WARN
-  mlb  results=8971 features=8971 moneyline_model=True calibration=True
-  nba  results=34065 features=34065 moneyline_model=True calibration=False
-  nfl  results=7964 features=7964 moneyline_model=True calibration=False
-  nhl  results=32837 features=32837 moneyline_model=True calibration=False
-  [WARN] chile: 42 served row(s) pending beyond the scores window
-  [WARN] tennis_atp_canadian_open: 12 served row(s) pending beyond the scores window
-```
-
-## Comparación línea base → final
-
-| Verificación | Al abrir | Final | Δ |
+| Área | Estado | Método | Limitación |
 |---|---|---|---|
-| pytest | 5 failed / 612 passed | **618 passed / 0 failed** | +6 tests, 5 fallos resueltos |
-| ruff check | no ejecutado (declarado imposible) | **All checks passed!** | verificado |
-| mypy | no ejecutado (declarado imposible) | **89 archivos, sin issues** | verificado |
-| compileall | no registrado | OK | verificado |
-| pip check | no registrado | No broken requirements | verificado |
-| health check | no registrado | WARN (0 errors, 2 warnings) | ver M-2 |
-| ruff format --check | no registrado | 192 reformatearía | I-1, no es estándar del proyecto |
+| Contratos de `.claude` (loops, routing, skills) | `REVISADA` | Lectura completa + los 15 tests de `test_claude_system_contract.py` + extracción programática de los bloques de guardarraíles | — |
+| Calibración (camino de servicio) | `REVISADA` | Lectura de `calibrator.py` (criterio estructural, `revalidate_live_registry`, `promote_calibrators`) + trazado de la cadena del run diario | Sin ejecución del pipeline real: no se consumió cuota de API |
+| Cuotas y edge | `REVISADA` | Lectura de `markets/odds.py`, `markets/edge.py` y de todos los consumidores de `is_usable_price` | — |
+| Seguridad (secretos, timeouts, `.env`) | `REVISADA` | Barrido sobre archivos trackeados + verificación de `requests.get/post` sin `timeout` | — |
+| Dependencias | `REVISADA` | `pip check` | `pip-audit` `NO_EJECUTADA` (no instalado en este entorno) |
+| Calidad estática de `src`, `scripts`, `tests` | `REVISADA` | `ruff check`, `mypy src` | — |
+| Suite de pruebas | `REVISADA` | `pytest tests/ -q` completo, antes y después | 30:51 por ejecución |
+| Configuración de riesgo | `PARCIAL` | Lectura de `configs/default.yaml` y de la detección de divergencia en `config.py` | `.env` no es legible por política de permisos: la divergencia efectiva `.env`↔YAML no se verificó, sólo la existencia del mecanismo que la vigila |
+| Gates de riesgo (`prediction_gate`, `clv_gate`, `degradation`, `kelly`, `bankroll`) | `PARCIAL` | Inventario de rutas y parámetros; sin auditoría línea a línea | Presupuesto de contexto agotado antes de la revisión completa |
+| Pipeline diario, settlement, features, providers, storage, deportes | `PARCIAL` | Trazado de las rutas tocadas por los hallazgos; hotspots identificados por `git log` | No se auditó línea a línea |
+| Backtesting y walk-forward | `COBERTURA_NO_VERIFICABLE` | — | No ejecutado: requiere corridas largas y datos que no se cargaron |
+| `data/`, `logs/`, `historical/`, `exports/` | `EXCLUIDA` | — | Prohibido por `CLAUDE.md` y por el `deny` de `settings.json` |
 
-## Verificaciones específicas de auditoría
+**Resultado de cobertura: `PARCIAL`.** Las áreas de dinero/probabilidad no se
+revisaron con la lectura completa que exige `references/phases.md` para
+declarar `REVISADA`. Se declara `PARCIAL` en vez de inflar la cobertura.
 
-```
-$ git ls-files | wc -l
-443
-$ git ls-files | grep -iE '\.(pyc|pkl|joblib|log|csv|parquet|zip|env|db)$|^data/|^logs/'
-data/bets/.gitkeep
-data/processed/.gitkeep
-$ du -sh .git
-5.8M
-```
+## Comandos ejecutados
 
-Barrido de secretos sobre los 443 archivos trackeados (patrones
-api_key/secret/token/password con valores ≥16 caracteres, y cadenas base64/hex
-≥32): sin coincidencias reales. El único match es
-`audit/latest/MANIFEST.json:6`, que es un hash de commit git.
+| Comando | Propósito | Resultado | Código | Clasificación |
+|---|---|---|---|---|
+| `pytest tests/ -q` (línea base) | Estado antes de corregir | 3 failed, 1375 passed, 1 skipped (1851 s) | 1 | `FALLO` |
+| `ruff check src scripts tests` | Lint | All checks passed! | 0 | `PASO` |
+| `mypy src` | Tipos | no issues found in 98 source files | 0 | `PASO` |
+| `pip check` | Coherencia de dependencias | No broken requirements found. | 0 | `PASO` |
+| `scripts/health_check.py` | Salud operativa | WARN (0 errors, 1 warning) | 0 | `PASO` |
+| `git show HEAD:.claude/settings.json` | Atribuir el fallo del modelo | `claude-fable-5` en HEAD | 0 | `PASO` |
+| Extracción de bloques `## Common guardrails` (línea base) | Confirmar A-1 por segundo método | 2 bloques distintos; `audit.md` sin `/verification-gate` | 0 | `FALLO` |
+| `pytest tests/test_claude_system_contract.py -q` (tras el fix) | Prueba específica de A-1 | 15 passed | 0 | `PASO` |
+| Extracción de bloques (tras el fix) | Revalidación independiente de A-1 | 1 bloque sobre 11 loops; ninguno sin gate | 0 | `PASO` |
+| `ruff check src scripts tests` (tras el fix) | Regresión estática | All checks passed! | 0 | `PASO` |
+| `mypy src` (tras el fix) | Regresión de tipos | no issues found in 98 source files | 0 | `PASO` |
+| `pytest tests/ -q` (final) | Regresión completa | 1 failed, 1377 passed, 1 skipped (1381 s) | 1 | `FALLO_PREEXISTENTE` |
+| `pytest tests/ -q` (tras cerrar KI-021) | Confirmar verde total | **1378 passed, 1 skipped** (910 s) | 0 | `PASO` |
+| `pip-audit` | Vulnerabilidades conocidas | no instalado en el entorno | — | `NO_EJECUTADA` |
+| Validación de los `.bat` operacionales | Scripts no Python | no cubierta por ruff/mypy/pytest | — | `NO_EJECUTADA` |
 
-```
-$ python (integridad referencial de .claude/automation/model-routing.json)
-rutas totales: 24
-loops inexistentes: ninguno
-agentes referenciados inexistentes: ninguno
-```
+## Separación de fallos
 
-## Herramientas no disponibles
+- **Regresión introducida y corregida:** los 2 fallos de
+  `test_claude_system_contract.py` (A-1). Introducidos el 2026-08-29, detectados
+  y corregidos en esta auditoría. Verificado por la prueba específica (15 passed,
+  código 0), por la revalidación independiente y por la suite completa:
+  1375 → 1377 aprobados, 3 → 1 fallos. Ninguna regresión nueva.
+- **Fallo preexistente, ya cerrado:**
+  `test_main_model_matches_the_authorized_policy` (I-1 / KI-021). No era
+  atribuible a esta auditoría. El operador decidió Opus 5 en las cuatro puntas el
+  2026-08-30 y la suite quedó completamente verde: **1378 passed, 0 fallos**.
 
-Ninguna. `pytest`, `ruff`, `mypy`, `pip` y `python` estaban todos instalados y
-se ejecutaron.
+## Efectos secundarios
 
-`pip-audit` se instaló y ejecutó (2026-08-05), cerrando la brecha que esta
-auditoría había declarado abierta:
+`pytest` escribe `__pycache__/` y `.pytest_cache/`, ambos ignorados por git.
+`git status` antes y después no muestra ningún archivo inesperado.
 
-```
-$ python -m pip_audit -s osv -r requirements.lock
-No known vulnerabilities found
-```
-
-Nota: contra el servicio por defecto (PyPI) la consulta agota el tiempo de
-lectura en este entorno; con `-s osv` (base de datos OSV) completa. El CI usa el
-servicio por defecto y lo ejecuta de forma bloqueante en cada push.
-
-## No verificado
-
-- Tareas del Task Scheduler de Windows: fuera del alcance del repositorio.
-- Contenido de `data/`, `historical/`, `logs/`, `exports/`: regla permanente del
-  proyecto.
-- Ejecución real del pipeline diario (consume cuota del API de odds).
+El hook `post-edit-format.sh` (`ruff check --fix`) no actuó en la corrección de
+A-1 y M-1, cuyos dos archivos son Markdown. Sí se disparó al cerrar KI-021, que
+tocó `tests/test_claude_model_routing.py`. Revisado el diff de ese archivo: 18
+inserciones y 6 eliminaciones, de las cuales **sólo dos son lógica** —los dos
+`assert` del modelo— y el resto comentarios. El hook no alteró el parche.

@@ -104,12 +104,23 @@ propia), jamás un argumento de autoridad sobre el fondo.
 
 ## Política autorizada
 
-- **Conversación principal:** `claude-fable-5`, por decisión humana explícita del
-  2026-08-24. Supersede a `sonnet` (2026-08-18), que había superseduo a
-  `claude-opus-5` (2026-08-04) y este a `claude-fable-5` ese mismo día. Afecta solo
-  al modelo interactivo de `settings.json`; el escalón de las rutas sigue en
-  `sonnet` para el trabajo normal (abajo). El hook no debe afirmar que cambia este
-  modelo.
+- **Conversación principal:** `claude-opus-5`, por decisión humana explícita del
+  2026-08-30. Supersede a `claude-fable-5` (2026-08-24), que había superseduo a
+  `sonnet` (2026-08-18), este a `claude-opus-5` (2026-08-04) y este a
+  `claude-fable-5` ese mismo día. Afecta solo al modelo interactivo de
+  `settings.json`; el escalón de las rutas sigue en `sonnet` para el trabajo
+  normal (abajo). El hook no debe afirmar que cambia este modelo.
+
+  Que el modelo por defecto no sea el más capaz de la jerarquía **no contradice
+  el principio rector**: `claude-fable-5` sigue siendo el escalón superior y
+  sigue siendo el destino de las tareas de máximo razonamiento por el disparador
+  de escalado. Lo que cambia es el punto de partida, no el techo. El principio
+  exige subir ante la duda, no arrancar arriba siempre.
+
+  Esta decisión se tomó para cerrar `KI-021`: el cambio llevaba desde antes del
+  2026-08-29 aplicado a medias —`settings.json` y `docs/MODEL-ROUTING.md` en Opus
+  5, esta política y el literal del test en Fable 5— y el candado de tres puntas
+  mantenía la suite en rojo hasta que se decidiera.
 - **Escalón de las rutas** (`model-routing.json`), el lever de coste:
   - `opus` — **solo** `full-audit`, `incident` y `quant-incident`: auditorías
     exhaustivas e incidentes críticos.
