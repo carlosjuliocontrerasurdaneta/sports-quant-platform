@@ -275,13 +275,28 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
     else:
         graded = df[df["result"].isin(["win", "loss"])]
         staked = graded["stake"].sum()
-        overall_roi = float(df["pnl"].sum() / staked) if staked else 0.0
+        # Numerador y denominador del MISMO conjunto. Antes el numerador salia de
+        # `df` (todas las filas) y el denominador de `graded`; hoy coinciden
+        # porque `settle.py:92-93` asigna pnl 0.0 a push y void, pero la
+        # discrepancia era latente (N4-B-6/A-11).
+        pnl = float(graded["pnl"].sum())
+        overall_roi = float(pnl / staked) if staked else 0.0
+        # `n_staked` NO es opcional: `_segment_audit` ya lo expone porque el
+        # hit_rate se mide sobre TODAS las liquidadas y el ROI solo sobre las que
+        # llevaron stake. Sin el, "ROI realizado -15,3%" al lado de "1.090
+        # apuestas liquidadas" se lee como si el ROI aplicara a las 1.090 cuando
+        # corresponde a 150 (auditoria 2026-08-31, N4-M-3). Lo exige
+        # `.claude/rules/betting-output-rules.md`.
+        n_staked = int((pd.to_numeric(graded["stake"], errors="coerce")
+                        .fillna(0.0) > 0).sum())
         lines += [
             "## Global",
             f"Apuestas liquidadas (win/loss): {len(graded)} | "
+            f"con stake > 0: {n_staked} | "
             f"pushes/void: {len(df) - len(graded)}",
-            f"Stake total: {staked:.2f} | PnL: {df['pnl'].sum():.2f} | "
-            f"ROI realizado: {overall_roi:.2%}",
+            f"Stake total: {staked:.2f} | PnL: {pnl:.2f} | "
+            f"ROI realizado: {overall_roi:.2%} (sobre {n_staked} apuestas con "
+            f"stake, no sobre {len(graded)})",
             "",
             "## Por liga", _segment_audit(df, ["league"]).to_string(index=False), "",
             "## Por mercado", _segment_audit(df, ["market"]).to_string(index=False), "",

@@ -18,7 +18,21 @@ def log_loss(probs, outcomes, eps: float = 1e-12) -> float:
 
 
 def reliability_table(probs, outcomes, n_bins: int = 10) -> pd.DataFrame:
+    """Tabla de fiabilidad por bin. Descarta los pares no finitos.
+
+    `np.digitize(nan, bins)` devuelve `n_bins + 1`, que tras el `-1` y el `clip`
+    aterriza en el bin superior: un solo NaN contaminaba
+    `mean_estimated_probability` de ese bin y, como `Series.sum()` omite NaN
+    mientras el denominador seguia contando esas filas,
+    `expected_calibration_error` devolvia un ECE DEFLACTADO -- silencioso y en la
+    direccion que aparenta mejor calibracion (auditoria 2026-08-31, BT-04).
+    Fallar o excluir es correcto; sub-reportar la metrica que gobierna los gates
+    de entrenamiento, no.
+    """
     p, y = np.asarray(probs, float), np.asarray(outcomes, float)
+    finite = np.isfinite(p) & np.isfinite(y)
+    if not finite.all():
+        p, y = p[finite], y[finite]
     bins = np.linspace(0, 1, n_bins + 1)
     idx = np.clip(np.digitize(p, bins) - 1, 0, n_bins - 1)
     rows = []

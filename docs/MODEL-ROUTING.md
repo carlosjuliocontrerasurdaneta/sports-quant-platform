@@ -72,7 +72,7 @@ claude --model claude-haiku-4-5
 claude --model claude-fable-5
 ```
 
-**El modelo del proyecto** vive en `.claude/settings.json` → `"model": "sonnet"`. Tiene precedencia sobre la configuración global (`~/.claude/settings.json`).
+**El modelo del proyecto** vive en `.claude/settings.json` → `"model": "claude-opus-5"` (decisión del operador, 2026-08-30). Tiene precedencia sobre la configuración global (`~/.claude/settings.json`).
 
 ---
 

@@ -40,16 +40,46 @@ def record_run_failure(root: Path, stage: str, exit_code: int) -> Path:
     """
     out = _path(root)
     out.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    entry = {
         "failed": True,
         "stage": stage,
         "exit_code": int(exit_code),
         "failed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    # Se FUSIONA por etapa en vez de sobrescribir. Sobrescribiendo, un fallo de
+    # `settle` seguido de uno de `run` borraba el primero, y entonces el
+    # `--clear --only-stage run` de RUN_DIARIO_ALL.bat encontraba `stage == "run"`,
+    # daba el visto bueno y borraba el centinela entero: la liquidacion quedaba
+    # rota, invisible y en verde (auditoria 2026-08-31, A-02). Es justo lo que el
+    # docstring de `clear_run_status` dice que no debe pasar.
+    stages = dict(_read_stages(root))
+    stages[stage] = entry
+    out.write_text(json.dumps({"stages": stages}, indent=2), encoding="utf-8")
     log.error("Run diario FALLIDO en la etapa '%s' (exit %s); centinela -> %s",
               stage, exit_code, out)
     return out
+
+
+def _read_stages(root: Path) -> dict:
+    """Fallos vigentes indexados por etapa. Absorbe el formato PLANO anterior
+    (`{"failed": ..., "stage": ...}`) para que un centinela escrito por la
+    version previa siga avisando tras actualizar."""
+    p = _path(root)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("Centinela de run ilegible (%s): se ignora.", exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    stages = data.get("stages")
+    if isinstance(stages, dict):
+        return {k: v for k, v in stages.items() if isinstance(v, dict)}
+    if data.get("failed") and data.get("stage") is not None:
+        return {str(data["stage"]): data}
+    return {}
 
 
 def clear_run_status(root: Path, stage: str | None = None) -> bool:
@@ -66,11 +96,18 @@ def clear_run_status(root: Path, stage: str | None = None) -> bool:
     p = _path(root)
     if not p.exists():
         return False
-    if stage is not None:
-        st = read_run_status(root)
-        if st and str(st.get("stage")) != stage:
-            return False
-    p.unlink(missing_ok=True)
+    if stage is None:
+        p.unlink(missing_ok=True)
+        return True
+    stages = _read_stages(root)
+    if stage not in stages:
+        return False          # el fallo registrado es de OTRA etapa: no se toca
+    del stages[stage]
+    if stages:
+        # Sobrevive el fallo de la otra etapa, que es el punto de `--only-stage`.
+        p.write_text(json.dumps({"stages": stages}, indent=2), encoding="utf-8")
+    else:
+        p.unlink(missing_ok=True)
     return True
 
 
@@ -81,12 +118,15 @@ def read_run_status(root: Path) -> dict | None:
     check, y un JSON truncado no debe tumbar el diagnostico. La perdida de un
     aviso es preferible a romper la herramienta que lo reporta.
     """
-    p = _path(root)
-    if not p.exists():
+    stages = _read_stages(root)
+    if not stages:
         return None
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        log.warning("Centinela de run ilegible (%s): se ignora.", exc)
-        return None
-    return data if isinstance(data, dict) else None
+    # Con fallos en las dos etapas se devuelve el de LIQUIDACION: aborta el run
+    # para no sobrescribir picks sin liquidar, asi que es el que manda. La forma
+    # devuelta sigue siendo plana (`failed`/`stage`/`exit_code`/`failed_at`)
+    # porque `health.py` y el banner del tablero leen esas claves.
+    for name in ("settle", "run"):
+        if name in stages:
+            return dict(stages[name], stages=sorted(stages))
+    first = sorted(stages)[0]
+    return dict(stages[first], stages=sorted(stages))

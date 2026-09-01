@@ -71,3 +71,36 @@ def test_corrupt_or_empty_file_is_skipped(tmp_path):
     _write_settled(bets, "nhl", [_row(7.0)])
     led = BankrollLedger(root=tmp_path, initial=1000.0)
     assert led.current_balance() == 1007.0
+
+
+def test_max_drawdown_counts_the_loss_from_the_opening_balance(tmp_path):
+    """`peak` used to start at -inf, so the curve's first point -- already AFTER
+    the first bet -- became the peak and that first loss never counted: three
+    -100 bets on a 1000 bankroll reported -200 instead of -300 (R-B-1).
+    Understating drawdown is the unsafe direction for a risk metric."""
+    bets = tmp_path / "data" / "bets"
+    _write_settled(bets, "mlb", [
+        _row(-100.0, result="loss", settled_at="2026-06-01T00:00:00+00:00"),
+        _row(-100.0, result="loss", settled_at="2026-06-02T00:00:00+00:00"),
+        _row(-100.0, result="loss", settled_at="2026-06-03T00:00:00+00:00")])
+    led = BankrollLedger(root=tmp_path, initial=1000.0)
+    assert led.current_balance() == 700.0
+    assert led._max_drawdown() == -300.0
+
+
+def test_max_drawdown_measures_from_the_running_peak_not_the_opening(tmp_path):
+    """Seeding with the opening balance must not turn the metric into
+    'distance below the start': after a run-up the peak still moves."""
+    bets = tmp_path / "data" / "bets"
+    _write_settled(bets, "mlb", [
+        _row(200.0, settled_at="2026-06-01T00:00:00+00:00"),    # 1200, new peak
+        _row(-50.0, result="loss", settled_at="2026-06-02T00:00:00+00:00")])
+    led = BankrollLedger(root=tmp_path, initial=1000.0)
+    assert led._max_drawdown() == -50.0
+
+
+def test_max_drawdown_is_zero_on_a_monotonically_rising_curve(tmp_path):
+    bets = tmp_path / "data" / "bets"
+    _write_settled(bets, "mlb", [_row(10.0, settled_at="2026-06-01T00:00:00+00:00"),
+                                 _row(10.0, settled_at="2026-06-02T00:00:00+00:00")])
+    assert BankrollLedger(root=tmp_path, initial=1000.0)._max_drawdown() == 0.0

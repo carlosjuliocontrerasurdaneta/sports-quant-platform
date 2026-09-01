@@ -5,12 +5,22 @@ A ``candidates_<league>.csv`` is pruned only when BOTH conditions hold:
 
   1. the league is no longer in season (not in the active set), so the daily run
      will never refresh it again, and
-  2. every *actionable* pick in it (stake>0, unflagged) is already graded in
-     ``settled_<league>.csv``.
+  2. EVERY pick in it is already graded in ``settled_<league>.csv``.
 
 Condition 2 protects settlement: an out-of-season league that still has
 ungraded bets keeps its file so SETTLE_ALL can grade it later. Pruning a file
-also removes the matching ``predictions_<league>.csv``.
+also removes the matching ``predictions_<league>.csv``; both are archived first.
+
+Condition 2 used to look only at *actionable* picks (stake>0, unflagged), on the
+premise that those were "the only ones that get settled". That premise was false
+(audit 2026-08-31, N-A-1): ``settle_candidates`` iterates EVERY candidate row and
+persists it -- a stake-0 row just settles with ``pnl 0``. Settleable is not the
+same as stakeable. With the prediction gate denying every market (0 of 39 allowed
+on 2026-08-31) no row anywhere was actionable, so the check degenerated to an
+unconditional True and any league leaving the active set had its files deleted
+without any settlement check at all -- and with no recovery path, since
+``_archive_existing`` only copies before an overwrite and an out-of-season league
+is never overwritten again.
 """
 from __future__ import annotations
 
@@ -22,6 +32,7 @@ from typing import Iterable
 import pandas as pd
 
 from sqp.logging_config import get_logger
+from sqp.pipeline.daily import _archive_existing
 from sqp.settlement.runner import DEDUP_KEY
 
 log = get_logger("sqp.cleanup")
@@ -42,8 +53,12 @@ INFORMATIONAL_FLAGS = frozenset({"accuracy_mode"})
 
 
 def _actionable(cands: pd.DataFrame) -> pd.DataFrame:
-    """Stakeable rows carrying no blocking flag -- the only ones that get settled
-    and that the picks report ranks."""
+    """Stakeable rows carrying no blocking flag -- the ones the picks report ranks.
+
+    NOT the set that settlement grades: ``settle_candidates`` grades every row,
+    stake-0 included (audit 2026-08-31, N-A-1). Do not use this to decide whether
+    a file is safe to delete; use `_all_settled`.
+    """
     if "stake" not in cands.columns:
         return cands.iloc[0:0]
     if "flags" not in cands.columns:
@@ -54,20 +69,24 @@ def _actionable(cands: pd.DataFrame) -> pd.DataFrame:
     return cands[(cands["stake"] > 0) & (blocking.str.len() == 0)]
 
 
-def _all_actionable_settled(cands: pd.DataFrame, settled_path: Path) -> bool:
-    """True when every actionable pick in ``cands`` is already present in the
-    league's settled file (matched on DEDUP_KEY). Errs on the safe side: if the
-    settlement state cannot be verified, returns False so the file is kept."""
-    actionable = _actionable(cands)
-    if actionable.empty:
-        return True  # nothing stakeable -> nothing to lose by pruning
-    if not set(DEDUP_KEY).issubset(actionable.columns) or not settled_path.exists():
+def _all_settled(cands: pd.DataFrame, settled_path: Path) -> bool:
+    """True when EVERY pick in ``cands`` is already present in the league's settled
+    file (matched on DEDUP_KEY) -- the same set ``settle_candidates`` grades.
+
+    Errs on the safe side in every branch: an unreadable settled file, a schema
+    that does not carry DEDUP_KEY, or a single unmatched row all return False so
+    the candidate file is kept. Deleting is irreversible; keeping is not.
+    """
+    if not set(DEDUP_KEY).issubset(cands.columns) or not settled_path.exists():
         return False
-    settled = pd.read_csv(settled_path)
+    try:
+        settled = pd.read_csv(settled_path)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return False
     if not set(DEDUP_KEY).issubset(settled.columns):
         return False
     have = {tuple(map(str, r)) for r in settled[DEDUP_KEY].values.tolist()}
-    need = (tuple(map(str, r)) for r in actionable[DEDUP_KEY].values.tolist())
+    need = (tuple(map(str, r)) for r in cands[DEDUP_KEY].values.tolist())
     return all(k in have for k in need)
 
 
@@ -86,12 +105,17 @@ def prune_stale_candidates(predictions_dir: Path, bets_dir: Path,
         except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
             log.warning("[%s] no se pudo leer %s para podar: %s", league, cf.name, exc)
             continue
-        if not cands.empty and not _all_actionable_settled(cands, bets_dir / f"settled_{league}.csv"):
+        if not cands.empty and not _all_settled(cands, bets_dir / f"settled_{league}.csv"):
             log.info("[%s] fuera de temporada pero con apuestas sin liquidar; se conserva.", league)
             continue
-        cf.unlink()
+        # Archive before deleting: an out-of-season league is never overwritten
+        # again, so the daily run's pre-overwrite archive never fires for it and
+        # this unlink would be the only, unrecoverable copy (N-A-1).
         pf = predictions_dir / f"predictions_{league}.csv"
+        _archive_existing(cf)
+        cf.unlink()
         if pf.exists():
+            _archive_existing(pf)
             pf.unlink()
         pruned.append(league)
     if pruned:
@@ -132,7 +156,15 @@ def unsettled_completed_picks(predictions_dir: Path, bets_dir: Path,
             preds = pd.read_csv(pf, usecols=lambda c: c in ("event_id", "start_time"))
         except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
             continue
-        if cands.empty or "stake" not in cands.columns or "start_time" not in preds.columns:
+        # `event_id` is validated on BOTH frames: the merge below joins on it, so
+        # a file missing it raised an uncaught KeyError. This guard runs in
+        # run_all BEFORE the league loop and outside any try, so that exception
+        # aborted the whole day's pick generation -- for every league, not just
+        # the malformed one (audit 2026-08-31, N-M-6).
+        if (cands.empty or "stake" not in cands.columns
+                or "event_id" not in cands.columns
+                or "start_time" not in preds.columns
+                or "event_id" not in preds.columns):
             continue
         staked = cands[cands["stake"] > 0]
         if "data_label" in staked.columns:

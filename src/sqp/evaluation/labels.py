@@ -22,6 +22,35 @@ import pandas as pd
 SEPARADOR = " @ "  # visitante @ local, la convencion que ya usaba "Picks del Dia"
 
 
+def decision_prob(df: pd.DataFrame) -> pd.Series:
+    """Probabilidad con la que el sistema DECIDIO el pick: la calibrada cuando
+    existe, con fallback POR FILA a la estimada.
+
+    Tercera definicion compartida que vive aqui por la misma razon que las otras
+    dos. `_decision_probability` (pipeline/probabilities.py) devuelve dos
+    probabilidades: `p_used` es la mezcla CRUDA sin calibrar y se guarda como
+    `estimated_probability`; `p_decision` lleva el calibrador aplicado, se guarda
+    como `calibrated_probability` y es la que produce `estimated_edge`
+    (`daily.py:841`). `segments` ya usaba la correcta desde la decision del
+    2026-07-27 -- "medir sobre otra probabilidad que la que decidio el pick
+    distorsionaria el control" -- pero `html_report._todos_records` y
+    `tipster_table` seguian con la cruda.
+
+    Medido sobre las ultimas 2.000 filas de `served_mlb.csv` (auditoria
+    2026-08-31, A-01): `estimated_edge` es consistente con la calibrada en
+    2.000/2.000 filas y con la estimada en 729; ambas difieren en 1.272 filas
+    (hasta 8,95 pp), el signo del margen cambia en 252, y la lista de "margen
+    positivo" contaba 441 selecciones en vez de 271.
+    """
+    est = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
+    cal = pd.to_numeric(df.get("calibrated_probability"), errors="coerce")
+    if not isinstance(est, pd.Series):
+        est = pd.Series(est, index=df.index, dtype=float)
+    if not isinstance(cal, pd.Series):
+        cal = pd.Series(cal, index=df.index, dtype=float)
+    return cal.fillna(est)
+
+
 def match_label(df: pd.DataFrame, *, fallback: str = "event_id") -> pd.Series:
     """Serie `"visitante @ local"` alineada con `df`.
 

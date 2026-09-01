@@ -5,8 +5,13 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# El clasificador dejo de ser un hook el 2026-09-01: nunca estuvo cableado
+# (`settings.json` solo declara PostToolUse y Stop), asi que estos tests
+# validaban en verde codigo que no se ejecutaba. La logica sobrevive como
+# modulo consumido bajo demanda por `/route-task`; lo que se retiro es el
+# `main()` que emitia el JSON de `UserPromptSubmit`.
 SPEC = importlib.util.spec_from_file_location(
-    "route_model", ROOT / ".claude/hooks/route-model.py"
+    "route_classifier", ROOT / ".claude/automation/route_classifier.py"
 )
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -34,11 +39,17 @@ HAIKU_ROUTES = {"documentation"}
 
 
 def test_main_model_matches_the_authorized_policy():
-    # Three-way lock: settings.json, MODEL_ROUTING.md and this literal must agree.
-    # Config/doc drift is the failure this repo keeps hitting (pick_mode 07-31,
-    # model 08-04, and this very change on 08-18, que se aplico a settings.json y
-    # model-routing.json pero no a la politica ni aqui). El check es exacto a
-    # proposito: cambiar el modelo principal es un acto deliberado.
+    # Four-way lock: settings.json, MODEL_ROUTING.md, this literal AND
+    # docs/MODEL-ROUTING.md (test_docs_model_routing_is_the_fourth_prong_of_the_lock)
+    # must agree. Config/doc drift is the failure this repo keeps hitting
+    # (pick_mode 07-31, model 08-04, and this very change on 08-18, que se
+    # aplico a settings.json y model-routing.json pero no a la politica ni
+    # aqui). La cuarta punta se anadio el 2026-09-01: docs/MODEL-ROUTING.md
+    # participo en KI-021 -- este mismo comentario lo nombraba como una de las
+    # puntas que derivaron -- y sin embargo el candado nunca lo comprobo; su
+    # linea 75 siguio afirmando "model": "sonnet" (residuo del 2026-08-18)
+    # durante dos correcciones sucesivas sin que nada lo señalara. El check es
+    # exacto a proposito: cambiar el modelo principal es un acto deliberado.
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
@@ -48,11 +59,12 @@ def test_main_model_matches_the_authorized_policy():
     # routed to sonnet ("Prefer Sonnet for normal work"); only the interactive
     # settings.json model changed.
     #
-    # claude-opus-5 es a la vez el defecto Y el techo: el 2026-08-30 el operador
-    # saco a claude-fable-5 de la jerarquia, asi que ya no hay un escalon por
-    # encima al que escalar. El principio rector sigue intacto -- "el modelo
-    # superior para lo que exige maximo razonamiento" -- y lo que cambio es cual
-    # es ese modelo superior.
+    # claude-opus-5 es el PUNTO DE PARTIDA, no el techo. El techo es
+    # claude-fable-5, reservado para maxima capacidad de razonamiento
+    # (b3f9cfb, 2026-08-30). Este comentario afirmaba lo contrario -- que Fable
+    # habia salido de la jerarquia -- y sobrevivio a esa correccion,
+    # contradiciendo a las aserciones de mas abajo en este mismo fichero.
+    # Corregido el 2026-09-01 por la auditoria integral.
     #
     # Este literal estuvo en rojo desde antes del 2026-08-29 porque el cambio se
     # aplico a settings.json y docs/MODEL-ROUTING.md pero no aqui ni a la
@@ -258,3 +270,162 @@ def test_measurement_outranks_model_capability():
     assert "se mide antes de razonar" in policy
     # "superior" != "correcto": la no-reversion es regla de PROCESO, no de fondo.
     assert '"superior" ≠ "correcto"' in policy
+
+
+def test_policy_never_claims_opus_is_also_the_ceiling():
+    """El techo es claude-fable-5. Opus 5 es solo el punto de partida.
+
+    Los candados existentes exigian la PRESENCIA de las frases correctas, pero
+    nada impedia que otra seccion del mismo fichero afirmase lo contrario -- y
+    eso fue exactamente lo que paso: `b3f9cfb` (2026-08-30) restituyo Fable 5
+    como destino del escalado y actualizo el reparto operativo, pero dejo vivo
+    en "Politica autorizada" un parrafo que decia que Opus 5 era "a la vez el
+    punto de partida y el techo". El fichero se contradijo a si mismo durante
+    dos dias sin que nada lo señalara.
+
+    Un principio rector con dos lecturas opuestas dentro del mismo documento no
+    es un principio: es una ambiguedad que se resuelve a conveniencia. Este test
+    fija la ausencia, no solo la presencia.
+    """
+    policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
+        encoding="utf-8"
+    )
+    prohibidas = (
+        "a la vez el punto de partida **y el techo**",
+        "a la vez el defecto Y el techo",
+        "ya no hay un escalon por encima",
+        "ya no hay un escalón por encima",
+        "sacó a `claude-fable-5` de la jerarquía",
+    )
+    presentes = [f for f in prohibidas if f in policy]
+    assert presentes == [], (
+        "la politica vuelve a afirmar que Opus 5 es el techo, contradiciendo al "
+        f"reparto operativo y al principio rector: {presentes}")
+    # Y la afirmacion positiva correspondiente, para que la ausencia de arriba no
+    # se pueda satisfacer borrando la seccion entera.
+    assert "El techo es\n  `claude-fable-5`" in policy or "El techo es `claude-fable-5`" in policy
+
+
+def test_claude_md_states_the_principle_as_governing_not_advisory():
+    """`CLAUDE.md` es lo que se carga en cada sesion. Si ahi el principio figura
+    como "advisory only", el modelo que lo lee no tiene por que aplicarlo -- y
+    CLAUDE.md tiene precedencia sobre las skills. Orden del operador
+    (2026-09-01): es EL PRINCIPIO RECTOR, no una sugerencia.
+
+    El matiz tecnico que si es cierto -- que editar CLAUDE.md no cambia el
+    modelo activo de la sesion -- se conserva, porque es un hecho del harness y
+    no una rebaja de la politica.
+    """
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "advisory only" not in text, (
+        "CLAUDE.md rebaja el principio rector a consejo")
+    assert "governing principle" in text.lower()
+    assert "claude-fable-5" in text
+    # El hecho del harness sobrevive a la subida de rango.
+    assert "does not change the active model" in text or \
+           "itself changes the active model" in text
+
+
+def test_docs_model_routing_is_the_fourth_prong_of_the_lock():
+    """Cuarta punta del candado (2026-09-01). El candado se autodenominaba
+    "three-way" y su propio comentario nombraba a docs/MODEL-ROUTING.md como una
+    de las puntas que derivaron en KI-021 -- pero nunca lo comprobo. Resultado:
+    la linea 75 del doc siguio afirmando `"model": "sonnet"` (residuo del
+    2026-08-18) a traves de DOS correcciones sucesivas del resto de puntas,
+    incluida b3f9cfb, sin que nada lo señalara.
+
+    El valor se DERIVA de settings.json en vez de duplicarse: si el modelo
+    principal cambia, este assert obliga a actualizar la cara de usuario en el
+    mismo acto, que es exactamente la deriva que se acaba de encontrar.
+    """
+    settings = json.loads(
+        (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
+    )
+    docs = (ROOT / "docs/MODEL-ROUTING.md").read_text(encoding="utf-8")
+    # El doc debe citar el modelo REAL del proyecto...
+    assert f'"model": "{settings["model"]}"' in docs
+    # ...y no puede quedar viva ninguna afirmacion del valor superseduo.
+    assert '"model": "sonnet"' not in docs, (
+        "docs/MODEL-ROUTING.md vuelve a afirmar el modelo de 2026-08-18")
+    # Coherencia con el reparto operativo: Fable 5 es el destino del escalado,
+    # no el punto de partida; sin estas frases el doc puede volver a contar una
+    # politica distinta de la de .claude/automation/MODEL_ROUTING.md.
+    assert "claude-fable-5" in docs
+    assert "destino del disparador de escalado" in docs
+    assert "no el punto de partida" in docs
+
+
+def test_policy_declares_the_dispatch_mechanism():
+    """REGLA DE DESPACHO (2026-09-01). La politica decia QUE modelo corresponde
+    a cada clase de tarea pero no POR QUE MECANISMO se aplica, y por eso no se
+    aplicaba nunca: 26 de 27 subagentes declaraban `model: opus` y nadie pasaba
+    un modelo al delegar. El mecanismo real es el parametro `model` del Agent
+    tool, que tiene precedencia sobre el frontmatter; las cinco clases del
+    disparador se despachan con el a claude-fable-5. Sin esta seccion el techo
+    de la politica es inalcanzable en la practica.
+    """
+    policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(policy.split())
+    assert "## REGLA DE DESPACHO" in policy
+    assert "parámetro `model` de la herramienta `Agent`" in normalized
+    assert "`sonnet | opus | haiku | fable`" in normalized
+    assert "precedencia sobre el frontmatter" in normalized
+    # Las cinco clases van a Fable 5 y por este mecanismo, no por la tabla.
+    assert "Las cinco clases del disparador de escalado van a `claude-fable-5`" \
+        in normalized
+    assert 'se despacha con `model: "fable"`' in normalized
+    assert "solo esta regla despacha a Fable 5" in normalized
+
+
+def test_classifier_carries_no_model_rules_of_its_own():
+    """El clasificador devuelve la RUTA. No decide modelo, ni lo reinterpreta.
+
+    El 2026-09-01 se encontro en el entonces `route-model.py` un downgrade
+    oculto opus->sonnet cuando `priority < 115`: una tercera regla de modelo que
+    no estaba ni en la politica ni en la tabla ni en ningun doc. Era codigo
+    muerto (las tres rutas opus tienen prioridad >= 115), pero habria degradado
+    en silencio cualquier ruta opus futura de prioridad baja, contradiciendo el
+    literal OPUS_ROUTES de este mismo fichero.
+
+    Al retirarse el hook, el modulo se quedo SOLO con `classify` y
+    `find_config_path`: ya no hay ninguna linea que lea, escriba o transforme un
+    modelo. Este test fija esa ausencia, que es una garantia mas fuerte que la
+    anterior -- entonces habia que contar ocurrencias de `recommended_model`
+    para detectar una reinterpretacion; ahora cualquier mencion a un modelo en
+    este fichero es sospechosa por definicion.
+    """
+    mod = (ROOT / ".claude/automation/route_classifier.py").read_text(encoding="utf-8")
+    codigo = "\n".join(
+        ln for ln in mod.splitlines()
+        if not ln.lstrip().startswith("#")
+    ).split('"""')[-1]          # descarta el docstring de modulo y los comentarios
+
+    assert "115" not in codigo, "el clasificador recupero el umbral de downgrade"
+    for termino in ("recommended_model", "opus", "sonnet", "haiku", "fable"):
+        assert termino not in codigo, (
+            f"el clasificador volvio a razonar sobre modelos ({termino!r}); "
+            "la tabla es la unica fuente de modelo por ruta y el despacho lo "
+            "hace el parametro `model` del Agent tool")
+
+
+def test_the_route_classifier_is_not_wired_as_a_hook():
+    """Retirada del hook (2026-09-01, decision del operador).
+
+    El hook `UserPromptSubmit` nunca estuvo cableado: `settings.json` solo
+    declara `PostToolUse` y `Stop`. Durante meses las 24 rutas no se ejecutaron
+    mientras estos tests las validaban en verde -- codigo muerto con candado.
+    Se retiro el lanzador y sobrevivio la logica, que se consume bajo demanda
+    desde `/route-task`.
+
+    Este test fija las dos mitades de esa decision para que no se deshaga a
+    medias: el fichero del hook no vuelve, y el modulo no recupera un `main()`
+    que lo convierta otra vez en algo invocable como hook.
+    """
+    assert not (ROOT / ".claude/hooks/route-model.py").exists(), (
+        "el hook retirado reaparecio; si se quiere reactivar hay que cablear "
+        "tambien UserPromptSubmit en settings.json -- las dos cosas")
+    mod = (ROOT / ".claude/automation/route_classifier.py").read_text(encoding="utf-8")
+    assert "def main(" not in mod
+    assert "UserPromptSubmit" not in mod.split('"""')[-1]

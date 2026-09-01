@@ -389,6 +389,26 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     raw = client.fetch_scores(meta["sport_key"], days_from=days_from)
     scores = _scores_map(raw)
     three_way = bool(meta.get("three_way"))
+    # Payload health gate before ANY voiding (audit 2026-08-31, N-A-3).
+    #
+    # An empty `scores` map means "this response told us nothing", which is NOT
+    # the same as "the world says these games have no result" -- yet the voiding
+    # path treated them identically. Two ways to get here without an exception,
+    # so `settle_all` never marks the league as failed: the provider returns 200
+    # with an empty list (out-of-season sport key, glitch), or its schema changes
+    # and `_scores_map`'s per-entry guard drops every entry.
+    #
+    # Voiding is FINAL: DEDUP_KEY carries no `result`, so tomorrow's real grade
+    # collides with today's persisted `void` and gets discarded. One bad response
+    # would permanently void every pick and served row 3-7 days old in the league,
+    # at pnl 0, indistinguishable from a genuine postponement. Deferring costs a
+    # day; a single healthy response resumes the expiry policy.
+    scores_trusted = bool(scores)
+    if not scores_trusted and (not pending_served.empty or cand_path.exists()):
+        log.error("[%s] scores response carried no usable entry (%d raw): NOT "
+                  "voiding anything this pass. Voiding is irreversible, so an "
+                  "empty payload must not be read as mass cancellation.",
+                  league, len(raw) if raw is not None else 0)
     # Calibration stream first (stake 0, best-effort): shares this scores fetch,
     # and grades even on days the league produced no candidates.
     if not pending_served.empty:
@@ -397,13 +417,15 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         # historical store (backfilled daily); whatever remains ungradable
         # past the stale window is voided (audit 2026-08-02, M-01).
         _grade_served_from_history(league, three_way=three_way)
-        _void_stale_served(league)
+        if scores_trusted:
+            _void_stale_served(league)
     if not cand_path.exists():
         return pd.DataFrame()
     cands = pd.read_csv(cand_path)
     settled = settle_candidates(cands, scores, three_way)
-    settled = _with_stale_voids(league, cands, settled, scores,
-                                _prediction_start_times(league))
+    if scores_trusted:
+        settled = _with_stale_voids(league, cands, settled, scores,
+                                    _prediction_start_times(league))
     settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)
 

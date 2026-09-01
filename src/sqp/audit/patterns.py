@@ -113,7 +113,13 @@ def hit_rate(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
                 mean_edge=("estimated_edge", "mean")).reset_index())
     agg["losses"] = agg["n"] - agg["wins"]
     agg["hit_rate_%"] = (agg["wins"] / agg["n"] * 100).round(1)
-    agg["roi_%"] = (agg["pnl"] / agg["staked"] * 100).round(2)
+    # Sin stake no hay ROI. Dividir por 0 daba `inf` (o `NaN` con pnl 0), y
+    # `_fmt_cell` lo renderizaba como la cadena "inf" en la pestana Patrones.
+    # `report.py:249` ya tenia esta proteccion desde la auditoria 2026-07-29
+    # (B-10, "0.0 se leia como 'equilibrio' cuando significa 'no se arriesgo
+    # nada'") y este modulo nunca la recibio (auditoria 2026-08-31, N4-B-5).
+    # Con los gates denegando los 39 mercados, stake 0 por grupo es lo normal.
+    agg["roi_%"] = (agg["pnl"] / agg["staked"].where(agg["staked"] > 0) * 100).round(2)
     agg["mean_edge"] = agg["mean_edge"].round(4)
     return agg
 

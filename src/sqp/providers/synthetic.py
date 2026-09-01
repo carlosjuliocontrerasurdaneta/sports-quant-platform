@@ -7,6 +7,7 @@ from __future__ import annotations
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from sqp.domain.models import Event, EventOdds, MarketLine
+from sqp.exceptions import ProviderNotConfiguredError
 from .base import ResultsProvider
 
 _TEAMS = {
@@ -24,6 +25,16 @@ _PARAMS = {  # (avg_team_score, score_sd_for_results)
 
 class SyntheticProvider(ResultsProvider):
     def __init__(self, family: str, seed: int = 7):
+        # Sin este guard, una familia no soportada reventaba mas tarde con un
+        # `KeyError: 'tennis'` opaco desde `_TEAMS[self.family]`. `tennis` es una
+        # familia real del sistema (`pipeline/daily.py:55`) y la rama demo la usa
+        # sin comprobacion, asi que `SQP_MODE=demo` sobre una liga de tenis
+        # abortaba sin decir que faltaba (auditoria 2026-08-31, N4-M-8). El
+        # contrato de `base.py` es fallar con `ProviderNotConfiguredError`.
+        if family not in _TEAMS or family not in _PARAMS:
+            raise ProviderNotConfiguredError(
+                f"SyntheticProvider does not support family '{family}'. "
+                f"Demo mode covers: {', '.join(sorted(_TEAMS))}.")
         self.family = family
         self.rng = np.random.default_rng(seed)
 

@@ -184,3 +184,42 @@ def test_fetch_and_settle_grades_served_without_candidates(tmp_path, monkeypatch
     assert graded.loc[0, "result"] == "win"  # home moneyline, home won
     assert graded.loc[0, "pnl"] == 0.0       # stake-0 calibration row
     assert store.pending("wnba", now=fixed_now).empty
+
+
+def test_corrupt_served_csv_is_quarantined_not_read_as_empty_forever(tmp_path):
+    """A corrupt CSV used to be swallowed as empty on every read: dedup went off,
+    `append_served` kept writing behind the bad line (the header is intact, so it
+    takes the cheap-append branch), and `pending()` returned empty forever, so the
+    league silently stopped grading (N-A-2). Quarantine bounds the damage."""
+    store = ServedStore(tmp_path)
+    assert store.append_served("wnba", [_row(event_id="ev1")]) == 1
+    p = store.served_path("wnba")
+    with p.open("a", encoding="utf-8") as f:
+        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z\n")
+
+    # First read trips the parser, quarantines and starts clean.
+    assert store._load(p).empty
+    assert not p.exists()
+    quarantined = list(tmp_path.glob("**/served_wnba.csv.corrupt.*"))
+    assert len(quarantined) == 1
+
+    # The store is usable again: a new append rebuilds a valid, readable file.
+    assert store.append_served("wnba", [_row(event_id="ev2")]) == 1
+    reread = store._load(store.served_path("wnba"))
+    assert list(reread["event_id"]) == ["ev2"]
+
+
+def test_quarantine_failure_does_not_raise(tmp_path, monkeypatch):
+    """Quarantine is a repair path; failing to repair must not take settlement
+    down with it."""
+    store = ServedStore(tmp_path)
+    store.append_served("wnba", [_row()])
+    p = store.served_path("wnba")
+    with p.open("a", encoding="utf-8") as f:
+        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z\n")
+
+    def _boom(self, target):
+        raise OSError("locked by another process")
+    monkeypatch.setattr("pathlib.Path.rename", _boom)
+    assert store._load(p).empty      # degrades, does not raise
+    assert p.exists()                # left in place for manual repair

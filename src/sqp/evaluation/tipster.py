@@ -45,7 +45,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from sqp.evaluation.labels import game_date_local, match_label
+from sqp.evaluation.labels import decision_prob, game_date_local, match_label
 
 # Minimos por nivel. Son PROXIES de lo que el documento pide y estan calibrados
 # con lo medido en este proyecto, no elegidos a ojo:
@@ -90,17 +90,25 @@ def classify(ev: float, edge_pp: float, casas: float, prob: float,
 
 
 def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
-                  prob_col: str = "estimated_probability") -> pd.DataFrame:
+                  prob_col: str | None = None) -> pd.DataFrame:
     """Tabla del tipster: una fila por seleccion, con tier, motivo y correlacion.
 
     `df` es el stream servido. `max_plausible_ev` debe venir de
     `Settings.risk.max_plausible_edge` para que la frontera del NO BET sea la
     misma que usa el motor de riesgo y no una segunda opinion divergente.
+
+    `prob_col=None` (por defecto) usa `labels.decision_prob`: la calibrada con
+    fallback por fila a la estimada, que es con la que el pipeline decidio. El
+    default era `estimated_probability`, la mezcla CRUDA sin calibrar, asi que
+    los tiers, el EV y la cuota justa se calculaban sobre una probabilidad
+    descartada por el sistema (auditoria 2026-08-31, A-01). Se admite un nombre
+    de columna explicito para diagnostico.
     """
     if df.empty:
         return pd.DataFrame()
     d = df.copy()
-    p = pd.to_numeric(d.get(prob_col), errors="coerce")
+    p = (decision_prob(d) if prob_col is None
+         else pd.to_numeric(d.get(prob_col), errors="coerce"))
     price = pd.to_numeric(d.get("price_decimal"), errors="coerce")
     novig = pd.to_numeric(d.get("implied_probability_novig"), errors="coerce")
     casas = pd.to_numeric(d.get("books_count"), errors="coerce")

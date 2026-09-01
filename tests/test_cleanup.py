@@ -69,14 +69,54 @@ def test_out_of_season_no_settled_file_is_kept(tmp_path):
     assert pruned == []  # cannot verify settlement -> keep
 
 
-def test_out_of_season_only_flagged_rows_is_pruned(tmp_path):
+def test_out_of_season_only_flagged_rows_is_kept_until_settled(tmp_path):
+    """Zero-stake/flagged rows ARE settled, so they are not free to delete.
+
+    This test used to assert the opposite ("nothing actionable -> safe to drop").
+    That premise was refuted on 2026-08-31 (N-A-1): `settle_candidates` grades
+    every candidate row, stake-0 included. Since the prediction gate zeroes every
+    stake, the old rule deleted whole leagues without any settlement check.
+    """
     preds, bets = tmp_path / "p", tmp_path / "b"
     preds.mkdir(); bets.mkdir()
-    # no actionable picks (flagged + zero stake): nothing to settle, safe to drop
     _write(preds, "nba", [_cand_row(stake=0.0, flags="edge_exceeds_max_plausible")])
+    pruned = prune_stale_candidates(preds, bets, active_leagues=set())
+    assert pruned == []
+    assert (preds / "candidates_nba.csv").exists()
+
+
+def test_out_of_season_zero_stake_rows_are_pruned_once_settled(tmp_path):
+    """The counterpart: once graded, the same file IS prunable. The fix delays
+    pruning until settlement, it does not disable it."""
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    rows = [_cand_row(stake=0.0, flags="prediction_gate")]
+    _write(preds, "nba", rows)
+    _settle(bets, "nba", rows)
     pruned = prune_stale_candidates(preds, bets, active_leagues=set())
     assert pruned == ["nba"]
     assert not (preds / "candidates_nba.csv").exists()
+
+
+def test_pruned_files_are_archived_before_deletion(tmp_path):
+    """An out-of-season league is never overwritten again, so the daily run's
+    pre-overwrite archive never fires for it: the prune must archive itself or
+    the deletion is unrecoverable (N-A-1)."""
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    rows = [_cand_row(event_id="e1", generated_at="2026-06-20T11:00:00+00:00")]
+    _write(preds, "nba", rows)
+    _settle(bets, "nba", rows)
+    assert prune_stale_candidates(preds, bets, active_leagues=set()) == ["nba"]
+    archived = sorted(p.name for p in (preds / "archive").glob("*.csv"))
+    # Candidates carry `generated_at`, so the archive key is the run day. The
+    # predictions fixture has no such column, so `_archive_existing` falls back
+    # to mtime -- hence only the prefix is pinned here.
+    assert len(archived) == 2
+    assert archived[0] == "candidates_nba_2026-06-20.csv"
+    assert archived[1].startswith("predictions_nba_")
+    # The archived copy is the real content, not an empty placeholder.
+    assert len(pd.read_csv(preds / "archive" / archived[0])) == 1
 
 
 # --- M2 guard: commenced-but-unsettled picks about to be overwritten ----------
@@ -213,3 +253,29 @@ def test_purge_falls_back_to_mtime_when_name_has_no_date(tmp_path):
     out = purge_old_artifacts(tmp_path, days=90, now=now)
     assert out["archive"] == 1
     assert not stale.exists() and fresh.exists()
+
+
+def test_missing_event_id_skips_the_league_instead_of_raising(tmp_path):
+    """`unsettled_completed_picks` runs in run_all BEFORE the league loop and
+    outside any try. A predictions file without `event_id` used to raise KeyError
+    from the merge and abort the whole day's generation, for every league, not
+    just the malformed one (N-M-6). Its docstring promises the opposite: skip the
+    league it cannot read."""
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    rows = [_cand_row(event_id="e1")]
+    pd.DataFrame(rows).to_csv(preds / "candidates_mlb.csv", index=False)
+    # start_time present, event_id absent: passes the old guard, breaks the merge
+    pd.DataFrame([{"start_time": _PAST, "home": "A"}]).to_csv(
+        preds / "predictions_mlb.csv", index=False)
+    assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {}
+
+
+def test_missing_event_id_on_candidates_also_skips(tmp_path):
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    rows = [{k: v for k, v in _cand_row().items() if k != "event_id"}]
+    pd.DataFrame(rows).to_csv(preds / "candidates_mlb.csv", index=False)
+    pd.DataFrame([{"event_id": "e1", "start_time": _PAST}]).to_csv(
+        preds / "predictions_mlb.csv", index=False)
+    assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {}

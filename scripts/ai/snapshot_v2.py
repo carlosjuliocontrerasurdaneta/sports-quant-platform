@@ -69,6 +69,11 @@ import tempfile
 #: smuggle them into the reviewed tree.
 SNAPSHOT_EXCLUDED = (".claude/reviews/runtime/", ".codex-tmp/")
 
+# Presupuesto de cada invocacion a git. Son operaciones de plumbing sobre el
+# indice, cortas por naturaleza; si una se cuelga es por un `.git/*.lock` muerto
+# y hay que fallar con diagnostico en vez de bloquear la ronda (F-09).
+SNAPSHOT_GIT_TIMEOUT_S = 300
+
 #: One ref per round, deleted by :func:`release`. The namespace is outside
 #: refs/heads and refs/tags, so no branch listing, checkout or push is affected.
 REF_PREFIX = "refs/cross-review/"
@@ -156,9 +161,12 @@ def _run(
     try:
         return subprocess.run(
             ["git", *args], cwd=root, capture_output=True, input=stdin, env=env,
-            check=False,
+            check=False, timeout=SNAPSHOT_GIT_TIMEOUT_S,
         )
-    except OSError as exc:
+    # `TimeoutExpired` incluida: un `.git/*.lock` muerto colgaba el snapshot y
+    # con el la apertura de la ronda, sin diagnostico (F-09). Un snapshot que
+    # no se puede tomar es SnapshotError, igual que uno que falla al arrancar.
+    except (OSError, subprocess.TimeoutExpired) as exc:
         # A failure to *start* git produces no return code, so the check below
         # never sees it and a raw OSError reaches the caller -- a missing `cwd`
         # or an over-long argv used to escape as a traceback through the gate.

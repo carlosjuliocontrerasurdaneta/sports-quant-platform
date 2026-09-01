@@ -113,22 +113,31 @@ def rolling_origin_improvement(loss_by_value: dict[float, list[float]],
 
 def _gate(n: int, min_n: int, n_label: str, insample_improvement: float, margin: float,
           loss_by_value: dict[float, list[float]], default_value: float,
-          n_splits: int) -> tuple[bool, str, float | None]:
+          n_splits: int) -> tuple[bool, str, float | None, list[float]]:
     """Acceptance gate. With a rolling-origin holdout (n_splits>=2 and enough
     data) the margin is applied to the OUT-OF-SAMPLE improvement; otherwise it
-    falls back to the in-sample improvement. The sample-size gate always holds."""
+    falls back to the in-sample improvement. The sample-size gate always holds.
+
+    Also returns the PER-FOLD selections. They used to be computed and thrown
+    away, which hid the gap that matters: the holdout validates the procedure,
+    but the value actually deployed is the full-sample argmin, so a value that
+    no fold ever chose could still ship with an "OOS-validated" label
+    (audit 2026-08-31, N4-A-5). Surfacing them lets a caller -- or a human --
+    see the disagreement instead of having to re-derive it.
+    """
     ro = rolling_origin_improvement(loss_by_value, default_value, n_splits) if n_splits >= 2 else None
     if ro is None:
         accepted, reason = _decide(n, min_n, n_label, insample_improvement, margin)
-        return accepted, reason, None
+        return accepted, reason, None, []
     oos = ro["mean_oos_improvement"]
+    sels = list(ro["selections"])
     if n < min_n:
-        return False, f"insufficient sample ({n} {n_label} < {min_n}); family default kept.", oos
+        return False, f"insufficient sample ({n} {n_label} < {min_n}); family default kept.", oos, sels
     if oos < margin:
         return False, (f"holdout OOS improvement {oos:.4f} < margin {margin:.4f} "
-                       f"({ro['n_folds']} folds); family default kept."), oos
+                       f"({ro['n_folds']} folds); family default kept."), oos, sels
     return True, (f"accepted: {n} {n_label}, rolling-origin OOS improvement "
-                  f"{oos:.4f} >= {margin:.4f} ({ro['n_folds']} folds)."), oos
+                  f"{oos:.4f} >= {margin:.4f} ({ro['n_folds']} folds)."), oos, sels
 
 
 def tune_home_advantage(results: list[dict], league: str, family: str,
@@ -160,7 +169,7 @@ def tune_home_advantage(results: list[dict], league: str, family: str,
         loss_series[float(default_home_adv)] = _binary_nll_series(
             dres["binary_probs"], dres["binary_outcomes"])
     insample_improvement = base_ll - float(best["log_loss"])
-    accepted, reason, oos = _gate(n_eval, min_eval, "evaluated games", insample_improvement,
+    accepted, reason, oos, oos_selections = _gate(n_eval, min_eval, "evaluated games", insample_improvement,
                                   margin, loss_series, float(default_home_adv), n_splits)
     return {"league": league,
             "best_home_adv": float(best["elo_home_adv"]),        # raw grid argmin
@@ -169,12 +178,19 @@ def tune_home_advantage(results: list[dict], league: str, family: str,
             "default_log_loss": float(base_ll),
             "n_eval": n_eval, "improvement": insample_improvement,
             "oos_improvement": oos,
+            # Valores elegidos por cada fold. El desplegado es el argmin de
+            # muestra COMPLETA, que puede no estar aqui: esa discrepancia es
+            # justo lo que el holdout no valida (N4-A-5).
+            "oos_selections": oos_selections,
             "accepted": accepted, "reason": reason,
             "recommended_home_adv": float(best["elo_home_adv"]) if accepted else float(default_home_adv),
             "table": table,
-            "note": ("Grid search gated by a rolling-origin holdout when enabled "
-                     "(selection validated out-of-sample), else in-sample with "
-                     "sample-size and margin gates. Re-validate after season changes.")}
+            "note": ("Grid search gated by a rolling-origin holdout when enabled. "
+                     "The holdout validates the PROCEDURE, not this value: the "
+                     "recommended point is the full-sample argmin, test blocks "
+                     "included, so the SELECTION IS IN-SAMPLE either way "
+                     "(audit 2026-08-31, N4-A-5). Sample-size and margin gates "
+                     "also apply. Re-validate after season changes.")}
 
 
 MIN_EVAL_MARKET = 200       # evaluated games required to override on a market
@@ -229,7 +245,7 @@ def tune_market_param(results: list[dict], league: str, family: str, *,
         base_ll = dm["log_loss"]
         loss_series[float(default_value)] = _binary_nll_series(dm["probs"], dm["outcomes"])
     insample_improvement = base_ll - float(best["log_loss"])
-    accepted, reason, oos = _gate(n_eval, min_eval, "evaluated games", insample_improvement,
+    accepted, reason, oos, oos_selections = _gate(n_eval, min_eval, "evaluated games", insample_improvement,
                                   margin, loss_series, float(default_value), n_splits)
     return {"league": league, "param": param, "market_key": key,
             "best_value": float(best[param]),                    # argmin crudo, SIEMPRE
@@ -239,6 +255,10 @@ def tune_market_param(results: list[dict], league: str, family: str, *,
             "default_log_loss": float(base_ll),
             "n_eval": n_eval, "improvement": insample_improvement,
             "oos_improvement": oos,
+            # Valores elegidos por cada fold. El desplegado es el argmin de
+            # muestra COMPLETA, que puede no estar aqui: esa discrepancia es
+            # justo lo que el holdout no valida (N4-A-5).
+            "oos_selections": oos_selections,
             "accepted": accepted, "reason": reason,
             "recommended_value": float(best[param]) if accepted else float(default_value),
             "table": table,
@@ -284,7 +304,7 @@ def tune_dc_rho(results: list[dict], league: str, family: str,
         base_ll = dres["log_loss_threeway"]
         loss_series[0.0] = list(dres["threeway_ll_series"])
     insample_improvement = base_ll - float(best["log_loss_threeway"])
-    accepted, reason, oos = _gate(int(n_draws), min_draws, "observed draws",
+    accepted, reason, oos, oos_selections = _gate(int(n_draws), min_draws, "observed draws",
                                   insample_improvement, margin, loss_series, 0.0, n_splits)
     return {"league": league,
             "best_dc_rho": float(best["dc_rho"]),                # raw grid argmin
@@ -292,6 +312,10 @@ def tune_dc_rho(results: list[dict], league: str, family: str,
             "default_log_loss_threeway": float(base_ll),
             "n_draws": int(n_draws), "improvement": insample_improvement,
             "oos_improvement": oos,
+            # Valores elegidos por cada fold. El desplegado es el argmin de
+            # muestra COMPLETA, que puede no estar aqui: esa discrepancia es
+            # justo lo que el holdout no valida (N4-A-5).
+            "oos_selections": oos_selections,
             "accepted": accepted, "reason": reason,
             "recommended_dc_rho": float(best["dc_rho"]) if accepted else 0.0,
             "table": table,
