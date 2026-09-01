@@ -161,3 +161,28 @@ Format:
 - Affected files: src/sqp/calibration/data.py (stage_calibrators_from_settled), src/sqp/calibration/calibrator.py:573.
 - Proposed fix: no actuar todavía. Si una auditoría futura observa el caso con datos, mover la llamada antes de los early return. Con `calibration_enabled=false` la rama es inocua (los calibradores live no se aplican); la rama de historial vacío exige cero apuestas liquidadas, que no ocurre en producción.
 - Status: Abierto / no accionable (2026-08-30, auditoría full-audit). INFERIDO con confianza BAJA: sale de leer el flujo de control, no de un caso reproducido. Se registra para evaluarlo con datos, no para actuar sobre una hipótesis.
+
+- ID: KI-023
+- Severity: Alta
+- Description: La REGLA DE DESPACHO existe y es correcta, pero NADA obliga a cumplirla. Los tests verifican que la politica DICE que las cinco clases del disparador van a `claude-fable-5`; ninguno verifica que quien delega PASE `model: "fable"`. El harness no ofrece punto de enganche para interceptar un despacho de subagente, asi que no es cerrable con un candado. Evidencia del riesgo: durante las cinco iteraciones de auditoria del 2026-08-30 al 09-01 se despacharon ~13 subagentes sin pasar `model` ni una sola vez -- todos heredaron `opus` del frontmatter -- con la politica delante y recien reforzada por el operador. El unico escalado efectivo ocurrio cuando el operador lo ordeno explicitamente.
+- Status: Abierto (2026-09-01). Mitigacion propuesta y NO implementada: exigir que cada despacho registre modelo y razon en `current-task.md`, y marcar como sospechosa toda auditoria que cierre con cero escalados registrados. No lo impide, lo delata -- que es lo que hacen el resto de candados de este repo.
+
+- ID: KI-024
+- Severity: Alta
+- Description: `streak_coef=0.01` es el UNICO coeficiente de feature no nulo y `team_streak` es la unica feature del modulo sin parametro `n`: recorre todo el historico, sin ventana y sin corte de temporada, y devuelve un entero sin acotar. `streak_p_adjustment` lo multiplica sin cap. Medido sobre `data/historical/results_*.csv`: con `market_shrink=0.5` el desplazamiento de `p_decision` es `0,005 * d`; un `|d| >= 4` iguala por si solo todo el suelo `min_edge` de 2 pp y ocurre en el 31-45% de los partidos de MLB/NBA/NFL/NHL. Maximo observado NBA d=37 = 18,5 pp. Se activo el 2026-08-23 (`7062dae`) con el mensaje "Sin evidencia OOS aun", contradiciendo el contrato del propio modulo ("activate only after OOS validation"), y apoyandose en un arnes de medicion que estaba roto (ver KI-025).
+- Status: Abierto (2026-09-01). Requiere decision del operador: es un parametro de modelo. Compatible en fecha y mecanica con la escalera de `min_edge` invertida del 2026-08-25, pero NO se afirma causalidad. Con el arnes ya corregido, ahora si se puede medir.
+
+- ID: KI-025
+- Severity: Alta
+- Description: `scripts/measure_features.py` nunca reinsertaba el partido evaluado en `team_hist`: solo habia `append` en el cebado del warmup y en la rama de marcador ilegible. Cada partido de test se puntuaba contra el mismo historial congelado en el borde del warmup, asi que cada feature era una CONSTANTE por equipo y la correlacion medida era un efecto fijo, no una senal walk-forward. Sobre marcadores aleatorios puros emitia significacion espuria (rest_diff p=0,0467). Era el UNICO arnes que mide las features de `rest_form`, y el bug existia desde su primer commit (`83b1e96`, 2026-08-23) -- el mismo dia en que se activo `streak_coef`.
+- Status: RESUELTO (2026-09-01, commit `2399c0c`). La reinsercion va al final del cuerpo del bucle, con test explicito de que no introduce lookahead. CONSECUENCIA ABIERTA: toda cifra publicada por este arnes antes del 2026-09-01 carece de valor y las decisiones apoyadas en ellas deben re-medirse.
+
+- ID: KI-026
+- Severity: Media
+- Description: Tres hallazgos ALTOS de la auditoria integral quedan sin corregir porque alteran cifras publicadas o criterios pre-registrados. (a) `calibration/data.py`: la clave de dedup incluye el dia de generacion, asi que `min_n=40` cuenta FILAS y no picks -- 45 grupos superan el umbral por filas pero solo 27 por picks; corregirlo dejaria 18 grupos sin entrenar. (b) `evaluation/model_vs_market.py` puntua sobre el stream inflado sin `one_row_per_pick`: en `totals` subestima el deficit del modelo un 43%. (c) `monitoring/health.py` cubre 4 ligas (`ML_LEAGUES`) cuando produccion sirve 23, y registra `calibration`, `totals_model` y `model_age_days` sin aseverar ninguno -- el informe del 2026-08-30 decia `WARN` con `errors: []` teniendo nba/nfl/nhl sin calibrador y modelos de 20 dias.
+- Status: Abierto (2026-09-01). Los tres documentados con evidencia en `audit/latest/FINDINGS.md` (N4-A-6, N4-A-8, N4-A-9).
+
+- ID: KI-027
+- Severity: Media
+- Description: `scripts/daily_picks.py:85-88` y `scripts/tipster_report.py:62-63` filtran la lista diaria por `generated_at == max()` GLOBAL sobre todas las ligas concatenadas, no por vigencia. Medido el 2026-09-01: de 1.362 picks con partido sin jugar, el filtro descarta 699 -- el 51% -- en 12 ligas (ncaaf 288, mls 70, epl 63, brasileirao 42, ligamx 42, seriea 42, ambos cuadros del US Open, bundesliga, laliga, ligue1, chile). Incumple la REGLA FUNDAMENTAL y esta activo. Es el mismo fallo del 2026-08-28 ("las vistas filtran por vigencia"), corregido en el dashboard y no en estos dos CLI, que son los que invoca `DIARIO_COMPLETO.bat`. `tipster_report.py` ni siquiera expone `--all-days`.
+- Status: Abierto (2026-09-01). Confirmado de forma independiente por Codex (`STATICALLY_VERIFIED`, HIGH).
