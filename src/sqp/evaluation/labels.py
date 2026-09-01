@@ -119,6 +119,68 @@ def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
     return df[(fecha == "") | (fecha >= (hoy or local_today()))]
 
 
+# Identidad MINIMA de un pick. Sin estas tres no se puede afirmar que dos filas
+# sean el mismo pick, y colapsarlas borraria picks distintos. `line` se anade
+# cuando existe, pero no es obligatoria: en `h2h` es nula por definicion.
+_IDENTIDAD_PICK = ("event_id", "market", "selection")
+
+
+def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
+    """Picks vigentes con UNA fila por pick: la servida mas RECIENTE.
+
+    Es el criterio completo de una lista de picks, y vive aqui porque estaba
+    duplicado a mano. `picks_vigentes` sola no basta sobre el stream servido: ese
+    stream ACUMULA una fila por dia de horizonte (`served_store.KEY_COLS` lleva
+    `generated_at`), asi que sin colapsar, el mismo pick sale hasta siete veces.
+    Medido el 2026-09-01: 2.182 filas vigentes para 1.000 picks reales.
+
+    Se conserva la mas reciente porque aqui manda el ULTIMO precio conocido, al
+    reves que en la medicion de ROI, donde vale el del momento de decidir.
+
+    Si no queda NINGUN pick vigente se cae al ultimo dia generado, aunque sus
+    partidos ya se hayan jugado: un tablero en blanco es lo que hizo creer al
+    operador durante 53 dias que el sistema no generaba nada.
+
+    El arreglo del 2026-08-28 aplico esta logica a las tres vistas del dashboard
+    y dejo fuera `scripts/daily_picks.py` y `scripts/tipster_report.py`, que son
+    los que invoca `DIARIO_COMPLETO.bat` (KI-027). Extraerla evita la cuarta
+    divergencia: el modo de fallo dominante de este repo es la deriva entre
+    artefactos duplicados.
+
+    LIMITE CONOCIDO: `picks_vigentes` compara FECHAS, no instantes, asi que un
+    partido que empezo hace horas sigue contando como vigente hasta que cambia el
+    dia local. Medido el 2026-09-01: 66 de los 128 picks de hoy ya habian
+    empezado (ninguno con stake). Es el criterio canonico desde el 2026-08-28 y
+    NO se cambia aqui: tocarlo afectaria tambien a las tres vistas del dashboard
+    y es una decision de negocio del operador, no del que corrige un CLI.
+    """
+    if df.empty:
+        return df
+    vigentes = picks_vigentes(df, hoy=hoy)
+    if vigentes.empty:
+        # Sin nada vigente se cae al ultimo dia generado; si ni siquiera hay
+        # `generated_at`, se devuelve todo antes que dejar la vista en blanco.
+        if "generated_at" not in df.columns:
+            return df
+        gen = df["generated_at"].astype(str).str[:10]
+        return df[gen == gen.max()]
+    # Colapsar EXIGE la identidad completa. Con una clave parcial, dos partidos
+    # distintos que compartan mercado/seleccion/linea (p. ej. dos `totals/Over
+    # 2.5`) se fusionarian en uno: borrar filas porque falta una columna es la
+    # averia que este proyecto lleva repitiendo, y aqui incumpliria ademas la
+    # REGLA FUNDAMENTAL. Sin identidad se conservan todas.
+    if not set(_IDENTIDAD_PICK).issubset(vigentes.columns):
+        return vigentes
+    claves = [*_IDENTIDAD_PICK] + (["line"] if "line" in vigentes.columns else [])
+    if "generated_at" in vigentes.columns:
+        # `sort` estable: ante sellos repetidos manda el orden de llegada, que en
+        # un fichero append-only es el cronologico.
+        vigentes = vigentes.sort_values("generated_at", kind="stable")
+    # Sin `generated_at` no se puede afirmar cual es la mas reciente, pero el
+    # stream es append-only: la ultima del fichero es la ultima servida.
+    return vigentes.drop_duplicates(claves, keep="last")
+
+
 def game_date_local(df: pd.DataFrame) -> pd.Series:
     """Fecha del PARTIDO en hora local (`YYYY-MM-DD`), alineada con `df`.
 

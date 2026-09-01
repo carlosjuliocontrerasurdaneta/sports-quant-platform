@@ -37,6 +37,7 @@ import pandas as pd
 from scipy.stats import binomtest
 
 from sqp.logging_config import get_logger
+from sqp.sports.team_names import normalize_key
 
 log = get_logger(__name__)
 
@@ -81,6 +82,33 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     return df
 
 
+def _home_oriented_line(g: pd.DataFrame) -> pd.Series:
+    """Linea de `spreads` reorientada al LOCAL, para que las dos caras del mismo
+    handicap caigan en el mismo grupo.
+
+    `pipeline/probabilities.py` emite `(spreads, home, +L)` y
+    `(spreads, away, -L)`: la linea es RELATIVA AL LADO, no un identificador de
+    mercado. Agrupar por la cruda separaba dos filas que son el mismo ensayo.
+
+    NO se usa `abs(line)`: `home -1.5` y `home +1.5` son mercados DISTINTOS
+    (la linea cruza el pick'em entre dias) y hay 20 pares evento/seleccion asi en
+    los datos del 2026-09-01; `abs` los habria fusionado. Se niega el signo solo
+    en la cara visitante, que es exactamente la inversa del productor.
+
+    `h2h` (linea nula en ambas caras) y `totals` (Over/Under comparten el mismo
+    total) ya colapsaban solos y no se tocan. Si faltan las columnas de identidad
+    no se puede reorientar: se devuelve la linea cruda, que es el comportamiento
+    previo.
+    """
+    line = pd.to_numeric(g["line"], errors="coerce")
+    if not {"market", "selection", "away"}.issubset(g.columns):
+        return line
+    sel = g["selection"].astype(str).map(normalize_key)
+    is_away = sel == g["away"].astype(str).map(normalize_key)
+    is_spread = g["market"].astype(str) == "spreads"
+    return line.where(~(is_spread & is_away), -line)
+
+
 def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
     """Una observacion por (evento, mercado, linea): `d` y `ev` promediados.
 
@@ -95,14 +123,22 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
     - **Las dos caras del mismo mercado.** Si las probabilidades del lado
       contrario son complementarias (`p' = 1-p`, `y' = 1-y`), entonces
       `(p'-y')^2 = (p-y)^2` y `d` es EXACTAMENTE el mismo: el lado B duplica n
-      sin aportar ni un bit.
+      sin aportar ni un bit. En `spreads` esto exige reorientar la linea al local
+      antes de agrupar (`_home_oriented_line`), porque ahi la linea es relativa
+      al lado: agrupando por la cruda, las dos caras caian en grupos distintos y
+      `spreads` seguia contando el doble. Medido el 2026-09-01: `n` declarado 743
+      frente a 392 unidades reales, con `mlb|spreads` en 266 sobre 136 eventos.
 
     Contar esas filas como ensayos independientes infla `n` y hunde el p-valor
     del binomial. El 2026-08-27 `mls|h2h` estaba en `p = 0,0600` con alpha 0,05 y
     `brasileirao|h2h` en `p = 0,000039` sobre **8 eventos**: el gate estaba a un
-    paso de autorizar dinero real sobre un test invalido. Colapsar es siempre
-    CONSERVADOR -- solo puede reducir n y subir el p-valor, nunca abrir una
-    puerta que estuviera cerrada.
+    paso de autorizar dinero real sobre un test invalido.
+
+    Colapsar nunca abre una puerta cerrada -- que es la propiedad que importa --,
+    pero NO es cierto que solo pueda subir el p-valor: en muestras desfavorables
+    lo baja (medido el 2026-09-01, `mlb|spreads` 0,7500 -> 0,7257 y
+    `wnba|spreads` 0,9767 -> 0,9290). Lo que garantiza es reducir `n`, y con el
+    umbral `min_n` de por medio eso solo puede endurecer la decision.
     """
     d = ((g["implied_probability_novig"] - g["y"]) ** 2
          - (g["model_probability"] - g["y"]) ** 2)
@@ -110,8 +146,9 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
           - (1.0 - g["model_probability"]))
     units = pd.DataFrame({"d": d, "ev": ev})
     keys = [c for c in ("event_id", "market", "line") if c in g.columns]
+    oriented = _home_oriented_line(g) if "line" in g.columns else None
     for k in keys:
-        units[k] = g[k]
+        units[k] = oriented if k == "line" else g[k]
     return units.groupby(keys, dropna=False, sort=False)[["d", "ev"]].mean().reset_index()
 
 

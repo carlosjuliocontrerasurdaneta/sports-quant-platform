@@ -12,6 +12,7 @@ clasifica NO BET, no A.
 """
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +23,23 @@ from sqp.evaluation.tipster import (classify, expected_value, fair_odds,
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP = 0.075
+
+_spec = importlib.util.spec_from_file_location(
+    "tipster_report", ROOT / "scripts" / "tipster_report.py")
+assert _spec and _spec.loader
+tipster_report = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tipster_report)
+
+
+def _fila(**extra) -> dict:
+    base = {"league": "mlb", "market": "h2h", "selection": "A", "line": None,
+            "event_id": "e0", "price_decimal": 2.0,
+            "estimated_probability": 0.5, "implied_probability_novig": 0.5,
+            "estimated_edge": 0.0, "books_count": 10, "stake": 0.0,
+            "flags": "served_stream",
+            "generated_at": "2026-08-26T11:00:00+00:00",
+            "start_time": "2099-01-01T18:00:00Z"}
+    return {**base, **extra}
 
 
 class TestFormulasDelDocumento:
@@ -137,6 +155,29 @@ class TestSeGeneraCadaDia:
         bat = (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8",
                                                        errors="replace")
         assert "tipster_report.py" in bat
+
+    def test_no_esconde_una_liga_servida_antes_con_partido_por_jugar(self, tmp_path):
+        """KI-027 en el tipster, comprobado por COMPORTAMIENTO y no leyendo el
+        fuente: se le dan dos ligas servidas en dias distintos, ambas con el
+        partido por jugar, y las dos tienen que salir. El filtro anterior
+        (`generated_at == max()` global) devolveria solo la mas reciente."""
+        pd.DataFrame([_fila(league="mlb", event_id="e1",
+                            generated_at="2026-08-30T11:00:00+00:00")]).to_csv(
+            tmp_path / "served_mlb.csv", index=False)
+        pd.DataFrame([_fila(league="epl", event_id="e2",
+                            generated_at="2026-08-26T11:00:00+00:00")]).to_csv(
+            tmp_path / "served_epl.csv", index=False)
+        got = tipster_report.cargar_stream(tmp_path)
+        assert set(got["league"]) == {"mlb", "epl"}
+
+    def test_all_days_incluye_los_ya_empezados(self, tmp_path):
+        pd.DataFrame([
+            _fila(event_id="e1", start_time="2099-01-01T18:00:00Z"),
+            _fila(event_id="e2", start_time="2020-01-01T18:00:00Z"),
+        ]).to_csv(tmp_path / "served_mlb.csv", index=False)
+        assert len(tipster_report.cargar_stream(tmp_path)) == 1
+        assert len(tipster_report.cargar_stream(
+            tmp_path, solo_vigentes=False)) == 2
 
     def test_el_agente_esta_registrado(self):
         p = ROOT / ".claude" / "agents" / "tipster.md"

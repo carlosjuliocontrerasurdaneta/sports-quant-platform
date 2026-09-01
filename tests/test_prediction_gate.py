@@ -124,9 +124,14 @@ def test_exact_ties_are_excluded_from_the_sample():
 # --- independencia de los ensayos ---------------------------------------------
 
 def _serving(event_id: str, selection: str, *, result: str, p_model: float,
-             p_market: float, price: float, generated_at: str) -> dict:
-    return {"league": "mls", "market": "h2h", "event_id": event_id,
-            "selection": selection, "line": 0.0, "model_probability": p_model,
+             p_market: float, price: float, generated_at: str,
+             market: str = "h2h", line: float = 0.0,
+             home: str = "LA Galaxy", away: str = "Austin FC") -> dict:
+    """Fila servida con la forma REAL del stream: `home`/`away` van siempre
+    (`served_store.COLUMNS`), y `line` es RELATIVA AL LADO en spreads."""
+    return {"league": "mls", "market": market, "event_id": event_id,
+            "selection": selection, "line": line, "home": home, "away": away,
+            "model_probability": p_model,
             "implied_probability_novig": p_market, "price_decimal": price,
             "result": result, "game_date": "2026-09-01",
             "generated_at": generated_at}
@@ -154,6 +159,44 @@ def test_both_sides_of_the_same_market_count_once():
     ]
     out = evaluate_markets(pd.DataFrame(filas))
     assert int(out.iloc[0]["n"]) == 1
+
+
+def test_both_sides_of_a_spread_count_once():
+    """El caso que el test de arriba NO ejercita: en `spreads` la linea es
+    RELATIVA AL LADO -- `probabilities.py` emite (home, +L) y (away, -L) --, asi
+    que agrupar por la linea CRUDA separa dos caras que son el mismo ensayo.
+
+    Medido el 2026-09-01 sobre `data/calibration/graded_*.csv`: los 855 pares
+    simultaneos suman exactamente 1.000000 en `model_probability`,
+    `implied_probability_novig` E `y`, luego `d` es identico y la segunda cara no
+    aporta ni un bit. `mlb|spreads` declaraba n=266 sobre 136 eventos reales."""
+    filas = [
+        _serving("e1", "LA Galaxy", result="win", p_model=0.6, p_market=0.5,
+                 price=2.0, generated_at="2026-08-21T12:00:00Z",
+                 market="spreads", line=-1.5),
+        _serving("e1", "Austin FC", result="loss", p_model=0.4, p_market=0.5,
+                 price=2.0, generated_at="2026-08-21T12:00:00Z",
+                 market="spreads", line=1.5),
+    ]
+    out = evaluate_markets(pd.DataFrame(filas))
+    assert int(out.iloc[0]["n"]) == 1, "las dos caras de un spread son UN ensayo"
+
+
+def test_the_same_side_at_opposite_lines_stays_separate():
+    """Contraparte del anterior: colapsar por `abs(line)` seria un arreglo
+    INCORRECTO. `home -1.5` y `home +1.5` son mercados DISTINTOS (la linea cruzo
+    el pick'em entre dias), y en los datos reales del 2026-09-01 hay 20 pares
+    evento/seleccion que tienen ambas. Deben seguir contando como dos."""
+    filas = [
+        _serving("e1", "LA Galaxy", result="win", p_model=0.6, p_market=0.5,
+                 price=2.0, generated_at="2026-08-21T12:00:00Z",
+                 market="spreads", line=-1.5),
+        _serving("e1", "LA Galaxy", result="win", p_model=0.6, p_market=0.5,
+                 price=2.0, generated_at="2026-08-22T12:00:00Z",
+                 market="spreads", line=1.5),
+    ]
+    out = evaluate_markets(pd.DataFrame(filas))
+    assert int(out.iloc[0]["n"]) == 2, "misma cara a lineas opuestas son DOS mercados"
 
 
 def test_rows_without_event_id_are_denied():
