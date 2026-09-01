@@ -1,10 +1,19 @@
 # SQP Claude Code Model Routing
 
-El enrutamiento tiene dos capas independientes:
+El enrutamiento tiene tres capas independientes:
 
 1. `.claude/settings.json` selecciona el modelo de la conversación principal.
-2. `UserPromptSubmit` clasifica la solicitud e inyecta una recomendación de loop y
-   subagente. Cada subagente usa el modelo declarado en su frontmatter.
+2. El parámetro `model` de la herramienta `Agent` asigna el modelo de cada
+   subagente en el momento de delegar, con precedencia sobre su frontmatter
+   (ver la REGLA DE DESPACHO, abajo). Si no se pasa, rige el frontmatter.
+3. `model-routing.json` mapea la solicitud a un loop y a sus subagentes. Se
+   consulta **bajo demanda** desde `/route-task`, con el clasificador
+   `.claude/automation/route_classifier.py`. **No hay inyección automática**: el
+   hook `UserPromptSubmit` que la hacía se **retiró el 2026-09-01**, porque
+   nunca había estado cableado —`settings.json` solo declara `PostToolUse` y
+   `Stop`— y porque, aun cableado, solo inyecta texto consultivo: no asigna
+   modelo. Consultar bajo demanda cuesta contexto únicamente cuando el enrutado
+   importa, en vez de en cada turno.
 
 ## PRINCIPIO RECTOR
 
@@ -130,20 +139,25 @@ propia), jamás un argumento de autoridad sobre el fondo.
   `settings.json`; el escalón de las rutas sigue en `sonnet` para el trabajo
   normal (abajo). El hook no debe afirmar que cambia este modelo.
 
-  `claude-opus-5` es a la vez el punto de partida **y el techo**: es el modelo
-  por defecto y el destino de las tareas de máximo razonamiento. El principio
-  rector sigue intacto —"el modelo superior para lo que exige máximo
-  razonamiento"—; lo que cambió es cuál es ese modelo superior.
+  `claude-opus-5` es el **punto de partida**, no el techo. El techo es
+  `claude-fable-5`, reservado para máxima capacidad de razonamiento (ver el
+  reparto operativo del principio rector, arriba). Punto de partida y techo
+  están separados a propósito y **no deben volver a fundirse**: sin un escalón
+  por encima, el principio rector se queda sin destino al que escalar y deja de
+  ser accionable.
 
   Esta decisión se tomó en dos tiempos para cerrar `KI-021`. Primero el modelo
   principal: el cambio llevaba desde antes del 2026-08-29 aplicado a medias
   —`settings.json` y `docs/MODEL-ROUTING.md` en Opus 5, esta política y el
   literal del test en Fable 5— y el candado de tres puntas mantuvo la suite en
-  rojo hasta que se decidiera. Después el techo: la primera lectura de esa
-  decisión fue que Fable 5 seguía siendo el escalón superior y sólo cambiaba el
-  punto de partida. Era una lectura errónea, y la corrigió el operador el mismo
-  día. Se deja anotado porque el matiz "cambia el defecto pero no el techo" es
-  exactamente el que se puede volver a leer al revés.
+  rojo hasta que se decidiera. Después el techo: durante unas horas se retiró
+  `claude-fable-5` de la jerarquía y se escribió aquí que Opus 5 era "a la vez
+  el punto de partida y el techo". El operador lo revirtió el mismo día
+  (`b3f9cfb`), pero **ese párrafo sobrevivió en esta sección** y estuvo
+  contradiciendo al reparto operativo de arriba hasta el 2026-09-01, cuando la
+  auditoría integral lo detectó. Se deja anotado porque es el modo de fallo
+  exacto que este archivo existe para impedir: la política se corrigió en un
+  sitio y no en el otro, y ningún test cubría la contradicción entre secciones.
 - **Escalón de las rutas** (`model-routing.json`), el lever de coste:
   - `opus` — **solo** `full-audit`, `incident` y `quant-incident`: auditorías
     exhaustivas e incidentes críticos.
@@ -159,6 +173,51 @@ propia), jamás un argumento de autoridad sobre el fondo.
 Una variable `CLAUDE_CODE_SUBAGENT_MODEL` o un modelo indicado explícitamente al
 invocar un subagente puede tener precedencia sobre su frontmatter. Esa excepción
 debe registrarse en `current-task.md`.
+
+## REGLA DE DESPACHO: el mecanismo que aplica esta política
+
+Todo lo de arriba dice *qué* modelo corresponde a cada clase de tarea; esta
+sección fija *por qué mecanismo* se aplica, porque una política sin mecanismo no
+se ejecuta nunca. Auditado el 2026-09-01: 26 de 27 subagentes declaraban
+`model: opus` en su frontmatter, nadie pasaba nunca un modelo al delegar, y
+"delegar por complejidad" simplemente no ocurría.
+
+**El mecanismo es el parámetro `model` de la herramienta `Agent`.** Acepta
+`sonnet | opus | haiku | fable` y tiene **precedencia sobre el frontmatter** del
+subagente. Es el único punto del harness donde la sesión asigna modelo de verdad
+al delegar; la tabla, el hook y el frontmatter son valores por defecto que este
+parámetro sobreescribe cuando la política lo exige.
+
+Reglas de despacho, en orden de precedencia:
+
+1. **Las cinco clases del disparador de escalado van a `claude-fable-5`.** Si la
+   tarea delegada cae en cualquiera de las cinco clases, se despacha con
+   `model: "fable"`, diga lo que diga la ruta, la tabla o el frontmatter, y el
+   escalado se registra en `current-task.md`. `fable` no aparece — a propósito —
+   ni en `model-routing.json` ni en ningún frontmatter: las cinco clases no son
+   léxicas y ningún clasificador por palabras clave puede asignarlas; **solo
+   esta regla despacha a Fable 5**, y por eso sin ella el techo de la política
+   era inalcanzable en la práctica.
+2. **Trabajo normal delegado**: se pasa `model` con el escalón de la ruta
+   aplicable de `model-routing.json` (`opus` solo full-audit/incident/
+   quant-incident; `haiku` solo documentation; `sonnet` el resto). Pasar el
+   modelo de la propia ruta no es la "excepción" del párrafo anterior y no
+   requiere registro; registrar aplica cuando el modelo pasado diverge de la
+   ruta (los escalados de la regla 1).
+3. **Sin ruta aplicable ni disparador**: `sonnet` (la ruta `default`). La tabla
+   sigue siendo el suelo, nunca el techo.
+
+Estado de los otros dos artefactos, dicho sin ambigüedad para que no vuelvan a
+leerse como reglas paralelas:
+
+- La columna `model` de `model-routing.json` no la aplica ningún componente
+  automáticamente: es la **entrada de la regla 2**, que ejecuta quien delega.
+- El clasificador `route_classifier.py` es consultivo y ya no es un hook (ver
+  arriba: retirado el 2026-09-01). Tuvo
+  un downgrade oculto `opus`→`sonnet` por prioridad, no documentado en ninguna
+  parte, que se eliminó el 2026-09-01: el hook lee `route["model"]` y **no lo
+  reinterpreta**. La tabla es la única fuente de modelo por ruta y el candado de
+  `tests/test_claude_model_routing.py` fija ambas cosas.
 
 Este archivo es la fuente única de la política de modelos. `ORCHESTRATOR.md` y
 `decision-engine.md` enlazan aquí en lugar de repetirla. Cambiar el modelo
