@@ -109,6 +109,23 @@ REQUIRED_CHECKS = ("pytest", "ruff", "mypy")
 #: Slots of an observed check.
 CHECK_FIELDS = ("name", "command", "exit_code", "summary")
 
+# Presupuesto por check. Generoso a proposito: la suite lleva marcador `slow`
+# (pyproject.toml) y una corrida completa ronda los 19 min, asi que un limite
+# corto convertiria reviews legitimos en fallos. Lo que cierra es el cuelgue
+# indefinido, que atasca el protocolo entero (auditoria 2026-09-01, F-09).
+CHECK_TIMEOUT_S = 2400          # 40 min
+
+# Presupuesto del reviewer externo. Codex puede tardar, pero no eternamente.
+CODEX_TIMEOUT_S = 1800          # 30 min
+
+# Lineas de salida conservadas por check. Con una sola, el artefacto guardaba
+# el codigo de salida pero no el motivo del fallo (F-13).
+CHECK_SUMMARY_LINES = 20
+
+# Presupuesto de las invocaciones a git. Cortas por naturaleza; si una se
+# cuelga es que el repo tiene un lock muerto, y conviene saberlo ya.
+GIT_TIMEOUT_S = 120
+
 
 class Verdict(str, Enum):
     """What a reviewer may declare about its own run."""
@@ -196,7 +213,11 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
             encoding="utf-8",
             errors="surrogateescape",
             check=False,
+            timeout=GIT_TIMEOUT_S,
         )
+    # `TimeoutExpired` es `SubprocessError`, asi que un git colgado por un
+    # `.git/*.lock` muerto se convierte en FingerprintError como cualquier otro
+    # fallo, en vez de bloquear la ronda (F-09).
     except (OSError, subprocess.SubprocessError) as exc:
         raise FingerprintError(
             f"could not run 'git {' '.join(args)}' in {root}: "
@@ -758,23 +779,47 @@ def run_checks(root: Path, interpreter: str) -> list[dict[str, Any]]:
     observed: list[dict[str, Any]] = []
 
     for name, argv in check_commands(interpreter):
-        result = subprocess.run(
-            argv,
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        output = (result.stdout or result.stderr or "").strip().splitlines()
+        try:
+            result = subprocess.run(
+                argv,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=CHECK_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            # Un check colgado no puede dejar la ronda abierta para siempre:
+            # `check_reviews_v2.py --start` se niega a abrir una nueva mientras
+            # no pueda cerrar la anterior, asi que el protocolo entero queda
+            # atascado hasta intervencion manual (auditoria 2026-09-01, F-09).
+            # Un timeout se registra como exit != 0, que es lo correcto: un
+            # check que no termina NO es un check que pasa.
+            observed.append({
+                "name": name,
+                "command": " ".join(argv),
+                "exit_code": 124,          # convencion de `timeout(1)`
+                "summary": f"[TIMEOUT tras {CHECK_TIMEOUT_S}s: el check no termino]",
+            })
+            continue
+        # stderr se CONCATENA en vez de descartarse: `result.stdout or
+        # result.stderr` perdia stderr siempre que hubiera algo en stdout, y
+        # pytest escribe el fallo en stdout mientras que un crash del
+        # interprete va a stderr. Se conservan las ultimas lineas, no una:
+        # con una sola, el artefacto guardaba el codigo de salida pero no el
+        # motivo, y habia que re-ejecutar para saber que se rompio (F-13).
+        chunks = [c.strip() for c in (result.stdout, result.stderr) if c and c.strip()]
+        output = "\n".join(chunks).splitlines()
+        tail = [ln.strip() for ln in output[-CHECK_SUMMARY_LINES:]]
 
         observed.append(
             {
                 "name": name,
                 "command": " ".join(argv),
                 "exit_code": result.returncode,
-                "summary": output[-1].strip() if output else "[no output]",
+                "summary": "\n".join(tail) if tail else "[no output]",
             }
         )
 

@@ -31,6 +31,19 @@ RUNTIME = ROOT / ".claude" / "reviews" / "runtime"
 REQUIRED = (("CLAUDE", "claude-review.md"), ("CODEX", "codex-review.md"))
 
 
+# V1 esta DEROGADO (`CROSS_REVIEW.md`, "Legacy: Protocol V1"). Se conserva
+# ejecutable porque `codex_review.py` sigue vivo como biblioteca de sandbox para
+# V2, pero su veredicto tiene garantias estrictamente mas debiles: decide sobre
+# dos .md sin run_id, sin review_tree y SIN EJECUTAR NINGUNA VERIFICACION.
+# Emitia "CONSENSUS: AVAILABLE" con exit 0, indistinguible en tono y en codigo
+# de salida del de V2 (auditoria 2026-09-01, F-11).
+LEGACY_BANNER = (
+    "[LEGACY V1 -- DEROGADO] Este pipeline no ejecuta pytest/ruff/mypy y no "
+    "ata la revision a un arbol. Su veredicto NO es el consenso del proyecto. "
+    "Usa /cross-review (Protocol V2). Ver .claude/reviews/CROSS_REVIEW.md."
+)
+
+
 def reset() -> int:
     """Delete last cycle's artifacts so a stale file cannot pose as this run."""
     RUNTIME.mkdir(parents=True, exist_ok=True)
@@ -60,6 +73,7 @@ def report(outcomes: list[ReviewOutcome]) -> int:
         names = ", ".join(outcome.reviewer for outcome in missing)
 
         safe_print("")
+        safe_print(LEGACY_BANNER)
         safe_print("CONSENSUS: BLOCKED")
         safe_print(
             f"{names} did not produce a review. A reviewer that did not run is "
@@ -71,8 +85,9 @@ def report(outcomes: list[ReviewOutcome]) -> int:
         return 1
 
     safe_print("")
+    safe_print(LEGACY_BANNER)
     safe_print(
-        "CONSENSUS: AVAILABLE"
+        "CONSENSUS: AVAILABLE (V1, sin verificacion ejecutada)"
         if consensus_available(outcomes)
         else "CONSENSUS: BLOCKED"
     )

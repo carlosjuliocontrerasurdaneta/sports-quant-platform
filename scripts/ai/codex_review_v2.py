@@ -31,6 +31,7 @@ from codex_review import (  # noqa: E402
     verification_commands,
 )
 from review_v2 import (  # noqa: E402
+    CODEX_TIMEOUT_S,
     FINDING_FIELDS,
     REQUIRED_CHECKS,
     SCHEMA_VERSION,
@@ -209,6 +210,13 @@ def main() -> int:
         codex = codex_command()
         command = f"{codex} exec -"
 
+        # `timeout` obligatorio: sin el, un Codex colgado deja la ronda abierta
+        # y `check_reviews_v2.py --start` se niega a abrir otra mientras no
+        # pueda cerrar la anterior, con lo que el protocolo queda atascado hasta
+        # intervencion manual (auditoria 2026-09-01, F-09). El
+        # `subprocess.TimeoutExpired` lo recoge el `except` de abajo y se
+        # registra como run fallido, que es exactamente el estado correcto: un
+        # reviewer que no termino no es un reviewer limpio.
         result = subprocess.run(
             [str(codex), "exec", "-"],
             input=build_prompt(interpreter, scratch, run),
@@ -219,6 +227,7 @@ def main() -> int:
             errors="replace",
             shell=(os.name == "nt"),
             check=False,
+            timeout=CODEX_TIMEOUT_S,
         )
     except Exception as exc:  # noqa: BLE001 - recorded as a failed run
         outcome = write_review(
