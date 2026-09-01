@@ -181,6 +181,67 @@ def test_market_with_exactly_min_n_trains_and_push_rows_do_not_count(tmp_path, m
     assert by_market["spreads"]["trained"] is False and by_market["spreads"]["n"] == 39
 
 
+def _hist_eventos(n_eventos: int, filas_por_evento: int) -> "pd.DataFrame":
+    """Historial con `n_eventos` eventos, cada uno repetido `filas_por_evento`
+    veces: es la forma REAL del stream servido, que acumula una fila por dia de
+    horizonte y otra por cada cara del mercado."""
+    import numpy as np
+    rng = np.random.default_rng(7)
+    filas = []
+    for e in range(n_eventos):
+        for _ in range(filas_por_evento):
+            filas.append({"league": "mlb", "market": "h2h",
+                          "event_id": f"e{e}",
+                          "date": f"2026-05-{1 + e % 28:02d}",
+                          "model_probability": round(0.35 + 0.3 * rng.random(), 3),
+                          "result": "win" if rng.random() < 0.5 else "loss"})
+    return pd.DataFrame(filas)
+
+
+def test_el_umbral_de_muestra_cuenta_EVENTOS_y_no_filas(tmp_path, monkeypatch):
+    """El gate contaba `len(df)`, y la fuente dejo de ser una fila por apuesta:
+    `load_calibration_training_history` une el stream servido, cuya clave de
+    dedup conserva el dia de generacion y la seleccion. Medido el 2026-09-01:
+    18.667 filas para 3.724 eventos (5,01x), 47 de 52 grupos pasaban por filas y
+    solo 18 por eventos, con bundesliga|spreads entrenando sobre 42 filas de
+    TRES eventos.
+
+    `n_events` ya se calculaba dos lineas arriba del gate: se registraba y no se
+    usaba, mientras el corte temporal y la promocion si contaban eventos."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+
+    # 200 filas, 10 eventos: sobra por filas, no llega por eventos.
+    r = cal.train_market_calibrators(_hist_eventos(10, 20), min_n=40,
+                                     prob_col="model_probability")[0]
+    assert r["n"] == 200 and r["n_events"] == 10
+    assert r["trained"] is False, "200 filas de 10 eventos no son 200 ensayos"
+
+
+def test_cuarenta_eventos_independientes_si_entrenan(tmp_path, monkeypatch):
+    """Contraparte: el umbral no se vuelve inalcanzable. 40 eventos distintos
+    entrenan aunque cada uno traiga una sola fila."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    r = cal.train_market_calibrators(_hist_eventos(40, 1), min_n=40,
+                                     prob_col="model_probability")[0]
+    assert r["n_events"] == 40
+    assert r["trained"] is True
+
+
+def test_esquema_antiguo_sin_event_id_conserva_una_fila_un_evento(tmp_path, monkeypatch):
+    """Las filas sin `event_id` legible reciben uno sintetico por fila, asi que
+    el historial liquidado antiguo (una fila = una apuesta = un evento) sigue
+    contando como antes. Sin esto, cambiar el gate lo habria dejado sin entrenar
+    entero."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    h = _hist_eventos(40, 1).drop(columns=["event_id"])
+    r = cal.train_market_calibrators(h, min_n=40, prob_col="model_probability")[0]
+    assert r["n"] == 40 and r["n_events"] == 40
+    assert r["trained"] is True
+
+
 def test_projection_ignores_extra_columns(tmp_path):
     # Un settled con columnas extra (stake, odds, lo que sea) proyecta limpio:
     # solo TRAINING_COLS en el orden canonico, valores intactos.

@@ -522,9 +522,25 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     apply-time method picks which one); the outcome is whether the selection won
     (graded bets only; push/void excluded), so this calibrates the estimated
     probability against realized frequency per market. Groups with fewer than
-    ``min_n`` graded bets are skipped (recorded ``trained=False``) -- and since
-    the live application is a no-op without a model, an untrained market simply
-    stays uncalibrated. Returns one summary dict per group.
+    ``min_n`` EVENTOS INDEPENDIENTES son saltados (recorded ``trained=False``)
+    -- and since the live application is a no-op without a model, an untrained
+    market simply stays uncalibrated. Returns one summary dict per group.
+
+    ``min_n`` cuenta EVENTOS, no filas. Contaba filas, y la fuente dejo de ser
+    un historico de una fila por apuesta: ``load_calibration_training_history``
+    une el stream servido, cuya clave de dedup conserva a proposito el dia de
+    generacion Y la seleccion, asi que un mismo evento aporta una fila por dia de
+    horizonte y otra por cada cara del mercado. Medido el 2026-09-01: 18.667
+    filas para 3.724 eventos (5,01x); 47 de 52 grupos pasaban el umbral por
+    filas y solo 18 lo pasan por eventos, con casos como bundesliga|spreads
+    entrenando con 42 filas de **3 eventos**.
+
+    Es el mismo criterio que ya usan las otras dos piezas del modulo -- el corte
+    temporal agrupa por ``event_id`` y la promocion exige ``n_val_events`` --, y
+    ``n_events`` ya se calculaba aqui mismo dos lineas arriba: se registraba y no
+    se usaba. Las filas sin ``event_id`` legible reciben uno sintetico por fila,
+    de modo que el esquema antiguo (una fila = un evento) conserva su semantica.
+
 
     Candidates are written to STAGING by default. A separate caller chooses the
     manual promotion path or ``auto_promote_calibrators`` with its OOS/event gates.
@@ -547,10 +563,11 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
                            "date": g["date"].astype(str).to_numpy(),
                            "event_id": event_ids}).dropna(
                                subset=["probability", "won", "date"])
+        n_events = int(df["event_id"].nunique())
         rec = {"league": str(league), "market": str(market), "n": int(len(df)),
-               "n_events": int(df["event_id"].nunique()),
+               "n_events": n_events,
                "trained": False}
-        if len(df) < min_n:
+        if n_events < min_n:
             out.append(rec)
             continue
         try:
