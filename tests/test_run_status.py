@@ -40,9 +40,11 @@ def test_sentinel_records_utc_timestamp(tmp_path):
 
 
 def test_sentinel_is_valid_json(tmp_path):
+    """El centinela se indexa POR ETAPA desde 2026-08-31 (A-02): sobrescribir el
+    fichero entero borraba el fallo de la otra etapa."""
     record_run_failure(tmp_path, stage="run", exit_code=1)
     raw = (tmp_path / "logs" / STATUS_FILENAME).read_text(encoding="utf-8")
-    assert json.loads(raw)["failed"] is True
+    assert json.loads(raw)["stages"]["run"]["failed"] is True
 
 
 def test_record_failure_creates_logs_dir_when_missing(tmp_path):
@@ -156,7 +158,7 @@ def test_dashboard_banner_escapes_its_content(tmp_path):
     record_run_failure(tmp_path, stage="run", exit_code=1)
     p = tmp_path / "logs" / STATUS_FILENAME
     data = json.loads(p.read_text(encoding="utf-8"))
-    data["stage"] = "<script>alert(1)</script>"
+    data["stages"]["run"]["stage"] = "<script>alert(1)</script>"
     p.write_text(json.dumps(data), encoding="utf-8")
     banner = _run_alert_banner(tmp_path)
     assert "<script>" not in banner
@@ -179,3 +181,56 @@ def test_diario_completo_clears_sentinel_on_success():
     from sqp.config import ROOT
     text = (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8", errors="replace")
     assert "--clear" in text, "DIARIO_COMPLETO.bat no limpia el centinela al terminar OK"
+
+
+# --- A-02: el fallo de una etapa no puede borrar el de la otra ----------------
+
+def test_a02_settle_failure_survives_a_later_run_failure_and_its_clear(tmp_path):
+    """La secuencia que dejaba la liquidacion rota y el tablero en verde.
+
+    `record_run_failure` sobrescribia el fichero entero, asi que el fallo de
+    `settle` desaparecia al registrarse el de `run`; despues
+    `RUN_DIARIO_ALL.bat --clear --only-stage run` encontraba `stage == "run"`,
+    daba el visto bueno y borraba el centinela. Resultado: liquidacion nunca
+    ejecutada, health en verde y banner apagado, rompiendo el contrato
+    SETTLE->RUN de CLAUDE.md (auditoria 2026-08-31, A-02).
+    """
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+    assert clear_run_status(tmp_path, "run") is True
+
+    st = read_run_status(tmp_path)
+    assert st is not None, "el fallo de liquidacion se perdio"
+    assert st["stage"] == "settle"
+    assert st["exit_code"] == 1
+
+
+def test_a02_settle_failure_wins_when_both_stages_are_broken(tmp_path):
+    """Con las dos rotas manda la liquidacion: aborta el run del dia siguiente."""
+    record_run_failure(tmp_path, stage="run", exit_code=2)
+    record_run_failure(tmp_path, stage="settle", exit_code=3)
+    st = read_run_status(tmp_path)
+    assert st["stage"] == "settle" and st["exit_code"] == 3
+    assert st["stages"] == ["run", "settle"]
+
+
+def test_a02_clearing_both_stages_removes_the_sentinel(tmp_path):
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+    assert clear_run_status(tmp_path, "run") is True
+    assert clear_run_status(tmp_path, "settle") is True
+    assert read_run_status(tmp_path) is None
+    assert not (tmp_path / "logs" / STATUS_FILENAME).exists()
+
+
+def test_a02_legacy_flat_sentinel_is_still_honoured(tmp_path):
+    """Un centinela escrito por la version anterior debe seguir avisando tras
+    actualizar, o el arreglo estrenaria una ventana ciega."""
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / STATUS_FILENAME).write_text(json.dumps({
+        "failed": True, "stage": "settle", "exit_code": 1,
+        "failed_at": "2026-08-30T11:00:00Z"}), encoding="utf-8")
+    st = read_run_status(tmp_path)
+    assert st is not None and st["stage"] == "settle"
+    assert clear_run_status(tmp_path, "run") is False   # no es su etapa
+    assert clear_run_status(tmp_path, "settle") is True
