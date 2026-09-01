@@ -145,7 +145,15 @@ class OddsAPIClient:
             if hit is not None:
                 self.last_response_cached = True
                 return hit
-        if cache and self.offline_mode:
+        # El guard offline NO puede depender de `cache`. Estaba dentro de
+        # `if cache`, asi que solo cubria /odds y /historical: `fetch_scores`
+        # (de pago) y `list_sports` llaman a `_get` sin `cache=True` -- a
+        # proposito, para no graduar con marcadores rancios -- y salian a la red
+        # igualmente, gastando creditos reales en un run declarado offline
+        # (auditoria 2026-08-31, N4-M-6). Un modo llamado "offline" no toca la
+        # red, y sin conectividad debe fallar con este error explicito y no con
+        # una excepcion de red.
+        if self.offline_mode:
             raise ProviderNotConfiguredError(
                 f"OFFLINE_MODE active and no cached response for {path}.")
         self._require_key()

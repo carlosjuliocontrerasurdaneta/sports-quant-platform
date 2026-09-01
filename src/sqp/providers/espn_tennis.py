@@ -24,7 +24,10 @@ from .date_window import fetch_window
 log = get_logger("sqp.espn_tennis")
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/tennis"
-_RETRY_STATUS = frozenset({500, 502, 503, 504})
+# 429 incluido igual que en `odds_api` (auditoria 2026-07-29, D-05): un
+# backfill anual dia-a-dia son ~367 peticiones seguidas contra un endpoint
+# no oficial, que es justo donde un rate limit es esperable (N4-M-7).
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
 _BACKOFF_SECONDS = 2.0
 _STEP_DAYS = 7  # tournaments span ~1-2 weeks; step weekly to catch every one
@@ -113,8 +116,13 @@ class ESPNTennisResultsProvider(ResultsProvider):
                 else:
                     r.raise_for_status()
                     return parse_tennis_scoreboard(r.json(), since=since)
-            except (requests.Timeout, requests.ConnectionError) as exc:
-                last_error = str(exc)
+            # `RequestException` y `ValueError` ademas de los dos de red: el
+            # docstring promete SALTAR la ventana, pero un cuerpo no-JSON
+            # (`r.json()` -> ValueError) o cualquier otra RequestException
+            # subia y mataba el backfill entero de la liga, perdiendo
+            # tambien las ventanas ya descargadas (N4-M-7).
+            except (requests.RequestException, ValueError) as exc:
+                last_error = f"{exc.__class__.__name__}: {exc}"
             if attempt < _MAX_ATTEMPTS:
                 time.sleep(_BACKOFF_SECONDS * attempt)
         log.warning("[tennis/%s] ESPN window %s failed after %d attempts (%s); skipped.",

@@ -121,18 +121,40 @@ def compute_clv(bets_dir: Path, root: Path,
     return pd.DataFrame(rows), unmatched
 
 
+def finite_clv(df: pd.DataFrame) -> pd.DataFrame:
+    """Filas con `clv_pct` finito -- las unicas sobre las que se puede contar o
+    promediar.
+
+    `compute_clv` conserva a proposito las filas no finitas para que se vean.
+    Agregando con `size` se cuentan filas sin informacion, `beat_close` queda en
+    False para un NaN (`NaN > x` es False) y sesga la tasa a la baja, y con `inf`
+    es peor: pandas NO lo ignora en median/mean, asi que UNA sola fila lleva la
+    mediana a `inf` (auditoria 2026-08-05, F-02).
+
+    El filtro estaba duplicado en `clv_segments` y en `clv_gate.gate_decisions`
+    pero faltaba en el resumen global de `daily_clv` y, con el, en la REGLA DE
+    SALIDA DEL SHADOW MODE, donde `inf > 0` es True: una sola fila con precio
+    corrupto podia declarar cumplida la parte CLV de una decision de dinero real
+    (auditoria 2026-08-31, N4-M-4). Se comparte para que no vuelva a faltar.
+    """
+    if df.empty:
+        return df
+    clv = pd.to_numeric(df["clv_pct"], errors="coerce")
+    return df[clv.notna() & (clv != math.inf) & (clv != -math.inf)]
+
+
 def clv_segments(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     """n, CLV mediano/medio y % que batio el cierre por segmento."""
     if df.empty:
         return pd.DataFrame()
+    # Ver `finite_clv`: el filtro es obligatorio antes de contar o promediar.
     # Solo filas informativas. Antes se agregaba con `size`, que CUENTA las no
     # finitas que median/mean saltan, asi que el n>=min_n del gate de CLV se
     # satisfacia con filas sin informacion; y beat_close quedaba en False para
     # un NaN (NaN > x es False), sesgando beat_close_rate a la baja. Peor con
     # inf: pandas NO lo ignora en median/mean, asi que una sola fila llevaba la
     # mediana a inf (auditoria 2026-08-05, F-02).
-    _clv = pd.to_numeric(df["clv_pct"], errors="coerce")
-    df = df[_clv.notna() & (_clv != math.inf) & (_clv != -math.inf)]
+    df = finite_clv(df)
     if df.empty:
         return pd.DataFrame()
     out = (df.groupby(by)
@@ -175,19 +197,28 @@ def daily_clv(bets_dir: Path | None = None, root: Path | None = None,
                   "Registro reescrito sin mercados habilitados (default-deny): "
                   "ningun (liga, mercado) puede llevar stake real."]
     else:
-        med = float(df["clv_pct"].median())
-        beat = float(df["beat_close"].mean())
+        # El global y la regla de salida del shadow se miden SOLO sobre filas
+        # finitas, igual que los segmentos y el gate (N4-M-4). Sin esto una fila
+        # con precio corrupto llevaba la mediana a `inf`, e `inf > 0` declaraba
+        # cumplida la parte CLV de una decision de dinero real.
+        fin = finite_clv(df)
+        n_desc = int(len(df) - len(fin))
+        med = float(fin["clv_pct"].median()) if not fin.empty else float("nan")
+        beat = float(fin["beat_close"].mean()) if not fin.empty else float("nan")
         summary.update(median_clv_pct=med, beat_close_rate=beat,
-                       shadow_clv_ok=(len(df) >= SHADOW_EXIT_MIN_N and med > 0))
+                       n_finite=int(len(fin)), n_non_finite=n_desc,
+                       shadow_clv_ok=(len(fin) >= SHADOW_EXIT_MIN_N and med > 0))
         lines += [
             "## Global",
-            f"Emparejadas a cierre: {len(df)} | sin cierre disponible: {unmatched}",
-            f"CLV mediano: {med:+.2%} | CLV medio: {df['clv_pct'].mean():+.2%} | "
+            f"Emparejadas a cierre: {len(df)} | con CLV utilizable: {len(fin)}"
+            + (f" | descartadas por CLV no finito: {n_desc}" if n_desc else "")
+            + f" | sin cierre disponible: {unmatched}",
+            f"CLV mediano: {med:+.2%} | CLV medio: {fin['clv_pct'].mean():+.2%} | "
             f"batio el cierre: {beat:.1%}",
             "",
             "## Regla de salida del shadow mode (parte CLV)",
-            f"Requiere CLV mediano > 0 con n >= {SHADOW_EXIT_MIN_N}. Estado: "
-            f"n={len(df)}, mediana={med:+.2%} -> "
+            f"Requiere CLV mediano > 0 con n >= {SHADOW_EXIT_MIN_N} sobre filas "
+            f"con CLV finito. Estado: n={len(fin)}, mediana={med:+.2%} -> "
             + ("CUMPLE la parte CLV (falta verificar el gate de Brier)"
                if summary["shadow_clv_ok"] else "aun NO cumple"),
             "",
