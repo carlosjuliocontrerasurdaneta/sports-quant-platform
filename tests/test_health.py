@@ -48,6 +48,63 @@ def test_health_detects_per_market_calibration_registry(tmp_path):
     assert r["leagues"]["mlb"]["calibration_markets"] == ["spreads"]
 
 
+# --- El informe vigilaba un universo casi disjunto del que se sirve -----------
+#
+# `ML_LEAGUES` es FIJO (mlb/nba/nfl/nhl) y lo servido es DINAMICO. El 2026-09-01
+# los dos conjuntos se cruzaban en UNA liga: se vigilaban nba/nfl/nhl, que no se
+# sirven (fuera de temporada, luego su falta de calibrador NO es un fallo), y
+# quedaban fuera del informe las 22 servidas, incluida `wnba` con calibrador vivo.
+
+def test_el_inventario_incluye_ligas_servidas_fuera_de_ML_LEAGUES(tmp_path):
+    models = tmp_path / "data" / "models"
+    models.mkdir(parents=True)
+    (models / "wnba_spreads_calibration_iso.joblib").write_bytes(b"x")
+    (models / "calibration_methods.json").write_text(
+        '{"wnba_spreads": "isotonic"}', encoding="utf-8")
+    _served(tmp_path, "wnba", [1])
+    _served(tmp_path, "epl", [1])
+    r = generate_health_report(root=tmp_path)
+    assert "wnba" not in ML_LEAGUES, "premisa del test: wnba no es liga ML"
+    assert r["served_calibration"]["wnba"] == ["spreads"], (
+        "el calibrador vivo de una liga servida no-ML era invisible")
+    assert "epl" in r["served_calibration"]
+
+
+def test_una_liga_servida_sin_calibrador_no_genera_aviso(tmp_path):
+    """21 de 23 ligas servidas no tienen calibrador y la ausencia es un no-op
+    soportado. Convertirlo en warning seria la alarma permanente que este modulo
+    ya rechaza para las filas irrecuperables: una alarma que no se puede apagar
+    deja de leerse."""
+    _served(tmp_path, "epl", [1])
+    r = generate_health_report(root=tmp_path)
+    assert r["served_without_calibration"] == ["epl"]
+    assert not any("calibrad" in w for w in r["warnings"]), (
+        "la ausencia de calibrador no debe alarmar; solo registrarse")
+
+
+def test_un_calibrador_registrado_sin_artefacto_si_avisa(tmp_path):
+    """Incoherencia OBJETIVA y sin umbral nuevo: el registro afirma un
+    calibrador que no esta en disco. `_live_calibration_markets` lo descarta en
+    silencio, que es correcto para resolver que esta vivo, pero dejaba el
+    desajuste invisible."""
+    models = tmp_path / "data" / "models"
+    models.mkdir(parents=True)
+    (models / "calibration_methods.json").write_text(
+        '{"mlb_spreads": "isotonic"}', encoding="utf-8")  # sin el .joblib
+    r = generate_health_report(root=tmp_path)
+    assert r["orphan_calibration_entries"] == ["mlb_spreads (isotonic)"]
+    assert any("sin artefacto en disco" in w for w in r["warnings"])
+    assert r["status"] != "OK"
+
+
+def test_un_registro_de_calibracion_ilegible_no_pasa_en_silencio(tmp_path):
+    models = tmp_path / "data" / "models"
+    models.mkdir(parents=True)
+    (models / "calibration_methods.json").write_text("{no es json", encoding="utf-8")
+    r = generate_health_report(root=tmp_path)
+    assert r["orphan_calibration_entries"], "un registro ilegible deja el pipeline sin calibradores"
+
+
 def test_corrupt_results_file_is_logged_not_silently_counted_as_absent(tmp_path, caplog):
     # An unreadable CSV already reaches the same None/0 branch as a missing one,
     # so the status was never wrong -- but the operator could not tell "never

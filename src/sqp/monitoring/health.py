@@ -79,6 +79,62 @@ def _live_calibration_markets(models_dir: Path, league: str) -> list[str]:
     return sorted(out)
 
 
+def _orphan_calibration_entries(models_dir: Path) -> list[str]:
+    """Entradas del registro cuyo ARTEFACTO no existe.
+
+    `_live_calibration_markets` las descarta en silencio, que es lo correcto para
+    resolver que esta vivo, pero deja invisible una incoherencia objetiva: el
+    registro afirma un calibrador que no esta en disco. No hace falta ningun
+    umbral nuevo para detectarlo -- o el fichero esta o no esta -- y es
+    accionable y finita, asi que puede ser un aviso sin convertirse en una alarma
+    permanente.
+    """
+    registry = models_dir / "calibration_methods.json"
+    if not registry.exists():
+        return []
+    try:
+        methods = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        # Un registro ilegible SI es una incoherencia que hay que decir: el
+        # pipeline se quedaria sin calibradores sin que nada lo señalara.
+        return ["<registro calibration_methods.json ilegible>"]
+    if not isinstance(methods, dict):
+        return ["<registro calibration_methods.json con formato inesperado>"]
+    huerfanas = []
+    for key, method in methods.items():
+        suffix = {"isotonic": "iso", "beta": "beta"}.get(str(method))
+        if suffix is None:
+            huerfanas.append(f"{key} (metodo desconocido: {method})")
+        elif not (models_dir / f"{key}_calibration_{suffix}.joblib").exists():
+            huerfanas.append(f"{key} ({method})")
+    return sorted(huerfanas)
+
+
+def _served_calibration_inventory(root: Path) -> dict[str, list[str]]:
+    """Calibradores vivos por liga SERVIDA. Informativo, no genera avisos.
+
+    `ML_LEAGUES` es el universo de mantenimiento ML (results/features/modelo
+    entrenado) y es un conjunto FIJO; las ligas que se sirven son dinamicas. El
+    2026-09-01 los dos conjuntos se cruzaban en UNA liga: `mlb`. Se vigilaban
+    nba/nfl/nhl, que no se sirven -- estan fuera de temporada, asi que su falta
+    de calibrador NO es un fallo --, y quedaban fuera del inventario las 22
+    servidas, incluida `wnba`, que si tiene calibrador vivo.
+
+    No lleva aviso a proposito: 21 de 23 ligas servidas no tienen calibrador, y
+    la ausencia es un no-op soportado (sin modelo, la aplicacion no hace nada).
+    Convertir eso en warning seria la alarma permanente que este modulo ya
+    rechaza para las filas irrecuperables. Va al informe para que sea auditable
+    y se pueda seguir su tendencia.
+    """
+    models_dir = root / "data" / "models"
+    try:
+        ligas = ServedStore(root).leagues()
+    except Exception as exc:
+        log.warning("no se pudo enumerar las ligas servidas: %s", exc)
+        return {}
+    return {lg: _live_calibration_markets(models_dir, lg) for lg in sorted(ligas)}
+
+
 def _served_pending_expired(root: Path) -> tuple[dict[str, int], dict[str, int]]:
     """(recientes, total) por liga de filas servidas que ya NO pueden graduarse.
 
@@ -202,9 +258,30 @@ def generate_health_report(root: Path = ROOT) -> dict:
                  ", ".join(f"{lg}={n}" for lg, n in sorted(
                      served_expired_total.items())))
 
+    # Incoherencia objetiva y sin umbral nuevo: el registro afirma un calibrador
+    # que no esta en disco. Es accionable y finita, luego puede ser aviso.
+    huerfanas = _orphan_calibration_entries(data / "models")
+    for h in huerfanas:
+        warnings.append(f"calibrador registrado sin artefacto en disco: {h}")
+
+    # Inventario por liga SERVIDA. Informativo: `ML_LEAGUES` es el universo de
+    # mantenimiento ML y es fijo, mientras que lo que se sirve es dinamico; el
+    # 2026-09-01 los dos conjuntos se cruzaban en una sola liga (`mlb`).
+    served_calibration = _served_calibration_inventory(root)
+    sin_calib = sorted(lg for lg, m in served_calibration.items() if not m)
+    if sin_calib:
+        log.info("Ligas servidas sin calibrador vivo: %d de %d (%s). No es un "
+                 "fallo -- sin modelo la calibracion es un no-op --; se registra "
+                 "para seguimiento.", len(sin_calib), len(served_calibration),
+                 ", ".join(sin_calib))
+
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "leagues": leagues,
+        "ml_leagues": list(ML_LEAGUES),
+        "served_calibration": served_calibration,
+        "served_without_calibration": sin_calib,
+        "orphan_calibration_entries": huerfanas,
         "registry_exists": (data / "models" / "registry.json").exists(),
         "served_pending_expired": served_expired,
         "served_pending_expired_total": served_expired_total,
