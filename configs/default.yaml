@@ -61,7 +61,36 @@ risk:
   # Win/loss streak adjustment (h2h and spreads only).
   # adj = sign * (streak_home - streak_away) * streak_coef.
   # e.g. home on +3 streak, away on -2 → home selection gets +5*coef. 0 = no-op.
-  streak_coef: 0.01
+  #
+  # DESACTIVADO el 2026-09-01 por orden del operador, tras medirlo por primera
+  # vez con el arnes ya corregido (KI-024, KI-025). Se activo el 2026-08-23 con
+  # el mensaje "Sin evidencia OOS aun", contradiciendo el contrato del propio
+  # modulo ("activate only after OOS validation"), y apoyandose en un arnes que
+  # estaba roto. Al medirlo, la evidencia no aparece:
+  #
+  # - Walk-forward historico: `streak_diff` correlaciona con el resultado en las
+  #   10 ligas, pero el orden sigue la DISPERSION COMPETITIVA (nba +0,171,
+  #   laliga +0,198) y no la fatiga -- mlb +0,034 y nhl +0,043 son los dos
+  #   deportes de maxima paridad. Es un proxy de calidad de equipo, que el
+  #   modelo y el precio ya incorporan.
+  # - Contra el mercado, sobre 918 EVENTOS independientes del stream graduado
+  #   (colapsados: sin colapsar eran 6.394 filas correlacionadas): el agregado da
+  #   r=+0,1175 pero lo aporta ENTERAMENTE mlb (532 eventos, r=+0,200); de las
+  #   otras cuatro ligas, tres tienen el signo negativo. Y mlb es justo la liga
+  #   donde la muestra grande (9.311 partidos) da la señal MAS DEBIL: entre
+  #   9.311 partidos y 532 eventos manda la primera.
+  # - Aun aceptando el agregado, la regla conservadora del arnes (r*0,05) da un
+  #   IC bootstrap de [0,0025, 0,0091]: el 0,01 quedaba por encima del intervalo
+  #   entero, y se aplicaba GLOBAL a las 23 ligas pese a variar por un factor 6.
+  #
+  # Magnitud de lo que inyectaba: `team_streak` no tiene ventana ni cota y
+  # `streak_p_adjustment` no lo capa, asi que con market_shrink=0,5 el
+  # desplazamiento de p_decision era 0,005*d -- hasta 18,5 pp con el d=37
+  # observado en NBA, contra un suelo min_edge de 2 pp.
+  #
+  # Reactivar exige PRE-REGISTRO (liga, ventana y umbral fijados por adelantado):
+  # la muestra de arriba es la del descubrimiento, y validar sobre ella es KI-019.
+  streak_coef: 0.0
   # Offensive/defensive strength (Dixon-Coles simplified).
   # H2H/spreads: expected_margin = (scored_home + conceded_away - scored_away - conceded_home)/2
   #              adj = sign * expected_margin * off_def_h2h_coef
