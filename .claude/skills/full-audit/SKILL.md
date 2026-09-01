@@ -1,91 +1,711 @@
+
 ---
+
 name: full-audit
-description: Audita de forma integral y de solo lectura un repositorio o proyecto completo. Produce inventario, matriz de cobertura, hallazgos con evidencia reproducible, validación independiente y plan priorizado en audit/latest/. Usar cuando el alcance sea el sistema completo o varias áreas coordinadas y el usuario pida una auditoría completa, integral, full audit, full system audit o análisis exhaustivo. No usar para un único archivo, PR, bug o cambio puntual: para eso usar la skill code-audit. No corrige nada; la corrección es la skill audit-remediation, tras aprobación explícita.
-argument-hint: "[alcance opcional]"
+description: Auditar exhaustivamente repositorios y proyectos de software sin modificar archivos durante el diagnóstico. Usar cuando el usuario solicite una auditoría completa, revisión integral, full audit, full system audit, detección general de bugs, riesgos, vulnerabilidades, problemas de arquitectura, dependencias, configuración, pruebas, scripts, datos, modelos cuantitativos o integraciones externas. Inventariar primero el proyecto, documentar evidencia reproducible, validar los hallazgos, clasificarlos por severidad y confianza, preparar un plan de corrección y esperar aprobación explícita antes de implementar cambios.
 ---
+
 
 # Full Audit
 
-Auditar el proyecto para identificar defectos funcionales, errores lógicos,
-vulnerabilidades, riesgos operacionales, problemas de datos, inconsistencias y
-deuda técnica **con impacto demostrable**.
+## Objetivo
 
-Priorizar precisión, evidencia y cobertura verificable sobre cantidad de
-observaciones o velocidad.
+Analizar exhaustivamente el proyecto para detectar defectos funcionales, errores lógicos, riesgos de ejecución, vulnerabilidades, problemas de datos, deuda técnica e inconsistencias.
 
-Esta skill cubre las fases 0–3 (diagnóstico) y termina entregando un plan.
-**No corrige.** La corrección autorizada es la skill `audit-remediation`.
+Distinguir siempre entre:
 
-## Reglas obligatorias
+* defectos confirmados;
+* hallazgos inferidos;
+* problemas detectados por herramientas;
+* elementos no verificables en el entorno;
+* falsos positivos descartados.
 
-1. **Solo lectura.** No modificar código, configuración, datos, dependencias ni archivos del proyecto. Única excepción: los artefactos de `audit/latest/` y `.claude/automation/runtime/current-task.md` (ver Persistencia).
-2. **Preservar estado existente.** No sobrescribir, revertir, limpiar ni descartar cambios preexistentes.
-3. **Evidencia antes que inferencia.** No presentar hipótesis ni salidas de herramientas como defectos confirmados.
-4. **Validación independiente.** Revalidar cada hallazgo activo con un segundo método cuando sea viable.
-5. **Cobertura explícita.** No llamar "exhaustiva" a la auditoría sin matriz de cobertura.
-6. **Auditar no autoriza corregir.** Esperar aprobación explícita antes de modificar el proyecto.
-7. **Sin acciones externas o destructivas.** No alterar producción, remotos, servicios, bases reales ni recursos de pago.
-8. **No exponer secretos.** Reportar tipo y ubicación; redactar el valor.
-9. **No inventar evidencia.** Ni archivos, líneas, comandos, resultados, errores ni comportamientos.
-10. **No afirmar éxito no comprobado.**
+No modificar archivos durante las fases de descubrimiento, auditoría, validación y planificación.
 
-## Precedencia
+## Reglas de autoridad y seguridad
 
-- Estas reglas prevalecen sobre los comandos generales de validación de `CLAUDE.md` durante las fases 0–3. Un comando recomendado por `CLAUDE.md` sólo se ejecuta si sus efectos son compatibles con la política de solo lectura. Las reglas cuantitativas globales siguen vigentes.
-- **Ninguna ruta, loop, hook ni contexto inyectado autoriza saltarse el gate de la Fase 3.** Si un contexto de routing designa un loop de modificación (p. ej. `refactor.md`), prevalece esta skill y el loop correcto es `.claude/loops/audit.md`.
-- No interpretar las reglas de implementación de `CLAUDE.md` como autorización para corregir.
-- Un `CRITICAL` con exposición activa (credenciales expuestas, corrupción de datos en curso, pérdida de dinero) se comunica **en cuanto se confirma**, sin esperar al informe. Comunicar no autoriza corregir.
+Antes de auditar:
 
-## Alcance
+1. Leer `AGENTS.md` y cualquier instrucción específica del repositorio.
+2. Inspeccionar el estado de Git cuando esté disponible.
+3. Identificar cambios preexistentes.
+4. No sobrescribir, revertir ni descartar modificaciones del usuario.
+5. Respetar las instrucciones más específicas aplicables a cada directorio.
+6. Determinar qué acciones están autorizadas por la solicitud del usuario.
 
-Si se recibe argumento de alcance, restringe las fases 0–3 a esos componentes:
-las áreas fuera de alcance se marcan `EXCLUIDA` con la justificación "fuera del
-alcance solicitado", y el resultado se declara `PARCIAL` por definición. Sin
-argumento, el alcance es el repositorio completo.
+Interpretar las solicitudes de auditar, revisar, analizar, diagnosticar o buscar errores como autorización de solo lectura.
 
-## Preflight
+No tratar una solicitud de auditoría como autorización para modificar código.
 
-1. Leer `AGENTS.md`, `CLAUDE.md` y las reglas de directorio aplicables. **No importar la identidad ni el rol de Codex desde `AGENTS.md`**: usarlo sólo como fuente de reglas del repositorio.
-2. Leer `.claude/memory/known-issues.md` y `.claude/memory/session-summaries.md`. Marcar lo ya resuelto o aceptado deliberadamente para no re-reportarlo.
-3. Leer `audit/latest/FINDINGS.md` y `.claude/automation/runtime/current-task.md`: si hay una auditoría en curso, reanudar (ver Persistencia) en vez de empezar de cero.
-4. Inspeccionar Git: estado, cambios preexistentes y untracked relevantes.
-5. Determinar alcance, exclusiones y acciones autorizadas. Registrar limitaciones del entorno.
+## Fase 0 — Descubrimiento y cobertura
 
-## Persistencia y reanudación
+Antes de buscar defectos, construir un inventario del proyecto.
 
-Una auditoría integral no cabe en una ventana de contexto. **Persistir a medida
-que se avanza, no al final:**
+Identificar:
 
-- escribir cada hallazgo en `audit/latest/FINDINGS.md` en cuanto alcanza estado final;
-- actualizar la matriz de cobertura y los comandos ejecutados en `.claude/automation/runtime/current-task.md`;
-- al reanudar, releer ambos y **no re-auditar áreas ya marcadas `REVISADA`**.
+* propósito y dominio;
+* arquitectura;
+* estructura de directorios;
+* lenguajes y versiones;
+* frameworks;
+* puntos de entrada;
+* módulos y componentes;
+* scripts;
+* configuración;
+* variables de entorno;
+* manifiestos y lockfiles;
+* dependencias;
+* almacenamiento y persistencia;
+* esquemas y migraciones;
+* APIs;
+* integraciones externas;
+* procesos síncronos y asíncronos;
+* modelos estadísticos o de machine learning;
+* pruebas;
+* CI/CD;
+* contenedores;
+* infraestructura declarativa;
+* documentación;
+* código generado o vendorizado;
+* archivos inaccesibles o excluidos.
 
-Estas escrituras son bookkeeping obligatorio, no ampliación de alcance. Son la
-única excepción a la regla 1.
+Clasificar cada área como:
 
-## Procedimiento
+* revisada;
+* revisada parcialmente;
+* no aplicable;
+* no verificable;
+* excluida, indicando la razón.
 
-Leer el archivo correspondiente a la fase en curso; no cargarlos todos a la vez.
+No declarar que la auditoría es exhaustiva sin presentar una matriz de cobertura.
 
-| Fase | Contenido | Archivo |
-|---|---|---|
-| 0–3 | Descubrimiento, cobertura, áreas de auditoría, validación independiente, plan y orquestación | `references/phases.md` |
-| — | Estados de evidencia, severidad, confianza y registro por hallazgo | `references/taxonomy.md` |
-| — | Formato y ubicación de los entregables | `references/deliverables.md` |
-| — | Rutas canónicas del proyecto para la revisión cuantitativa | `references/project-anchors.md` |
-| 4–5 | Corrección autorizada y validación final | skill `audit-remediation` |
+## Fase 1 — Auditoría
 
-## Finalización
+Revisar todas las áreas aplicables al proyecto.
 
-Declarar `COMPLETA` sólo si: existe inventario verificable; la matriz tiene la
-granularidad definida en `references/phases.md`; toda área aplicable está
-revisada o limitada explícitamente; los hallazgos activos fueron revalidados
-cuando era viable; se registraron descartados y límites; existe plan priorizado;
-y no se modificó el proyecto fuera de los artefactos de auditoría.
+### Arquitectura
 
-Si no se cumple, declarar `PARCIAL` y explicar por qué. `PARCIAL` con la
-limitación nombrada es un resultado válido; un `COMPLETA` no sostenido, no.
+Analizar:
 
-Al cerrar, registrar el resultado en `current-task.md` con el vocabulario de
-`.claude/loops/quant/STATES.md` y añadir a `.claude/memory/known-issues.md` los
-hallazgos que queden abiertos.
+* límites entre componentes;
+* responsabilidades;
+* cohesión;
+* acoplamiento;
+* dependencias circulares;
+* flujos principales;
+* contratos internos;
+* puntos únicos de fallo;
+* inicialización y cierre;
+* manejo de estado;
+* concurrencia;
+* idempotencia;
+* recuperación ante fallos.
+
+No reportar como defecto una preferencia arquitectónica sin impacto demostrable.
+
+### Código
+
+Revisar todos los lenguajes detectados, incluidos cuando correspondan:
+
+* Python;
+* scripts BAT;
+* PowerShell;
+* Bash;
+* JavaScript o TypeScript;
+* SQL;
+* archivos de configuración;
+* infraestructura como código.
+
+Buscar:
+
+* bugs funcionales;
+* errores lógicos;
+* condiciones incorrectas;
+* excepciones potenciales;
+* errores asíncronos;
+* valores nulos inesperados;
+* imports o rutas rotas;
+* estados imposibles;
+* ramas inalcanzables;
+* código muerto;
+* duplicación;
+* responsabilidades mezcladas;
+* recursos no liberados;
+* condiciones de carrera;
+* errores de serialización;
+* validación insuficiente;
+* manejo incorrecto de errores.
+
+### Configuración
+
+Revisar:
+
+* precedencia;
+* valores predeterminados;
+* variables de entorno;
+* rutas;
+* URLs;
+* puertos;
+* timeouts;
+* feature flags;
+* configuración por entorno;
+* archivos de ejemplo;
+* validación;
+* coherencia con la documentación.
+
+No modificar parámetros, modelos, estrategias ni criterios de negocio durante la auditoría.
+
+### Dependencias
+
+Revisar:
+
+* manifiestos;
+* lockfiles;
+* versiones de runtime;
+* imports utilizados;
+* dependencias faltantes;
+* dependencias sin uso;
+* incompatibilidades;
+* reproducibilidad;
+* paquetes abandonados;
+* vulnerabilidades conocidas según las herramientas disponibles;
+* coherencia entre manifiestos y lockfiles.
+
+Distinguir entre:
+
+* vulnerabilidad reportada;
+* vulnerabilidad aplicable;
+* vulnerabilidad explotable;
+* dependencia transitiva;
+* falso positivo.
+
+No instalar ni actualizar dependencias durante la auditoría, salvo autorización expresa y cuando sea indispensable para una validación segura.
+
+### Tests
+
+Analizar:
+
+* pruebas unitarias;
+* integración;
+* end-to-end;
+* regresión;
+* casos límite;
+* validaciones;
+* manejo de errores;
+* determinismo;
+* flakiness;
+* fixtures;
+* mocks;
+* cobertura de componentes críticos;
+* pruebas ausentes para bugs detectados.
+
+No eliminar, desactivar, omitir ni debilitar pruebas para conseguir resultados exitosos.
+
+### Seguridad
+
+Revisar según el stack:
+
+* secretos versionados;
+* credenciales y tokens;
+* permisos;
+* autenticación;
+* autorización;
+* validación de entradas;
+* inyecciones;
+* traversal;
+* SSRF;
+* XSS;
+* CSRF;
+* CORS;
+* deserialización insegura;
+* ejecución de comandos;
+* archivos subidos;
+* criptografía;
+* sesiones;
+* cookies;
+* JWT;
+* información sensible en logs;
+* dependencias vulnerables;
+* configuración insegura;
+* permisos de CI/CD.
+
+No mostrar secretos completos. Informar únicamente su tipo, ubicación y acción necesaria.
+
+### Datos y persistencia
+
+Revisar:
+
+* integridad;
+* validación;
+* schemas;
+* migraciones;
+* constraints;
+* relaciones;
+* transacciones;
+* locking;
+* concurrencia;
+* escrituras atómicas;
+* duplicados;
+* sobrescritura;
+* recuperación;
+* retención;
+* eliminación;
+* corrupción;
+* compatibilidad de formatos;
+* timestamps y zonas horarias.
+
+No ejecutar migraciones ni modificar datos reales durante la auditoría.
+
+### Rendimiento
+
+Buscar únicamente problemas relevantes y demostrables:
+
+* complejidad algorítmica;
+* cálculos repetidos;
+* consultas N+1;
+* carga excesiva;
+* llamadas duplicadas;
+* bloqueos;
+* memory leaks;
+* streams o archivos no cerrados;
+* operaciones síncronas costosas;
+* paginación ausente;
+* caching incorrecto;
+* procesamiento redundante.
+
+No recomendar optimizaciones hipotéticas sin evidencia.
+
+### Integraciones externas
+
+Revisar:
+
+* contratos;
+* autenticación;
+* timeouts;
+* retries;
+* rate limits;
+* paginación;
+* respuestas parciales;
+* schemas;
+* errores;
+* idempotencia;
+* caching;
+* fallback;
+* consumo de cuota;
+* trazabilidad;
+* comportamiento ante indisponibilidad.
+
+No efectuar escrituras externas, consumir servicios de pago ni operar sobre producción durante la auditoría.
+
+### Código cuantitativo y machine learning
+
+Cuando corresponda, revisar:
+
+* look-ahead bias;
+* target leakage;
+* contaminación train/test;
+* splits temporales;
+* features futuras;
+* timestamps;
+* selección retrospectiva;
+* calibración;
+* Brier score;
+* log-loss;
+* ECE;
+* tamaño muestral;
+* backtesting;
+* walk-forward;
+* reproducibilidad;
+* seeds;
+* tuning sobre el conjunto de prueba;
+* compatibilidad de artefactos;
+* promoción de modelos;
+* separación entre código experimental y producción.
+
+No presentar resultados sintéticos, in-sample o retrospectivamente seleccionados como evidencia fuera de muestra.
+
+## Evidencia de los hallazgos
+
+Asignar un identificador estable a cada hallazgo:
+
+* `AUD-CRIT-001`;
+* `AUD-HIGH-001`;
+* `AUD-MED-001`;
+* `AUD-LOW-001`.
+
+Para cada hallazgo indicar:
+
+* ID;
+* título;
+* estado;
+* severidad;
+* nivel de confianza;
+* categoría;
+* archivos y líneas;
+* componente;
+* evidencia;
+* condición de activación;
+* pasos o comando de reproducción;
+* resultado esperado;
+* resultado observado;
+* causa raíz;
+* impacto;
+* alcance;
+* solución mínima propuesta;
+* alternativas;
+* riesgo de regresión;
+* pruebas necesarias;
+* limitaciones.
+
+Si un dato no está disponible, indicarlo expresamente. No inventar archivos, líneas, comandos, resultados, errores ni comportamientos.
+
+## Estados de evidencia
+
+### REPRODUCIDO
+
+El defecto fue activado mediante una ejecución controlada y se observó el resultado incorrecto.
+
+### VERIFICADO ESTÁTICAMENTE
+
+La ruta defectuosa está demostrada directamente por el código o la configuración.
+
+### DETECTADO POR HERRAMIENTA
+
+Una herramienta produjo el hallazgo, pero su aplicabilidad todavía debe comprobarse.
+
+### INFERIDO
+
+Existe evidencia razonable, pero falta una condición o validación necesaria.
+
+### NO VERIFICABLE
+
+No puede comprobarse por ausencia de dependencias, datos, credenciales, servicios, sistema operativo, infraestructura o permisos.
+
+### DESCARTADO
+
+La revisión adicional demostró que la sospecha inicial no era un defecto.
+
+No presentar como confirmado un hallazgo inferido, no verificable o detectado únicamente por una herramienta.
+
+## Severidad
+
+### CRÍTICO
+
+Usar cuando el defecto pueda provocar:
+
+* pérdida o corrupción significativa de datos;
+* exposición de credenciales;
+* ejecución arbitraria;
+* vulnerabilidad crítica explotable;
+* indisponibilidad completa;
+* resultado principal sistemáticamente incorrecto;
+* incumplimiento grave de controles operacionales.
+
+### IMPORTANTE
+
+Usar cuando exista:
+
+* bug funcional relevante;
+* fallo frecuente;
+* resultado materialmente incorrecto;
+* degradación operacional significativa;
+* vulnerabilidad de impacto considerable;
+* regresión importante;
+* riesgo sustancial de datos.
+
+### MENOR
+
+Usar para:
+
+* defecto acotado;
+* mantenibilidad;
+* duplicación;
+* documentación incorrecta;
+* validación secundaria ausente;
+* robustez adicional;
+* impacto funcional reducido.
+
+No elevar la severidad por una posibilidad teórica sin ruta causal demostrable.
+
+## Nivel de confianza
+
+### ALTO
+
+Hallazgo reproducido o demostrado mediante evidencia inequívoca.
+
+### MEDIO
+
+Evidencia estática sólida, pero sin reproducción completa.
+
+### BAJO
+
+Hipótesis plausible que depende de condiciones o información no disponible.
+
+No incluir hallazgos de confianza baja entre los defectos confirmados.
+
+## Fase 2 — Validación independiente
+
+Revisar nuevamente cada hallazgo mediante un método adicional.
+
+Para cada candidato:
+
+1. revisar los llamadores y flujos relacionados;
+2. buscar validaciones o protecciones existentes;
+3. contrastar configuración, pruebas y documentación;
+4. buscar contraejemplos;
+5. intentar una reproducción segura;
+6. determinar si el comportamiento es intencional;
+7. reevaluar severidad y confianza;
+8. clasificarlo como confirmado, inferido, no verificable o descartado.
+
+No eliminar silenciosamente falsos positivos. Conservar los descartados relevantes en un apartado separado, explicando por qué fueron refutados.
+
+No limitarse a repetir el razonamiento inicial.
+
+## Fase 3 — Plan de corrección
+
+Generar un plan ordenado por:
+
+1. defectos críticos;
+2. defectos importantes;
+3. seguridad e integridad de datos;
+4. riesgos operacionales;
+5. pruebas y regresiones;
+6. deuda técnica;
+7. mejoras opcionales.
+
+Para cada acción indicar:
+
+* IDs relacionados;
+* archivos previstos;
+* cambio mínimo;
+* dependencias;
+* riesgo;
+* pruebas requeridas;
+* criterio de aceptación;
+* orden de implementación.
+
+No modificar archivos todavía.
+
+Entregar el informe y esperar aprobación explícita.
+
+La aprobación debe identificar los hallazgos o grupos de cambios autorizados.
+
+## Fase 4 — Corrección
+
+Ejecutar esta fase únicamente después de recibir aprobación expresa.
+
+Antes de modificar:
+
+1. confirmar los IDs aprobados;
+2. releer las instrucciones aplicables;
+3. inspeccionar nuevamente el estado de Git;
+4. identificar cambios preexistentes;
+5. detectar solapamientos;
+6. mostrar los archivos afectados;
+7. mostrar el plan exacto de cambios.
+
+Corregir únicamente los elementos aprobados.
+
+Aplicar el parche mínimo que resuelva la causa confirmada.
+
+Preservar, salvo autorización expresa:
+
+* lógica de negocio válida;
+* comportamiento funcional;
+* configuración no relacionada;
+* interfaces públicas;
+* compatibilidad;
+* esquemas;
+* modelos;
+* estrategias;
+* parámetros;
+* criterios de decisión;
+* datos históricos.
+
+No realizar refactorizaciones masivas ni cambios cosméticos no relacionados.
+
+No eliminar archivos no versionados, ambiguos o preexistentes.
+
+No ejecutar operaciones destructivas, migraciones irreversibles ni acciones externas sin autorización explícita.
+
+## Fase 5 — Validación final
+
+Después de cada conjunto lógico de correcciones:
+
+1. ejecutar la prueba específica del defecto;
+2. ejecutar las pruebas del componente;
+3. ejecutar las validaciones estáticas pertinentes;
+4. ejecutar la suite de regresión relevante;
+5. ejecutar la suite completa cuando sea viable;
+6. revisar el diff;
+7. comprobar configuración, manifiestos y lockfiles;
+8. buscar regresiones accidentales;
+9. revisar nuevamente las áreas afectadas.
+
+Distinguir entre:
+
+* validaciones exitosas;
+* validaciones fallidas;
+* fallos preexistentes;
+* regresiones introducidas;
+* validaciones no ejecutables.
+
+No afirmar éxito si una comprobación no se ejecutó.
+
+Entregar:
+
+* IDs corregidos;
+* cambios realizados;
+* archivos modificados;
+* comandos ejecutados;
+* resultados;
+* pruebas añadidas o modificadas;
+* regresiones detectadas;
+* riesgos pendientes;
+* limitaciones;
+* validaciones no ejecutadas y su causa.
+
+## Modo orquestado
+
+Activar cuando:
+
+* la auditoría abarque todo el sistema;
+* el usuario solicite “full system audit”;
+* el usuario solicite una auditoría orquestada;
+* el alcance requiera especialidades independientes.
+
+Usar `principal-orchestrator` cuando esté disponible y delegar únicamente las áreas aplicables entre:
+
+* `repository-cartographer`;
+* `backend-architect`;
+* `data-engineer`;
+* `feature-engineer`;
+* `leakage-detector`;
+* `ml-engineer`;
+* `calibration-auditor`;
+* `backtest-reviewer`;
+* `odds-market-auditor`;
+* `risk-manager`;
+* `qa-engineer`;
+* `security-reviewer`.
+
+No asumir que un especialista existe por estar nombrado.
+
+Si un especialista no está disponible:
+
+1. continuar con los especialistas disponibles;
+2. realizar localmente la revisión equivalente;
+3. indicar qué área no pudo delegarse;
+4. no reducir silenciosamente la cobertura.
+
+Proporcionar a cada especialista:
+
+* alcance exacto;
+* archivos o componentes asignados;
+* exclusiones;
+* prohibición de modificar;
+* taxonomía de severidad;
+* estados de evidencia;
+* formato obligatorio;
+* comandos permitidos.
+
+El orquestador debe:
+
+1. verificar la evidencia de cada especialista;
+2. deduplicar hallazgos;
+3. resolver inconsistencias;
+4. unificar severidad y confianza;
+5. descartar falsos positivos;
+6. conservar la trazabilidad;
+7. identificar áreas sin cobertura.
+
+No aceptar automáticamente las conclusiones de los especialistas.
+
+## Informe consolidado
+
+Entregar:
+
+### Resumen ejecutivo
+
+* propósito;
+* arquitectura;
+* estado general;
+* riesgos principales;
+* conclusión;
+* limitaciones.
+
+### Matriz de cobertura
+
+Para cada área:
+
+* estado;
+* método de revisión;
+* validación;
+* limitaciones.
+
+### Hallazgos confirmados
+
+Ordenar por:
+
+1. críticos;
+2. importantes;
+3. menores.
+
+### Hallazgos inferidos o no verificables
+
+Mantenerlos separados de los confirmados.
+
+### Falsos positivos descartados
+
+Incluir los casos relevantes y la evidencia que los descartó.
+
+### Validaciones
+
+Para cada comando:
+
+* comando exacto;
+* resultado;
+* fallos;
+* limitaciones.
+
+### Plan priorizado
+
+Relacionar cada acción con sus IDs, archivos, riesgos, pruebas y criterio de aceptación.
+
+### Riesgos pendientes
+
+Indicar los problemas que no puedan corregirse o verificarse y explicar la causa.
+
+## Criterio de finalización
+
+Considerar completada la auditoría cuando:
+
+* exista un inventario verificable;
+* la matriz de cobertura esté completa;
+* todos los hallazgos hayan sido revalidados;
+* los falsos positivos relevantes estén identificados;
+* los límites de la revisión estén declarados;
+* exista un plan priorizado;
+* no se hayan modificado archivos.
+
+Considerar completada la corrección cuando:
+
+* se hayan tratado únicamente los IDs aprobados;
+* las pruebas específicas hayan sido ejecutadas;
+* no existan regresiones atribuibles conocidas;
+* el diff final haya sido revisado;
+* los riesgos y limitaciones pendientes estén documentados.
+
+## Restricciones finales
+
+* No modificar archivos automáticamente durante la auditoría.
+* No realizar refactorizaciones masivas sin aprobación.
+* No cambiar modelos, estrategias, parámetros ni criterios de negocio sin autorización explícita.
+* No alterar producción, servicios externos, bases de datos reales ni credenciales.
+* No ejecutar commits, pushes, merges, releases o deployments sin solicitud expresa.
+* No ocultar fallos ni debilitar validaciones.
+* No presentar inferencias como hechos confirmados.
+* Priorizar precisión y evidencia sobre velocidad.
+* Documentar toda modificación relevante.
+
