@@ -13,6 +13,7 @@ mienta: junto a cada probabilidad, lo que la CUOTA exige.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -118,7 +119,7 @@ class TestFuenteYFiltros:
         (tmp_path / "candidates_mlb.csv").write_text(
             _served([{"selection": "NO_DEBE_APARECER"}]).to_csv(index=False),
             encoding="utf-8")
-        got = daily_picks.load_served(tmp_path, today_only=False)
+        got = daily_picks.load_served(tmp_path, solo_vigentes=False)
         assert list(got["selection"]) == ["X"]
 
     def test_min_prob_recorta_por_abajo(self):
@@ -135,6 +136,144 @@ class TestFuenteYFiltros:
 
     def test_frame_vacio_no_revienta(self):
         assert daily_picks.rank_picks(pd.DataFrame()).empty
+
+
+class TestVigenciaNoDiaDeGeneracion:
+    """KI-027: la lista se filtraba por `generated_at == max()` GLOBAL sobre
+    todas las ligas concatenadas. Como las ligas no se refrescan todas cada dia
+    -- el guardian de presupuesto las aplaza, y un run que cruza la medianoche
+    parte los candidatos en dos dias --, eso escondia picks cuyo partido seguia
+    POR JUGAR solo porque otra liga se sirvio despues.
+
+    Es el mismo fallo que se corrigio en el dashboard el 2026-08-28 y que dejo
+    fuera a los dos CLI que invoca DIARIO_COMPLETO.bat.
+    """
+
+    def _escribe(self, d, nombre, filas):
+        (d / nombre).write_text(_served(filas).to_csv(index=False),
+                                encoding="utf-8")
+
+    def test_una_liga_servida_ayer_con_partido_por_jugar_sigue_visible(self, tmp_path):
+        """El candado de la REGLA FUNDAMENTAL: la liga vieja se sirvio antes,
+        pero su partido no se ha jugado, asi que es apostable y debe salir."""
+        self._escribe(tmp_path, "served_mlb.csv", [
+            {"selection": "SERVIDA_HOY", "league": "mlb",
+             "generated_at": "2026-08-30T11:00:00+00:00",
+             "start_time": "2099-01-01T18:00:00Z"}])
+        self._escribe(tmp_path, "served_epl.csv", [
+            {"selection": "SERVIDA_ANTES", "league": "epl",
+             "generated_at": "2026-08-26T11:00:00+00:00",
+             "start_time": "2099-01-02T18:00:00Z"}])
+        got = daily_picks.load_served(tmp_path)
+        assert set(got["selection"]) == {"SERVIDA_HOY", "SERVIDA_ANTES"}, (
+            "filtrar por dia de generacion esconde ligas enteras vigentes")
+
+    def test_el_mismo_pick_servido_varios_dias_sale_una_vez_y_con_el_precio_ultimo(
+            self, tmp_path):
+        """El stream ACUMULA una fila por dia de horizonte. Sin colapsar, pasar
+        a vigencia haria salir el mismo pick hasta siete veces: 2.182 filas
+        vigentes para 1.000 picks reales (2026-09-01)."""
+        self._escribe(tmp_path, "served_mlb.csv", [
+            {"event_id": "e1", "price_decimal": 2.0,
+             "generated_at": "2026-08-26T11:00:00+00:00",
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"event_id": "e1", "price_decimal": 2.5,
+             "generated_at": "2026-08-28T11:00:00+00:00",
+             "start_time": "2099-01-01T18:00:00Z"},
+        ])
+        got = daily_picks.load_served(tmp_path)
+        assert len(got) == 1, "un pick servido dos dias sigue siendo UN pick"
+        assert float(got.iloc[0]["price_decimal"]) == 2.5, (
+            "manda el ULTIMO precio conocido")
+
+    def test_un_partido_ya_jugado_no_es_vigente(self, tmp_path):
+        self._escribe(tmp_path, "served_mlb.csv", [
+            {"selection": "VIGENTE", "event_id": "e1",
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"selection": "YA_JUGADO", "event_id": "e2",
+             "start_time": "2020-01-01T18:00:00Z"},
+        ])
+        got = daily_picks.load_served(tmp_path)
+        assert list(got["selection"]) == ["VIGENTE"]
+
+    def test_sin_ningun_vigente_no_deja_la_lista_en_blanco(self, tmp_path):
+        """Se conserva la leccion de los 53 dias: un tablero vacio hizo creer al
+        operador que el sistema no generaba nada."""
+        self._escribe(tmp_path, "served_mlb.csv", [
+            {"selection": "VIEJO", "start_time": "2020-01-01T18:00:00Z"}])
+        got = daily_picks.load_served(tmp_path)
+        assert not got.empty, "sin vigentes se cae al ultimo dia generado"
+
+    def test_all_days_incluye_los_partidos_ya_empezados(self, tmp_path):
+        self._escribe(tmp_path, "served_mlb.csv", [
+            {"selection": "VIGENTE", "event_id": "e1",
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"selection": "YA_JUGADO", "event_id": "e2",
+             "start_time": "2020-01-01T18:00:00Z"},
+        ])
+        got = daily_picks.load_served(tmp_path, solo_vigentes=False)
+        assert set(got["selection"]) == {"VIGENTE", "YA_JUGADO"}
+
+    def test_sin_event_id_no_colapsa_dos_partidos_distintos(self):
+        """Colapsar con una clave PARCIAL fusionaba dos partidos que compartian
+        mercado, seleccion y linea -- dos `totals/Over 2.5` distintos salian como
+        uno. Borrar filas porque falta una columna es la averia que este proyecto
+        lleva repitiendo, y aqui ademas incumple la REGLA FUNDAMENTAL."""
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = _served([
+            {"home": "A", "away": "B", "market": "totals",
+             "selection": "Over", "line": 2.5,
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"home": "C", "away": "D", "market": "totals",
+             "selection": "Over", "line": 2.5,
+             "start_time": "2099-01-01T18:00:00Z"},
+        ])
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 2, "sin identidad de evento se conservan las filas"
+
+    def test_sin_generated_at_sigue_colapsando_por_identidad(self):
+        """El stream es append-only: sin sello, la ultima fila del fichero es la
+        ultima servida. Antes, la ausencia de `generated_at` desactivaba el
+        colapso entero y el mismo pick salia dos veces."""
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = _served([
+            {"event_id": "e1", "price_decimal": 2.0,
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"event_id": "e1", "price_decimal": 2.5,
+             "start_time": "2099-01-01T18:00:00Z"},
+        ]).drop(columns=["generated_at"])
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 1
+        assert float(out.iloc[0]["price_decimal"]) == 2.5
+
+    def test_sin_vigentes_ni_generated_at_no_devuelve_vacio(self):
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = _served([{"start_time": "2020-01-01T18:00:00Z"}]).drop(
+            columns=["generated_at"])
+        assert not picks_vigentes_unicos(df).empty
+
+    def test_la_consola_no_tumba_el_cli_con_un_nombre_no_ascii(self):
+        """La consola de Windows es cp1252: imprimir 'Cetkovic' (US Open)
+        reventaba el CLI con el informe YA escrito en disco, y el .bat se lo
+        tragaba como paso no bloqueante. El helper debe tolerar ademas un flujo
+        que no admita `reconfigure` (una tuberia, un StringIO en tests)."""
+        import io
+
+        from sqp.logging_config import consola_utf8
+        original = sys.stdout
+        sys.stdout = io.StringIO()  # sin `reconfigure`
+        try:
+            consola_utf8()  # no debe lanzar
+        finally:
+            sys.stdout = original
+
+    def test_la_tabla_dice_de_cuando_es_cada_fila(self):
+        """Al mezclar runs, una cuota de hace tres dias no debe leerse como
+        fresca: la vista tiene que decir cuando se genero."""
+        out = daily_picks.rank_picks(_served([
+            {"generated_at": "2026-08-26T11:00:00+00:00"}]))
+        assert "generado" in daily_picks.COLS
+        assert list(out["generado"]) == ["2026-08-26"]
 
 
 class TestEnganchadoAlFlujoDiario:

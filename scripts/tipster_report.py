@@ -22,8 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT, Settings
-from sqp.evaluation.labels import game_date_local, local_today
+from sqp.evaluation.labels import (game_date_local, local_today,
+                                   picks_vigentes_unicos)
 from sqp.evaluation.tipster import tipster_summary, tipster_table
+from sqp.logging_config import consola_utf8
 
 COLS = ["tier", "fecha", "liga", "partido", "mercado", "seleccion", "linea", "cuota",
         "prob_est", "cuota_justa", "prob_mercado", "edge_pp", "ev", "casas",
@@ -39,16 +41,19 @@ def _md(df: pd.DataFrame) -> str:
                       *("| " + " | ".join(r) + " |" for r in rows)])
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dia", default="hoy", help="hoy | todos | YYYY-MM-DD")
-    ap.add_argument("--tier", default=None, help="A | B | C | 'NO BET'")
-    ap.add_argument("--out", type=Path, default=None)
-    args = ap.parse_args()
+def cargar_stream(cal_dir: Path, *, solo_vigentes: bool = True) -> pd.DataFrame:
+    """Stream servido de todas las ligas, filtrado por VIGENCIA del partido.
 
-    cal = ROOT / "data" / "calibration"
+    Vive fuera de `main()` para poder probar el filtro sin escribir ficheros:
+    mientras estuvo dentro, lo unico que un test podia hacer era mirar el codigo
+    fuente, que pasa igual con un import muerto o un flag mal cableado.
+
+    El criterio es el mismo que el del dashboard y el de `daily_picks.py`
+    (`picks_vigentes_unicos`): filtrar por dia de GENERACION escondia picks
+    todavia apostables porque otra liga se sirvio despues (KI-027).
+    """
     frames = []
-    for f in sorted(cal.glob("served_*.csv")):
+    for f in sorted(cal_dir.glob("served_*.csv")):
         try:
             d = pd.read_csv(f)
         except (pd.errors.EmptyDataError, pd.errors.ParserError):
@@ -56,11 +61,27 @@ def main() -> int:
         if not d.empty:
             frames.append(d)
     if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    return picks_vigentes_unicos(df) if solo_vigentes else df
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--dia", default="hoy", help="hoy | todos | YYYY-MM-DD")
+    ap.add_argument("--tier", default=None, help="A | B | C | 'NO BET'")
+    ap.add_argument("--all-days", action="store_true",
+                    help="incluir tambien los partidos de dias YA PASADOS (por "
+                         "defecto, del dia en curso en adelante)")
+    ap.add_argument("--out", type=Path, default=None)
+    args = ap.parse_args()
+    consola_utf8()
+
+    df = cargar_stream(ROOT / "data" / "calibration",
+                       solo_vigentes=not args.all_days)
+    if df.empty:
         print("Sin stream servido. Corre RUN_DIARIO_ALL.bat primero.")
         return 1
-    df = pd.concat(frames, ignore_index=True)
-    gen = df["generated_at"].astype(str).str[:10]
-    df = df[gen == gen.max()]
 
     fecha = game_date_local(df)
     dia = (None if args.dia == "todos"

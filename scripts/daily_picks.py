@@ -58,18 +58,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT
-from sqp.evaluation.labels import game_date_local, local_today, match_label
+from sqp.evaluation.labels import (game_date_local, local_today, match_label,
+                                   picks_vigentes_unicos)
+from sqp.logging_config import consola_utf8
 
+# `generado` va al final por la misma razon que en el dashboard: al filtrar por
+# vigencia la lista puede MEZCLAR runs, y una cuota de hace tres dias no debe
+# leerse como fresca.
 COLS = ["#", "liga", "partido", "mercado", "seleccion", "linea", "precio", "prob_est",
-        "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado"]
+        "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado",
+        "generado"]
 
 
-def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
+def load_served(cal_dir: Path, *, solo_vigentes: bool = True) -> pd.DataFrame:
     """Une los served_*.csv de todas las ligas: TODAS las caras priceadas.
 
     Es la fuente que exige la regla fundamental. `candidates_*.csv` seria la
     fuente equivocada: solo contiene lo que supero `min_edge`, asi que ranquearla
     dejaria fuera la mayor parte de los mercados del dia.
+
+    El criterio por defecto es la VIGENCIA del partido (`picks_vigentes_unicos`),
+    no el dia de GENERACION. Filtrar por el ultimo run escondia picks cuyo partido
+    seguia por jugar, solo porque otra liga se sirvio despues: las ligas no se
+    refrescan todas cada dia -- el guardian de presupuesto aplaza ligas y un run
+    que cruza la medianoche parte los candidatos en dos dias de generacion.
+    Esconder un pick vigente contradice la REGLA FUNDAMENTAL (KI-027).
+
+    Medido el 2026-09-01 sobre este stream: el filtro por generacion dejaba 820
+    filas y el criterio de vigencia deja 1.000 picks. Esa manana, con el run
+    partido, la diferencia era de 12 ligas enteras.
     """
     frames = []
     for f in sorted(cal_dir.glob("served_*.csv")):
@@ -82,11 +99,7 @@ def load_served(cal_dir: Path, *, today_only: bool = True) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     df = pd.concat(frames, ignore_index=True)
-    if today_only and "generated_at" in df.columns:
-        day = df["generated_at"].astype(str).str[:10]
-        newest = day.max()
-        df = df[day == newest]
-    return df
+    return picks_vigentes_unicos(df) if solo_vigentes else df
 
 
 def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
@@ -163,6 +176,10 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         "casas": d.get("books_count"),
         "estado": [("STAKE %.2f" % s) if s > 0 else (f or "sin stake")
                    for s, f in zip(stake, flags)],
+        # De cuando es la fila. Sin esto, mezclar runs deja indistinguible una
+        # cuota de hoy de una de hace tres dias.
+        "generado": (d["generated_at"].astype(str).str[:10]
+                     if "generated_at" in d.columns else ""),
     })
     return out
 
@@ -231,24 +248,37 @@ def main() -> int:
                          "YYYY-MM-DD. No es la fecha de generacion: el run "
                          "guarda 7 dias de horizonte.")
     ap.add_argument("--all-days", action="store_true",
-                    help="no limitar al ultimo run (fecha de GENERACION)")
+                    help="incluir tambien los partidos de dias YA PASADOS (por "
+                         "defecto, del dia en curso en adelante). Ojo: la "
+                         "vigencia es por FECHA, asi que un partido que empezo "
+                         "hace un rato sigue en la lista.")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
+    consola_utf8()
 
     pred_dir = ROOT / "data" / "predictions"
-    df = load_served(ROOT / "data" / "calibration", today_only=not args.all_days)
+    df = load_served(ROOT / "data" / "calibration",
+                     solo_vigentes=not args.all_days)
     if df.empty:
         print("Sin stream servido en data/calibration. "
               "Corre RUN_DIARIO_ALL.bat primero.")
         return 1
-    day = str(df["generated_at"].astype(str).str[:10].max()) if "generated_at" in df else "?"
     dia = (None if args.dia == "todos"
            else (local_today() if args.dia == "hoy" else args.dia))
     ranked = rank_picks(df, min_prob=args.min_prob, market=args.market,
                         min_margin=args.min_margin, min_roi=args.min_roi,
                         league=args.liga,
                         game_date=dia, orden=args.orden)
-    etiqueta = f"{day} (generado) - partidos del {dia}" if dia else f"{day} (generado) - todas las fechas"
+    # La etiqueta ya NO puede afirmar un unico dia de generacion: filtrando por
+    # vigencia la lista mezcla runs a proposito. De cuando es cada fila lo dice
+    # su columna `generado`.
+    # "del dia en curso en adelante" y no "vigentes": el criterio compara FECHAS,
+    # asi que incluye partidos de hoy que ya empezaron. Decir "apostables
+    # todavia" seria afirmar mas de lo que el filtro comprueba.
+    alcance = ("del dia en curso en adelante" if not args.all_days
+               else "incluidos dias pasados")
+    etiqueta = (f"partidos del {dia} ({alcance})" if dia
+                else f"todas las fechas ({alcance})")
     report = build_report(ranked, top=args.top, source_day=etiqueta)
 
     out = args.out or pred_dir / f"picks_ranked_{local_today().replace('-', '')}.md"
