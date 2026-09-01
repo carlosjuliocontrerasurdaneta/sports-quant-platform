@@ -96,6 +96,25 @@ class ServedStore:
             frames.append(df)
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
+    @staticmethod
+    def _quarantine(path: Path) -> Path | None:
+        """Move a corrupt CSV aside so the store can start a clean file.
+
+        Never raises: quarantine is a repair path, and failing to repair must not
+        take settlement down with it. Returns the new path, or None on failure.
+        """
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        target = path.with_suffix(f"{path.suffix}.corrupt.{stamp}")
+        try:
+            path.rename(target)
+        except OSError as exc:
+            log.error("could not quarantine %s (it will keep being read as "
+                      "empty until moved by hand): %s", path, exc)
+            return None
+        log.error("quarantined %s -> %s. Inspect and re-import by hand if the "
+                  "rows matter.", path, target.name)
+        return target
+
     def _load(self, path: Path) -> pd.DataFrame:
         if not path.exists():
             return pd.DataFrame(columns=COLUMNS)
@@ -104,11 +123,21 @@ class ServedStore:
         except pd.errors.EmptyDataError:
             return pd.DataFrame(columns=COLUMNS)
         except pd.errors.ParserError as exc:
-            # A corrupt CSV silently disabled dedup and pending(); keep the
-            # best-effort behavior but make it visible so the file gets fixed
-            # (audit 2026-07-24, M-21).
-            log.warning("corrupt CSV at %s treated as empty (dedup/pending "
-                        "degraded until repaired): %s", path, exc)
+            # "Degraded until repaired" was never true: nothing repaired it and
+            # nothing quarantined it, so the damage was PERMANENT and silent
+            # (audit 2026-08-31, N-A-2). Treating the file as empty skips the
+            # dedup in `append_served`, and because the header is still intact
+            # that method takes its cheap-append branch and keeps writing behind
+            # the corrupt line; meanwhile `pending()` returns empty forever, so
+            # the league never grades another served row and vanishes from the
+            # calibrator and the prediction gate with only a warning.
+            #
+            # Quarantine instead: move the file aside so the next write starts a
+            # clean one and the damage is bounded to what is already broken. The
+            # rename is best-effort -- a failure here must not break settlement.
+            log.error("corrupt CSV at %s: quarantining. Rows already written to "
+                      "it are NOT lost, but they are no longer read: %s", path, exc)
+            self._quarantine(path)
             return pd.DataFrame(columns=COLUMNS)
 
     def append_served(self, league: str, rows: list[dict]) -> int:

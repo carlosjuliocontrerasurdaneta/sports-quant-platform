@@ -98,7 +98,12 @@ class BankrollLedger:
         eq = self.equity_curve()
         if eq.empty:
             return 0.0
-        peak = float("-inf")
+        # Seed the peak with the OPENING balance, not -inf. The curve's first
+        # point is already *after* the first bet, so with -inf that point became
+        # the peak and the first loss never counted: 1000 opening with three -100
+        # bets reported -200 instead of -300 (audit 2026-08-31, R-B-1).
+        # Understating drawdown is the unsafe direction for a risk metric.
+        peak = self.initial + self.adjustments_total()
         mdd = 0.0
         for b in eq["balance"]:
             peak = max(peak, b)
