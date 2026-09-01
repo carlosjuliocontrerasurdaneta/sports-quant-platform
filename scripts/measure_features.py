@@ -241,6 +241,17 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
         if over_h is not None and over_a is not None:
             signals["over_rate_combined"].append((over_h + over_a) / 2.0)
 
+        # Fold the game just evaluated into both teams' histories, AFTER using
+        # them. Without this the index only ever grew during the warmup priming
+        # and in the unreadable-score branch, so every test game was scored
+        # against the same <=n_long+2 games frozen at the warmup boundary: the
+        # features became a constant per team and the "walk-forward" correlation
+        # measured a team fixed effect, not a signal (audit 2026-08-31, F-02).
+        # On pure random scores the broken harness still emitted `**`.
+        # The append goes last on purpose -- moving it earlier is lookahead.
+        team_hist[hn].append(r)
+        team_hist[an].append(r)
+
     # Report
     print(f"\n{'='*60}")
     print(f"  {league.upper()}  |  {len(results)} total games  |  {len(outcomes_h2h)} test games")

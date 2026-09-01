@@ -106,3 +106,48 @@ def test_calibration_report_keys():
 def test_calibration_report_n_samples():
     report = calibration_report([0.6, 0.4, 0.5], [1, 0, 1])
     assert report["n_samples"] == 3
+
+
+# --- BT-04: pares no finitos no pueden deflactar el ECE -----------------------
+
+def test_ece_does_not_under_report_with_a_nan_probability():
+    """`np.digitize(nan, bins)` aterrizaba en el bin superior y, como
+    `Series.sum()` omite NaN mientras el denominador seguia contando esas filas,
+    el ECE salia mas BAJO -- silencioso y en la direccion que aparenta mejor
+    calibracion, justo en la metrica que gobierna los gates de entrenamiento
+    (auditoria 2026-08-31, BT-04).
+    """
+    import numpy as np
+    from sqp.calibration.metrics import expected_calibration_error
+
+    p_limpio = [0.1, 0.2, 0.9]
+    y_limpio = [0.0, 0.0, 1.0]
+    limpio = expected_calibration_error(p_limpio, y_limpio)
+    con_nan = expected_calibration_error(p_limpio + [float("nan")],
+                                         y_limpio + [1.0])
+    assert np.isclose(limpio, con_nan), "el NaN altero el ECE en vez de excluirse"
+
+
+def test_reliability_table_drops_non_finite_pairs():
+    import numpy as np
+    from sqp.calibration.metrics import reliability_table
+
+    tbl = reliability_table([0.1, float("nan"), 0.9, float("inf")],
+                            [0.0, 1.0, 1.0, 0.0])
+    assert int(tbl["n"].sum()) == 2
+    assert tbl["mean_estimated_probability"].notna().all()
+    assert np.isfinite(tbl["mean_estimated_probability"]).all()
+
+
+def test_reliability_table_drops_pairs_with_a_non_finite_outcome():
+    from sqp.calibration.metrics import reliability_table
+    tbl = reliability_table([0.1, 0.9], [0.0, float("nan")])
+    assert int(tbl["n"].sum()) == 1
+
+
+def test_ece_is_nan_when_every_pair_is_non_finite():
+    """Sin un solo par utilizable la respuesta honesta es NaN, no un 0.0 que se
+    leeria como calibracion perfecta."""
+    import numpy as np
+    from sqp.calibration.metrics import expected_calibration_error
+    assert np.isnan(expected_calibration_error([float("nan")], [1.0]))
