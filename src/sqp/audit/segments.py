@@ -28,6 +28,7 @@ import pandas as pd
 
 from sqp.audit.report import DISCLAIMER, graded_in_window, load_all_settled
 from sqp.config import ROOT
+from sqp.evaluation.labels import decision_prob as _labels_decision_prob
 
 DEFAULT_WINDOW_DAYS = 60
 # Minimo por SEGMENTO para flagear (mas bajo que el gate de pausa: esto solo
@@ -62,14 +63,11 @@ def _text(df: pd.DataFrame, col: str) -> pd.Series:
     return pd.Series("", index=df.index)
 
 
-def _decision_prob(df: pd.DataFrame) -> pd.Series:
-    """Probabilidad de decision del pick: la CALIBRADA cuando existe (es la que
-    el modo precision compara contra su umbral), con fallback por fila a la
-    estimada. Medir el cumplimiento por banda sobre otra probabilidad que la
-    que decidio el pick distorsionaria el control (decision 2026-07-27)."""
-    est = _num(df, "estimated_probability")
-    cal = _num(df, "calibrated_probability")
-    return cal.fillna(est)
+# La probabilidad de decision se define UNA vez, en `evaluation.labels`, y la
+# comparten esta auditoria, el tablero y el tipster. Vivia aqui como privada y
+# las otras dos vistas acabaron midiendo sobre la probabilidad cruda (auditoria
+# 2026-08-31, A-01).
+decision_prob = _labels_decision_prob
 
 
 def _line_bands(line: pd.Series, league: pd.Series, market: pd.Series) -> pd.Series:
@@ -93,7 +91,7 @@ def _line_bands(line: pd.Series, league: pd.Series, market: pd.Series) -> pd.Ser
 def segment_dimensions(df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
     """Las series de segmento por fila (None = fila fuera de la dimension)."""
     implied = _num(df, "implied_probability_novig")
-    est = _decision_prob(df)
+    est = decision_prob(df)
     sel = _text(df, "selection")
     home, away = _text(df, "home"), _text(df, "away")
     sel_low = sel.str.lower()
@@ -132,7 +130,7 @@ def segment_table(settled: pd.DataFrame, *,
     y = (df["result"] == "win").astype(float)
     # Misma base que banda_prob: gap y Brier del modelo se miden sobre la
     # probabilidad que decidio el pick (calibrada si existe).
-    est = _decision_prob(df)
+    est = decision_prob(df)
     implied = _num(df, "implied_probability_novig")
     price = _num(df, "price_decimal")
     base = df.assign(_y=y, _est=est, _se_model=(est - y) ** 2,

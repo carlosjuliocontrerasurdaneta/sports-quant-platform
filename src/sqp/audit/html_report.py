@@ -43,8 +43,8 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
-from sqp.evaluation.labels import (game_date_local, local_date, local_today,
-                                   match_label, picks_vigentes)
+from sqp.evaluation.labels import (decision_prob, game_date_local, local_date,
+                                   local_today, match_label, picks_vigentes)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -694,7 +694,18 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     if claves and "generated_at" in df.columns:
         df = df.sort_values("generated_at").drop_duplicates(claves, keep="last")
 
-    p = pd.to_numeric(df.get("estimated_probability"), errors="coerce")
+    # La probabilidad de DECISION es la CALIBRADA, con fallback por fila a la
+    # estimada -- el mismo predicado que `segments._decision_prob`, que ya fija
+    # la regla: "medir sobre otra probabilidad que la que decidio el pick
+    # distorsionaria el control" (decision 2026-07-27).
+    #
+    # Esta vista usaba `estimated_probability`, que es la mezcla CRUDA sin
+    # calibrar (`_decision_probability` devuelve p_used sin calibrar y p_decision
+    # calibrada; `daily.py:841` calcula el edge sobre la segunda). Medido sobre
+    # las ultimas 2.000 filas de served_mlb.csv (auditoria 2026-08-31, A-01):
+    # 1.272 filas difieren, hasta 8,95 pp; el signo del margen cambia en 252; y
+    # la tarjeta "Margen positivo" contaba 441 en vez de 271 (+63%).
+    p = decision_prob(df)
     price = pd.to_numeric(df.get("price_decimal"), errors="coerce")
     be = 1.0 / price.where(price > 1.0)
     fecha = game_date_local(df)
@@ -1312,7 +1323,14 @@ function tRefresh() {{
       `<div class="card"><div class="k">Selecciones</div><div class="v">${{rows.length}}</div></div>`
     + `<div class="card"><div class="k">Ligas</div><div class="v">${{lig}}</div></div>`
     + `<div class="card"><div class="k">Margen positivo</div><div class="v">${{pos}}</div></div>`;
-  document.getElementById("countT").textContent = `${{rows.length}} de ${{TODOS.length}}`;
+  // El truncado a 500 filas de abajo era SILENCIOSO: el contador decia 910 y la
+  // tabla mostraba 500, escondiendo 410 selecciones en la vista que existe para
+  // cumplir "TODOS los deportes y mercados" (auditoria 2026-08-31, N4-M-5).
+  const shown = Math.min(rows.length, 500);
+  document.getElementById("countT").textContent =
+      rows.length > shown
+        ? `${{shown}} de ${{rows.length}} filtradas (${{TODOS.length}} en total) - truncado a ${{shown}}; afina los filtros para ver el resto`
+        : `${{rows.length}} de ${{TODOS.length}}`;
   rows.sort((a, b) => {{
     const x = a[tSortKey], y = b[tSortKey];
     if (x == null) return 1;
