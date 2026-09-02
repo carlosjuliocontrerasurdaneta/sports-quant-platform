@@ -61,8 +61,16 @@ def _write_inputs(tmp_path):
 
 
 def _write_inputs_with_dates(tmp_path):
-    """Same fixtures but the predictions CSV carries start_time: e1 today,
-    e2 six days out (a soccer matchday within the 7-day event horizon)."""
+    """Same fixtures but the predictions CSV carries start_time: e1 later today,
+    e2 six days out (a soccer matchday within the 7-day event horizon).
+
+    e1 iba anclado a `now` EXACTO. Desde que la vigencia se decide por INSTANTE y
+    no por fecha (KI-028), un partido que arranca en este mismo momento esta en
+    juego y la vista deja de listarlo -- que es el comportamiento correcto. La
+    intencion del fixture era "un partido de hoy", no "uno que empieza ahora", y
+    lo que el test comprueba (que la fecha mostrada es la LOCAL y no la UTC)
+    sigue intacto: la asercion deriva la fecha esperada del propio `st1`.
+    """
     from datetime import datetime, timedelta, timezone
     pred = tmp_path / "predictions"
     bets = tmp_path / "bets"
@@ -70,7 +78,7 @@ def _write_inputs_with_dates(tmp_path):
     bets.mkdir()
     _candidates().to_csv(pred / "candidates_nba.csv", index=False)
     now = datetime.now(timezone.utc)
-    st1 = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    st1 = (now + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
     st2 = (now + timedelta(days=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
     pd.DataFrame([
         {"event_id": "e1", "home": "A", "away": "B", "start_time": st1},
