@@ -28,6 +28,56 @@ def _en_dias(n: int) -> str:
         "%Y-%m-%dT12:00:00Z")
 
 
+def _served(tmp_path, liga, rows):
+    """Escribe `served_{liga}.csv` con la forma real del stream."""
+    base = {"event_id": "e1", "league": liga, "market": "h2h",
+            "selection": "A", "line": None, "price_decimal": 2.0,
+            "estimated_probability": 0.55, "calibrated_probability": 0.55,
+            "implied_probability_novig": 0.5, "estimated_edge": 0.10,
+            "books_count": 8, "stake": 0.0, "home": "H", "away": "V",
+            "flags": "", "data_label": "real",
+            "start_time": _en_dias(1), "generated_at": _en_dias(0)}
+    df = pd.DataFrame([{**base, **r} for r in rows])
+    df.to_csv(tmp_path / f"served_{liga}.csv", index=False)
+    return tmp_path
+
+
+class TestElTableroYLosCLIUsanElMismoCriterio:
+    """Candado de convergencia. `_todos_records` tenia su PROPIA copia del
+    criterio de vigencia + colapso, y la copia es justo lo que ya fallo: el
+    arreglo del 2026-08-28 se escribio en el tablero y dejo fuera los dos CLI
+    que invoca DIARIO_COMPLETO.bat (KI-027). Al extraer `picks_vigentes_unicos`
+    el 2026-09-01 la asimetria quedo al reves. Ahora los tres comparten helper.
+    """
+
+    def test_el_tablero_devuelve_los_mismos_picks_que_el_helper(self, tmp_path):
+        from sqp.audit.html_report import _todos_records
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        _served(tmp_path, "mlb", [
+            {"event_id": "e1", "generated_at": _en_dias(-3)},
+            {"event_id": "e1", "generated_at": _en_dias(0)},   # misma servida, otro dia
+            {"event_id": "e2", "start_time": _en_dias(-5)},    # ya jugado
+        ])
+        _served(tmp_path, "epl", [{"event_id": "e3", "generated_at": _en_dias(-2)}])
+        crudo = pd.concat([pd.read_csv(p) for p in sorted(tmp_path.glob("served_*.csv"))],
+                          ignore_index=True)
+        assert len(_todos_records(tmp_path)) == len(picks_vigentes_unicos(crudo))
+
+    def test_no_fusiona_dos_partidos_distintos_sin_event_id(self, tmp_path):
+        """La copia colapsaba con clave PARCIAL: sin `event_id`, dos partidos
+        que compartieran mercado, seleccion y linea salian como uno. El helper
+        exige identidad completa y conserva las filas."""
+        from sqp.audit.html_report import _todos_records
+        _served(tmp_path, "mlb", [
+            {"home": "A", "away": "B", "market": "totals", "selection": "Over", "line": 2.5},
+            {"home": "C", "away": "D", "market": "totals", "selection": "Over", "line": 2.5},
+        ])
+        df = pd.read_csv(tmp_path / "served_mlb.csv").drop(columns=["event_id"])
+        df.to_csv(tmp_path / "served_mlb.csv", index=False)
+        assert len(_todos_records(tmp_path)) == 2, (
+            "sin identidad de evento no se pueden fusionar dos partidos")
+
+
 def _cands(tmp_path, rows):
     base = {"event_id": "e1", "league": "mlb", "market": "h2h",
             "selection": "A", "line": None, "price_decimal": 2.0,

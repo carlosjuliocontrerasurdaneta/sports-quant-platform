@@ -44,7 +44,8 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
 from sqp.evaluation.labels import (decision_prob, game_date_local, local_date,
-                                   local_today, match_label, picks_vigentes)
+                                   local_today, match_label, picks_vigentes,
+                                   picks_vigentes_unicos)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -673,26 +674,24 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     if not frames:
         return []
     df = pd.concat(frames, ignore_index=True)
-    # Vigencia por PARTIDO, no por dia de generacion (`picks_vigentes`): filtrar
-    # por el ultimo run dejaba la lista en 82 filas de UNA liga con 577 filas de
-    # 13 ligas por jugar escondidas (2026-08-28). Sin nada vigente se cae al
-    # ultimo dia servido antes que dejar la vista en blanco.
-    vigentes = picks_vigentes(df)
-    if vigentes.empty and "generated_at" in df.columns:
-        gen = df["generated_at"].astype(str).str[:10]
-        df = df[gen == gen.max()]
-    else:
-        df = vigentes
+    # Vigencia por PARTIDO (no por dia de generacion) mas UNA fila por pick, con
+    # caida al ultimo dia servido si no queda nada vigente. Los tres criterios
+    # viven en `picks_vigentes_unicos`.
+    #
+    # Esta funcion tenia su propia copia. La copia es justo lo que fallo antes:
+    # el arreglo del 2026-08-28 la escribio aqui y dejo fuera los dos CLI que
+    # invoca DIARIO_COMPLETO.bat (KI-027), y al extraer el helper el 2026-09-01
+    # la asimetria quedo al reves -- los CLI con el criterio bueno y el tablero
+    # con la copia. Converger cierra el modo de fallo dominante de este repo.
+    #
+    # Al converger se ganan ademas las dos correcciones que la copia no tenia:
+    # el colapso exige IDENTIDAD COMPLETA (con clave parcial, dos partidos
+    # distintos que compartieran mercado/seleccion/linea se fusionaban en uno) y
+    # se colapsa tambien sin `generated_at`, por orden de llegada, que en un
+    # fichero append-only es el cronologico.
+    df = picks_vigentes_unicos(df)
     if df.empty:
         return []
-    # El stream ACUMULA una servida por dia, asi que sin esto el mismo pick
-    # saldria tantas veces como dias lleve en el horizonte. Se conserva la mas
-    # RECIENTE: aqui el precio que importa es el ultimo conocido, al reves que
-    # en la medicion de ROI, donde vale el del momento de decidir.
-    claves = [c for c in ("event_id", "market", "line", "selection")
-              if c in df.columns]
-    if claves and "generated_at" in df.columns:
-        df = df.sort_values("generated_at").drop_duplicates(claves, keep="last")
 
     # La probabilidad de DECISION es la CALIBRADA, con fallback por fila a la
     # estimada -- el mismo predicado que `segments._decision_prob`, que ya fija
