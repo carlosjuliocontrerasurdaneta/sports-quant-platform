@@ -186,6 +186,106 @@ class TestVigenciaPorPartidoNoPorRun:
         assert sorted(r["selection"] for r in recs) == ["Over", "Under"]
 
 
+class TestVigenciaEsPorInstanteNoPorFecha:
+    """KI-028. `picks_vigentes` comparaba solo FECHAS locales, asi que un partido
+    que empezo hace horas seguia listado como vigente hasta que cambiaba el dia.
+    El sistema es PREGAME: una vez empezado, las cuotas mostradas son en vivo, no
+    las que se estimaron. Medido el 2026-09-01 a las 19:00 locales: 66 de los 128
+    picks del dia ya habian empezado. De los 156 partidos del 2026-09-02, a las
+    23:00 UTC habrian empezado 142 -- el 91% de la lista por defecto."""
+
+    def _fila(self, start_time, **extra):
+        base = {"event_id": "e1", "league": "mlb", "market": "h2h",
+                "selection": "A", "line": None, "home": "H", "away": "V",
+                "start_time": start_time, "game_date": start_time[:10],
+                "generated_at": start_time}
+        return {**base, **extra}
+
+    def test_un_partido_de_hoy_que_ya_empezo_deja_de_ser_vigente(self):
+        from sqp.evaluation.labels import picks_vigentes
+        ahora = datetime(2026, 9, 2, 20, 0, tzinfo=timezone.utc)
+        df = pd.DataFrame([
+            self._fila("2026-09-02T18:00:00Z", selection="YA_EMPEZO"),
+            self._fila("2026-09-02T23:00:00Z", selection="AUN_NO"),
+        ])
+        out = picks_vigentes(df, hoy="2026-09-02", ahora=ahora)
+        assert list(out["selection"]) == ["AUN_NO"], (
+            "el mismo dia no basta: lo que decide es si ya empezo")
+
+    def test_un_sello_ilegible_se_trata_como_NO_empezado(self):
+        """Semantica conservadora de `_already_started`: no poder leer la hora no
+        demuestra que el partido se jugara, y borrar filas porque falta una
+        columna es la averia que este proyecto lleva repitiendo."""
+        from sqp.evaluation.labels import picks_vigentes
+        ahora = datetime(2026, 9, 2, 20, 0, tzinfo=timezone.utc)
+        df = pd.DataFrame([self._fila("2026-09-02T18:00:00Z", selection="X")])
+        df.loc[0, "start_time"] = "ayer por la tarde"
+        out = picks_vigentes(df, hoy="2026-09-02", ahora=ahora)
+        assert len(out) == 1
+
+    def test_formatos_ISO_MEZCLADOS_en_la_misma_serie(self):
+        """Sin `format="ISO8601"` pandas infiere UN formato para toda la serie:
+        con un valor aware seguido de uno naive (ambos ISO validos) devuelve NaT
+        para el segundo, y el partido ya empezado se colaba como vigente.
+        Reproducido con pandas 3.0.2. El test de paridad de abajo NO lo detecta
+        porque construye un frame de UNA fila por caso."""
+        from sqp.evaluation.labels import picks_vigentes
+        ahora = datetime(2026, 9, 2, 20, 0, tzinfo=timezone.utc)
+        df = pd.DataFrame([
+            self._fila("2026-09-02T23:00:00Z", selection="AUN_NO"),
+            self._fila("2026-09-02T18:00:00", selection="YA_EMPEZO"),  # naive
+        ])
+        out = picks_vigentes(df, hoy="2026-09-02", ahora=ahora)
+        assert list(out["selection"]) == ["AUN_NO"]
+
+    def test_una_fecha_no_ISO_no_cuela_como_instante(self):
+        """En sentido contrario: el parser por defecto ACEPTA
+        `09/02/2026 18:00:00`, que el canonico rechaza, saltandose el fallback
+        por fecha que el contrato conservador exige."""
+        from sqp.evaluation.labels import instantes_utc
+        s = instantes_utc(pd.Series(["09/02/2026 18:00:00"]))
+        assert s.isna().all(), "un sello no-ISO debe quedar sin instante"
+
+    def test_DOCUMENTA_que_el_fallback_si_resucita_partidos_empezados(self):
+        """KI-030, tension ABIERTA -- este test fija el comportamiento ACTUAL,
+        no el deseable.
+
+        Cuando no queda nada apostable, `picks_vigentes_unicos` cae al ultimo dia
+        generado y devuelve las filas TAL CUAL, incluidas las de partidos ya
+        empezados: la vista muestra cuotas en vivo como si fueran picks pregame.
+        Lo reprodujo Codex revisando el cambio a vigencia por instante.
+
+        No se corrige porque el fallback es la decision del 2026-08-28 (leccion
+        de los 53 dias) y esta fijado por
+        `test_cae_al_dia_mas_reciente_si_hoy_no_hay`: cambiarlo contradice una
+        decision registrada y requiere autorizacion del operador.
+
+        Si algun dia se autoriza, este test debe INVERTIRSE, no borrarse."""
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = pd.DataFrame([
+            self._fila("2026-09-02T01:00:00Z", selection="A"),
+            self._fila("2026-09-02T02:00:00Z", selection="B", event_id="e2"),
+        ])
+        assert len(picks_vigentes_unicos(df)) == 2, (
+            "comportamiento actual: el fallback resucita el lote ya en juego")
+
+    def test_coincide_con_la_definicion_canonica_del_pipeline(self):
+        """Candado anti-deriva: `pipeline.daily._already_started` ya define
+        "empezado" y suprime candidatos de eventos en juego. La definicion no se
+        importa (acoplaria `evaluation` a `pipeline`), asi que se fija aqui que
+        las dos coinciden -- incluido el caso del sello ilegible."""
+        from sqp.evaluation.labels import picks_vigentes
+        from sqp.pipeline.daily import _already_started
+        casos = ["2020-01-01T00:00:00Z", "2099-01-01T00:00:00Z", "", "no es fecha"]
+        for st in casos:
+            df = pd.DataFrame([self._fila(st or "2026-09-02T18:00:00Z")])
+            df.loc[0, "start_time"] = st
+            vigente_por_instante = len(picks_vigentes(
+                df, hoy="1970-01-01", ahora=datetime.now(timezone.utc))) == 1
+            assert vigente_por_instante == (not _already_started(st)), (
+                f"discrepancia con _already_started para start_time={st!r}")
+
+
 class TestNoSeTocoElContadorDeAccionables:
     """`rank_candidates` define "accionable" y alimenta el contador
     `Total accionables` del reporte markdown. Ampliar la PESTANA no debe

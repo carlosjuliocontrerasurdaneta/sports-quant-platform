@@ -91,8 +91,39 @@ def local_date(valores: pd.Series) -> pd.Series:
     return fecha.fillna(valores.astype(str).str[:10]).astype(str)
 
 
-def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
-    """Filas cuyo PARTIDO no se ha jugado todavia (fecha local >= hoy).
+def instantes_utc(valores: pd.Series | None, *,
+                  index: pd.Index | None = None) -> pd.Series:
+    """Serie de instantes UTC con la MISMA gramatica que el parser canonico.
+
+    Tres razones para que el parseo viva en un solo sitio:
+
+    1. `format="ISO8601"` no es opcional. Sin el, pandas infiere UN formato para
+       toda la serie: con `['...T23:00:00Z', '...T18:00:00']` (aware seguido de
+       naive, ambos ISO validos) devuelve `NaT` para el segundo, y un partido ya
+       empezado se colaba como vigente. Reproducido con pandas 3.0.2.
+    2. En sentido contrario, el parser por defecto ACEPTA `09/02/2026 18:00:00`,
+       que `pipeline.daily._parse_iso_utc` rechaza. Eso saltaba el fallback por
+       fecha que el contrato conservador exige. Con `ISO8601` da `NaT`, igual
+       que el canonico.
+    3. El dtype queda SIEMPRE con zona horaria. Sin columna, o con todo `NaT`,
+       pandas produce un `datetime64[ns]` naive y compararlo con un instante con
+       zona lanza `TypeError`.
+
+    Ambas divergencias las encontro la revision independiente de Codex sobre
+    este mismo cambio (2026-09-02).
+    """
+    idx = index if index is not None else (
+        valores.index if valores is not None else None)
+    vacio = pd.Series(pd.NaT, index=idx, dtype="datetime64[ns, UTC]")
+    if valores is None:
+        return vacio
+    parsed = pd.to_datetime(valores, errors="coerce", utc=True, format="ISO8601")
+    return parsed if getattr(parsed.dt, "tz", None) is not None else vacio
+
+
+def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None,
+                   ahora: datetime | None = None) -> pd.DataFrame:
+    """Filas cuyo partido TODAVIA SE PUEDE APOSTAR: no ha empezado.
 
     Es el filtro correcto para una lista de picks, y no «lo generado en el ultimo
     run», que era lo que hacian las vistas. La diferencia no es teorica: el run
@@ -112,11 +143,36 @@ def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None) -> pd.DataFrame:
     demuestra que se haya jugado, y borrar filas porque falta una columna es la
     averia que este proyecto lleva repitiendo -- el mismo esquema legado que
     `game_date_local` ya tolera devolviendo cadena vacia.
+
+    EL CRITERIO ES EL INSTANTE, NO LA FECHA (KI-028, corregido el 2026-09-02).
+    Comparaba solo fechas locales, asi que un partido que empezo hace horas
+    seguia listado como vigente hasta que cambiaba el dia. No es cosmetico: el
+    sistema es PREGAME, y una vez empezado el partido las cuotas que muestra la
+    vista son en vivo, no las que se estimaron. Medido el 2026-09-01 a las 19:00
+    locales: 66 de los 128 picks del dia ya habian empezado. Sobre los 156
+    partidos de hoy, a las 23:00 UTC habrian empezado 142 -- el 91% de la lista
+    por defecto seria inapostable.
+
+    "Empezado" usa la MISMA semantica que `pipeline.daily._already_started`, que
+    ya suprime candidatos de eventos en juego: el instante de inicio es pasado, y
+    un sello ILEGIBLE se trata como NO empezado (conservador, porque no poder
+    leer la hora no demuestra que el partido se jugara). La definicion no se
+    importa de `pipeline` para no acoplar `evaluation` a el; un test fija que
+    ambas coinciden, que es lo que impide la deriva.
+
+    `ahora` es inyectable para poder fijar la frontera en los tests sin depender
+    del reloj.
     """
     if df.empty:
         return df
+    ahora = ahora or datetime.now(timezone.utc)
+    inicio = instantes_utc(df.get("start_time"), index=df.index)
+    empezado = inicio.notna() & (inicio <= ahora)
     fecha = game_date_local(df)
-    return df[(fecha == "") | (fecha >= (hoy or local_today()))]
+    con_fecha_vigente = (fecha == "") | (fecha >= (hoy or local_today()))
+    # La fecha sigue filtrando a los que NO tienen sello legible: sin instante no
+    # hay nada mejor, y sin ella una fila vieja sin `start_time` viviria siempre.
+    return df[~empezado & con_fecha_vigente]
 
 
 # Identidad MINIMA de un pick. Sin estas tres no se puede afirmar que dos filas
@@ -147,12 +203,21 @@ def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.Dat
     divergencia: el modo de fallo dominante de este repo es la deriva entre
     artefactos duplicados.
 
-    LIMITE CONOCIDO: `picks_vigentes` compara FECHAS, no instantes, asi que un
-    partido que empezo hace horas sigue contando como vigente hasta que cambia el
-    dia local. Medido el 2026-09-01: 66 de los 128 picks de hoy ya habian
-    empezado (ninguno con stake). Es el criterio canonico desde el 2026-08-28 y
-    NO se cambia aqui: tocarlo afectaria tambien a las tres vistas del dashboard
-    y es una decision de negocio del operador, no del que corrige un CLI.
+    TENSION ABIERTA CON EL FALLBACK (KI-030, 2026-09-02). La caida al ultimo dia
+    generado devuelve las filas TAL CUAL, incluidas las de partidos ya empezados.
+    Desde que la vigencia se decide por INSTANTE, eso significa que en cuanto
+    arranca el ultimo partido pendiente la vista resucita el lote entero YA EN
+    JUEGO y muestra cuotas en vivo como si fueran picks pregame. Lo reprodujo
+    Codex revisando este mismo cambio.
+
+    NO se corrige aqui a proposito. El fallback es la decision del 2026-08-28
+    (leccion de los 53 dias: un tablero en blanco hizo creer al operador que el
+    sistema no generaba nada) y esta fijado por
+    `test_cae_al_dia_mas_reciente_si_hoy_no_hay`. Cambiarlo es contradecir una
+    decision registrada, que exige autorizacion explicita del operador.
+
+    Alcance real: con horizonte de 7 dias hacen falta CERO filas apostables en
+    todo el stream para alcanzarlo, asi que hoy no se dispara (1.920 vigentes).
     """
     if df.empty:
         return df
@@ -197,7 +262,11 @@ def game_date_local(df: pd.DataFrame) -> pd.Series:
     aproximada situa el partido, una celda vacia no.
     """
     if "start_time" in df.columns:
-        st = pd.to_datetime(df["start_time"], errors="coerce", utc=True)
+        # Mismo parser que `picks_vigentes` (ver `instantes_utc`): sin el, una
+        # serie con formatos ISO mezclados daba NaT y la fecha mostrada caia al
+        # `game_date` crudo del proveedor, que es UTC -- justo el desfase que
+        # esta funcion existe para eliminar.
+        st = instantes_utc(df["start_time"], index=df.index)
         tz = datetime.now(timezone.utc).astimezone().tzinfo
         fecha = st.dt.tz_convert(tz).dt.strftime("%Y-%m-%d")
     else:
