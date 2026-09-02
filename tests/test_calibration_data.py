@@ -242,6 +242,101 @@ def test_esquema_antiguo_sin_event_id_conserva_una_fila_un_evento(tmp_path, monk
     assert r["trained"] is True
 
 
+def _hist_lados(n_eventos: int) -> "pd.DataFrame":
+    """Historial con `selection`/`line`: cada evento aporta sus DOS caras del
+    mercado (probabilidades complementarias, resultados opuestos), una fila por
+    cara. Es la unidad real de observacion del stream servido."""
+    import numpy as np
+    rng = np.random.default_rng(11)
+    filas = []
+    for e in range(n_eventos):
+        p = round(0.30 + 0.4 * rng.random(), 3)
+        gana_home = bool(rng.random() < p)
+        fecha = f"2026-05-{1 + e % 28:02d}"
+        filas.append({"league": "mlb", "market": "h2h", "event_id": f"e{e:03d}",
+                      "selection": "home", "line": float("nan"), "date": fecha,
+                      "model_probability": p,
+                      "result": "win" if gana_home else "loss"})
+        filas.append({"league": "mlb", "market": "h2h", "event_id": f"e{e:03d}",
+                      "selection": "away", "line": float("nan"), "date": fecha,
+                      "model_probability": round(1.0 - p, 3),
+                      "result": "loss" if gana_home else "win"})
+    return pd.DataFrame(filas)
+
+
+def test_evento_repetido_N_veces_pesa_igual_que_una_sola_vez(tmp_path, monkeypatch):
+    """AUD-HIGH-001: el stream servido acumula una fila POR DIA DE HORIZONTE del
+    mismo lado del mismo evento (mediana 21 filas/evento en mls|h2h). El ajuste
+    (`iso.fit`, `BetaCalibrator.fit`) y las metricas de validacion del gate se
+    calculaban sobre las filas CRUDAS, asi que un evento servido 21 dias pesaba
+    21x y el tamaño efectivo del gate era ~1/10 del creido. Un lado repetido N
+    veces debe producir EXACTAMENTE el mismo ajuste y las mismas metricas que
+    ese lado una sola vez."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+
+    base = _hist_lados(60)
+    # Un evento temprano (cae en train) y uno tardio (cae en val), ambos lados,
+    # repetidos 20 veces mas -- como los sirve el horizonte multi-dia.
+    extra = base[base["event_id"].isin(["e005", "e055"])]
+    dup = pd.concat([base] + [extra] * 20, ignore_index=True)
+
+    r_base = cal.train_market_calibrators(base, min_n=40,
+                                          prob_col="model_probability")[0]
+    r_dup = cal.train_market_calibrators(dup, min_n=40,
+                                         prob_col="model_probability")[0]
+    assert r_base["trained"] and r_dup["trained"]
+    assert r_dup["n"] == r_base["n"], "las filas repetidas no son observaciones"
+    assert r_dup["n_val"] == r_base["n_val"]
+    assert r_dup["n_events"] == r_base["n_events"]
+    assert r_dup["n_val_events"] == r_base["n_val_events"]
+    for k in ("raw_val_ece", "cal_val_ece", "beta_val_ece", "raw_val_brier"):
+        assert r_dup[k] == pytest.approx(r_base[k], abs=1e-12), k
+    assert r_dup["iso_gate"] == r_base["iso_gate"]
+    assert r_dup["beta_gate"] == r_base["beta_gate"]
+    assert r_dup["best_method"] == r_base["best_method"]
+
+
+def test_las_dos_caras_de_un_mercado_no_se_colapsan(tmp_path, monkeypatch):
+    """La unidad independiente es (event_id, selection, line): el mismo lado
+    servido 21 dias es UNA observacion, pero las dos caras del evento son DOS
+    (resultados opuestos, probabilidades complementarias). El colapso no debe
+    fundirlas."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    r = cal.train_market_calibrators(_hist_lados(60), min_n=40,
+                                     prob_col="model_probability")[0]
+    assert r["n_events"] == 60
+    assert r["n"] == 120, "dos caras por evento = dos observaciones"
+
+
+def test_sin_selection_ni_line_no_se_colapsa_nada(tmp_path, monkeypatch):
+    """Historial de esquema antiguo sin `selection`/`line`: no se puede
+    distinguir la cara, asi que colapsar por evento fundiria observaciones
+    legitimas. Se conserva el comportamiento previo (una fila = una
+    observacion), igual que las filas sin `event_id` siguen contando un evento
+    cada una."""
+    from sqp.calibration import calibrator as cal
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    h = _hist_lados(60).drop(columns=["selection", "line"])
+    r = cal.train_market_calibrators(h, min_n=40, prob_col="model_probability")[0]
+    assert r["n"] == 120 and r["n_events"] == 60
+
+
+def test_projection_carries_selection_and_line(tmp_path):
+    # La proyeccion debe conservar selection/line: sin ellas el colapso por
+    # unidad independiente (event_id, selection, line) es imposible aguas abajo.
+    _write_settled(tmp_path, "mlb", [
+        {"market": "totals", "selection": "over", "line": 8.5,
+         "model_probability": 0.62, "estimated_probability": 0.58, "result": "win",
+         "game_date": "2026-06-20", "generated_at": "2026-06-20T12:00:00Z"},
+    ])
+    out = load_settled_training_history(tmp_path)
+    assert "selection" in TRAINING_COLS and "line" in TRAINING_COLS
+    assert out.loc[0, "selection"] == "over"
+    assert out.loc[0, "line"] == pytest.approx(8.5)
+
+
 def test_projection_ignores_extra_columns(tmp_path):
     # Un settled con columnas extra (stake, odds, lo que sea) proyecta limpio:
     # solo TRAINING_COLS en el orden canonico, valores intactos.

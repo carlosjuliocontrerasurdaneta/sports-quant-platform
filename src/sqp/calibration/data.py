@@ -32,7 +32,12 @@ from sqp.config import ROOT
 # REBLENDEADA `(1-s)*cal(.)+s*fair`, y sin la probabilidad justa esta historia
 # -- que es justo el dataset que ese pre-registro nombra, "served union settled,
 # dedup" -- no basta para evaluar su propio criterio de aceptacion.
-TRAINING_COLS = ["league", "market", "event_id", "date",
+# `selection` y `line` viajan aunque el dedup ya use las suyas propias: la
+# unidad de observacion independiente aguas abajo es (event_id, selection,
+# line) -- el mismo lado servido N dias de horizonte es UNA observacion; las
+# dos caras del mercado son DOS --, y sin estas columnas
+# ``train_market_calibrators`` no puede colapsar por unidad (AUD-HIGH-001).
+TRAINING_COLS = ["league", "market", "event_id", "selection", "line", "date",
                  "model_probability", "adjusted_probability",
                  "implied_probability_novig", "result"]
 _KEY_COL = "_dedup_key"
@@ -83,6 +88,14 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     out["market"] = frame["market"].astype(str) if "market" in frame else ""
     out["event_id"] = (frame["event_id"].astype(str)
                        if "event_id" in frame else "")
+    # selection/line: misma normalizacion que la clave de dedup de abajo, para
+    # que la unidad (event_id, selection, line) del colapso aguas abajo agrupe
+    # exactamente las mismas filas que el dedup considera el mismo lado.
+    out["selection"] = (frame["selection"].astype(str)
+                        if "selection" in frame else "")
+    out["line"] = (pd.to_numeric(frame["line"], errors="coerce")
+                   if "line" in frame
+                   else pd.Series(float("nan"), index=frame.index))
     gd = (frame["game_date"].astype(str) if "game_date" in frame
           else pd.Series("", index=frame.index))
     gen = (frame["generated_at"].astype(str) if "generated_at" in frame
@@ -114,14 +127,15 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
         else pd.Series(float("nan"), index=frame.index))
     out["result"] = frame["result"].astype(str) if "result" in frame else ""
     if with_key:
-        empty = pd.Series("", index=frame.index)
         eid = out["event_id"]
-        sel = frame["selection"].astype(str) if "selection" in frame else empty
-        # .map(str), not .astype(str): under pandas' string dtype astype keeps
-        # NaN as NA, which would poison the whole key for h2h rows (line=None)
-        # and exempt exactly the rows the dedup exists for.
-        line = (pd.to_numeric(frame["line"], errors="coerce").map(str)
-                if "line" in frame else empty)
+        # Las mismas series que ya viajan en la proyeccion: la clave de dedup y
+        # la unidad de colapso deben agrupar identico o divergen en silencio.
+        # .map(str) sobre la linea numerica, not .astype(str): under pandas'
+        # string dtype astype keeps NaN as NA, which would poison the whole key
+        # for h2h rows (line=None) and exempt exactly the rows the dedup exists
+        # for ("nan" uniforme para las filas sin linea, igual que antes).
+        sel = out["selection"]
+        line = out["line"].map(str)
         key = (out["league"] + "|" + eid + "|" + out["market"] + "|"
                + sel + "|" + line + "|" + gen.str[:10])
         # A key missing its event id or generation day cannot distinguish rows
