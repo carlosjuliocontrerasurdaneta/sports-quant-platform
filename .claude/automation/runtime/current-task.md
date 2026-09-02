@@ -1,146 +1,128 @@
 # Current Task
 
 Status: closed
-Result: DEGRADED (iteración 3: correcciones del Grupo A verificadas; cobertura
-sigue PARCIAL por features/providers/deportes y backtesting, y quedan 3
-decisiones del Grupo B sin resolver)
+Result: DEGRADED (los tres IDs corregidos y verificados; el run diario programado
+se ejecutó a las 11:01 sobre el árbol a medio editar y quedó incompleto — sin
+capital en riesgo, pero requiere decisión del operador)
 Primary loop: `audit.md`
-Skill: `full-audit` → `audit-remediation`
-Iteration: 3 / 8
-Owner: 3 especialistas de solo lectura en paralelo (fase 1) + revalidación propia (fase 2)
-Date: 2026-08-31 (iteración 3: cierre de la cobertura PARCIAL del camino del dinero)
+Skill: `full-audit` (fase 4: corrección)
+Iteration: 1 / 1
+Owner: sesión principal (`claude-opus-5`) + 3 subagentes escalados a `claude-fable-5`
+Date: 2026-09-02
 
 ## Objective
 
-Auditoría integral del repositorio completo y corrección de los hallazgos
-confirmados, con la mejora limitada a lo sustentado por evidencia obtenida
-durante la auditoría. Sin commit, push, deploy, consumo de API de pago ni
-modificación de stakes, bankroll, `pick_mode` o `shadow_mode`.
+Corregir los hallazgos que el operador autorizó por ID tras la auditoría
+integral del 2026-09-02: **AUD-MED-006 (#4)**, **AUD-HIGH-001 (#5)** y
+**AUD-HIGH-003 (#9)** en la primera tanda; **AUD-HIGH-002 (#1, void de tenis)**
+autorizado después. Los cinco restantes (#2 lock, #3 rendimiento de cuotas,
+#6 degradación, #7 config, #8 cableado de hooks) **no** están autorizados.
+
+`AUD-HIGH-002` NO se escaló a Fable pese a que la clase 5 del disparador nombra
+`settlement`: no diseña criterio nuevo, replica un guard ya aprobado, revisado y
+con tests (`scores_trusted`, N-A-3) en la rama que se lo dejó fuera, con el fallo
+ya reproducido. Decisión declarada al operador antes de ejecutar, con la opción
+de redespachar.
+
+`AUD-HIGH-001` es el mismo problema que la iteración del 2026-08-31 registró
+como Grupo B / `N-A-5` ("normalizar la duplicación en el punto de lectura
+compartido"), que quedó esperando decisión del operador. Esa decisión llegó hoy.
+
+## Registro de escalado de modelo (REGLA DE DESPACHO, regla 1)
+
+Los tres IDs caen en las clases del disparador, así que se despachan con
+`model: "fable"` pese a que la ruta `full-audit` es `opus`. Registro exigido por
+`.claude/automation/MODEL_ROUTING.md`:
+
+| ID | Clases del disparador | Modelo |
+|---|---|---|
+| AUD-MED-006 (#4) | 3 (cifras publicables: ROI de backtest) | `claude-fable-5` |
+| AUD-HIGH-001 (#5) | 2 (parámetros de modelo/gate), 3 (ECE/Brier publicables), 5 (contrato de staging/promoción) | `claude-fable-5` |
+| AUD-HIGH-003 (#9) | 1 (irreversible: autoriza stake real), 2 (gate), 5 (contrato de `prediction_gate.json`) | `claude-fable-5` |
+
+La sesión principal sigue en `claude-opus-5` (política autorizada 2026-08-30).
+Editar `CLAUDE.md` no cambia el modelo de una sesión en curso, y el único
+mecanismo real de escalado es el parámetro `model` de `Agent`.
+
+## Subordinación a la medición
+
+Vinculante para los tres subagentes: **ningún escalón de modelo sustituye una
+medición**. Mediciones de partida entregadas, obtenidas en las fases 1-2:
+
+- Historia de calibración graduada: 18.229 filas / 1.709 eventos = **10,67x**;
+  `mls|h2h` 1.350 filas / 70 eventos = **19,29x** (mediana 21 filas/evento);
+  `brasileirao|h2h` 20,04x; `mlb|*` ~2,05x.
+- Grupos que pasan `min_n=40`: 47 por filas, **18 por eventos**.
+- `data/bets/prediction_gate.json` (2026-09-01): 41 grupos, `allowed: []`,
+  `min_n` 300, `alpha` 0,05.
+- `configs/default.yaml`: todos los coeficientes de features a 0,0 hoy
+  (`streak_coef` estuvo en 0,01 del 2026-08-23 al 2026-09-01).
 
 ## Acceptance criteria
 
-- [x] Instrucciones del repositorio y `known-issues.md` leídas antes de auditar.
-- [x] Línea base ejecutada y registrada ANTES de corregir.
-- [x] Hallazgos clasificados con evidencia, causa raíz, corrección y estado.
-- [x] Cada hallazgo activo revalidado por un segundo método.
-- [x] Validación final ejecutada y comparada contra la línea base.
-- [x] Entregables regenerados en `audit/latest/`.
-- [x] Ninguna acción que requiriera autorización humana.
-- [ ] Cobertura COMPLETA — **no alcanzada**, declarada `PARCIAL`.
+- [ ] Solo se modifican los archivos del alcance de cada ID; sin refactors ajenos.
+- [ ] Ningún VALOR de parámetro de riesgo cambia (`min_n`, `alpha`,
+      `kelly_fraction`, `min_edge`, umbrales, coeficientes): se corrige el
+      MECANISMO, no la política.
+- [ ] Retrocompatibilidad de artefactos persistidos verificada con datos reales.
+- [ ] Cada corrección con prueba discriminante (falla antes, pasa después).
+- [ ] Validación final integrada contra la línea base.
+- [ ] Sin commit, push, merge ni despliegue. `NOTAS.md` intacto.
 
-## Comandos ejecutados y códigos de salida
+## Línea base (fase 1, 2026-09-02)
 
 | Comando | Salida | Código |
 |---|---|---|
-| `pytest tests/ -q` (línea base) | 3 failed, 1375 passed, 1 skipped | 1 |
+| `pytest -q` | 1463 passed, 1 skipped (839,58 s) | 0 |
 | `ruff check src scripts tests` | All checks passed! | 0 |
 | `mypy src` | no issues found in 98 source files | 0 |
-| `pip check` | No broken requirements found. | 0 |
-| `scripts/health_check.py` | WARN (0 errors, 1 warning) | 0 |
-| `pytest tests/test_claude_system_contract.py -q` | 15 passed | 0 |
-| `pytest tests/ -q` (final) | 1 failed, 1377 passed, 1 skipped | 1 |
-| `python -m pip_audit -s osv -r requirements.lock` | No known vulnerabilities found | 0 |
-| reproducción de `_independent_units` por tipo de mercado | spreads=2 unidades, h2h/totals=1 | 0 |
-| reproducción de `_max_drawdown` | reporta -200, real -300 | 0 |
-| `pytest tests/ -q` (tras cerrar KI-021) | **1378 passed, 1 skipped** | 0 |
-| `pytest tests/ -q` (it. 3, tras el Grupo A) | **1390 passed, 1 skipped** (1.146 s) | 0 |
-| `ruff check` / `mypy src` (it. 3, tras el Grupo A) | All checks passed! / 98 files, 0 issues | 0 |
 
-`pip-audit` YA EJECUTADO el 2026-08-31 (2.10.1 disponible en el entorno): sin
-vulnerabilidades conocidas. Cierra la limitación que dejó la iteración 1.
+## Validación final (fase 5, 2026-09-02)
 
-## Artefactos producidos
+| Comando | Salida | Código |
+|---|---|---|
+| `pytest -q` | **1481 passed, 1 skipped** (1.030 s) | 0 |
+| `ruff check src scripts tests` | All checks passed! | 0 |
+| `mypy src` | no issues found in 98 source files | 0 |
+| verificación propia del gate sobre `data/` real | 41 grupos, `allowed: []`, 0 pestillos, 41/41 migrados | 0 |
+| stake comprometido por el run de hoy | **0,00 en 148 filas / 12 ligas** | 0 |
 
-- `audit/latest/EXECUTIVE_SUMMARY.md`
-- `audit/latest/FINDINGS.md`
-- `audit/latest/VALIDATION.md`
-- `audit/latest/CHANGES.md`
-- `audit/latest/QUANT_REVIEW.md`
-- `audit/latest/BACKLOG.md`
-- `audit/latest/MANIFEST.json`
-- `Obsidian/Bitácora/2026-08-30.md`
++18 tests sobre la línea base (1463 → 1481). Sin regresiones atribuibles.
 
-## Métricas observadas con su n
+## Run programado durante la remediación (resuelto, sin incidente)
 
-- Suite: 1375 → **1378** aprobados; 3 → **0** fallos, sobre 1379 tests.
-- `mypy`: 98 archivos, 0 issues.
-- Repositorio: 588 archivos trackeados, 275 módulos Python, 44.072 líneas.
-- Commits desde la última auditoría con informe persistido: **179**.
-- Loops con bloque de guardarraíles idéntico: **11 de 11** (antes 10 de 11).
-- Filas servidas irrecuperables acumuladas: **152**.
+`SQP_Diario_Completo_Cdev` (11:00 diaria) se ejecutó sobre el árbol a medio
+editar mientras los subagentes modificaban `daily.py` y `probabilities.py`.
 
-## Justificación del resultado `DEGRADED`
+**Terminó correctamente a las 15:38:59**, con todos sus artefactos:
+`pick_history.csv`, reentreno a staging (13 candidatos), `report_20260902.html`
+y `report_latest.html`. Tardó 4 h 38 min contra los 22 min de ayer, por
+contención de CPU/memoria con tres agentes cargando repetidamente los 328 MB de
+`odds_mlb_*` y con la suite completa de 17 min.
 
-No es `PASS` porque queda una limitación acotada y nombrada: la cobertura es
-`PARCIAL` (los gates de riesgo y el pipeline diario no recibieron la lectura
-línea a línea que el procedimiento exige para marcar `REVISADA`). Según
-`STATES.md`, una limitación no crítica, acotada y registrada es `DEGRADED`.
+**Impacto sobre capital: ninguno.** Los 148 picks de hoy salieron con stake 0
+(gate de predicción + pausas), verificado fila a fila.
 
-El fallo preexistente ya no cuenta: KI-021 se cerró el 2026-08-30 por decisión
-del operador y la suite quedó completamente verde.
+CORRECCIÓN DE UN DIAGNÓSTICO PROPIO ERRÓNEO: a las 11:37 se declaró el run
+"muerto sin traceback, probablemente por memoria". Era falso — seguía corriendo.
+Causa del error: `ps` de Git Bash no enumera procesos nativos de Windows, así que
+un proceso del Programador de tareas es invisible ahí; hay que usar `tasklist`.
+Detalle en `Obsidian/Bitácora/2026-09-02.md`.
 
-No es `BLOCKED` porque el objetivo se cumplió: los hallazgos confirmados se
-corrigieron y la corrección quedó verificada. La decisión pendiente es posterior
-y se registra abajo, no bloquea lo ya completado.
-
-## Iteración 3 — resultado
-
-Cerrados los puntos 3 y 4 de la lista de decisiones anterior: las ~2.700 líneas
-pendientes están leídas línea a línea y los 8 `.bat` revisados (sin defecto; la
-única omisión de errorlevel está documentada como deliberada).
-
-**58 hallazgos nuevos**: 5 ALTO, 26 MEDIO, 23 BAJO, 13 INFORMATIVO, más 15
-sospechas descartadas con evidencia.
-
-**Fase 4 ejecutada** con el Grupo A aprobado por el operador: `N-A-1`, `N-A-2`,
-`N-A-3`, `R-B-1`, `N-M-6`. Cuatro módulos tocados
-(`pipeline/cleanup.py`, `storage/served_store.py`, `settlement/runner.py`,
-`risk/bankroll.py`), 13 pruebas añadidas y 1 reescrita. Grupo B **no tocado**:
-sigue esperando decisión.
-
-Dos afirmaciones de los especialistas corregidas a la baja en fase 2: la
-duplicación del stream graduado es **2,31x** (medición propia), no 3,84x; y
-`FS-01` baja de ALTO a MEDIO porque la rama ML no tiene llamador en producción.
-
-## Next decision
-
-Requieren aprobación humana, ninguna ejecutada. Ordenadas por relación
-impacto/riesgo:
-
-**Grupo A — corregibles sin decisión de negocio (parche mínimo, riesgo bajo):**
-
-1. `N-A-1` — la poda borra ficheros sin liquidar cuando ningún pick tiene stake,
-   que es el 100% del estado actual. Es el más urgente del grupo: destruye
-   evidencia graduable de forma irrecuperable y hoy está armado.
-2. `N-A-3` — una respuesta vacía del proveedor anula en masa y de forma
-   irreversible. Guard de salud del payload antes de anular.
-3. `N-A-2` — cuarentena del `served_*.csv` corrupto en vez de tratarlo como
-   vacío para siempre.
-4. `R-B-1` (iteración 2) — `max_drawdown` subestima. Cambio de una línea.
-5. `N-M-6` — `event_id` sin validar en un guard que corre fuera de todo `try`
-   antes del bucle de ligas.
-
-**Grupo B — alteran un criterio pre-registrado o un contrato con test: exigen
-decisión del operador y enmienda, no parche silencioso:**
-
-6. `R-A-1` (iteración 2) — spreads duplica `n` en el prediction gate.
-7. `N-A-4` — el cap global de exposición se define por día de generación y no
-   por vigencia. Invalida `tests/test_daily_exposure.py:120-129`. Alternativa de
-   coste cero: sólo loguear la exposición viva frente al cap.
-8. `N-A-5` — normalizar la duplicación en el punto de lectura compartido. Baja
-   la n y sube los p-valores de los informes históricos.
-
-**Grupo C — cobertura que sigue abierta:**
-
-9. Features, providers y adaptadores por deporte: nunca fueron alcance primario
-   de ninguna iteración.
-10. Backtesting y walk-forward: `COBERTURA_NO_VERIFICABLE`.
-
-KI-021 ya no está aquí: se cerró el 2026-08-30 con Opus 5 en las cuatro puntas.
+Coste operativo introducido por #4: `build_pick_history` medido sin contención en
+**232 s** (el agente midió mlb 30,2 s → 74,7 s, 2,47x). El run diario gana del
+orden de dos minutos.
 
 ## Estado del sistema (sin cambios)
 
 `shadow_mode: false` · `kelly_fraction: 0.08` · `min_edge: 0.02` ·
 bankroll inicial 1000, dinámico · `max_plausible_edge: 0.075` ·
-`calibration.auto_promote: false`.
+`calibration.auto_promote: false` · `prediction_gate.enabled: true` con
+`allowed: []` (default-deny efectivo).
 Sin ventaja predictiva demostrada.
+
+## Iteración anterior
+
+El registro de la auditoría del 2026-08-31 (iteración 3/8, resultado `DEGRADED`,
+58 hallazgos, Grupo A corregido) vive en `audit/latest/` y en
+`Obsidian/Bitácora/2026-08-30.md`.

@@ -80,6 +80,76 @@ def test_production_and_backtest_share_the_same_builder():
     assert roi_engine.build_model_map is build_model_map
 
 
+def test_production_and_backtest_share_the_adjustment_chain():
+    """AUD-MED-006, garantia estructural (misma logica que la de F-10): daily y
+    roi_engine deben usar EL MISMO objeto funcion para la capa de ajustes."""
+    from sqp.backtesting import roi_engine
+    from sqp.pipeline import daily, probabilities
+    assert daily.adjust_model_probability is probabilities.adjust_model_probability
+    assert roi_engine.adjust_model_probability is probabilities.adjust_model_probability
+    assert daily.build_adjustment_context is probabilities.build_adjustment_context
+    assert roi_engine.build_adjustment_context is probabilities.build_adjustment_context
+
+
+def test_adjustment_chain_is_identity_when_all_coefficients_are_zero():
+    """Con la configuracion por defecto (todos los coeficientes a 0) la cadena
+    devuelve p_model intacta dentro de [0.01, 0.99]; fuera, aplica el MISMO
+    clamp que produccion (daily siempre acoto _p_adj; el motor ROI antiguo no)."""
+    from sqp.pipeline.probabilities import (adjust_model_probability,
+                                            build_adjustment_context)
+    results, _ = _adjustment_scenario()
+    risk = RiskConfig()   # todos los coeficientes 0.0 por defecto
+    ctx = build_adjustment_context("A", "B", "2026-06-10", results[:-1], risk)
+    for p in (0.01, 0.3141592653589793, 0.57, 0.99):
+        assert adjust_model_probability(p, "h2h", "A", None, "A", "B",
+                                        ctx, risk) == p
+    assert adjust_model_probability(0.999, "h2h", "A", None, "A", "B",
+                                    ctx, risk) == 0.99
+    assert adjust_model_probability(0.001, "h2h", "B", None, "A", "B",
+                                    ctx, risk) == 0.01
+
+
+def test_adjustment_chain_wires_each_coefficient_to_its_feature():
+    """Cableado coeficiente->feature en un mercado de totals: el helper debe
+    reproducir la suma manual de los terminos con las primitivas de rest_form
+    (el oraculo independiente de la formula que daily aplicaba inline)."""
+    from sqp.features.rest_form import (off_def_p_adjustment,
+                                        over_under_rate_p_adjustment,
+                                        team_avg_conceded, team_avg_scored,
+                                        team_avg_total, team_over_rate,
+                                        totals_tendency_p_adjustment)
+    from sqp.pipeline.probabilities import (adjust_model_probability,
+                                            build_adjustment_context)
+    results, _ = _adjustment_scenario()
+    prior = results[:-1]
+    risk = RiskConfig(totals_tendency_coef=0.004, off_def_totals_coef=0.003,
+                      over_under_rate_coef=0.02)
+    ctx = build_adjustment_context("A", "B", "2026-06-10", prior, risk)
+    line, p_model = 7.5, 0.5
+    expected = p_model
+    expected += totals_tendency_p_adjustment(
+        "totals", "Over", team_avg_total("A", prior, risk.totals_tendency_n),
+        team_avg_total("B", prior, risk.totals_tendency_n), line,
+        risk.totals_tendency_coef)
+    expected += off_def_p_adjustment(
+        "totals", "Over", "A", "B",
+        team_avg_scored("A", prior, risk.off_def_n),
+        team_avg_conceded("A", prior, risk.off_def_n),
+        team_avg_scored("B", prior, risk.off_def_n),
+        team_avg_conceded("B", prior, risk.off_def_n),
+        line, risk.off_def_h2h_coef, risk.off_def_totals_coef)
+    expected += over_under_rate_p_adjustment(
+        "totals", "Over",
+        team_over_rate("A", prior, line, risk.over_under_rate_n),
+        team_over_rate("B", prior, line, risk.over_under_rate_n),
+        risk.over_under_rate_coef)
+    expected = max(0.01, min(0.99, expected))
+    got = adjust_model_probability(p_model, "totals", "Over", line,
+                                   "A", "B", ctx, risk)
+    assert abs(got - expected) < 1e-12
+    assert got != p_model   # el escenario tiene senal: el test discrimina
+
+
 # --- F-11: el backtest no puede depender del orden de entrada ----------------
 
 def _eo(eid, home, away, day):
@@ -88,6 +158,108 @@ def _eo(eid, home, away, day):
                     away=away, start_time=f"{day}T23:00:00Z", data_label="real"),
         lines=[MarketLine("h2h", "dk", home, 1.9, None),
                MarketLine("h2h", "dk", away, 2.1, None)])
+
+
+def _adjustment_scenario(extra_same_day: bool = False):
+    """Historial sintetico con senal de racha: A llega +3, B llega -3.
+
+    `extra_same_day` anade una victoria de A EL MISMO DIA del partido apostado
+    (doble jornada). Esa fila puede alimentar el Elo walk-forward (orden de la
+    lista), pero JAMAS las features de ajuste: en produccion las features solo
+    ven partidos liquidados de dias ANTERIORES."""
+    results = [
+        {"date": "2026-06-01", "home": "A", "away": "CC", "home_score": 5,
+         "away_score": 2, "neutral": False, "game_id": "a1"},
+        {"date": "2026-06-01", "home": "DD", "away": "B", "home_score": 6,
+         "away_score": 1, "neutral": False, "game_id": "b1"},
+        {"date": "2026-06-02", "home": "A", "away": "CC", "home_score": 4,
+         "away_score": 1, "neutral": False, "game_id": "a2"},
+        {"date": "2026-06-02", "home": "DD", "away": "B", "home_score": 3,
+         "away_score": 0, "neutral": False, "game_id": "b2"},
+        {"date": "2026-06-03", "home": "A", "away": "CC", "home_score": 7,
+         "away_score": 3, "neutral": False, "game_id": "a3"},
+        {"date": "2026-06-03", "home": "DD", "away": "B", "home_score": 5,
+         "away_score": 4, "neutral": False, "game_id": "b3"},
+    ]
+    if extra_same_day:
+        # Ordena ANTES del partido apostado (("A","AZ") < ("A","B")): el Elo
+        # walk-forward la observa, las features de ajuste no deben verla.
+        results.append({"date": "2026-06-10", "home": "A", "away": "AZ",
+                        "home_score": 9, "away_score": 0, "neutral": False,
+                        "game_id": "same_day"})
+    results.append({"date": "2026-06-10", "home": "A", "away": "B",
+                    "home_score": 5, "away_score": 3, "neutral": False,
+                    "game_id": "bet"})
+    odds = {"e1": EventOdds(
+        event=Event(event_id="e1", sport_key="bt", league="test", home="A",
+                    away="B", start_time="2026-06-10T23:00:00Z", data_label="real"),
+        lines=[MarketLine("h2h", "dk", "A", 2.05, None),
+               MarketLine("h2h", "dk", "B", 1.95, None)])}
+    return results, odds
+
+
+def _expected_home_probability(results, streak_coef: float,
+                               expected_streak_diff: float) -> float:
+    """Oraculo independiente de la cadena de produccion (daily.py):
+    p_decision = clamp(p_model + ajustes) con shrink=0 y sin calibrador.
+    Replica el Elo walk-forward observando los partidos previos al apostado en
+    el MISMO orden que el motor, y aplica la formula documentada del ajuste de
+    racha (configs/default.yaml, rest_form.streak_p_adjustment)."""
+    from sqp.sports.registry import get_adapter
+    adapter = get_adapter("test", "baseball", None)
+    ordered = sorted(results, key=lambda r: (str(r.get("date", "")),
+                                             str(r.get("home", "")),
+                                             str(r.get("away", "")),
+                                             str(r.get("game_id", "")),
+                                             str(r.get("home_score", "")),
+                                             str(r.get("away_score", ""))))
+    prior = ordered[:-1]           # todo menos el partido apostado (es el ultimo)
+    for r in prior:
+        adapter.observe(r)
+    ev = Event(event_id="e1", sport_key="bt", league="test", home="A", away="B",
+               start_time="2026-06-10T23:00:00Z", data_label="real",
+               home_pitcher=None, away_pitcher=None)
+    est = adapter.estimate(ev, None, None)
+    p_model = est.home_win_estimated_probability
+    adj = expected_streak_diff * streak_coef
+    return max(0.01, min(0.99, p_model + adj))
+
+
+def _backtest_home_probability(results, odds, risk) -> float:
+    out = realized_roi_backtest(list(results), dict(odds), "test", "baseball",
+                                None, risk, 1000.0, warmup=0)
+    settled = out["settled"]
+    row = settled[settled["selection"] == "A"]
+    assert len(row) == 1, "el lado A debe llevar stake en este escenario"
+    return float(row["estimated_probability"].iloc[0])
+
+
+def test_roi_backtest_applies_the_production_adjustment_chain():
+    """AUD-MED-006: con un coeficiente NO nulo (streak_coef=0.01, el valor que
+    corrio en produccion del 2026-08-23 al 2026-09-01), el backtest debe
+    aplicar la MISMA cadena de ajustes que daily antes del shrink. El motor
+    antiguo usaba p_model crudo y este test fallaba."""
+    results, odds = _adjustment_scenario()
+    risk = RiskConfig(min_edge=0.0, market_shrink=0.0, max_plausible_edge=1.0,
+                      streak_coef=0.01)
+    # A en +3, B en -3 -> diff +6 -> ajuste +0.06 para el lado A.
+    expected = _expected_home_probability(results, 0.01, expected_streak_diff=6.0)
+    got = _backtest_home_probability(results, odds, risk)
+    assert got == round(expected, 4)
+
+
+def test_roi_backtest_adjustments_ignore_same_day_games():
+    """Correccion temporal: las features de ajuste solo pueden usar partidos de
+    fechas ESTRICTAMENTE anteriores. Una victoria de A el mismo dia (doble
+    jornada) no puede subir la racha de +3 a +4."""
+    results, odds = _adjustment_scenario(extra_same_day=True)
+    risk = RiskConfig(min_edge=0.0, market_shrink=0.0, max_plausible_edge=1.0,
+                      streak_coef=0.01)
+    # El Elo walk-forward SI observa la fila del mismo dia (orden de la lista,
+    # comportamiento preexistente del motor); las features NO: diff sigue +6.
+    expected = _expected_home_probability(results, 0.01, expected_streak_diff=6.0)
+    got = _backtest_home_probability(results, odds, risk)
+    assert got == round(expected, 4)
 
 
 def test_backtest_is_reproducible_under_input_reordering():

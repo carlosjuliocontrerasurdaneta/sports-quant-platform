@@ -23,6 +23,29 @@ descubrio los candidatos, y usarlo seria validar sobre la muestra del hallazgo
 (KI-019). El dia de entrada en vigor el gate niega todos los mercados; es el
 comportamiento correcto.
 
+HISTERESIS DEL PRE-REGISTRO (pestillo de una sola direccion): "un corte que
+pase el gate y luego lo pierda NO VUELVE A ENTRAR sin revision humana". No es
+la histeresis de dos umbrales de ``degradation.py``: es un pestillo. Cuando un
+corte con ``allowed: true`` en el registro previo deja de cumplir los criterios
+(o desaparece de la evaluacion), ``latched`` pasa a true y el corte queda con
+``allowed: false`` aunque los criterios estadisticos vuelvan a cumplirse. Solo
+``release_prediction_gate_latch`` -- un acto humano explicito, con identidad y
+rastro en ``prediction_gate_latch_log.csv`` -- desarma el pestillo; la
+reentrada la decide despues el criterio pre-registrado, nunca la liberacion en
+si. El estado vive en el propio ``prediction_gate.json``: ``write_prediction_gate``
+lee el registro previo del mismo directorio antes de reescribirlo. Un registro
+de la version anterior (sin ``latched``) se trata como "sin pestillo", lo cual
+no abre nada: ``allowed`` sigue exigiendo los criterios.
+
+MULTIPLICIDAD (documentado, NO corregido -- decision pendiente del operador):
+el pre-registro acepta el riesgo de comparaciones multiples sobre ~25 cortes
+(~1,25 falsos positivos esperados a alpha 0,05, mitigados por la condicion 2)
+y fija Bonferroni como endurecimiento SOLO si entran varios cortes a la vez con
+EV marginal. Hoy se evaluan 41 grupos, no ~25, y la evaluacion se repite a
+diario (parada opcional): es un regimen distinto del pre-registrado. Endurecer
+alpha aqui contradiria una decision registrada, asi que no se hace; queda
+anotado para revision humana.
+
 Politica default-deny: sin registro, sin entrada o con evidencia insuficiente,
 stake 0 (flag "prediction_gate"). Criterio completo y criterios de descarte en
 docs/research/2026-08-16-preregistro-regla-de-salida.md.
@@ -42,6 +65,9 @@ from sqp.sports.team_names import normalize_key
 log = get_logger(__name__)
 
 PREDICTION_GATE_FILENAME = "prediction_gate.json"
+# Rastro append-only de cada pestillo armado y de cada liberacion humana,
+# al estilo de data/models/promotion_log.csv y degradation_log.csv.
+PREDICTION_GATE_LATCH_LOG = "prediction_gate_latch_log.csv"
 # Fecha del pre-registro. Solo cuenta lo ESTRICTAMENTE posterior.
 VALIDATION_START = "2026-08-16"
 # Minimo de filas no empatadas por (liga, mercado). Por debajo, el signo es
@@ -189,32 +215,184 @@ def evaluate_markets(graded: pd.DataFrame, *,
     return pd.DataFrame(rows, columns=_TABLE_COLS)
 
 
+def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
+                 now: str) -> tuple[dict[str, dict], list[dict]]:
+    """Fusiona la decision estadistica del dia con el estado previo del pestillo.
+
+    Reglas (pre-registro 2026-08-16, criterios de descarte):
+
+    - Pestillo armado permanece armado: solo lo desarma la liberacion humana.
+    - Un corte con ``allowed: true`` previo que deja de cumplir los criterios
+      arma el pestillo.
+    - Un corte con ``allowed: true`` o pestillo previo que DESAPARECE de la
+      evaluacion se conserva con el pestillo armado (``sin_evaluacion``): no
+      poder verificar que sigue cumpliendo no es permiso.
+    - Con pestillo armado, ``allowed`` es false aunque los criterios se cumplan
+      (razon ``bloqueado_pendiente_revision``): el ``allowed`` persistido es la
+      decision FINAL, asi que los consumidores viejos tambien la respetan.
+    - Un registro previo sin campos de pestillo (version anterior) equivale a
+      "sin pestillo", que no abre nada: ``allowed`` sigue exigiendo criterios.
+
+    Devuelve el mapa de mercados y las transiciones de pestillo del dia.
+    """
+    markets: dict[str, dict] = {}
+    transitions: list[dict] = []
+
+    def _latch_entry(key: str, entry: dict, was_latched: bool,
+                     reason: str) -> None:
+        markets[key] = entry
+        if entry["latched"] and not was_latched:
+            lg, mk = key.split("|", 1)
+            transitions.append({
+                "timestamp": now, "league": lg, "market": mk,
+                "action": "latch", "reason": reason, "released_by": "",
+                "note": "", "n": entry["n"], "p_value": entry["p_value"],
+                "ev_flat": entry["ev_flat"],
+            })
+
+    seen: set[str] = set()
+    for r in decided.itertuples():
+        key = f"{r.league}|{r.market}"
+        seen.add(key)
+        prev = previous.get(key) or {}
+        was_latched = bool(prev.get("latched"))
+        was_allowed = bool(prev.get("allowed"))
+        stat_allowed = bool(r.allowed)
+        stat_reason = str(r.reason)
+        latched = was_latched or (was_allowed and not stat_allowed)
+        if not stat_allowed:
+            reason = stat_reason
+        elif latched:
+            reason = "bloqueado_pendiente_revision"
+        else:
+            reason = ""
+        entry = {
+            "n": int(r.n), "wins": int(r.wins), "p_value": float(r.p_value),
+            "ev_flat": float(r.ev_flat),
+            "allowed": stat_allowed and not latched, "reason": reason,
+            "latched": latched,
+            "latched_at": (prev.get("latched_at") if was_latched
+                           else (now if latched else None)),
+        }
+        _latch_entry(key, entry, was_latched, reason or stat_reason)
+    for key in sorted(set(previous) - seen):
+        prev = previous.get(key) or {}
+        was_latched = bool(prev.get("latched"))
+        if not (was_latched or prev.get("allowed")):
+            continue  # sin estado que preservar: ausente = deny, como siempre
+        entry = {
+            "n": 0, "wins": 0, "p_value": None, "ev_flat": None,
+            "allowed": False, "reason": "sin_evaluacion", "latched": True,
+            "latched_at": prev.get("latched_at") or now,
+        }
+        _latch_entry(key, entry, was_latched, "sin_evaluacion")
+    return markets, transitions
+
+
+def _append_latch_log(rows: list[dict], bets_dir: Path) -> Path | None:
+    """Rastro auditable append-only (escritura atomica), como degradation_log."""
+    if not rows:
+        return None
+    bets_dir.mkdir(parents=True, exist_ok=True)
+    path = bets_dir / PREDICTION_GATE_LATCH_LOG
+    new = pd.DataFrame(rows)
+    if path.exists():
+        try:
+            prior = pd.read_csv(path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            prior = pd.DataFrame()
+        if not prior.empty:
+            cols = list(prior.columns) + [c for c in new.columns
+                                          if c not in prior.columns]
+            new = pd.concat([prior.reindex(columns=cols),
+                             new.reindex(columns=cols)], ignore_index=True)
+    tmp = path.with_suffix(".csv.tmp")
+    new.to_csv(tmp, index=False)
+    tmp.replace(path)
+    return path
+
+
+def _write_payload(payload: dict, bets_dir: Path) -> Path:
+    bets_dir.mkdir(parents=True, exist_ok=True)
+    path = bets_dir / PREDICTION_GATE_FILENAME
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True),
+                   encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
 def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
                           min_n: int = PREDICTION_GATE_MIN_N,
                           alpha: float = PREDICTION_GATE_ALPHA,
                           validation_start: str = VALIDATION_START) -> Path:
     """Persiste el registro (reemplazo atomico). Escribe SIEMPRE, incluso sin
-    mercados: un ``markets`` vacio hace explicito el default-deny."""
+    mercados: un ``markets`` vacio hace explicito el default-deny.
+
+    Lee el registro previo del MISMO ``bets_dir`` para aplicar el pestillo del
+    pre-registro (ver ``_apply_latch``): la evaluacion estadistica se rehace de
+    cero, pero el estado dentro/fuera NO se olvida entre dias."""
     decided = evaluate_markets(graded, min_n=min_n, alpha=alpha,
                                validation_start=validation_start)
-    markets = {
-        f"{r.league}|{r.market}": {
-            "n": int(r.n), "wins": int(r.wins), "p_value": float(r.p_value),
-            "ev_flat": float(r.ev_flat), "allowed": bool(r.allowed),
-            "reason": str(r.reason),
-        }
-        for r in decided.itertuples()
-    }
-    payload = {"generated_at": datetime.now(timezone.utc).isoformat(),
+    bets_dir = Path(bets_dir)
+    previous = load_prediction_gate(bets_dir)
+    now = datetime.now(timezone.utc).isoformat()
+    markets, transitions = _apply_latch(decided, previous, now)
+    for t in transitions:
+        log.warning("prediction_gate: pestillo ARMADO para %s|%s (%s); no "
+                    "reentra sin liberacion humana (release_prediction_gate_latch).",
+                    t["league"], t["market"], t["reason"])
+    payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
                "validation_start": str(validation_start), "markets": markets}
-    bets_dir = Path(bets_dir)
-    bets_dir.mkdir(parents=True, exist_ok=True)
-    path = bets_dir / PREDICTION_GATE_FILENAME
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    path = _write_payload(payload, bets_dir)
+    _append_latch_log(transitions, bets_dir)
     return path
+
+
+def release_prediction_gate_latch(bets_dir: Path, league: str, market: str, *,
+                                  released_by: str, note: str = "") -> bool:
+    """Desarma el pestillo de un (liga, mercado) por revision humana explicita.
+
+    NO pone ``allowed: true``: la liberacion autoriza la RE-EVALUACION, y es la
+    siguiente ejecucion del gate la que decide con el criterio pre-registrado.
+    Exige identidad no vacia y deja rastro en ``prediction_gate_latch_log.csv``.
+    Devuelve True si habia pestillo que liberar, False si no habia nada que
+    hacer (entrada ausente o sin pestillo)."""
+    if not released_by or not released_by.strip():
+        raise ValueError("release_prediction_gate_latch exige una identidad "
+                         "humana no vacia en released_by (rastro auditable).")
+    bets_dir = Path(bets_dir)
+    path = bets_dir / PREDICTION_GATE_FILENAME
+    if not path.exists():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    markets = payload.get("markets")
+    if not isinstance(markets, dict):
+        return False
+    key = f"{league}|{market}"
+    entry = markets.get(key)
+    if not (isinstance(entry, dict) and entry.get("latched")):
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    entry["latched"] = False
+    entry["latched_at"] = None
+    entry["allowed"] = False  # direccion segura: reabre la evaluacion, no la puerta
+    entry["reason"] = "liberado_pendiente_reevaluacion"
+    _write_payload(payload, bets_dir)
+    _append_latch_log([{
+        "timestamp": now, "league": str(league), "market": str(market),
+        "action": "release", "reason": "revision_humana",
+        "released_by": released_by.strip(), "note": str(note),
+        "n": entry.get("n"), "p_value": entry.get("p_value"),
+        "ev_flat": entry.get("ev_flat"),
+    }], bets_dir)
+    log.info("prediction_gate: pestillo LIBERADO para %s por %s; la reentrada "
+             "la decide la proxima evaluacion.", key, released_by.strip())
+    return True
 
 
 def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
@@ -231,6 +409,10 @@ def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
 
 
 def market_allowed(gate: dict[str, dict], league: str, market: str) -> bool:
-    """True solo si el registro tiene la entrada y esta aprobada (default-deny)."""
+    """True solo si el registro tiene la entrada, esta aprobada y NO tiene el
+    pestillo armado (default-deny). El escritor ya persiste ``allowed`` final
+    con el pestillo aplicado; comprobar ``latched`` aqui es cinturon y tirantes
+    contra un registro editado a mano. Un registro de la version anterior no
+    trae ``latched``: se trata como sin pestillo, sin abrir nada nuevo."""
     entry = gate.get(f"{league}|{market}")
-    return bool(entry and entry.get("allowed"))
+    return bool(entry and entry.get("allowed") and not entry.get("latched"))

@@ -9,8 +9,20 @@ No lookahead: ratings are built strictly walk-forward (each game estimated
 before it is observed), and only odds snapshots dated before commence are used.
 Coverage is limited to games for which historical odds were captured.
 
-This replays market-shrink, edge penalties, Kelly staking and the per-league
-daily exposure cap, but intentionally does NOT apply today's live calibrator to
+This replays market-shrink, edge penalties, Kelly staking, the per-league
+daily exposure cap AND the additive p_model adjustment layer of 2026-08-23
+(rest/form/h2h/streak/etc.), via the same shared helpers production uses
+(pipeline.probabilities.build_adjustment_context / adjust_model_probability;
+AUD-MED-006 -- the layer lived only in daily and between 2026-08-23 and
+2026-09-01, with streak_coef=0.01, this backtest silently measured a policy
+that was not the deployed one). Adjustment features for a game use ONLY games
+dated STRICTLY BEFORE it (production computes them from previously settled
+results, so same-day games are never visible pregame). The weather term is
+exactly 0 here: no historical pregame forecasts were captured, and fetching
+today's data for past dates would not be the information available at bet
+time.
+
+The backtest intentionally does NOT apply today's live calibrator to
 past rows (that would leak a model trained with later outcomes). The global
 cross-league cap, dynamic bankroll, shadow mode and CLV gate are also outside
 this single-league benchmark. It is therefore not an exact reconstruction of
@@ -31,7 +43,9 @@ from sqp.domain.models import Event, EventOdds, MarketLine
 from sqp.markets.edge import adjusted_edge
 from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
                                 _pick_main_lines, _spread_novig)
-from sqp.pipeline.probabilities import build_model_map
+from sqp.pipeline.probabilities import (adjust_model_probability,
+                                        build_adjustment_context,
+                                        build_model_map)
 from sqp.risk.kelly import edge, kelly_fraction_stake
 from sqp.settlement.settle import settle_candidates
 from sqp.sports.registry import get_adapter
@@ -157,6 +171,25 @@ def _day_diff(a: str, b: str) -> int:
         return 99
 
 
+def _prior_games(team_hist: dict, home_n: str, away_n: str, rd: str) -> list[dict]:
+    """Union ordenada de los partidos de ambos equipos con fecha ESTRICTAMENTE
+    anterior a `rd`. Todas las features de la capa de ajustes seleccionan filas
+    por pertenencia del equipo, asi que este subconjunto produce exactamente
+    los mismos valores que la lista completa de la liga, con coste por evento
+    proporcional al historial de los DOS equipos (mismo patron de historiales
+    por equipo que scripts/measure_features.py). Sin este recorte el backtest
+    escaneaba la liga entera ~18 veces por evento (1s -> 145s en wnba)."""
+    seen: set[int] = set()
+    merged: list[tuple[int, dict]] = []
+    for team in (home_n, away_n):
+        for idx, d, row in team_hist.get(team, ()):
+            if d < rd and idx not in seen:
+                seen.add(idx)
+                merged.append((idx, row))
+    merged.sort(key=lambda t: t[0])
+    return [row for _, row in merged]
+
+
 def _apply_backtest_daily_cap(candidates: pd.DataFrame, bankroll: float,
                               cap_pct: float) -> pd.DataFrame:
     """Apply the production per-league exposure cap independently per game day."""
@@ -200,6 +233,23 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                                              str(r.get("away_score", ""))))
     order_insensitive = family == "tennis"  # players have no home/away orientation
     idx = _match_index(odds_by_id, order_insensitive)
+    # Historial walk-forward por equipo: (indice, fecha, fila) apendizados en
+    # el MISMO punto que adapter.observe. Las features de ajuste de un partido
+    # solo pueden ver partidos de fechas estrictamente anteriores (via
+    # _prior_games): en produccion se computan sobre resultados ya liquidados
+    # (dias previos), nunca sobre partidos del mismo dia (dobles jornadas).
+    team_hist: dict[str, list[tuple[int, str, dict]]] = defaultdict(list)
+    _norm_cache: dict[str, str] = {}
+
+    def _norm(name: str) -> str:
+        # adapter.normalize puede ser costoso (fuzzy matching); memoizarlo es
+        # seguro porque es un mapeo puro nombre -> clave canonica.
+        v = _norm_cache.get(name)
+        if v is None:
+            v = adapter.normalize(name)
+            _norm_cache[name] = v
+        return v
+
     used: set[str] = set()
     cand_rows: list[dict] = []
     scores: dict[str, tuple[int, int, str]] = {}
@@ -224,6 +274,14 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                 else:
                     hs, as_ = int(r["away_score"]), int(r["home_score"])
                 scores[eo.event.event_id] = (hs, as_, eo.event.home)
+                # Capa de ajustes de produccion (AUD-MED-006): mismo helper que
+                # daily. `prior` = partidos de ambos equipos con fecha
+                # estrictamente anterior; weather=None (sin pronosticos
+                # historicos capturados, ver docstring del modulo).
+                rd = str(r.get("date", ""))[:10]
+                prior = _prior_games(team_hist, _norm(ev.home), _norm(ev.away), rd)
+                adj_ctx = build_adjustment_context(
+                    ev.home, ev.away, rd, prior, risk, _norm)
                 for key, p_model in build_model_map(est, ev, spread, total).items():
                     price = cons.get(key)
                     if price is None or p_model is None:
@@ -235,8 +293,11 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                                             three_way=(family == "soccer")).get(key[1])
                     if fair is None:
                         continue  # incomplete market: the live pipeline cannot remove vig
+                    p_adj = adjust_model_probability(
+                        p_model, key[0], key[1], key[2], ev.home, ev.away,
+                        adj_ctx, risk)
                     s = risk.market_shrink
-                    p_used = (1.0 - s) * p_model + s * fair if (fair is not None and s > 0) else p_model
+                    p_used = (1.0 - s) * p_adj + s * fair if (fair is not None and s > 0) else p_adj
                     e = edge(p_used, price)
                     # Same EV penalty as the live pipeline (no-op when off), so the
                     # realized-ROI backtest replays the actual staking. Calibration
@@ -262,6 +323,13 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                         "stake": stake, "estimated_edge": round(e, 4),
                         "estimated_probability": round(p_used, 4)})
         adapter.observe(r)
+        # Mismo punto walk-forward que observe: el partido i entra al historial
+        # de features SOLO despues de haberse apostado/estimado.
+        hn, an = _norm(str(r.get("home", ""))), _norm(str(r.get("away", "")))
+        rec = (i, str(r.get("date", ""))[:10], r)
+        team_hist[hn].append(rec)
+        if an != hn:
+            team_hist[an].append(rec)
     cands = pd.DataFrame(cand_rows)
     if not cands.empty:
         cands = _apply_backtest_daily_cap(

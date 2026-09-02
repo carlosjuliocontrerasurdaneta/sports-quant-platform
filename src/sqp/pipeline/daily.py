@@ -19,6 +19,8 @@ from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
                                         _consensus_spread,
                                         _novig_probs, _spread_novig,
                                         _pick_main_lines, _decision_probability,
+                                        adjust_model_probability,
+                                        build_adjustment_context,
                                         build_model_map)
 from sqp.providers.odds_api import OddsAPIClient, SPORT_KEYS
 from sqp.providers.synthetic import SyntheticProvider
@@ -690,7 +692,6 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # Empty when no snapshots exist yet (demo mode, new league).
     from sqp.markets.line_movement import event_line_movement, load_league_odds
     _league_odds = load_league_odds(league, ROOT / "data" / "odds")
-    from sqp.features.weather import weather_p_adjustment
     _venues = load_yaml(CONFIG_DIR / "venues.yaml").get(league, {})
     for eo in events:
         spread, total = _pick_main_lines(eo)
@@ -721,59 +722,18 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         # (auditoria 2026-08-05, F-10).
         model_map = build_model_map(est, eo.event, spread, total)
 
-        from sqp.features.rest_form import (h2h_p_adjustment,
-                                            home_away_form_p_adjustment,
-                                            margin_p_adjustment,
-                                            off_def_p_adjustment,
-                                            over_under_rate_p_adjustment,
-                                            rest_form_p_adjustment,
-                                            streak_p_adjustment, team_avg_conceded,
-                                            team_avg_margin, team_avg_scored,
-                                            team_avg_total, team_h2h_form,
-                                            team_over_rate, team_recent_form,
-                                            team_recent_form_away,
-                                            team_recent_form_home,
-                                            team_rest_days, team_streak,
-                                            totals_tendency_p_adjustment)
         from sqp.features.weather import get_event_weather
         _ref_date = eo.event.start_time[:10]
-        _rest_home = team_rest_days(
-            eo.event.home, results, _ref_date, adapter.normalize)
-        _rest_away = team_rest_days(
-            eo.event.away, results, _ref_date, adapter.normalize)
-        _form_home = team_recent_form(
-            eo.event.home, results, settings.risk.recent_form_n, adapter.normalize)
-        _form_away = team_recent_form(
-            eo.event.away, results, settings.risk.recent_form_n, adapter.normalize)
-        _h2h_home = team_h2h_form(
-            eo.event.home, eo.event.away, results,
-            settings.risk.h2h_n, adapter.normalize)
-        _avg_total_home = team_avg_total(
-            eo.event.home, results, settings.risk.totals_tendency_n, adapter.normalize)
-        _avg_total_away = team_avg_total(
-            eo.event.away, results, settings.risk.totals_tendency_n, adapter.normalize)
-        _streak_home = team_streak(eo.event.home, results, adapter.normalize)
-        _streak_away = team_streak(eo.event.away, results, adapter.normalize)
-        _avg_scored_home = team_avg_scored(
-            eo.event.home, results, settings.risk.off_def_n, adapter.normalize)
-        _avg_conceded_home = team_avg_conceded(
-            eo.event.home, results, settings.risk.off_def_n, adapter.normalize)
-        _avg_scored_away = team_avg_scored(
-            eo.event.away, results, settings.risk.off_def_n, adapter.normalize)
-        _avg_conceded_away = team_avg_conceded(
-            eo.event.away, results, settings.risk.off_def_n, adapter.normalize)
-        _form_home_at_home = team_recent_form_home(
-            eo.event.home, results, settings.risk.home_away_form_n, adapter.normalize)
-        _form_away_at_away = team_recent_form_away(
-            eo.event.away, results, settings.risk.home_away_form_n, adapter.normalize)
-        _margin_home = team_avg_margin(
-            eo.event.home, results, settings.risk.margin_n, adapter.normalize)
-        _margin_away = team_avg_margin(
-            eo.event.away, results, settings.risk.margin_n, adapter.normalize)
         _vc = _venues.get(adapter.normalize(eo.event.home))
         _event_weather = (get_event_weather(_vc[0], _vc[1],
                                             eo.event.start_time, settings.weather)
                           if _vc else None)
+        # Features de la capa de ajustes: las computa el helper compartido con
+        # el backtest de ROI, para que produccion y backtest no puedan volver a
+        # divergir (AUD-MED-006; mismo patron que build_model_map, F-10).
+        _adj_ctx = build_adjustment_context(
+            eo.event.home, eo.event.away, _ref_date, results, settings.risk,
+            adapter.normalize, weather=_event_weather)
 
         for key, p_model in model_map.items():
             price = cons.get(key)
@@ -789,53 +749,14 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             # still be captured in the served stream, but it must never carry
             # stake: there is no valid market anchor or vig removal for it.
             incomplete_market = fair is None
-            # Over/Under rate uses the actual totals line as reference; computed
-            # here (inner loop) because key[2] varies per selection.
-            if key[0] == "totals" and key[2] is not None:
-                _over_rate_home = team_over_rate(
-                    eo.event.home, results, key[2],
-                    settings.risk.over_under_rate_n, adapter.normalize)
-                _over_rate_away = team_over_rate(
-                    eo.event.away, results, key[2],
-                    settings.risk.over_under_rate_n, adapter.normalize)
-            else:
-                _over_rate_home = _over_rate_away = None
             # Apply rest-days, recent-form and weather adjustments before
-            # market shrink. Each term is 0 by default (no-op).
-            _p_adj = max(0.01, min(0.99, p_model
-                         + rest_form_p_adjustment(
-                             p_model, key[0], key[1], eo.event.home, eo.event.away,
-                             _rest_home, _rest_away, _form_home, _form_away,
-                             settings.risk.rest_days_coef, settings.risk.recent_form_coef)
-                         + h2h_p_adjustment(
-                             key[0], key[1], eo.event.home, eo.event.away,
-                             _h2h_home, settings.risk.h2h_coef)
-                         + weather_p_adjustment(
-                             key[0], key[1], _event_weather, settings.weather)
-                         + totals_tendency_p_adjustment(
-                             key[0], key[1], _avg_total_home, _avg_total_away,
-                             key[2], settings.risk.totals_tendency_coef)
-                         + streak_p_adjustment(
-                             key[0], key[1], eo.event.home, eo.event.away,
-                             _streak_home, _streak_away,
-                             settings.risk.streak_coef)
-                         + off_def_p_adjustment(
-                             key[0], key[1], eo.event.home, eo.event.away,
-                             _avg_scored_home, _avg_conceded_home,
-                             _avg_scored_away, _avg_conceded_away,
-                             key[2], settings.risk.off_def_h2h_coef,
-                             settings.risk.off_def_totals_coef)
-                         + home_away_form_p_adjustment(
-                             key[0], key[1], eo.event.home, eo.event.away,
-                             _form_home_at_home, _form_away_at_away,
-                             settings.risk.home_away_form_coef)
-                         + margin_p_adjustment(
-                             key[0], key[1], eo.event.home, eo.event.away,
-                             _margin_home, _margin_away,
-                             settings.risk.margin_coef)
-                         + over_under_rate_p_adjustment(
-                             key[0], key[1], _over_rate_home, _over_rate_away,
-                             settings.risk.over_under_rate_coef)))
+            # market shrink. Each term is 0 by default (no-op). La expresion
+            # (diez terminos aditivos + clamp) vive en
+            # probabilities.adjust_model_probability, compartida con el
+            # backtest de ROI (AUD-MED-006).
+            _p_adj = adjust_model_probability(
+                p_model, key[0], key[1], key[2], eo.event.home, eo.event.away,
+                _adj_ctx, settings.risk, settings.weather)
             p_used, p_decision = _decision_probability(
                 _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
             e = edge(p_decision, price)

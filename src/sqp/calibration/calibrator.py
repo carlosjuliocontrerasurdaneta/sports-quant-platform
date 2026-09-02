@@ -541,6 +541,22 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     se usaba. Las filas sin ``event_id`` legible reciben uno sintetico por fila,
     de modo que el esquema antiguo (una fila = un evento) conserva su semantica.
 
+    Y el AJUSTE y las METRICAS del gate tambien cuentan observaciones, no filas
+    (AUD-HIGH-001): antes de entrenar, las filas se COLAPSAN a una observacion
+    por unidad independiente ``(event_id, selection, line)`` -- el mismo lado
+    servido N dias de horizonte es UNA observacion (mismo resultado, precio casi
+    identico: rango mediano de ``adjusted_probability`` dentro de la unidad
+    0,0011, medido 2026-09-02 sobre 2.981 unidades multi-fila), mientras que las
+    dos CARAS del mercado son DOS observaciones y no se funden. Se conserva la
+    ULTIMA fila de cada unidad (features mas frescas). Sin esto, ``iso.fit``,
+    ``BetaCalibrator.fit`` y las cinco condiciones del gate
+    (``raw_val_ece``/``brier``/monotonia/extremos/resolucion) veian 10,67x mas
+    filas que observaciones (18.229/1.709 el 2026-09-02; mls|h2h 19,3x), asi que
+    un evento de MLS pesaba ~21x uno de MLB y el n efectivo del gate era ~1/10
+    del creido. Historiales sin ``selection``/``line`` (esquema antiguo) no se
+    colapsan: sin la cara no se puede distinguir una observacion legitima de un
+    duplicado, y fundir por ``event_id`` a secas mezclaria las dos caras.
+
 
     Candidates are written to STAGING by default. A separate caller chooses the
     manual promotion path or ``auto_promote_calibrators`` with its OOS/event gates.
@@ -563,8 +579,24 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
                            "date": g["date"].astype(str).to_numpy(),
                            "event_id": event_ids}).dropna(
                                subset=["probability", "won", "date"])
+        n_rows_raw = int(len(df))
+        if "selection" in g.columns:
+            # Unidad de observacion independiente: (event_id, selection, line).
+            # Misma normalizacion de `line` que la clave de dedup de data.py
+            # ("nan" para los mercados sin linea), para agrupar identico.
+            sel = g["selection"].astype(str).to_numpy()
+            line = (pd.to_numeric(g["line"], errors="coerce").map(str).to_numpy()
+                    if "line" in g.columns else np.full(len(g), "nan"))
+            unit = pd.Series([f"{e}|{s}|{ln}" for e, s, ln
+                              in zip(event_ids, sel, line)],
+                             name="_unit")
+            df = (df.assign(_unit=unit.loc[df.index])
+                  .sort_values("date", kind="stable")
+                  .groupby("_unit", sort=False, as_index=False).last()
+                  .drop(columns="_unit"))
         n_events = int(df["event_id"].nunique())
         rec = {"league": str(league), "market": str(market), "n": int(len(df)),
+               "n_rows_raw": n_rows_raw,
                "n_events": n_events,
                "trained": False}
         if n_events < min_n:
