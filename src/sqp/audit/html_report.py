@@ -99,12 +99,17 @@ def _picks_records(predictions_dir: Path,
     if df.empty:
         return []
     if generated_day is None:
-        vigentes = picks_vigentes(df)
-        if vigentes.empty and "generated_at" in df.columns:
-            dias = df["generated_at"].astype(str).str[:10]
-            df = df[dias == dias.max()]
-        else:
-            df = vigentes
+        # Ultima copia privada del criterio de vigencia + caida al ultimo dia
+        # generado. No es una correccion: `candidates_*.csv` se REESCRIBE en cada
+        # run (no se acumula como el stream servido), asi que el colapso del
+        # helper es aqui un no-op MEDIDO -- 169 filas antes y despues, 0
+        # eliminadas el 2026-09-01 --. Se converge para que quede UNA sola
+        # implementacion del criterio: la deriva entre copias es lo que produjo
+        # KI-027, cuando el arreglo del 2026-08-28 toco unas vistas y no otras.
+        #
+        # Con `generated_day` explicito NO se filtra por vigencia: el llamador
+        # esta pidiendo un dia concreto, incluidos partidos ya jugados.
+        df = picks_vigentes_unicos(df)
         if df.empty:
             return []
     ranked = df.sort_values("estimated_edge", ascending=False).copy()

@@ -168,6 +168,23 @@ class TestVigenciaPorPartidoNoPorRun:
             {"selection": "DE_AYER", "generated_at": _en_dias(-1)}]))
         assert recs[0]["generado"] == _en_dias(-1)[:10]
 
+    def test_las_dos_caras_del_mismo_mercado_siguen_apareciendo(self, tmp_path):
+        """Riesgo REAL de haber convergido esta vista al helper comun: el helper
+        colapsa, y colapsar de mas escondería picks. No lo hace porque
+        `selection` esta en la clave de identidad, pero eso hay que fijarlo: la
+        REGLA FUNDAMENTAL dice que la lista es de TODOS los mercados, y son los
+        gates los que quitan el stake, nunca la lista.
+
+        `candidates_*.csv` se reescribe en cada run, asi que el colapso es aqui
+        un no-op medido (169 filas antes y despues el 2026-09-01); este test
+        impide que deje de serlo sin que nadie se entere."""
+        recs = _picks_records(_cands(tmp_path, [
+            {"event_id": "e1", "market": "totals", "selection": "Over", "line": 8.5},
+            {"event_id": "e1", "market": "totals", "selection": "Under", "line": 8.5,
+             "estimated_edge": 0.05},
+        ]))
+        assert sorted(r["selection"] for r in recs) == ["Over", "Under"]
+
 
 class TestNoSeTocoElContadorDeAccionables:
     """`rank_candidates` define "accionable" y alimenta el contador
