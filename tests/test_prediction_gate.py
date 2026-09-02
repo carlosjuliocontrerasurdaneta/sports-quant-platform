@@ -222,6 +222,159 @@ def test_beating_the_market_without_positive_ev_is_denied():
     assert row["reason"] == "ev_no_positivo"
 
 
+# --- histeresis del pre-registro: pestillo de una sola direccion ---------------
+#
+# "Un corte que pase el gate y luego lo pierda NO VUELVE A ENTRAR sin revision
+# humana" (pre-registro 2026-08-16, criterios de descarte). No es la histeresis
+# de dos umbrales de degradation.py: es un pestillo que solo abre un humano.
+
+
+def _stream_pass(game_date: str = "2026-09-01") -> pd.DataFrame:
+    """240/400 unidades a favor con EV>0: pasa las dos condiciones."""
+    return _rows(240, 160, p_model=0.6, p_market=0.5, price=2.0,
+                 game_date=game_date, event_prefix=f"pass-{game_date}")
+
+
+def _stream_fail(game_date: str = "2026-09-02") -> pd.DataFrame:
+    """300 derrotas puras del MODELO en el test pareado: confiado (0.6) en
+    eventos que se pierden, d = (0.5-0)^2 - (0.6-0)^2 < 0. Acumuladas, hunden
+    el test de signo."""
+    return _rows(0, 300, p_model=0.6, p_market=0.5, price=2.0,
+                 game_date=game_date, event_prefix=f"fail-{game_date}")
+
+
+def _stream_recover(game_date: str = "2026-09-03") -> pd.DataFrame:
+    """400 aciertos: el acumulado VUELVE a cumplir los criterios estadisticos."""
+    return _rows(400, 0, p_model=0.6, p_market=0.5, price=2.0,
+                 game_date=game_date, event_prefix=f"rec-{game_date}")
+
+
+def test_a_cut_that_passes_then_fails_is_latched_out(tmp_path):
+    """Dia 1 pasa; dia 2 el acumulado deja de cumplir. El pestillo se arma."""
+    day1 = _stream_pass()
+    write_prediction_gate(day1, tmp_path)
+    assert market_allowed(load_prediction_gate(tmp_path),
+                          "brasileirao", "totals") is True
+    day2 = pd.concat([day1, _stream_fail()], ignore_index=True)
+    write_prediction_gate(day2, tmp_path)
+    gate = load_prediction_gate(tmp_path)
+    assert market_allowed(gate, "brasileirao", "totals") is False
+    assert gate["brasileirao|totals"].get("latched") is True
+
+
+def test_a_latched_cut_does_not_reenter_without_human_release(tmp_path):
+    """LA PRUEBA DISCRIMINANTE del pre-registro: pasa -> pierde -> volveria a
+    cumplir. Sin liberacion humana debe seguir bloqueado. Con el codigo previo
+    (re-evaluacion desde cero cada dia) esto FALLABA: el corte reentraba solo."""
+    day1 = _stream_pass()
+    write_prediction_gate(day1, tmp_path)
+    day2 = pd.concat([day1, _stream_fail()], ignore_index=True)
+    write_prediction_gate(day2, tmp_path)
+    day3 = pd.concat([day2, _stream_recover()], ignore_index=True)
+    # sanity: los criterios estadisticos SI se cumplen el dia 3...
+    row = evaluate_markets(day3).iloc[0]
+    assert row["p_value"] < 0.05 and row["ev_flat"] > 0
+    write_prediction_gate(day3, tmp_path)
+    gate = load_prediction_gate(tmp_path)
+    # ...pero el pestillo manda: no hay reentrada sin humano.
+    assert market_allowed(gate, "brasileirao", "totals") is False
+    entry = gate["brasileirao|totals"]
+    assert entry.get("latched") is True
+    assert bool(entry["allowed"]) is False
+
+
+def test_human_release_lets_the_cut_reenter_via_the_criteria(tmp_path):
+    """La liberacion humana desarma el pestillo; la reentrada la decide el
+    criterio pre-registrado en la siguiente evaluacion, no la liberacion."""
+    from sqp.risk.prediction_gate import release_prediction_gate_latch
+    day1 = _stream_pass()
+    write_prediction_gate(day1, tmp_path)
+    day2 = pd.concat([day1, _stream_fail()], ignore_index=True)
+    write_prediction_gate(day2, tmp_path)
+    day3 = pd.concat([day2, _stream_recover()], ignore_index=True)
+    write_prediction_gate(day3, tmp_path)
+    released = release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                             released_by="Carlos",
+                                             note="revision humana de prueba")
+    assert released is True
+    # La liberacion NO pone allowed=true por si misma (direccion segura):
+    assert market_allowed(load_prediction_gate(tmp_path),
+                          "brasileirao", "totals") is False
+    # La siguiente evaluacion aplica el criterio y reabre porque se cumple:
+    write_prediction_gate(day3, tmp_path)
+    assert market_allowed(load_prediction_gate(tmp_path),
+                          "brasileirao", "totals") is True
+
+
+def test_release_requires_an_identity(tmp_path):
+    from sqp.risk.prediction_gate import release_prediction_gate_latch
+    with pytest.raises(ValueError):
+        release_prediction_gate_latch(tmp_path, "mlb", "h2h", released_by="  ")
+
+
+def test_release_of_an_unlatched_market_is_a_noop(tmp_path):
+    from sqp.risk.prediction_gate import release_prediction_gate_latch
+    write_prediction_gate(_stream_pass(), tmp_path)
+    assert release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                         released_by="Carlos") is False
+
+
+def test_latch_and_release_leave_an_audit_trail(tmp_path):
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_LATCH_LOG,
+                                          release_prediction_gate_latch)
+    day1 = _stream_pass()
+    write_prediction_gate(day1, tmp_path)
+    day2 = pd.concat([day1, _stream_fail()], ignore_index=True)
+    write_prediction_gate(day2, tmp_path)
+    release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                  released_by="Carlos", note="ok")
+    log = pd.read_csv(tmp_path / PREDICTION_GATE_LATCH_LOG)
+    acts = log[(log["league"] == "brasileirao") & (log["market"] == "totals")]
+    assert list(acts["action"]) == ["latch", "release"]
+    assert acts.iloc[1]["released_by"] == "Carlos"
+
+
+def test_an_allowed_cut_that_vanishes_from_the_stream_latches(tmp_path):
+    """Si un corte aprobado desaparece de la evaluacion, no se puede verificar
+    que siga cumpliendo: direccion segura, se arma el pestillo."""
+    write_prediction_gate(_stream_pass(), tmp_path)
+    write_prediction_gate(pd.DataFrame(), tmp_path)
+    gate = load_prediction_gate(tmp_path)
+    entry = gate.get("brasileirao|totals")
+    assert entry is not None
+    assert bool(entry["allowed"]) is False
+    assert entry.get("latched") is True
+
+
+def test_old_format_registry_without_latch_fields_still_works(tmp_path):
+    """Retrocompatibilidad del contrato persistido: un registro escrito por la
+    version ANTERIOR (sin `latched`) debe cargar, negar por defecto y no armar
+    pestillos espurios sobre cortes que nunca estuvieron aprobados."""
+    (tmp_path / "prediction_gate.json").write_text(json.dumps({
+        "generated_at": "2026-09-01T00:00:00+00:00", "min_n": 300,
+        "alpha": 0.05, "validation_start": "2026-08-16",
+        "markets": {"mlb|spreads": {"allowed": False, "n": 150, "wins": 70,
+                                    "p_value": 0.76, "ev_flat": -0.02,
+                                    "reason": "muestra_insuficiente"}},
+    }), encoding="utf-8")
+    gate = load_prediction_gate(tmp_path)
+    assert market_allowed(gate, "mlb", "spreads") is False
+    # Reescribir encima del formato viejo no arma pestillo (nunca fue allowed)
+    # ni abre ninguna puerta:
+    write_prediction_gate(_rows(10, 5, p_model=0.6, p_market=0.5, price=2.0,
+                                league="mlb", market="spreads"), tmp_path)
+    gate = load_prediction_gate(tmp_path)
+    assert bool(gate["mlb|spreads"]["allowed"]) is False
+    assert bool(gate["mlb|spreads"].get("latched")) is False
+
+
+def test_market_allowed_denies_a_forged_allowed_with_latch():
+    """Cinturon y tirantes: aunque un registro llegara con allowed=true y
+    latched=true a la vez, el consumidor niega."""
+    gate = {"mlb|h2h": {"allowed": True, "latched": True}}
+    assert market_allowed(gate, "mlb", "h2h") is False
+
+
 # --- persistencia -------------------------------------------------------------
 
 def test_registry_is_written_even_without_markets(tmp_path):
