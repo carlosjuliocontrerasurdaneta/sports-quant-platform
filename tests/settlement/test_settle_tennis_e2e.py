@@ -143,6 +143,103 @@ def test_settle_tennis_missing_predictions_skips_safely(tmp_path, monkeypatch):
     assert not (tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv").exists()
 
 
+# --- Puerta de salud del payload (AUD-HIGH-002) ---------------------------
+#
+# `fetch_and_settle` incorporo `scores_trusted` (auditoria 2026-08-31, N-A-3)
+# para que una respuesta vacia del proveedor no se leyera como cancelacion
+# masiva. La ruta de tenis se quedo sin ese guard, y es donde MAS falta hace: el
+# emparejamiento es por nombre de jugador normalizado contra ESPN, asi que una
+# deriva de grafia deja `results` lleno y el mapa de marcadores vacio. Anular es
+# FINAL (`DEDUP_KEY` no lleva `result`), asi que una sola respuesta mala anulaba
+# para siempre todo pick y toda fila servida de 3+ dias del torneo.
+
+
+def _write_served(root, event_id="s1"):
+    """Una fila servida de un partido que empezo hace 5 dias (anulable por
+    expiracion en cuanto se decida que el payload es de fiar)."""
+    cal = root / "data" / "calibration"
+    cal.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{
+        "league": LEAGUE, "event_id": event_id, "home": "Casper Ruud",
+        "away": "Alex de Minaur", "start_time": f"{OLD5}T12:00:00Z",
+        "game_date": OLD5, "market": "h2h", "selection": "Casper Ruud",
+        "line": float("nan"), "price_decimal": 2.20,
+        "bookmaker": "consensus_median", "model_probability": 0.45,
+        "adjusted_probability": 0.45, "estimated_probability": 0.45,
+        "calibrated_probability": 0.45, "implied_probability_novig": 0.45,
+        "estimated_edge": -0.01, "books_count": 3, "stake": 0.0,
+        "data_label": "real", "flags": "served_stream",
+        "generated_at": f"{OLD5}T10:00:00+00:00",
+    }]).to_csv(cal / f"served_{LEAGUE}.csv", index=False)
+
+
+def _graded_rows(root):
+    p = root / "data" / "calibration" / f"graded_{LEAGUE}.csv"
+    return pd.read_csv(p) if p.exists() else pd.DataFrame()
+
+
+def test_empty_espn_response_does_not_void_candidates(tmp_path, monkeypatch):
+    # ESPN responde 200 con lista vacia (glitch, torneo mal mapeado, cambio de
+    # esquema). No sabemos nada: e4 debe quedar ABIERTO, no anulado.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path, with_stale=True)
+    settled = _settle_tennis(LEAGUE, days_from=2, provider=FakeESPN([]))
+    assert settled.empty
+    assert not (tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv").exists()
+
+
+def test_schema_drift_without_winner_does_not_void(tmp_path, monkeypatch):
+    # ESPN responde con filas, pero ninguna trae `winner` (cambio de esquema).
+    # `tennis_scores_map` las descarta una a una, igual que el guard por entrada
+    # de `_scores_map`, y el resultado es el mismo que una respuesta vacia: no
+    # sabemos nada, no se anula.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path, with_stale=True)
+    sin_ganador = [{"home": "Carlos Alcaraz", "away": "Novak Djokovic",
+                    "date": YDAY},
+                   {"home": "Casper Ruud", "away": "Alex de Minaur",
+                    "date": OLD5}]
+    settled = _settle_tennis(LEAGUE, days_from=2, provider=FakeESPN(sin_ganador))
+    assert settled.empty
+    assert not (tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv").exists()
+
+
+def test_healthy_payload_voids_even_if_it_omits_this_match(tmp_path, monkeypatch):
+    # Contraprueba de la frontera: ESPN esta SANO (devuelve ganadores) pero no
+    # cubre e4. Eso es una cancelacion, no un proveedor mudo, y la politica de
+    # expiracion del 2026-07-12 debe seguir aplicando -- si no, un partido
+    # cancelado bloquearia la liga para siempre. Fija que la confianza se mide
+    # sobre el PAYLOAD y no sobre el mapa derivado de las filas pendientes.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path, with_stale=True)
+    settled = _settle_tennis(LEAGUE, days_from=2, provider=FakeESPN(_results()))
+    e4 = settled.set_index("event_id").loc["e4"]
+    assert e4["result"] == "void" and "stale_void" in str(e4["flags"])
+
+
+def test_empty_espn_response_does_not_void_served_rows(tmp_path, monkeypatch):
+    # Misma regla para el stream servido, que alimenta la calibracion: una fila
+    # anulada no se puede regraduar (el dedup ignora `result`).
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path)
+    _write_served(tmp_path)
+    _settle_tennis(LEAGUE, days_from=2, provider=FakeESPN([]))
+    assert _graded_rows(tmp_path).empty
+
+
+def test_healthy_response_still_voids_served_rows(tmp_path, monkeypatch):
+    # Contraprueba: con un payload sano la politica de expiracion sigue viva.
+    # Sin esta, el guard podria "arreglar" el fallo desactivando la anulacion.
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path)
+    _write_served(tmp_path)
+    _settle_tennis(LEAGUE, days_from=2, provider=FakeESPN(_results()))
+    graded = _graded_rows(tmp_path)
+    assert len(graded) == 1
+    assert graded.iloc[0]["result"] == "void"
+    assert "stale_void" in str(graded.iloc[0]["flags"])
+
+
 def test_settle_tennis_provider_failure_is_nonfatal(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "ROOT", tmp_path)
     _write_inputs(tmp_path)

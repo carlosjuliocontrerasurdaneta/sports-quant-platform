@@ -341,6 +341,36 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     except Exception as exc:
         log.warning("[%s] could not fetch ESPN tennis results: %s", league, exc)
         return pd.DataFrame()
+    # Puerta de salud del payload antes de CUALQUIER anulacion (AUD-HIGH-002).
+    #
+    # Misma regla que `fetch_and_settle` aplica desde la auditoria 2026-08-31
+    # (N-A-3) y que esta ruta se quedo sin heredar: una respuesta que no entrega
+    # ni un resultado utilizable significa "esto no nos dijo nada", que NO es lo
+    # mismo que "estos partidos no tienen resultado". Anular es FINAL
+    # (`DEDUP_KEY` no lleva `result`, asi que el grado real de manana colisiona
+    # con el `void` de hoy y se descarta), de modo que una sola respuesta mala
+    # anulaba permanentemente todo pick y toda fila servida de 3+ dias del
+    # torneo, a pnl 0 e indistinguible de una cancelacion real.
+    #
+    # La confianza se mide sobre el PAYLOAD, no sobre el mapa de marcadores.
+    # `tennis_scores_map` se construye a partir de las filas pendientes, asi que
+    # un mapa vacio confunde dos cosas distintas: proveedor mudo (aplazar) y
+    # proveedor sano que no cubre ESTOS partidos (anular por expiracion, que es
+    # justo la politica del 2026-07-12: un partido cancelado no puede bloquear la
+    # liga para siempre). El criterio equivalente a `_scores_map` es "entradas
+    # con ganador", que es lo que `tennis_scores_map` sabe consumir.
+    #
+    # Riesgo residual ACEPTADO, el mismo que la ruta general: si ESPN entrega
+    # resultados sanos pero con los nombres derivados, el payload se considera de
+    # fiar y la expiracion sigue corriendo. No es distinguible de una cancelacion
+    # sin una fuente tercera, y endurecerlo mas resucitaria el bloqueo indefinido.
+    usable = [m for m in results if m.get("winner")]
+    results_trusted = bool(usable)
+    if not results_trusted:
+        log.error("[%s] ESPN no devolvio ni un resultado utilizable (%d fila(s) "
+                  "crudas): NO se anula nada en esta pasada. Anular es "
+                  "irreversible, asi que un payload vacio o ilegible no puede "
+                  "leerse como cancelacion masiva.", league, len(results))
     # Served rows carry their own players/date, so the calibration stream grades
     # even when there were no candidates that day.
     if not pending_served.empty:
@@ -350,7 +380,8 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
         # tenis con resultado ya descargado se ANULABA por stale_void, destruyendo
         # evidencia de calibración recuperable (auditoría 2026-08-05).
         _grade_served_from_history(league)
-        _void_stale_served(league)
+        if results_trusted:
+            _void_stale_served(league)
     if not cand_path.exists():
         return pd.DataFrame()
     if not pred_path.exists() or pred_path.stat().st_size <= 1:
@@ -361,9 +392,11 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     preds = pd.read_csv(pred_path)
     scores = tennis_scores_map(preds, results)
     settled = settle_candidates(cands, scores)
-    start_times = {str(r.event_id): str(getattr(r, "start_time", ""))
-                   for r in preds.itertuples()}
-    settled = _with_stale_voids(league, cands, settled, scores, start_times)
+    # Misma puerta de salud del payload que arriba (ya registrada en el log).
+    if results_trusted:
+        start_times = {str(r.event_id): str(getattr(r, "start_time", ""))
+                       for r in preds.itertuples()}
+        settled = _with_stale_voids(league, cands, settled, scores, start_times)
     meta = {str(r.event_id): {"home": str(r.home), "away": str(r.away),
                               "game_date": str(getattr(r, "start_time", ""))[:10]}
             for r in preds.itertuples()}
