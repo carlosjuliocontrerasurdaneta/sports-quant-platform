@@ -849,15 +849,26 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     unknown method, or a missing model all fall back to returning the input
     probabilities unchanged (safe no-op).
 
-    Un mapa COLAPSADO se ignora aunque este en el registro live. El gate de
-    entrenamiento solo protege lo que se acepta a partir de ahora, y el registro
-    live no se reevalua nunca: lo escribe la promocion y ahi se queda. El
-    2026-08-28 `wnba_totals` llevaba dias en produccion mandando TODA
+    Un mapa con DEFECTO ESTRUCTURAL se ignora aunque este en el registro live.
+    El gate de entrenamiento solo protege lo que se acepta a partir de ahora, y
+    el registro live no se reevalua nunca: lo escribe la promocion y ahi se
+    queda. El 2026-08-28 `wnba_totals` llevaba dias en produccion mandando TODA
     probabilidad a 0,490 -- el modelo estimaba entre 0,33 y 0,67 y salia plano --
     con el resultado de que el `estimated_edge` de ese mercado correlacionaba
     **0,97 con la cuota**: sus picks se ordenaban por precio. Comprobarlo aqui
     hace la proteccion independiente de quien escribio el registro, incluido un
     `promote_calibration.py --yes` sobre un candidato degenerado.
+
+    Se comprueba `structural_defect` ENTERO y no solo el colapso (auditoria
+    2026-09-03, AUD-MED-002). La promocion evalua las tres condiciones; el
+    servicio evaluaba una, la del incidente que lo motivo, asi que un artefacto
+    promovido ANTES de que existieran las puertas podia seguir vivo siendo no
+    monotono o expansivo sin que nadie lo viera. Y esos dos son peores para el
+    dinero que el colapso: el colapso aplana los picks, pero "expande a
+    extremos" sube `p_decision`, con ella el `edge` y con el **el stake de
+    Kelly**, y "no monotono" invierte el orden de una lista que se sirve
+    ordenada por probabilidad. Degradar a crudo es la direccion segura: si el
+    mapa no es valido, que hable el modelo.
     """
     if method == "auto":
         resolved = _load_method_registry().get(sport)
@@ -871,11 +882,11 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     if not path.exists():
         return probs
     cal = _load_calibrator(str(path))
-    if not _keeps_resolution(cal.predict):
-        log.warning("[%s] calibrador live COLAPSADO (recorrido < %.2f, o < %.3f "
-                    "dentro de [%.2f, %.2f]): se ignora y se sirve en crudo. "
-                    "Revisar con scripts/promote_calibration.py.",
-                    sport, MIN_CALIBRATED_RANGE, MIN_BAND_RANGE, *OPERATING_BAND)
+    defecto = structural_defect(cal.predict)
+    if defecto is not None:
+        log.warning("[%s] calibrador live INVALIDO (%s): se ignora y se sirve "
+                    "en crudo. Es el mismo criterio que aplica la promocion. "
+                    "Revisar con scripts/promote_calibration.py.", sport, defecto)
         return probs
     return np.clip(cal.predict(probs), 0.01, 0.99)
 

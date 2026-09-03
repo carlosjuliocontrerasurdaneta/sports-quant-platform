@@ -330,6 +330,42 @@ def test_a_collapsed_live_calibrator_is_ignored_at_apply_time(tmp_path, monkeypa
     assert np.allclose(out, probs), "se sirve en crudo, no aplanado"
 
 
+@pytest.mark.parametrize("modelo, defecto", [
+    (_UShapedBeta, "no monotono"),
+    (_ExtremePushingBeta, "expande a extremos"),
+])
+def test_any_structural_defect_is_ignored_at_apply_time(tmp_path, monkeypatch,
+                                                        modelo, defecto):
+    """Al aplicar se comprueba `structural_defect` ENTERO, no solo el colapso.
+
+    La promocion evalua las tres condiciones; el servicio evaluaba UNA -- la del
+    incidente de `wnba_totals` que lo motivo (auditoria 2026-09-03, AUD-MED-002).
+    Un artefacto promovido ANTES de que existieran las puertas podia seguir vivo
+    siendo no monotono o expansivo sin que nadie lo viera, y esos dos son peores
+    para el dinero que el colapso: "expande a extremos" sube `p_decision`, con
+    ella el `edge` y con el el STAKE de Kelly, y "no monotono" invierte el orden
+    de una lista que se sirve ordenada por probabilidad. El colapso, en
+    comparacion, solo aplana.
+
+    Ambos mapas son legibles y devuelven probabilidades validas en [0,1]: lo que
+    los descalifica es la forma, no un error de carga.
+    """
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    key = "liga_h2h"
+    joblib.dump(modelo(), str(cal._model_path(key, "iso")))
+    cal._set_best_method(key, "isotonic")
+    # El mapa esta vivo y es el defecto que decimos: si esto cambia, el test
+    # dejaria de probar lo que cree probar.
+    assert cal.structural_defect(modelo().predict) == defecto
+
+    probs = np.array([0.30, 0.60, 0.80])
+    out = cal.apply_calibration(probs, sport=key, method="auto")
+    assert np.allclose(out, probs), (
+        f"un calibrador live '{defecto}' se aplico en vez de degradar a crudo")
+
+
 def test_a_healthy_live_calibrator_still_applies(tmp_path, monkeypatch):
     """Contraprueba: sin ella, un guard que ignorase SIEMPRE pasaria igual."""
     import joblib
