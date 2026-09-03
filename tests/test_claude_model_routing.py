@@ -2,9 +2,30 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def cita_el_modelo(texto: str, model_id: str) -> bool:
+    """True solo si `model_id` aparece como TOKEN COMPLETO, no como prefijo.
+
+    `assert "claude-fable-5" in docs` es una comprobacion por SUBCADENA, y por
+    eso no vio la deriva del 2026-09-03: `docs/MODEL-ROUTING.md` habia pasado a
+    decir `claude-fable-5.1` -- un identificador que no existe en el catalogo de
+    Anthropic -- en sus cinco apariciones, incluida la linea ejecutable
+    `claude --model claude-fable-5.1`. El ID correcto ya no aparecia suelto en
+    ninguna parte del fichero y aun asi las 33 aserciones pasaban en verde,
+    porque "claude-fable-5" es prefijo de "claude-fable-5.1".
+
+    Es exactamente el modo de fallo que la cuarta punta del candado existe para
+    impedir, asi que la comprobacion se hace por token: se rechaza cualquier
+    sufijo formado por caracteres de identificador, punto o guion.
+    """
+    return re.search(rf"{re.escape(model_id)}(?![\w.-])", texto) is not None
+
+
 # El clasificador dejo de ser un hook el 2026-09-01: nunca estuvo cableado
 # (`settings.json` solo declara PostToolUse y Stop), asi que estos tests
 # validaban en verde codigo que no se ejecutaba. La logica sobrevive como
@@ -320,7 +341,7 @@ def test_claude_md_states_the_principle_as_governing_not_advisory():
     assert "advisory only" not in text, (
         "CLAUDE.md rebaja el principio rector a consejo")
     assert "governing principle" in text.lower()
-    assert "claude-fable-5" in text
+    assert cita_el_modelo(text, "claude-fable-5")
     # El hecho del harness sobrevive a la subida de rango.
     assert "does not change the active model" in text or \
            "itself changes the active model" in text
@@ -350,7 +371,9 @@ def test_docs_model_routing_is_the_fourth_prong_of_the_lock():
     # Coherencia con el reparto operativo: Fable 5 es el destino del escalado,
     # no el punto de partida; sin estas frases el doc puede volver a contar una
     # politica distinta de la de .claude/automation/MODEL_ROUTING.md.
-    assert "claude-fable-5" in docs
+    assert cita_el_modelo(docs, "claude-fable-5"), (
+        "docs/MODEL-ROUTING.md no cita `claude-fable-5` como token completo; "
+        "un sufijo como `claude-fable-5.1` no es un modelo que exista")
     assert "destino del disparador de escalado" in docs
     assert "no el punto de partida" in docs
 
@@ -429,3 +452,65 @@ def test_the_route_classifier_is_not_wired_as_a_hook():
     mod = (ROOT / ".claude/automation/route_classifier.py").read_text(encoding="utf-8")
     assert "def main(" not in mod
     assert "UserPromptSubmit" not in mod.split('"""')[-1]
+
+
+# Excepciones declaradas: hooks que existen a proposito SIN estar cableados.
+# Vacio hoy. Anadir una ruta aqui es una decision consciente que queda escrita;
+# olvidarse de cablear, no. Esa es toda la diferencia que este candado protege.
+HOOKS_NO_CABLEADOS_A_PROPOSITO: frozenset[str] = frozenset()
+
+
+def test_every_hook_script_is_actually_wired_in_settings():
+    """Un hook que existe pero no esta cableado es codigo muerto con candado.
+
+    Es la MISMA averia que `test_the_route_classifier_is_not_wired_as_a_hook`
+    documenta para `route-model.py` -- "durante meses las 24 rutas no se
+    ejecutaron mientras estos tests las validaban en verde" --, y volvio a pasar
+    el 2026-09-03 (auditoria integral, AUD-HIGH-001): se escribieron
+    `require-dispatch-model.sh`, `crossreview-on-stop.sh` y
+    `mark-crossreview-pending.sh`, se preparo hasta la linea de `.gitignore` del
+    centinela, y ninguno se registro en `settings.json`. Los tres afirmaban en su
+    cabecera cerrar un control -- KI-023 y la revision cruzada de codigo de
+    riesgo -- y ninguno se ejecutaba nunca.
+
+    Aquel test fija UNA instancia; este cierra la CLASE: cualquier `.sh` en
+    `.claude/hooks/` debe aparecer en el `settings.json` VERSIONADO, o figurar en
+    `HOOKS_NO_CABLEADOS_A_PROPOSITO`.
+
+    Se comprueba contra `settings.json` y no contra `settings.local.json` a
+    proposito: el local esta en `.gitignore` (linea 26), asi que no existe en CI.
+    Un hook cableado solo ahi seguiria siendo un control que no viaja con el
+    repositorio -- exactamente el fallo que esto persigue.
+    """
+    hooks_dir = ROOT / ".claude/hooks"
+    settings = (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
+    presentes = {p.name for p in hooks_dir.glob("*.sh")}
+    assert presentes, "no se encontro ningun hook: la ruta de busqueda cambio"
+    huerfanos = sorted(n for n in presentes - HOOKS_NO_CABLEADOS_A_PROPOSITO
+                       if n not in settings)
+    assert not huerfanos, (
+        f"hooks presentes en {hooks_dir} pero NO cableados en "
+        f".claude/settings.json: {huerfanos}. Un hook sin cablear no se ejecuta "
+        "jamas: cablealo, o declaralo en HOOKS_NO_CABLEADOS_A_PROPOSITO "
+        "explicando por que existe sin estar activo.")
+
+
+def test_settings_hooks_reference_only_existing_scripts():
+    """El reverso: ningun `settings.json` que apunte a un hook inexistente.
+
+    Sin esto, renombrar o borrar un `.sh` deja una entrada colgada que falla en
+    silencio en cada disparo (el harness no puede ejecutar lo que no existe) y
+    el control se pierde igual que si nunca se hubiera cableado.
+    """
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    referenciados = [
+        c["command"].rsplit("/", 1)[-1].strip('"')
+        for grupos in cfg.get("hooks", {}).values()
+        for g in grupos for c in g.get("hooks", [])
+        if c.get("type") == "command" and ".claude/hooks/" in c.get("command", "")
+    ]
+    assert referenciados, "settings.json dejo de cablear hooks del proyecto"
+    faltantes = sorted(n for n in set(referenciados)
+                       if not (ROOT / ".claude/hooks" / n).exists())
+    assert not faltantes, (
+        f"settings.json cablea hooks que no existen en disco: {faltantes}")

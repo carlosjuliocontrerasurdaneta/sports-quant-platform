@@ -39,6 +39,11 @@ graphify-out/
 .obsidian/
 # Centinela del hook de tests (mark-tests-pending -> run-tests-on-stop)
 .claude/.tests-pending
+# Centinela del hook de revision cruzada (mark-crossreview-pending ->
+# crossreview-on-stop). Mismo patron que el de tests, que si estaba ignorado:
+# sin esta linea el marcador aparece como no rastreado entre el PostToolUse y
+# el Stop del mismo turno (auditoria 2026-09-03, AUD-LOW-001).
+.claude/.crossreview-pending
 # Bytecode de los hooks: tests/test_claude_model_routing.py carga
 # route-model.py via importlib y genera el __pycache__ (auditoria 2026-07-29).
 .claude/hooks/__pycache__/
