@@ -112,3 +112,54 @@ def test_cross_evaluate_without_staged_model_reports_none(tmp_path, monkeypatch)
     out = cross_evaluate_on_settled(LEAGUE, hist=hist)
     assert out["pergame"] is None
     assert np.isfinite(out["raw"]["ece"])
+
+
+def _hist_dos_columnas(adjusted) -> pd.DataFrame:
+    """Historia liquidada donde `adjusted_probability` y `model_probability`
+    DIFIEREN, para poder distinguir cual de las dos se evalua."""
+    return pd.DataFrame({
+        "league": LEAGUE, "market": "h2h",
+        "date": ["2026-05-01"] * 50,
+        "model_probability": [0.60] * 50,
+        "adjusted_probability": adjusted,
+        "result": ["win", "loss"] * 25,
+        "event_id": [f"e{i}" for i in range(50)],
+    })
+
+
+def test_cross_evaluate_scores_the_column_production_calibrates(tmp_path, monkeypatch):
+    """Mide `adjusted_probability`, que es lo que produccion calibra.
+
+    Hasta el 2026-09-03 media `model_probability` (auditoria integral,
+    AUD-MED-001). Era un no-op mientras los coeficientes de ajuste valieran 0.0
+    -- por eso ningun test lo vio: todos construian historias donde ambas
+    columnas coincidian o solo existia una --, pero la evaluacion decide una
+    promocion de calibrador, y con un coeficiente activo habria comparado sobre
+    una distribucion que produccion ya no sirve.
+
+    Las dos columnas se separan a proposito (0.60 vs 0.90) para que el test
+    DISTINGA: con la columna equivocada `mean_prob` seria 0.60.
+    """
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    out = cross_evaluate_on_settled(LEAGUE, hist=_hist_dos_columnas([0.90] * 50))
+    assert out["n_eval"] == 10
+    assert abs(out["raw"]["mean_prob"] - 0.90) < 1e-12, (
+        "la evaluacion cruzada no esta midiendo `adjusted_probability`")
+
+
+def test_cross_evaluate_falls_back_to_model_probability(tmp_path, monkeypatch):
+    """Esquema antiguo: sin `adjusted_probability` (o con NaN) usa la cruda.
+
+    Mismo contrato que `calibration.data._project_training`. `hist` es
+    inyectable, asi que exigir la columna convertiria en KeyError lo que antes
+    devolvia un resultado valido.
+    """
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    con_nan = cross_evaluate_on_settled(
+        LEAGUE, hist=_hist_dos_columnas([float("nan")] * 50))
+    assert abs(con_nan["raw"]["mean_prob"] - 0.60) < 1e-12
+    sin_columna = _hist_dos_columnas([0.90] * 50).drop(
+        columns=["adjusted_probability"])
+    out = cross_evaluate_on_settled(LEAGUE, hist=sin_columna)
+    assert abs(out["raw"]["mean_prob"] - 0.60) < 1e-12
+    assert out["n_eval"] == 10
