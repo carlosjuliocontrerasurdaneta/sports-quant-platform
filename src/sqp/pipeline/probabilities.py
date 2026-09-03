@@ -195,15 +195,26 @@ def _decision_probability(p_model: float, fair: float | None, shrink: float,
                           league: str, market: str, settings) -> tuple[float, float]:
     """(p_used_raw, p_decision) para un candidato.
 
-    La calibración se aplica a la probabilidad PURA del modelo ANTES del shrink
-    al mercado: ``p_decision = (1-s)*cal(p_model) + s*fair``. Calibrar la mezcla
+    La calibración se aplica a la creencia PRE-BLEND, ANTES del shrink al
+    mercado: ``p_decision = (1-s)*cal(p_pre) + s*fair``. Calibrar la mezcla
     obligaba al calibrador a corregir el modelo a través de un canal diluido al
     50% por el no-vig (ya bien calibrado); sobre settled, el reblend dominó a
     ``cal(p_used)`` en ECE y Brier OOS en todos los cortes temporales
-    (docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md). El retrain
-    entrena sobre ``model_probability`` (la misma columna cruda que se almacena),
-    así que train y serve calibran el mismo objetivo y no puede haber loop
-    calibrar-sobre-calibrado: ``p_used`` almacenada sigue siendo la mezcla CRUDA.
+    (docs/research/2026-07-02-calibrar-pmodel-puro-vs-blend.md).
+
+    OJO con el nombre del parámetro: ``p_model`` recibe ``_p_adj``, la
+    probabilidad del modelo YA pasada por la capa de ajustes de features
+    (``adjust_model_probability``), no la pura. Desde el 2026-08-23 esa es la
+    cantidad calibrada, y el retrain entrena sobre la columna servida
+    ``adjusted_probability`` -- con fallback a ``model_probability`` para filas de
+    esquema antiguo (``calibration/data.py``, pre-registro del 2026-08-24). Train
+    y serve calibran por tanto el mismo objetivo, y no puede haber loop
+    calibrar-sobre-calibrado: la ``p_used`` almacenada sigue siendo la mezcla
+    CRUDA. El docstring afirmó hasta el 2026-09-03 que se calibraba la
+    probabilidad pura y que el retrain usaba ``model_probability``: ambas cosas
+    dejaron de ser ciertas con la capa de ajustes (auditoría integral,
+    AUD-LOW-001).
+
     Sin calibrador para (liga, mercado) -> no-op y ``p_decision == p_used``."""
     p_cal = p_model
     if settings.calibration_enabled:

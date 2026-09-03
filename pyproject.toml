@@ -2,8 +2,11 @@
 name = "sqp"
 version = "1.0.0"
 description = "Sports Quant Platform: calibrated estimated probabilities for moneyline, spread/handicap and totals across team sports and tennis."
-# El lock exige >=3.11 (numpy 2.4 / pandas 3.0); CI corre 3.11-3.13
-# (auditoria 2026-07-24, M-15).
+# El lock exige >=3.11 (numpy 2.4 / pandas 3.0); CI corre 3.11-3.14
+# (auditoria 2026-07-24, M-15). El 3.14 se anadio el 2026-08-06 (auditoria F-09)
+# porque es el interprete REAL de produccion: los .bat fijan SQP_PYTHON a
+# Python314. El comentario decia "3.11-3.13" desde entonces, ocultando justo la
+# pata que valida la maquina que opera (auditoria 2026-09-03, AUD-LOW-002).
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.24",
