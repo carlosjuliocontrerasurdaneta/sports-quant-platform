@@ -248,10 +248,11 @@ def main() -> int:
                          "YYYY-MM-DD. No es la fecha de generacion: el run "
                          "guarda 7 dias de horizonte.")
     ap.add_argument("--all-days", action="store_true",
-                    help="incluir tambien los partidos de dias YA PASADOS (por "
-                         "defecto, del dia en curso en adelante). Ojo: la "
-                         "vigencia es por FECHA, asi que un partido que empezo "
-                         "hace un rato sigue en la lista.")
+                    help="APAGA el filtro de vigencia: incluye los partidos de "
+                         "dias ya pasados Y los que ya empezaron. Por defecto "
+                         "solo salen los que TODAVIA SE PUEDEN APOSTAR (el "
+                         "criterio es el INSTANTE de inicio, no la fecha; "
+                         "KI-028).")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
     consola_utf8()
@@ -272,11 +273,18 @@ def main() -> int:
     # La etiqueta ya NO puede afirmar un unico dia de generacion: filtrando por
     # vigencia la lista mezcla runs a proposito. De cuando es cada fila lo dice
     # su columna `generado`.
-    # "del dia en curso en adelante" y no "vigentes": el criterio compara FECHAS,
-    # asi que incluye partidos de hoy que ya empezaron. Decir "apostables
-    # todavia" seria afirmar mas de lo que el filtro comprueba.
-    alcance = ("del dia en curso en adelante" if not args.all_days
-               else "incluidos dias pasados")
+    # "todavia apostables" es lo que el filtro comprueba DESDE KI-028
+    # (2026-09-02): `picks_vigentes` decide por INSTANTE de inicio, no por fecha,
+    # asi que un partido ya empezado queda fuera. Hasta el 2026-09-04 esta
+    # etiqueta y la ayuda de `--all-days` seguian diciendo "del dia en curso en
+    # adelante" y "la vigencia es por FECHA": describian el filtro de julio, no
+    # el que corre (auditoria integral, AUD-LOW-002).
+    #
+    # Matiz que SI hay que conservar: con el stream entero sin nada vigente,
+    # `picks_vigentes_unicos` cae al ultimo dia generado y puede resucitar
+    # partidos ya empezados (KI-030, abierto a proposito). Hoy no se dispara.
+    alcance = ("todavia apostables" if not args.all_days
+               else "incluidos dias pasados y partidos ya empezados")
     etiqueta = (f"partidos del {dia} ({alcance})" if dia
                 else f"todas las fechas ({alcance})")
     report = build_report(ranked, top=args.top, source_day=etiqueta)

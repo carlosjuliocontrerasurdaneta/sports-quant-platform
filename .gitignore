@@ -24,9 +24,21 @@ Second-Brain/
 data/output/
 .claude/tools/
 .claude/settings.local.json
-# Skills de terceros vendorizadas (KI-015): superpowers-main fue eliminada
-# deliberadamente el 2026-07-04 (no restaurar) y markitdown-main tambien; las
-# entradas solo evitan re-trackearlas si alguna vez se re-vendorizan.
+# Skills de terceros vendorizadas (KI-015). Las dos entradas las DES-TRACKEAN de
+# git; no dicen nada sobre el disco, y ahi difieren:
+#
+#   markitdown-main/    ELIMINADA por completo (limpieza de la migracion a
+#                       C:\dev). No restaurar.
+#   superpowers-main/   PRESENTE EN DISCO A PROPOSITO -- 172 ficheros, ~1,3 MB,
+#                       verificados el 2026-09-04. El plugin superpowers se
+#                       carga desde aqui: KI-015 dice literalmente "NO borrar el
+#                       directorio".
+#
+# Este comentario afirmaba hasta el 2026-09-04 que superpowers-main "fue
+# eliminada deliberadamente (no restaurar)", contradiciendo a KI-015 sobre un
+# directorio cuyo borrado esa misma entrada prohibe (auditoria integral,
+# AUD-LOW-001). Dos instrucciones activas y opuestas sobre que borrar es
+# exactamente como se pierde algo que nadie queria perder.
 .claude/skills/markitdown-main/
 .claude/skills/superpowers-main/
 # Lock efimero del scheduler de Claude Code (se recrea en cada sesion)
