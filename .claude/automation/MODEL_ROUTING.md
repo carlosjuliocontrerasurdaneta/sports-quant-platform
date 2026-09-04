@@ -60,26 +60,31 @@ Consecuencias vinculantes:
 - Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
 - Jerarquía de capacidad **de Anthropic** (hecho, no política):
-  `claude-fable-5` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
+  `claude-fable-5-1` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
   La documentación oficial lo dice explícitamente: se empieza por Opus 5 para
-  trabajo agéntico y de empresa, y *"for the highest available capability, use
-  Claude Fable 5"*.
+  trabajo agéntico y de empresa, y se sube a Fable 5.1 *"for demanding reasoning
+  and long-horizon agentic work"*.
 
-- Reparto **operativo de este proyecto** (decisión del operador, 2026-08-30):
+  **El ID lleva guiones: `claude-fable-5-1`.** `claude-fable-5.1` no es un
+  identificador válido —el punto pertenece al NOMBRE, no a la API— y
+  `claude-fable-5` (sin sufijo) es un modelo distinto, hoy **legacy**.
+
+- Reparto **operativo de este proyecto** (decisión del operador, 2026-08-30;
+  techo actualizado a Fable 5.1 el 2026-09-04):
   - **`claude-opus-5` es el modelo por defecto**, y el punto de partida de todo.
-  - **`claude-fable-5` se reserva para máxima capacidad de razonamiento**: es el
-    destino del disparador de escalado, no el punto de partida.
+  - **`claude-fable-5-1` se reserva para máxima capacidad de razonamiento**: es
+    el destino del disparador de escalado, no el punto de partida.
 
   Punto de partida y techo son cosas distintas, y aquí están separados a
-  propósito. Empezar en Fable 5 costaría el doble ($10/$50 frente a $5/$25 por
+  propósito. Empezar en Fable 5.1 costaría el doble ($10/$50 frente a $5/$25 por
   MTok) sin que la mayoría del volumen lo necesite; no tenerlo disponible
   dejaría el principio rector sin destino al que escalar. Por eso Opus 5 abajo
-  y Fable 5 arriba.
+  y Fable 5.1 arriba.
 
   El principio rector queda intacto y **accionable**: "el modelo superior para
-  lo que exige máximo razonamiento" apunta a `claude-fable-5`, que es de hecho
-  el escalón superior de la jerarquía de arriba. Ante la duda, se sube a Fable 5
-  y se registra el escalado en `current-task.md`.
+  lo que exige máximo razonamiento" apunta a `claude-fable-5-1`, que es de hecho
+  el escalón superior de la jerarquía de arriba. Ante la duda, se sube a Fable
+  5.1 y se registra el escalado en `current-task.md`.
 - Un modelo inferior **no revierte unilateralmente** trabajo o decisiones
   producidas por uno superior. Si detecta un problema, lo **reporta**.
 
@@ -140,11 +145,28 @@ propia), jamás un argumento de autoridad sobre el fondo.
   normal (abajo). El hook no debe afirmar que cambia este modelo.
 
   `claude-opus-5` es el **punto de partida**, no el techo. El techo es
-  `claude-fable-5`, reservado para máxima capacidad de razonamiento (ver el
+  `claude-fable-5-1`, reservado para máxima capacidad de razonamiento (ver el
   reparto operativo del principio rector, arriba). Punto de partida y techo
   están separados a propósito y **no deben volver a fundirse**: sin un escalón
   por encima, el principio rector se queda sin destino al que escalar y deja de
   ser accionable.
+
+  **El techo pasó de `claude-fable-5` a `claude-fable-5-1` el 2026-09-04**, por
+  decisión del operador. Fable 5.1 es el modelo actual y Fable 5 quedó legacy.
+  Las menciones a `claude-fable-5` que siguen más abajo en esta sección son
+  REGISTRO HISTÓRICO de decisiones de agosto y no se reescriben: cambiar lo que
+  se decidió entonces para que encaje con lo de hoy es justo lo que este archivo
+  existe para impedir.
+
+  Cómo llegó aquí, porque la lección importa más que el cambio: el 2026-09-03 la
+  auditoría **revirtió** un cambio del operador que introducía Fable 5.1,
+  «tras verificar contra el catálogo», y además endureció el test a token
+  completo para que no pudiera reentrar. La verificación era contra una tabla
+  cacheada. Fable 5.1 existía. Un candado construido sobre una premisa no
+  verificada en vivo no protege: bloquea la corrección. La regla operativa que
+  queda es la de `docs/CLAUDE-CODEX-INTEGRATION.md` aplicada a los modelos —
+  cualquier dato de ID, precio o estado se comprueba contra la documentación
+  viva antes de afirmarlo, y nunca de memoria.
 
   Esta decisión se tomó en dos tiempos para cerrar `KI-021`. Primero el modelo
   principal: el cambio llevaba desde antes del 2026-08-29 aplicado a medias
@@ -190,14 +212,21 @@ parámetro sobreescribe cuando la política lo exige.
 
 Reglas de despacho, en orden de precedencia:
 
-1. **Las cinco clases del disparador de escalado van a `claude-fable-5`.** Si la
-   tarea delegada cae en cualquiera de las cinco clases, se despacha con
+1. **Las cinco clases del disparador de escalado van a `claude-fable-5-1`.** Si
+   la tarea delegada cae en cualquiera de las cinco clases, se despacha con
    `model: "fable"`, diga lo que diga la ruta, la tabla o el frontmatter, y el
    escalado se registra en `current-task.md`. `fable` no aparece — a propósito —
    ni en `model-routing.json` ni en ningún frontmatter: las cinco clases no son
    léxicas y ningún clasificador por palabras clave puede asignarlas; **solo
-   esta regla despacha a Fable 5**, y por eso sin ella el techo de la política
+   esta regla despacha a Fable 5.1**, y por eso sin ella el techo de la política
    era inalcanzable en la práctica.
+
+   El parámetro que se pasa sigue siendo el alias corto `"fable"`, no el ID
+   completo: es lo que acepta la herramienta `Agent`. A qué modelo resuelve ese
+   alias lo decide el harness, y **no está verificado** que hoy apunte ya a
+   Fable 5.1 en vez de a Fable 5 (anotado el 2026-09-04; el catálogo de modelos
+   no documenta la resolución de alias de la CLI). Donde sí manda este archivo
+   es en el ID: el techo declarado es `claude-fable-5-1`.
 2. **Trabajo normal delegado**: se pasa `model` con el escalón de la ruta
    aplicable de `model-routing.json` (`opus` solo full-audit/incident/
    quant-incident; `haiku` solo documentation; `sonnet` el resto). Pasar el

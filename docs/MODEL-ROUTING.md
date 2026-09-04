@@ -1,6 +1,6 @@
 # Selección de modelos Claude por complejidad de tarea
 
-Política activa del proyecto (`CLAUDE.md`): **Opus 5 por defecto** y para arquitectura, auditoría e incidentes; Sonnet 5 para trabajo diario de ingeniería; Haiku para lookups acotados; **Fable 5 reservado para máxima capacidad de razonamiento**.
+Política activa del proyecto (`CLAUDE.md`): **Opus 5 por defecto** y para arquitectura, auditoría e incidentes; Sonnet 5 para trabajo diario de ingeniería; Haiku para lookups acotados; **Fable 5.1 reservado para máxima capacidad de razonamiento**.
 
 ---
 
@@ -44,13 +44,15 @@ Política activa del proyecto (`CLAUDE.md`): **Opus 5 por defecto** y para arqui
 
 ---
 
-## Fable 5 — máxima capacidad de razonamiento
+## Fable 5.1 — máxima capacidad de razonamiento
 
 **Cuándo:** tareas que exigen el máximo nivel de razonamiento disponible. Es el destino del disparador de escalado de `.claude/automation/MODEL_ROUTING.md`, no el punto de partida: se llega aquí subiendo desde Opus 5, no arrancando.
 
-Es el modelo más capaz de Anthropic — la documentación oficial recomienda Fable 5 *"for the highest available capability"*. Cuesta el doble que Opus 5 ($10/$50 frente a $5/$25 por MTok), y por eso no es el defecto: la mayoría del volumen no lo necesita.
+Es el modelo más capaz de Anthropic. Cuesta el doble que Opus 5 ($10/$50 frente a $5/$25 por MTok), y por eso no es el defecto: la mayoría del volumen no lo necesita. Contexto de 1M, thinking adaptativo siempre activo, corte de conocimiento jun-2026.
 
-**Activar con:** `/model fable` o `claude --model claude-fable-5`
+> **El ID lleva guiones: `claude-fable-5-1`, no `claude-fable-5.1`.** El punto es la forma de escribir el NOMBRE ("Claude Fable 5.1"), no el identificador de API. Con punto, `claude --model` falla. `claude-fable-5` (sin sufijo) es un modelo distinto y ya **legacy**; verificado contra el catálogo vivo el 2026-09-04.
+
+**Activar con:** `/model fable` o `claude --model claude-fable-5-1`
 
 ---
 
@@ -69,7 +71,7 @@ Es el modelo más capaz de Anthropic — la documentación oficial recomienda Fa
 claude --model claude-opus-5
 claude --model claude-sonnet-5
 claude --model claude-haiku-4-5
-claude --model claude-fable-5
+claude --model claude-fable-5-1
 ```
 
 **El modelo del proyecto** vive en `.claude/settings.json` → `"model": "claude-opus-5"` (decisión del operador, 2026-08-30). Tiene precedencia sobre la configuración global (`~/.claude/settings.json`).

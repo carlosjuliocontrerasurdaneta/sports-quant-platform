@@ -13,15 +13,29 @@ def cita_el_modelo(texto: str, model_id: str) -> bool:
 
     `assert "claude-fable-5" in docs` es una comprobacion por SUBCADENA, y por
     eso no vio la deriva del 2026-09-03: `docs/MODEL-ROUTING.md` habia pasado a
-    decir `claude-fable-5.1` -- un identificador que no existe en el catalogo de
-    Anthropic -- en sus cinco apariciones, incluida la linea ejecutable
-    `claude --model claude-fable-5.1`. El ID correcto ya no aparecia suelto en
-    ninguna parte del fichero y aun asi las 33 aserciones pasaban en verde,
-    porque "claude-fable-5" es prefijo de "claude-fable-5.1".
+    decir `claude-fable-5.1` en sus cinco apariciones, incluida la linea
+    ejecutable `claude --model claude-fable-5.1`. El ID que el fichero declaraba
+    ya no aparecia suelto en ninguna parte y aun asi las 33 aserciones pasaban
+    en verde, porque "claude-fable-5" es prefijo de "claude-fable-5.1".
 
     Es exactamente el modo de fallo que la cuarta punta del candado existe para
     impedir, asi que la comprobacion se hace por token: se rechaza cualquier
     sufijo formado por caracteres de identificador, punto o guion.
+
+    CORRECCION IMPORTANTE (2026-09-04). Esta funcion se escribio afirmando que
+    `claude-fable-5.1` era "un identificador que no existe en el catalogo de
+    Anthropic". **Era falso.** Claude Fable 5.1 existe; lo que estaba mal era la
+    FORMA del literal -- el ID lleva guiones, `claude-fable-5-1`, y el punto
+    pertenece al nombre, no a la API. La auditoria del 2026-09-03 verifico
+    contra una tabla cacheada, revirtio un cambio correcto del operador y
+    endurecio este assert para que el ID nuevo no pudiera reentrar. El candado
+    funciono -- detecto la divergencia -- pero apuntaba al modelo equivocado.
+
+    La comprobacion por token sigue siendo la correcta y se conserva: hoy
+    rechaza `claude-fable-5-1-20260101` igual que rechazaba `claude-fable-5.1`.
+    Lo que cambio es el ID contra el que compara. La leccion no es sobre la
+    forma del assert sino sobre su premisa: un candado construido sobre un dato
+    no verificado en vivo no protege, bloquea la correccion.
     """
     return re.search(rf"{re.escape(model_id)}(?![\w.-])", texto) is not None
 
@@ -81,7 +95,7 @@ def test_main_model_matches_the_authorized_policy():
     # settings.json model changed.
     #
     # claude-opus-5 es el PUNTO DE PARTIDA, no el techo. El techo es
-    # claude-fable-5, reservado para maxima capacidad de razonamiento
+    # claude-fable-5-1, reservado para maxima capacidad de razonamiento
     # (b3f9cfb, 2026-08-30). Este comentario afirmaba lo contrario -- que Fable
     # habia salido de la jerarquia -- y sobrevivio a esa correccion,
     # contradiciendo a las aserciones de mas abajo en este mismo fichero.
@@ -237,22 +251,22 @@ def test_governing_principle_is_declared_and_takes_precedence():
     # confundirlas es como se rompio esto el 2026-08-30:
     #
     # 1. La jerarquia de CAPACIDAD es un hecho de Anthropic, no una politica de
-    #    este proyecto. claude-fable-5 es el escalon mas alto y la documentacion
+    #    este proyecto. claude-fable-5-1 es el escalon mas alto y la documentacion
     #    oficial lo dice ("for the highest available capability, use Claude
     #    Fable 5"). Escribirla sin Fable seria afirmar algo falso.
     # 2. El REPARTO operativo de este proyecto (decision del operador
-    #    2026-08-30): claude-opus-5 por defecto, claude-fable-5 reservado para
+    #    2026-08-30): claude-opus-5 por defecto, claude-fable-5-1 reservado para
     #    maxima capacidad de razonamiento. Punto de partida y techo son cosas
     #    distintas -- empezar en Fable costaria el doble sin que la mayoria del
     #    volumen lo necesite, y no tenerlo disponible dejaria el principio
     #    rector sin destino al que escalar.
-    assert "`claude-fable-5` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
+    assert "`claude-fable-5-1` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
     # El candado tiene dos lados: la jerarquia real y el reparto declarado. Sin
     # el segundo, mover el defecto o el techo en la prosa no rompe nada y la
     # politica vuelve a divergir en silencio -- que es el modo de fallo que este
     # archivo entero existe para impedir.
     assert "`claude-opus-5` es el modelo por defecto" in policy
-    assert "`claude-fable-5` se reserva para máxima capacidad de razonamiento" in policy
+    assert "`claude-fable-5-1` se reserva para máxima capacidad de razonamiento" in policy
 
 
 def test_escalation_trigger_is_observable_and_not_self_assessed():
@@ -294,7 +308,7 @@ def test_measurement_outranks_model_capability():
 
 
 def test_policy_never_claims_opus_is_also_the_ceiling():
-    """El techo es claude-fable-5. Opus 5 es solo el punto de partida.
+    """El techo es claude-fable-5-1. Opus 5 es solo el punto de partida.
 
     Los candados existentes exigian la PRESENCIA de las frases correctas, pero
     nada impedia que otra seccion del mismo fichero afirmase lo contrario -- y
@@ -324,7 +338,7 @@ def test_policy_never_claims_opus_is_also_the_ceiling():
         f"reparto operativo y al principio rector: {presentes}")
     # Y la afirmacion positiva correspondiente, para que la ausencia de arriba no
     # se pueda satisfacer borrando la seccion entera.
-    assert "El techo es\n  `claude-fable-5`" in policy or "El techo es `claude-fable-5`" in policy
+    assert "El techo es\n  `claude-fable-5-1`" in policy or "El techo es `claude-fable-5-1`" in policy
 
 
 def test_claude_md_states_the_principle_as_governing_not_advisory():
@@ -341,7 +355,7 @@ def test_claude_md_states_the_principle_as_governing_not_advisory():
     assert "advisory only" not in text, (
         "CLAUDE.md rebaja el principio rector a consejo")
     assert "governing principle" in text.lower()
-    assert cita_el_modelo(text, "claude-fable-5")
+    assert cita_el_modelo(text, "claude-fable-5-1")
     # El hecho del harness sobrevive a la subida de rango.
     assert "does not change the active model" in text or \
            "itself changes the active model" in text
@@ -371,9 +385,10 @@ def test_docs_model_routing_is_the_fourth_prong_of_the_lock():
     # Coherencia con el reparto operativo: Fable 5 es el destino del escalado,
     # no el punto de partida; sin estas frases el doc puede volver a contar una
     # politica distinta de la de .claude/automation/MODEL_ROUTING.md.
-    assert cita_el_modelo(docs, "claude-fable-5"), (
-        "docs/MODEL-ROUTING.md no cita `claude-fable-5` como token completo; "
-        "un sufijo como `claude-fable-5.1` no es un modelo que exista")
+    assert cita_el_modelo(docs, "claude-fable-5-1"), (
+        "docs/MODEL-ROUTING.md no cita `claude-fable-5-1` como token completo. "
+        "OJO: el ID lleva GUIONES. `claude-fable-5.1` no es un identificador "
+        "valido, y `claude-fable-5` es otro modelo, hoy legacy.")
     assert "destino del disparador de escalado" in docs
     assert "no el punto de partida" in docs
 
@@ -384,7 +399,7 @@ def test_policy_declares_the_dispatch_mechanism():
     aplicaba nunca: 26 de 27 subagentes declaraban `model: opus` y nadie pasaba
     un modelo al delegar. El mecanismo real es el parametro `model` del Agent
     tool, que tiene precedencia sobre el frontmatter; las cinco clases del
-    disparador se despachan con el a claude-fable-5. Sin esta seccion el techo
+    disparador se despachan con el a claude-fable-5-1. Sin esta seccion el techo
     de la politica es inalcanzable en la practica.
     """
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
@@ -396,7 +411,7 @@ def test_policy_declares_the_dispatch_mechanism():
     assert "`sonnet | opus | haiku | fable`" in normalized
     assert "precedencia sobre el frontmatter" in normalized
     # Las cinco clases van a Fable 5 y por este mecanismo, no por la tabla.
-    assert "Las cinco clases del disparador de escalado van a `claude-fable-5`" \
+    assert "Las cinco clases del disparador de escalado van a `claude-fable-5-1`" \
         in normalized
     assert 'se despacha con `model: "fable"`' in normalized
     assert "solo esta regla despacha a Fable 5" in normalized
@@ -514,3 +529,102 @@ def test_settings_hooks_reference_only_existing_scripts():
                        if not (ROOT / ".claude/hooks" / n).exists())
     assert not faltantes, (
         f"settings.json cablea hooks que no existen en disco: {faltantes}")
+
+
+# ---------------------------------------------------------------------------
+# Tercer escalon del mismo candado (auditoria 2026-09-04, AUD-HIGH-001).
+#
+# `test_the_route_classifier_is_not_wired_as_a_hook` fija UNA instancia.
+# `test_every_hook_script_is_actually_wired_in_settings` fija que el hook ESTE
+# cableado. Faltaba la tercera pregunta, que es la que fallo: cableado, si --
+# pero, ¿CABE en su propio timeout?
+#
+# `run-tests-on-stop.sh` corria `pytest tests/` sin filtro con `timeout: 300`.
+# Medido el 2026-09-04 con el comando exacto: 1028,19 s (1492 passed, 1 skipped)
+# frente a 270,73 s de la mitad no-`slow`. El harness lo mataba a los 300 s, el
+# veredicto no llegaba nunca y el turno cerraba en verde con la suite rota.
+# Un control que no puede terminar es indistinguible de un control ausente.
+# ---------------------------------------------------------------------------
+
+# Suelo de presupuesto para el hook de tests. 600 s = el mismo que el operador
+# acepto el 2026-09-03 para el hook de Codex, y con el mismo argumento:
+# "prefiero bloquear diez minutos a fingir una revision". Con la parte no-`slow`
+# en ~271 s deja margen de 2,2x para una maquina cargada; con 300 s no lo habia.
+TESTS_HOOK_TIMEOUT_MIN_S = 600
+
+
+def _hook_entries(cfg: dict) -> list[dict]:
+    return [c for grupos in cfg.get("hooks", {}).values()
+            for g in grupos for c in g.get("hooks", [])
+            if c.get("type") == "command"]
+
+
+def test_every_wired_hook_declares_an_explicit_timeout():
+    """Sin `timeout` explicito el presupuesto lo decide el harness, no el repo.
+
+    Un hook que hereda un limite desconocido es exactamente el estado del que
+    salio AUD-HIGH-001: nadie puede comprobar si su trabajo cabe. Declararlo
+    obliga a que el numero exista y sea revisable en el diff.
+    """
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    entradas = _hook_entries(cfg)
+    assert entradas, "settings.json dejo de cablear hooks del proyecto"
+    sin_timeout = sorted(c["command"].rsplit("/", 1)[-1].strip('"')
+                         for c in entradas if not isinstance(c.get("timeout"), int))
+    assert not sin_timeout, (
+        f"hooks cableados sin `timeout` explicito: {sin_timeout}. El limite "
+        "debe estar escrito en el repositorio para poder auditarlo contra el "
+        "coste real del comando.")
+
+
+def test_the_test_hook_excludes_slow_tests_and_has_budget_for_the_rest():
+    """El coste del hook de tests debe caber en su presupuesto.
+
+    Las dos mitades son necesarias y ninguna basta sola:
+
+    - sin `-m "not slow"` el comando cuesta 1028 s y NINGUN timeout razonable lo
+      cubre (el maximo del harness son 600 s);
+    - sin el suelo de timeout, 271 s contra 300 s no deja margen: basta una
+      maquina cargada para volver a matar el hook.
+
+    Los `slow` no se pierden: CI los ejecuta en las patas 3.11/3.13/3.14.
+    """
+    hook = (ROOT / ".claude/hooks/run-tests-on-stop.sh").read_text(encoding="utf-8")
+    # Solo lineas EJECUTABLES: el encabezado documenta la medicion citando el
+    # comando antiguo, y contarlo como invocacion hacia fallar al test contra su
+    # propia evidencia.
+    invocacion = [ln for ln in hook.splitlines()
+                  if "pytest" in ln and not ln.lstrip().startswith("#")
+                  and "command -v" not in ln]
+    assert invocacion, "el hook dejo de invocar pytest"
+    assert all('-m "not slow"' in ln for ln in invocacion), (
+        "el hook de tests corre la suite COMPLETA (1028 s medidos el "
+        "2026-09-04); no cabe en ningun timeout del harness. Debe excluir los "
+        "`slow`, que CI ya ejecuta.")
+
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    entrada = [c for c in _hook_entries(cfg)
+               if "run-tests-on-stop.sh" in c.get("command", "")]
+    assert len(entrada) == 1, (
+        f"se esperaba exactamente un cableado del hook de tests: {entrada}")
+    timeout = entrada[0]["timeout"]
+    assert timeout >= TESTS_HOOK_TIMEOUT_MIN_S, (
+        f"timeout del hook de tests = {timeout} s, por debajo del suelo "
+        f"{TESTS_HOOK_TIMEOUT_MIN_S} s. Con ~271 s de coste medido, un "
+        "presupuesto ajustado vuelve a producir un control que no termina.")
+
+
+def test_the_pending_marker_covers_every_python_tree_under_test():
+    """El centinela debe cubrir los tres arboles que la suite ejecuta.
+
+    `scripts/` faltaba (AUD-MED-001): los tests cargan los scripts directamente
+    -- `tests/test_daily_picks.py` via importlib, `tests/test_codex_review.py`
+    metiendo `scripts/ai` en `sys.path` --, asi que editar el CLI de la REGLA
+    FUNDAMENTAL no armaba el gate. El CI ya lintea `scripts` por lo mismo.
+    """
+    marcador = (ROOT / ".claude/hooks/mark-tests-pending.sh").read_text(
+        encoding="utf-8")
+    for arbol in ("src", "tests", "scripts"):
+        assert f"*{arbol}/*.py" in marcador, (
+            f"el centinela de tests no cubre `{arbol}/`, cuyos modulos SI "
+            "ejecuta la suite: una edicion ahi cerraria el turno sin gate.")
