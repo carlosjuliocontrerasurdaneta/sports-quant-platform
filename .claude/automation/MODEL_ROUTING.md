@@ -222,11 +222,34 @@ Reglas de despacho, en orden de precedencia:
    era inalcanzable en la práctica.
 
    El parámetro que se pasa sigue siendo el alias corto `"fable"`, no el ID
-   completo: es lo que acepta la herramienta `Agent`. A qué modelo resuelve ese
-   alias lo decide el harness, y **no está verificado** que hoy apunte ya a
-   Fable 5.1 en vez de a Fable 5 (anotado el 2026-09-04; el catálogo de modelos
-   no documenta la resolución de alias de la CLI). Donde sí manda este archivo
-   es en el ID: el techo declarado es `claude-fable-5-1`.
+   completo: el `model` de la herramienta `Agent` es un **enum**
+   (`sonnet | opus | haiku | fable`) y no admite un identificador de modelo.
+
+   **BRECHA MEDIDA (2026-09-04): en esta máquina el alias `fable` NO entrega
+   Fable 5.1.** La documentación de Claude Code dice que `fable` resuelve a
+   Fable 5.1 *"unless you set `ANTHROPIC_DEFAULT_FABLE_MODEL`"*, y añade la
+   condición que decide el caso: ***"Before v2.1.255, it resolved to Fable 5"***.
+   Medido aquí:
+
+   - `claude --version` → **2.1.179**, por debajo del umbral 2.1.255.
+   - `ANTHROPIC_DEFAULT_FABLE_MODEL` → **sin definir**, así que no hay override.
+
+   Consecuencia exacta: **hoy es imposible delegar a Fable 5.1.** Un despacho con
+   `model: "fable"` obtiene Fable 5, y el enum impide pasar `claude-fable-5-1`
+   como alternativa. El techo declarado por esta política es inalcanzable por la
+   vía de la delegación hasta que se actualice Claude Code a ≥ 2.1.255. En la
+   conversación principal sí se puede seleccionar por ID completo
+   (`/model claude-fable-5-1`).
+
+   Se anota aquí y no se "arregla" en el texto porque el techo declarado es
+   correcto: lo que falta es una actualización del entorno, no un cambio de
+   política. Reescribir el techo a `claude-fable-5` para que encaje con lo que
+   la máquina entrega hoy sería bajar la política al nivel de la herramienta —
+   exactamente al revés de lo que este archivo existe para sostener.
+
+   No hay test que fije esto: dependería de la versión del binario instalado y
+   sería verde en CI y rojo en la máquina que opera, o al revés. Se re-verifica
+   a mano con los dos comandos de arriba.
 2. **Trabajo normal delegado**: se pasa `model` con el escalón de la ruta
    aplicable de `model-routing.json` (`opus` solo full-audit/incident/
    quant-incident; `haiku` solo documentation; `sonnet` el resto). Pasar el
