@@ -514,3 +514,102 @@ def test_settings_hooks_reference_only_existing_scripts():
                        if not (ROOT / ".claude/hooks" / n).exists())
     assert not faltantes, (
         f"settings.json cablea hooks que no existen en disco: {faltantes}")
+
+
+# ---------------------------------------------------------------------------
+# Tercer escalon del mismo candado (auditoria 2026-09-04, AUD-HIGH-001).
+#
+# `test_the_route_classifier_is_not_wired_as_a_hook` fija UNA instancia.
+# `test_every_hook_script_is_actually_wired_in_settings` fija que el hook ESTE
+# cableado. Faltaba la tercera pregunta, que es la que fallo: cableado, si --
+# pero, ¿CABE en su propio timeout?
+#
+# `run-tests-on-stop.sh` corria `pytest tests/` sin filtro con `timeout: 300`.
+# Medido el 2026-09-04 con el comando exacto: 1028,19 s (1492 passed, 1 skipped)
+# frente a 270,73 s de la mitad no-`slow`. El harness lo mataba a los 300 s, el
+# veredicto no llegaba nunca y el turno cerraba en verde con la suite rota.
+# Un control que no puede terminar es indistinguible de un control ausente.
+# ---------------------------------------------------------------------------
+
+# Suelo de presupuesto para el hook de tests. 600 s = el mismo que el operador
+# acepto el 2026-09-03 para el hook de Codex, y con el mismo argumento:
+# "prefiero bloquear diez minutos a fingir una revision". Con la parte no-`slow`
+# en ~271 s deja margen de 2,2x para una maquina cargada; con 300 s no lo habia.
+TESTS_HOOK_TIMEOUT_MIN_S = 600
+
+
+def _hook_entries(cfg: dict) -> list[dict]:
+    return [c for grupos in cfg.get("hooks", {}).values()
+            for g in grupos for c in g.get("hooks", [])
+            if c.get("type") == "command"]
+
+
+def test_every_wired_hook_declares_an_explicit_timeout():
+    """Sin `timeout` explicito el presupuesto lo decide el harness, no el repo.
+
+    Un hook que hereda un limite desconocido es exactamente el estado del que
+    salio AUD-HIGH-001: nadie puede comprobar si su trabajo cabe. Declararlo
+    obliga a que el numero exista y sea revisable en el diff.
+    """
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    entradas = _hook_entries(cfg)
+    assert entradas, "settings.json dejo de cablear hooks del proyecto"
+    sin_timeout = sorted(c["command"].rsplit("/", 1)[-1].strip('"')
+                         for c in entradas if not isinstance(c.get("timeout"), int))
+    assert not sin_timeout, (
+        f"hooks cableados sin `timeout` explicito: {sin_timeout}. El limite "
+        "debe estar escrito en el repositorio para poder auditarlo contra el "
+        "coste real del comando.")
+
+
+def test_the_test_hook_excludes_slow_tests_and_has_budget_for_the_rest():
+    """El coste del hook de tests debe caber en su presupuesto.
+
+    Las dos mitades son necesarias y ninguna basta sola:
+
+    - sin `-m "not slow"` el comando cuesta 1028 s y NINGUN timeout razonable lo
+      cubre (el maximo del harness son 600 s);
+    - sin el suelo de timeout, 271 s contra 300 s no deja margen: basta una
+      maquina cargada para volver a matar el hook.
+
+    Los `slow` no se pierden: CI los ejecuta en las patas 3.11/3.13/3.14.
+    """
+    hook = (ROOT / ".claude/hooks/run-tests-on-stop.sh").read_text(encoding="utf-8")
+    # Solo lineas EJECUTABLES: el encabezado documenta la medicion citando el
+    # comando antiguo, y contarlo como invocacion hacia fallar al test contra su
+    # propia evidencia.
+    invocacion = [ln for ln in hook.splitlines()
+                  if "pytest" in ln and not ln.lstrip().startswith("#")
+                  and "command -v" not in ln]
+    assert invocacion, "el hook dejo de invocar pytest"
+    assert all('-m "not slow"' in ln for ln in invocacion), (
+        "el hook de tests corre la suite COMPLETA (1028 s medidos el "
+        "2026-09-04); no cabe en ningun timeout del harness. Debe excluir los "
+        "`slow`, que CI ya ejecuta.")
+
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    entrada = [c for c in _hook_entries(cfg)
+               if "run-tests-on-stop.sh" in c.get("command", "")]
+    assert len(entrada) == 1, (
+        f"se esperaba exactamente un cableado del hook de tests: {entrada}")
+    timeout = entrada[0]["timeout"]
+    assert timeout >= TESTS_HOOK_TIMEOUT_MIN_S, (
+        f"timeout del hook de tests = {timeout} s, por debajo del suelo "
+        f"{TESTS_HOOK_TIMEOUT_MIN_S} s. Con ~271 s de coste medido, un "
+        "presupuesto ajustado vuelve a producir un control que no termina.")
+
+
+def test_the_pending_marker_covers_every_python_tree_under_test():
+    """El centinela debe cubrir los tres arboles que la suite ejecuta.
+
+    `scripts/` faltaba (AUD-MED-001): los tests cargan los scripts directamente
+    -- `tests/test_daily_picks.py` via importlib, `tests/test_codex_review.py`
+    metiendo `scripts/ai` en `sys.path` --, asi que editar el CLI de la REGLA
+    FUNDAMENTAL no armaba el gate. El CI ya lintea `scripts` por lo mismo.
+    """
+    marcador = (ROOT / ".claude/hooks/mark-tests-pending.sh").read_text(
+        encoding="utf-8")
+    for arbol in ("src", "tests", "scripts"):
+        assert f"*{arbol}/*.py" in marcador, (
+            f"el centinela de tests no cubre `{arbol}/`, cuyos modulos SI "
+            "ejecuta la suite: una edicion ahi cerraria el turno sin gate.")
