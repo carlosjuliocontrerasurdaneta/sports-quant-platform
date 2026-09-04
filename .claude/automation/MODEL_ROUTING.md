@@ -225,30 +225,34 @@ Reglas de despacho, en orden de precedencia:
    completo: el `model` de la herramienta `Agent` es un **enum**
    (`sonnet | opus | haiku | fable`) y no admite un identificador de modelo.
 
-   **BRECHA MEDIDA (2026-09-04): en esta máquina el alias `fable` NO entrega
-   Fable 5.1.** La documentación de Claude Code dice que `fable` resuelve a
-   Fable 5.1 *"unless you set `ANTHROPIC_DEFAULT_FABLE_MODEL`"*, y añade la
-   condición que decide el caso: ***"Before v2.1.255, it resolved to Fable 5"***.
-   Medido aquí:
+   **El alias entrega Fable 5.1 — VERIFICADO POR OBSERVACIÓN el 2026-09-04.**
+   No por inferencia: se despachó una consulta mínima con `--model fable` y se
+   leyó qué modelo respondió en el transcript de esa sesión. Resultado:
+   `claude-fable-5-1`.
 
-   - `claude --version` → **2.1.179**, por debajo del umbral 2.1.255.
-   - `ANTHROPIC_DEFAULT_FABLE_MODEL` → **sin definir**, así que no hay override.
+   Hubo brecha ese mismo día y conviene saber por qué, porque es la condición
+   que hay que revisar si vuelve a aparecer. La documentación de Claude Code
+   dice que `fable` resuelve a Fable 5.1 *"unless you set
+   `ANTHROPIC_DEFAULT_FABLE_MODEL`"*, y añade: ***"Before v2.1.255, it resolved
+   to Fable 5"***. La máquina corría **2.1.179**, por debajo del umbral, así que
+   el techo declarado aquí era **inalcanzable por la vía de la delegación**: el
+   `model` de la herramienta `Agent` es un enum (`sonnet | opus | haiku | fable`)
+   y no admite un ID, de modo que no había forma de pedir `claude-fable-5-1` al
+   despachar. Se actualizó a **2.1.261** por orden del operador y la brecha
+   cerró.
 
-   Consecuencia exacta: **hoy es imposible delegar a Fable 5.1.** Un despacho con
-   `model: "fable"` obtiene Fable 5, y el enum impide pasar `claude-fable-5-1`
-   como alternativa. El techo declarado por esta política es inalcanzable por la
-   vía de la delegación hasta que se actualice Claude Code a ≥ 2.1.255. En la
-   conversación principal sí se puede seleccionar por ID completo
-   (`/model claude-fable-5-1`).
+   Las dos condiciones que la reabrirían, en orden de comprobación:
 
-   Se anota aquí y no se "arregla" en el texto porque el techo declarado es
-   correcto: lo que falta es una actualización del entorno, no un cambio de
-   política. Reescribir el techo a `claude-fable-5` para que encaje con lo que
-   la máquina entrega hoy sería bajar la política al nivel de la herramienta —
-   exactamente al revés de lo que este archivo existe para sostener.
+   - `claude --version` por debajo de **2.1.255**;
+   - `ANTHROPIC_DEFAULT_FABLE_MODEL` definido apuntando a otro modelo.
+
+   Lo que NO se hizo, y es deliberado: bajar el techo a `claude-fable-5` para
+   que encajara con lo que la máquina entregaba. Faltaba una actualización del
+   entorno, no sobraba política. Ajustar la política al nivel de la herramienta
+   invierte la relación que este archivo existe para sostener.
 
    No hay test que fije esto: dependería de la versión del binario instalado y
-   sería verde en CI y rojo en la máquina que opera, o al revés. Se re-verifica
+   saldría verde en CI y rojo en la máquina que opera, o al revés. Se re-verifica
    a mano con los dos comandos de arriba.
 2. **Trabajo normal delegado**: se pasa `model` con el escalón de la ruta
    aplicable de `model-routing.json` (`opus` solo full-audit/incident/
