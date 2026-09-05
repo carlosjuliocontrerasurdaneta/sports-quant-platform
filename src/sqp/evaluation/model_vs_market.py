@@ -15,10 +15,29 @@ Metodo:
     sueltas, asi que detecta brechas pequenas con menos muestra.
   - `diff = modelo - mercado`. Brier mas bajo es mejor, luego **negativo =
     el modelo gana**.
+  - Se colapsa a **una fila por apuesta** (`one_row_per_pick`) ANTES de puntuar.
+    El stream servido acumula una fila por dia de horizonte, asi que sin colapsar
+    cada pick pesa tantas veces como dias estuvo en la lista -- y ese numero
+    varia sistematicamente: un partido a siete dias vista pesa siete veces mas
+    que uno servido el mismo dia, por una razon que no tiene nada que ver con la
+    calidad de la estimacion.
   - El intervalo se calcula con bootstrap **agrupado por evento**: el stream
     servido guarda los dos lados de cada mercado, y esas filas estan
     perfectamente correlacionadas. Tratarlas como independientes reduciria el
     intervalo a la mitad y fabricaria significancia que no existe.
+
+El colapso se anadio el 2026-09-04 (KI-026(b), abierto desde el 2026-09-01). El
+bootstrap por evento ya estaba, asi que el INTERVALO era honesto; lo que estaba
+sesgado era el ESTIMADOR PUNTUAL, que es justo lo que se lee primero. Medido
+sobre el stream graduado del 2026-09-04: 18.801 filas para 7.926 picks (2,37x),
+47 grupos comparables, |delta| medio en `brier_diff` 0,0048 (max 0,0271) y **2
+grupos cambian de veredicto** -- `mlb|totals` pasa de "mercado mejor" a
+"equivalente (IC cruza 0)" y `tennis_wta_cincinnati_open|h2h` al reves.
+
+CIFRAS ANTERIORES: toda salida de este modulo previa al 2026-09-04 esta calculada
+sobre el stream inflado. La direccion del sesgo no es constante -- depende de que
+picks pasaron mas dias en el horizonte en cada grupo --, asi que no se pueden
+corregir a posteriori con un factor: hay que re-medir.
 
 La fuente natural es `data/calibration/graded_<liga>.csv`, que captura todos los
 lados con precio antes de cualquier filtro de stake: es la muestra insesgada, a
@@ -30,6 +49,7 @@ import numpy as np
 import pandas as pd
 
 from sqp.evaluation.bootstrap import cluster_bootstrap_ci
+from sqp.evaluation.edge_information import one_row_per_pick
 
 # Fuera de (0,1) el log loss es infinito y un solo caso arruinaria el segmento.
 _EPS = 1e-6
@@ -109,10 +129,18 @@ def score_model_vs_market(df: pd.DataFrame,
     `df` es el stream graduado: necesita `result` (win/loss), las dos columnas de
     probabilidad y `event_id` para agrupar el bootstrap. Pushes y voids se
     excluyen: no tienen un resultado binario que puntuar.
+
+    Se colapsa a una fila por apuesta antes de puntuar (ver el encabezado del
+    modulo, KI-026(b)). `n_rows` cuenta por tanto PICKS, no filas servidas; sin
+    `event_id`/`selection` el helper avisa y devuelve el frame intacto, asi que
+    en ese caso `n_rows` vuelve a ser filas -- degradado, pero declarado.
     """
     by = by or ["league", "market"]
     d = df[df["result"].isin(["win", "loss"])].copy()
     d = d.dropna(subset=[model_col, market_col])
+    # ANTES de puntuar y antes del bootstrap: colapsar despues dejaria el
+    # estimador puntual sesgado, que es exactamente el defecto de KI-026(b).
+    d = one_row_per_pick(d)
     if d.empty:
         return pd.DataFrame()
     d["_y"] = (d["result"] == "win").astype(float)

@@ -26,6 +26,72 @@ def _rows(pairs, league="mlb", market="h2h", start=0):
         for i, (pm, pk, r) in enumerate(pairs)])
 
 
+def _servido_n_dias(n, *, p_model, p_market, result, event_id="e1",
+                    selection="A", league="mlb", market="h2h"):
+    """El MISMO pick servido `n` dias seguidos, como hace el stream real.
+
+    `append_served` deduplica solo dentro del mismo dia de run, asi que un pick
+    dentro del horizonte de 7 dias entra una vez por dia. Cada fila lleva su
+    `generated_at`, que es lo que distingue las copias."""
+    return pd.DataFrame([
+        {"league": league, "market": market, "event_id": event_id,
+         "selection": selection, "generated_at": f"2026-08-2{i}T11:00:00Z",
+         "model_probability": p_model, "implied_probability_novig": p_market,
+         "result": result}
+        for i in range(n)])
+
+
+class TestUnPickCuentaUnaVez:
+    """KI-026(b): el estimador puntual se calculaba sobre el stream inflado.
+
+    El bootstrap ya agrupaba por evento, asi que el INTERVALO era honesto; lo
+    sesgado era la cifra que se lee primero. Cada pick pesaba tantas veces como
+    dias estuvo en el horizonte, y ese numero varia sistematicamente."""
+
+    def test_n_rows_cuenta_picks_no_filas_servidas(self):
+        df = _servido_n_dias(7, p_model=0.60, p_market=0.50, result="win")
+        out = score_model_vs_market(df, n_boot=50)
+        assert out.loc[0, "n_rows"] == 1, (
+            "siete servidas del mismo pick son UNA apuesta; contarlas siete "
+            "veces es el defecto de KI-026(b)")
+
+    def test_repetir_un_pick_no_mueve_el_estimador_puntual(self):
+        """La propiedad que importa: el resultado no debe depender de cuantos
+        dias estuvo el partido en el horizonte."""
+        uno = score_model_vs_market(
+            _servido_n_dias(1, p_model=0.60, p_market=0.50, result="win"), n_boot=50)
+        siete = score_model_vs_market(
+            _servido_n_dias(7, p_model=0.60, p_market=0.50, result="win"), n_boot=50)
+        assert siete.loc[0, "brier_diff"] == pytest.approx(uno.loc[0, "brier_diff"])
+        assert siete.loc[0, "brier_model"] == pytest.approx(uno.loc[0, "brier_model"])
+
+    def test_un_pick_repetido_no_puede_ahogar_a_otro(self):
+        """El sesgo REAL, y el que un test de idempotencia no ve: dos picks
+        distintos, uno servido 7 dias y otro 1. Sin colapsar, el primero pesa
+        siete veces mas por una razon que nada tiene que ver con la calidad de
+        la estimacion."""
+        largo = _servido_n_dias(7, p_model=0.90, p_market=0.50, result="loss",
+                                event_id="e_largo")
+        corto = _servido_n_dias(1, p_model=0.55, p_market=0.50, result="win",
+                                event_id="e_corto")
+        out = score_model_vs_market(pd.concat([largo, corto], ignore_index=True),
+                                    n_boot=50)
+        assert out.loc[0, "n_rows"] == 2
+        # Con 8 filas el pick fallado aportaria 7/8 del Brier; con 2 picks aporta
+        # la mitad. La diferencia entre ambos es el sesgo que se corrige.
+        esperado = ((0.90 - 0) ** 2 + (0.55 - 1) ** 2) / 2
+        assert out.loc[0, "brier_model"] == pytest.approx(esperado, abs=1e-6)
+
+    def test_sin_identidad_degrada_a_filas_y_no_revienta(self):
+        """`one_row_per_pick` avisa y devuelve el frame intacto si falta
+        `event_id`/`selection`: borrar picks distintos por una clave incompleta
+        seria peor que contarlos dos veces. Aqui se fija que ese camino sigue
+        produciendo un resultado, degradado pero declarado."""
+        df = _servido_n_dias(3, p_model=0.60, p_market=0.50, result="win")
+        out = score_model_vs_market(df.drop(columns=["selection"]), n_boot=50)
+        assert out.loc[0, "n_rows"] == 3
+
+
 # --- metricas base ------------------------------------------------------------
 
 def test_brier_is_mean_squared_error():
