@@ -246,28 +246,57 @@ class TestVigenciaEsPorInstanteNoPorFecha:
         s = instantes_utc(pd.Series(["09/02/2026 18:00:00"]))
         assert s.isna().all(), "un sello no-ISO debe quedar sin instante"
 
-    def test_DOCUMENTA_que_el_fallback_si_resucita_partidos_empezados(self):
-        """KI-030, tension ABIERTA -- este test fija el comportamiento ACTUAL,
-        no el deseable.
+    def test_el_fallback_conserva_las_filas_pero_las_MARCA_en_juego(self):
+        """KI-030, CERRADO el 2026-09-04. Este test es la inversion del que
+        documentaba la tension, tal y como su docstring exigia ("debe
+        INVERTIRSE, no borrarse").
 
-        Cuando no queda nada apostable, `picks_vigentes_unicos` cae al ultimo dia
-        generado y devuelve las filas TAL CUAL, incluidas las de partidos ya
-        empezados: la vista muestra cuotas en vivo como si fueran picks pregame.
-        Lo reprodujo Codex revisando el cambio a vigencia por instante.
+        Lo que se invierte es el DEFECTO, no el numero de filas. El fallback
+        sigue devolviendo las dos -- esa es la decision del 2026-08-28, la
+        leccion de los 53 dias con el tablero en blanco, y no se toca --, pero
+        ya no las presenta como picks pregame: `en_juego` dice la verdad por
+        fila, y las vistas la renderizan.
 
-        No se corrige porque el fallback es la decision del 2026-08-28 (leccion
-        de los 53 dias) y esta fijado por
-        `test_cae_al_dia_mas_reciente_si_hoy_no_hay`: cambiarlo contradice una
-        decision registrada y requiere autorizacion del operador.
-
-        Si algun dia se autoriza, este test debe INVERTIRSE, no borrarse."""
-        from sqp.evaluation.labels import picks_vigentes_unicos
+        El problema nunca fue que las filas estuvieran; era la MENTIRA sobre su
+        estado. Suprimirlas habria cambiado una decision registrada para
+        arreglar algo que no era eso."""
+        from sqp.evaluation.labels import EN_JUEGO, picks_vigentes_unicos
         df = pd.DataFrame([
             self._fila("2026-09-02T01:00:00Z", selection="A"),
             self._fila("2026-09-02T02:00:00Z", selection="B", event_id="e2"),
         ])
-        assert len(picks_vigentes_unicos(df)) == 2, (
-            "comportamiento actual: el fallback resucita el lote ya en juego")
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 2, (
+            "el fallback debe SEGUIR conservando las filas: es la decision del "
+            "2026-08-28 y no la toca este cambio")
+        assert out[EN_JUEGO].all(), (
+            "las filas resucitadas por el fallback deben venir marcadas como "
+            "en juego; sin marca, la vista miente y KI-030 sigue abierto")
+
+    def test_la_ruta_normal_marca_en_juego_como_False(self):
+        """La columna existe SIEMPRE, no solo en el fallback.
+
+        Si apareciera solo al caer al fallback, cada consumidor tendria que
+        preguntarse si esta -- y un `.get(...)` silencioso que devuelve False
+        por ausencia es indistinguible de "no hay nada en juego". La columna se
+        anota en las dos rutas justo para que esa ambiguedad no exista."""
+        from sqp.evaluation.labels import EN_JUEGO, picks_vigentes_unicos
+        df = pd.DataFrame([self._fila("2099-01-01T00:00:00Z", selection="A")])
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 1 and not out[EN_JUEGO].any()
+
+    def test_ya_empezado_trata_el_sello_ilegible_como_NO_empezado(self):
+        """Conservador, igual que `pipeline.daily._already_started`: no poder
+        leer la hora no demuestra que el partido se haya jugado. Si esto se
+        invirtiera, el fallback marcaria "EN JUEGO" filas de esquema viejo sin
+        `start_time` legible y el operador dejaria de mirar picks validos."""
+        from sqp.evaluation.labels import ya_empezado
+        df = pd.DataFrame([
+            self._fila("2020-01-01T00:00:00Z", selection="VIEJO"),
+            self._fila("no es una fecha", selection="ILEGIBLE", event_id="e2"),
+            self._fila("2099-01-01T00:00:00Z", selection="FUTURO", event_id="e3"),
+        ])
+        assert list(ya_empezado(df)) == [True, False, False]
 
     def test_coincide_con_la_definicion_canonica_del_pipeline(self):
         """Candado anti-deriva: `pipeline.daily._already_started` ya define

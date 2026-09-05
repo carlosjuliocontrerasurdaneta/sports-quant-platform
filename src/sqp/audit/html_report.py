@@ -43,9 +43,9 @@ from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.run_status import read_run_status
-from sqp.evaluation.labels import (decision_prob, game_date_local, local_date,
-                                   local_today, match_label, picks_vigentes,
-                                   picks_vigentes_unicos)
+from sqp.evaluation.labels import (EN_JUEGO, decision_prob, game_date_local,
+                                   local_date, local_today, match_label,
+                                   picks_vigentes, picks_vigentes_unicos)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -118,8 +118,13 @@ def _picks_records(predictions_dir: Path,
              if "flags" in ranked.columns
              else pd.Series("", index=ranked.index))
     stake = pd.to_numeric(ranked.get("stake"), errors="coerce").fillna(0.0)
-    ranked["estado"] = [f if f else ("con stake" if s > 0 else "sin stake")
-                        for s, f in zip(stake, flags)]
+    # KI-030: el fallback puede resucitar partidos YA EMPEZADOS, cuyas cuotas son
+    # EN VIVO. `en_juego` lo anota `picks_vigentes_unicos` y manda sobre el
+    # stake: para un partido en juego el stake ya no se puede colocar.
+    en_juego = ranked.get(EN_JUEGO, pd.Series(False, index=ranked.index)).fillna(False)
+    ranked["estado"] = ["EN JUEGO - no apostable" if j
+                        else (f if f else ("con stake" if s > 0 else "sin stake"))
+                        for s, f, j in zip(stake, flags, en_juego)]
     if ranked.empty:
         return []
     ranked = ranked.assign(partido=match_label(ranked))
@@ -750,6 +755,19 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     except Exception:
         out["tier"] = ""
         out["motivo"] = ""
+    # KI-030: un partido YA EMPEZADO no es una oportunidad de ningun tier -- su
+    # cuota es EN VIVO, no la que se estimo. Se sobreescribe el tier DESPUES de
+    # calcularlo (y tambien en la rama de fallo, de ahi que vaya fuera del try):
+    # dejar "A" en verde sobre un partido en juego es exactamente el engano que
+    # cierra este hallazgo. La clasificacion original se conserva en el motivo.
+    en_juego = out.index.map(
+        df.get(EN_JUEGO, pd.Series(False, index=df.index)).fillna(False))
+    if bool(pd.Series(en_juego).any()):
+        previo = out["tier"].astype(str)
+        out.loc[en_juego, "motivo"] = [
+            f"partido ya empezado; cuota EN VIVO (tier previo: {t or 'n/d'})"
+            for t in previo[en_juego]]
+        out.loc[en_juego, "tier"] = "EN JUEGO"
 
     out = out[p.notna() & be.notna()].sort_values("prob", ascending=False)
     records: list[dict] = []

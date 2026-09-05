@@ -37,6 +37,39 @@ def _served(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame([{**base, **r} for r in rows])
 
 
+class TestPartidosEnJuego:
+    """KI-030: cuando el fallback resucita un lote ya empezado, la lista del
+    operador debe DECIRLO. Es la vista que invoca DIARIO_COMPLETO.bat."""
+
+    def test_una_fila_en_juego_lo_dice_en_estado(self):
+        df = _served([{"selection": "A", "stake": 12.5}])
+        df["en_juego"] = True
+        out = daily_picks.rank_picks(df)
+        assert list(out["estado"]) == ["EN JUEGO - no apostable"]
+
+    def test_el_aviso_manda_sobre_el_stake(self):
+        """Para un partido en juego el stake es informacion muerta: ya no se
+        puede colocar. Anunciar "STAKE 12.50" sobre un partido empezado seria
+        el mismo engano en otra celda."""
+        df = _served([{"selection": "A", "stake": 12.5}])
+        df["en_juego"] = True
+        assert "STAKE" not in list(daily_picks.rank_picks(df)["estado"])[0]
+
+    def test_sin_partidos_en_juego_el_estado_no_cambia(self):
+        """Discriminacion: el aviso solo aparece cuando toca. La ruta normal
+        marca `en_juego=False` por construccion."""
+        df = _served([{"selection": "A", "stake": 12.5}])
+        df["en_juego"] = False
+        assert list(daily_picks.rank_picks(df)["estado"]) == ["STAKE 12.50"]
+
+    def test_un_frame_sin_la_columna_no_revienta(self):
+        """Robustez: `rank_picks` es publica y puede recibir un frame que no
+        paso por `picks_vigentes_unicos` (p. ej. `--all-days`, que salta el
+        colapso). Sin columna se asume no empezado, el default conservador."""
+        out = daily_picks.rank_picks(_served([{"selection": "A", "stake": 12.5}]))
+        assert list(out["estado"]) == ["STAKE 12.50"]
+
+
 class TestLaReglaFundamental:
     def test_ordena_por_probabilidad_descendente(self):
         out = daily_picks.rank_picks(_served([

@@ -148,15 +148,23 @@ class TestTierNoSeCruzaEntrePartidos:
         """Dos partidos DISTINTOS con la misma (liga, mercado, seleccion,
         cuota) y clasificacion opuesta: uno con EV positivo y consenso profundo
         (tier A), otro con EV negativo (NO BET)."""
+        # `start_time` en futuro LEJANO a proposito (2026-09-04). Lo que este
+        # test comprueba es que el tier no se cruza entre partidos, y eso no
+        # debe depender del reloj: con la fecha original (2026-08-26) el fixture
+        # empezo a caer en el pasado, `picks_vigentes` lo vaciaba, se disparaba
+        # el fallback y --desde el cierre de KI-030-- el tier se sobreescribia a
+        # "EN JUEGO", tapando justo la propiedad medida. La dependencia temporal
+        # ya estaba ahi: solo se hizo visible. `generated_at` se deja como
+        # estaba porque no interviene en la vigencia.
         base = dict(league="mlb", market="totals", selection="Over", line=8.5,
                     price_decimal=1.85, generated_at="2026-08-26T12:00:00Z")
         return pd.DataFrame([
             {**base, "event_id": "e1", "home": "Marlins", "away": "Red Sox",
-             "start_time": "2026-08-26T23:05:00Z",
+             "start_time": "2099-08-26T23:05:00Z",
              "estimated_probability": 0.56, "implied_probability_novig": 0.51,
              "books_count": 39},
             {**base, "event_id": "e2", "home": "Giants", "away": "Reds",
-             "start_time": "2026-08-26T23:05:00Z",
+             "start_time": "2099-08-26T23:05:00Z",
              "estimated_probability": 0.51, "implied_probability_novig": 0.52,
              "books_count": 35},
         ])

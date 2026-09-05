@@ -121,6 +121,30 @@ def instantes_utc(valores: pd.Series | None, *,
     return parsed if getattr(parsed.dt, "tz", None) is not None else vacio
 
 
+EN_JUEGO = "en_juego"
+
+
+def ya_empezado(df: pd.DataFrame, *, ahora: datetime | None = None) -> pd.Series:
+    """Serie booleana: True donde el partido YA EMPEZO.
+
+    Definicion CANONICA de "empezado" para la capa de vistas, y la unica: la
+    usan `picks_vigentes` para excluir y `picks_vigentes_unicos` para MARCAR lo
+    que el fallback resucita (KI-030). Tenerla en un solo sitio es lo que impide
+    que las dos respuestas diverjan -- que es como nacio KI-027.
+
+    Un sello ILEGIBLE o ausente cuenta como NO empezado, igual que en
+    `pipeline.daily._already_started`: no poder leer la hora no demuestra que el
+    partido se haya jugado, y en la duda se conserva la fila. `instantes_utc`
+    aporta la gramatica de parseo (ver su docstring: sin `format="ISO8601"` un
+    naive detras de un aware daba NaT y un partido empezado se colaba).
+    """
+    if df.empty:
+        return pd.Series(False, index=df.index, dtype=bool)
+    ahora = ahora or datetime.now(timezone.utc)
+    inicio = instantes_utc(df.get("start_time"), index=df.index)
+    return inicio.notna() & (inicio <= ahora)
+
+
 def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None,
                    ahora: datetime | None = None) -> pd.DataFrame:
     """Filas cuyo partido TODAVIA SE PUEDE APOSTAR: no ha empezado.
@@ -165,9 +189,7 @@ def picks_vigentes(df: pd.DataFrame, *, hoy: str | None = None,
     """
     if df.empty:
         return df
-    ahora = ahora or datetime.now(timezone.utc)
-    inicio = instantes_utc(df.get("start_time"), index=df.index)
-    empezado = inicio.notna() & (inicio <= ahora)
+    empezado = ya_empezado(df, ahora=ahora)
     fecha = game_date_local(df)
     con_fecha_vigente = (fecha == "") | (fecha >= (hoy or local_today()))
     # La fecha sigue filtrando a los que NO tienen sello legible: sin instante no
@@ -203,21 +225,31 @@ def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.Dat
     divergencia: el modo de fallo dominante de este repo es la deriva entre
     artefactos duplicados.
 
-    TENSION ABIERTA CON EL FALLBACK (KI-030, 2026-09-02). La caida al ultimo dia
-    generado devuelve las filas TAL CUAL, incluidas las de partidos ya empezados.
-    Desde que la vigencia se decide por INSTANTE, eso significa que en cuanto
-    arranca el ultimo partido pendiente la vista resucita el lote entero YA EN
-    JUEGO y muestra cuotas en vivo como si fueran picks pregame. Lo reprodujo
-    Codex revisando este mismo cambio.
+    EL FALLBACK MARCA, NO SUPRIME (KI-030, cerrado el 2026-09-04). La caida al
+    ultimo dia generado devuelve las filas TAL CUAL, incluidas las de partidos ya
+    empezados. Desde que la vigencia se decide por INSTANTE, eso significa que en
+    cuanto arranca el ultimo partido pendiente la vista resucita el lote entero YA
+    EN JUEGO -- y hasta el 2026-09-04 lo mostraba como si fueran picks pregame,
+    con cuotas que a esas alturas son EN VIVO. Lo reprodujo Codex revisando el
+    cambio de KI-028.
 
-    NO se corrige aqui a proposito. El fallback es la decision del 2026-08-28
-    (leccion de los 53 dias: un tablero en blanco hizo creer al operador que el
-    sistema no generaba nada) y esta fijado por
-    `test_cae_al_dia_mas_reciente_si_hoy_no_hay`. Cambiarlo es contradecir una
-    decision registrada, que exige autorizacion explicita del operador.
+    Se resolvio SIN tocar el fallback, que es la decision del 2026-08-28 (leccion
+    de los 53 dias: un tablero en blanco hizo creer al operador que el sistema no
+    generaba nada) y esta fijado por `test_cae_al_dia_mas_reciente_si_hoy_no_hay`.
+    Suprimir esas filas habria cambiado una decision registrada para arreglar un
+    problema que no era la presencia de las filas sino la MENTIRA sobre su estado.
+
+    Por eso el frame devuelto lleva SIEMPRE la columna booleana ``en_juego``
+    (`EN_JUEGO`): False en toda la ruta normal por construccion -- ahi no hay
+    partidos empezados --, y la verdad por fila en la ruta del fallback. Anotarlo
+    aqui y no en cada vista es deliberado: un consumidor puede olvidarse de
+    calcular el marcador, pero no puede olvidarse de una columna que ya viene en
+    su frame. La deriva entre copias es el modo de fallo dominante de este repo
+    (KI-027).
 
     Alcance real: con horizonte de 7 dias hacen falta CERO filas apostables en
-    todo el stream para alcanzarlo, asi que hoy no se dispara (1.920 vigentes).
+    todo el stream para alcanzar el fallback, asi que hoy no se dispara (1.920
+    vigentes el 2026-09-02).
     """
     if df.empty:
         return df
@@ -225,17 +257,19 @@ def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.Dat
     if vigentes.empty:
         # Sin nada vigente se cae al ultimo dia generado; si ni siquiera hay
         # `generated_at`, se devuelve todo antes que dejar la vista en blanco.
-        if "generated_at" not in df.columns:
-            return df
-        gen = df["generated_at"].astype(str).str[:10]
-        return df[gen == gen.max()]
+        # En las DOS ramas se marca: son justo las filas que pueden estar en
+        # juego, y devolverlas sin marcar es el defecto que cerro KI-030.
+        caida = (df if "generated_at" not in df.columns
+                 else df[df["generated_at"].astype(str).str[:10]
+                         == df["generated_at"].astype(str).str[:10].max()])
+        return caida.assign(**{EN_JUEGO: ya_empezado(caida)})
     # Colapsar EXIGE la identidad completa. Con una clave parcial, dos partidos
     # distintos que compartan mercado/seleccion/linea (p. ej. dos `totals/Over
     # 2.5`) se fusionarian en uno: borrar filas porque falta una columna es la
     # averia que este proyecto lleva repitiendo, y aqui incumpliria ademas la
     # REGLA FUNDAMENTAL. Sin identidad se conservan todas.
     if not set(_IDENTIDAD_PICK).issubset(vigentes.columns):
-        return vigentes
+        return vigentes.assign(**{EN_JUEGO: False})
     claves = [*_IDENTIDAD_PICK] + (["line"] if "line" in vigentes.columns else [])
     if "generated_at" in vigentes.columns:
         # `sort` estable: ante sellos repetidos manda el orden de llegada, que en
@@ -243,7 +277,13 @@ def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.Dat
         vigentes = vigentes.sort_values("generated_at", kind="stable")
     # Sin `generated_at` no se puede afirmar cual es la mas reciente, pero el
     # stream es append-only: la ultima del fichero es la ultima servida.
-    return vigentes.drop_duplicates(claves, keep="last")
+    #
+    # `en_juego` es False por CONSTRUCCION en esta ruta: `picks_vigentes` ya
+    # excluyo todo lo empezado. Se anade igualmente para que la columna exista
+    # SIEMPRE y ningun consumidor tenga que preguntarse si esta -- un
+    # `df["en_juego"]` que a veces lanza KeyError acabaria en un `.get(...)`
+    # silencioso, y de ahi a no mostrar el aviso hay un paso.
+    return vigentes.drop_duplicates(claves, keep="last").assign(**{EN_JUEGO: False})
 
 
 def game_date_local(df: pd.DataFrame) -> pd.Series:

@@ -58,8 +58,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import pandas as pd
 
 from sqp.config import ROOT
-from sqp.evaluation.labels import (game_date_local, local_today, match_label,
-                                   picks_vigentes_unicos)
+from sqp.evaluation.labels import (EN_JUEGO, game_date_local, local_today,
+                                   match_label, picks_vigentes_unicos)
 from sqp.logging_config import consola_utf8
 
 # `generado` va al final por la misma razon que en el dashboard: al filtrar por
@@ -153,6 +153,13 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
 
     flags = d.get("flags", pd.Series([""] * len(d))).fillna("").astype(str)
     stake = pd.to_numeric(d.get("stake"), errors="coerce").fillna(0.0)
+    # KI-030: el fallback de `picks_vigentes_unicos` puede devolver partidos YA
+    # EMPEZADOS, y sus cuotas a esas alturas son EN VIVO. La columna la anota el
+    # helper compartido (siempre presente); aqui solo se RENDERIZA, y manda sobre
+    # el stake: para un partido en juego el stake es informacion muerta -- ya no
+    # se puede colocar --, asi que anunciarlo seria el mismo engano en otra
+    # celda. `.get` con default por si llega un frame que no paso por el helper.
+    en_juego = d.get(EN_JUEGO, pd.Series(False, index=d.index)).fillna(False)
     out = pd.DataFrame({
         "#": range(1, len(d) + 1),
         "liga": d["league"],
@@ -174,8 +181,9 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         # de siempre, llamado por su nombre (encargo del operador 2026-08-26).
         "roi_esp": (d["_p"] * d["_price"] - 1.0).round(4),
         "casas": d.get("books_count"),
-        "estado": [("STAKE %.2f" % s) if s > 0 else (f or "sin stake")
-                   for s, f in zip(stake, flags)],
+        "estado": ["EN JUEGO - no apostable" if j
+                   else (("STAKE %.2f" % s) if s > 0 else (f or "sin stake"))
+                   for s, f, j in zip(stake, flags, en_juego)],
         # De cuando es la fila. Sin esto, mezclar runs deja indistinguible una
         # cuota de hoy de una de hace tres dias.
         "generado": (d["generated_at"].astype(str).str[:10]
