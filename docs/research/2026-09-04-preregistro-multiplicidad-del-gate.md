@@ -1,9 +1,20 @@
 # Pre-registro — multiplicidad y miradas repetidas del prediction gate
 
 **Fecha:** 2026-09-04.
-**Estado:** PROPUESTA. Pendiente de aprobación del operador. **No implementada.**
+**Estado:** **VIGENTE.** Aprobado por el operador el 2026-09-04 e implementado el
+mismo día en `src/sqp/risk/prediction_gate.py`.
 **Modifica:** `docs/research/2026-08-16-preregistro-regla-de-salida.md`, sección
 «Criterios de descarte» → «Comparaciones múltiples».
+
+> **Nota de implementación (2026-09-04).** El criterio se aprobó con los 41
+> cortes en `muestra_insuficiente`, es decir **sin que ninguno fuera elegible y
+> sin saber quién cruzaría primero** — que era justo la condición que este
+> documento perseguía. Los registros anteriores no traen `entry_test_at`; se
+> leen como «test no consumido», que es lo correcto: ninguno lo había gastado.
+> Dos reglas fijadas por test, y una tercera consecuencia que solo apareció al
+> implementarlo: un corte que gasta su test **no arma pestillo** (nunca estuvo
+> dentro), así que `release_prediction_gate_latch` tuvo que ampliarse o esos
+> cortes habrían quedado fuera **para siempre**, sin mecanismo de revisión.
 
 > Se escribe **antes** de que ningún corte sea elegible. Hoy los 41 evaluados
 > están en `muestra_insuficiente` (n < 300), así que fijar el criterio ahora no
@@ -199,12 +210,36 @@ artefacto estadístico. Es un control de riesgo, no una fuente de rendimiento.
 
 ---
 
-## 8. Decisión pendiente del operador
+## 8. Decisión del operador
 
-- [ ] **Aprobar** → se implementa en `risk/prediction_gate.py` (α por corte y
-      test único de entrada), con tests que fijen ambas reglas, y este documento
-      pasa a estado VIGENTE.
-- [ ] **Aprobar con cambios** → indicar α, K o el número de tests de entrada.
-- [ ] **Rechazar** → queda registrado que el riesgo de la sección 1 se acepta a
-      sabiendas, con las cifras delante. También es una respuesta válida; lo que
-      no lo es es no decidir antes del ~2026-09-20.
+- [x] **APROBADO** el 2026-09-04, sin cambios sobre lo propuesto.
+
+Implementado el mismo día:
+
+| Regla | Dónde |
+|---|---|
+| `α_corte = 0,05/41 = 0,00122` derivado, no escrito a mano | `PREDICTION_GATE_{FAMILY_ALPHA,K,ALPHA}` |
+| Un solo test de entrada, en la primera evaluación con `n ≥ 300` | `_apply_latch`, campo `entry_test_at` |
+| Salida diaria sin cambios | `_apply_latch` (rama `was_allowed`) |
+| Liberación humana devuelve el test | `release_prediction_gate_latch` |
+| Aviso si el universo supera 50 cortes | `write_prediction_gate` |
+| Reparto de α trazable en el registro | `family_alpha`, `k_bonferroni` en el payload |
+
+Siete tests nuevos fijan ambas reglas, incluido el que discrimina de verdad
+(`test_a_cut_that_would_pass_at_005_but_not_at_bonferroni_is_denied`: 165/300,
+que pasaba con el α viejo y no con el nuevo) y los dos que cierran las puertas
+traseras del test único — desaparecer del stream no lo devuelve, y la liberación
+sí. Suite: 1289 pasan, 0 fallan.
+
+## 9. Cuándo se sabrá si esto fue acertado
+
+La predicción de la sección 6 es falsable y tiene fecha. Hacia el **2026-09-20**
+los tres cortes de MLB alcanzan `n = 300` y gastarán su test único. Predicción
+registrada: **fallarán la condición 2 (EV > 0) antes incluso de llegar al test de
+signo**, porque hoy sus `ev_flat` son −0,0495, −0,0490 y −0,0301.
+
+Si alguno pasa, será la primera evidencia fuera de muestra del proyecto de que el
+modelo bate al precio en un mercado — y habrá pasado un listón del 59 %, no del
+55 %. Si ninguno pasa en 180 días y los EV siguen negativos, la conclusión no es
+relajar el umbral: es que el modelo no bate al precio, que es exactamente lo que
+las seis mediciones de agosto venían sugiriendo.

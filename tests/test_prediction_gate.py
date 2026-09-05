@@ -570,3 +570,106 @@ def test_prediction_gate_outranks_the_clv_gate():
     from sqp.pipeline.daily import _zero_stake_flag
     assert _zero_stake_flag(False, False, False, clv_blocked=True,
                             prediction_blocked=True) == "prediction_gate"
+
+
+# --- multiplicidad y miradas repetidas ---------------------------------------
+# Pre-registro 2026-09-04, aprobado por el operador. Dos reglas: alpha repartido
+# por Bonferroni sobre K=41 cortes, y UN SOLO test de entrada por corte.
+
+def test_alpha_is_the_family_alpha_split_by_bonferroni():
+    """El numero no se escribe a mano: se DERIVA, para que no pueda derivar de
+    sus dos factores sin que se note en el diff."""
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          PREDICTION_GATE_FAMILY_ALPHA,
+                                          PREDICTION_GATE_K)
+    assert PREDICTION_GATE_FAMILY_ALPHA == 0.05
+    assert PREDICTION_GATE_K == 41
+    assert PREDICTION_GATE_ALPHA == pytest.approx(0.05 / 41)
+    assert PREDICTION_GATE_ALPHA < 0.05, "Bonferroni solo puede ENDURECER"
+
+
+def test_a_cut_that_would_pass_at_005_but_not_at_bonferroni_is_denied():
+    """La discriminacion que importa: una ventaja que el alpha viejo aprobaba y
+    el nuevo no. 165/300 da p just under 0,05 y muy por encima de 0,00122."""
+    from scipy.stats import binomtest
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA
+    p = binomtest(165, 300, 0.5, alternative="greater").pvalue
+    assert p < 0.05, "premisa del test: al alpha antiguo esto pasaba"
+    assert p > PREDICTION_GATE_ALPHA, "premisa: al alpha nuevo ya no"
+    out = evaluate_markets(_rows(165, 135, p_model=0.6, p_market=0.5, price=2.0))
+    assert bool(out.iloc[0]["allowed"]) is False
+    assert out.iloc[0]["reason"] == "no_bate_al_mercado"
+
+
+def test_the_entry_test_is_not_spent_while_the_sample_is_thin(tmp_path):
+    """Un corte sin muestra no ha gastado su unica bala: si la gastara, bastaria
+    con existir unos dias para quedarse fuera para siempre."""
+    from sqp.risk.prediction_gate import load_prediction_gate
+    write_prediction_gate(_rows(60, 40, p_model=0.6, p_market=0.5, price=2.0),
+                          tmp_path)
+    e = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert e["reason"] == "muestra_insuficiente"
+    assert e["entry_test_at"] is None
+
+
+def test_a_cut_gets_exactly_one_entry_test(tmp_path):
+    """El corazon del pre-registro. Dia 1: alcanza n>=300 y NO pasa -> gasta el
+    test. Dia 2: los mismos datos mas una racha que SI pasaria el criterio ->
+    sigue fuera. Sin esta regla el gate reevalua a diario y el corte tira el
+    dado hasta que le sale (parada opcional)."""
+    from sqp.risk.prediction_gate import load_prediction_gate
+    flojo = _rows(160, 140, p_model=0.6, p_market=0.5, price=2.0)
+    write_prediction_gate(flojo, tmp_path)
+    e1 = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert bool(e1["allowed"]) is False and e1["entry_test_at"] is not None
+    gastado = e1["entry_test_at"]
+
+    fuerte = pd.concat([flojo, _rows(300, 0, p_model=0.6, p_market=0.5,
+                                     price=2.0, event_prefix="extra")],
+                       ignore_index=True)
+    write_prediction_gate(fuerte, tmp_path)
+    e2 = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert e2["p_value"] < 0.00122, "premisa: al criterio le sobraria evidencia"
+    assert bool(e2["allowed"]) is False, (
+        "gasto su test unico: no reentra por acumular una racha despues")
+    assert e2["reason"] == "agotado_test_unico"
+    assert e2["entry_test_at"] == gastado, "el sello del test no se reescribe"
+
+
+def test_human_release_returns_the_entry_test(tmp_path):
+    """La liberacion autoriza la RE-EVALUACION, no la entrada: devuelve el test
+    y decide despues el criterio pre-registrado."""
+    from sqp.risk.prediction_gate import (load_prediction_gate,
+                                          release_prediction_gate_latch)
+    write_prediction_gate(_rows(160, 140, p_model=0.6, p_market=0.5, price=2.0),
+                          tmp_path)
+    assert release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                         released_by="Carlos") is True
+    e = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert e["entry_test_at"] is None and bool(e["allowed"]) is False
+    assert e["reason"] == "liberado_pendiente_reevaluacion"
+
+
+def test_vanishing_from_the_stream_does_not_return_the_entry_test(tmp_path):
+    """Si desaparecer devolviera el test, un corte se quedaria sin partidos unos
+    dias y volveria a tirar el dado."""
+    from sqp.risk.prediction_gate import load_prediction_gate
+    write_prediction_gate(_rows(160, 140, p_model=0.6, p_market=0.5, price=2.0),
+                          tmp_path)
+    gastado = load_prediction_gate(tmp_path)["brasileirao|totals"]["entry_test_at"]
+    write_prediction_gate(_rows(10, 10, p_model=0.6, p_market=0.5, price=2.0,
+                                league="otra"), tmp_path)
+    e = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert e["reason"] == "sin_evaluacion" and e["entry_test_at"] == gastado
+
+
+def test_the_registry_records_how_alpha_was_split(tmp_path):
+    """Sin esto, leyendo el registro no se puede reconstruir de donde sale un
+    alpha de 0,00122 -- y un umbral que no se puede auditar no es un candado."""
+    import json
+    write_prediction_gate(_rows(60, 40, p_model=0.6, p_market=0.5, price=2.0),
+                          tmp_path)
+    payload = json.loads((tmp_path / "prediction_gate.json").read_text(encoding="utf-8"))
+    assert payload["family_alpha"] == 0.05
+    assert payload["k_bonferroni"] == 41
+    assert payload["alpha"] == pytest.approx(0.05 / 41)

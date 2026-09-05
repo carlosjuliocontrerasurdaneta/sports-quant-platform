@@ -37,14 +37,31 @@ lee el registro previo del mismo directorio antes de reescribirlo. Un registro
 de la version anterior (sin ``latched``) se trata como "sin pestillo", lo cual
 no abre nada: ``allowed`` sigue exigiendo los criterios.
 
-MULTIPLICIDAD (documentado, NO corregido -- decision pendiente del operador):
-el pre-registro acepta el riesgo de comparaciones multiples sobre ~25 cortes
-(~1,25 falsos positivos esperados a alpha 0,05, mitigados por la condicion 2)
-y fija Bonferroni como endurecimiento SOLO si entran varios cortes a la vez con
-EV marginal. Hoy se evaluan 41 grupos, no ~25, y la evaluacion se repite a
-diario (parada opcional): es un regimen distinto del pre-registrado. Endurecer
-alpha aqui contradiria una decision registrada, asi que no se hace; queda
-anotado para revision humana.
+MULTIPLICIDAD Y MIRADAS REPETIDAS (corregido el 2026-09-04; pre-registro
+docs/research/2026-09-04-preregistro-multiplicidad-del-gate.md, aprobado por el
+operador). El pre-registro del 2026-08-16 asumia ~25 cortes y un solo analisis.
+Ninguna de las dos cosas era cierta: se evaluan 41 cortes y la evaluacion se
+repite a DIARIO. Con K=41 a alpha 0,05, si los 41 fueran nulos, la probabilidad
+de al menos un falso positivo en UNA evaluacion es del 87,8%; y a alpha fijo con
+miradas repetidas el error de tipo I crece sin cota. Ademas el pestillo no
+protegia del falso positivo -- `allowed` se concede el dia que cruza y el
+pestillo se arma al dia SIGUIENTE --, asi que el corte podia llevar stake real
+un dia entero.
+
+Dos reglas, ambas fijadas por test:
+
+1. **Bonferroni**: `alpha_corte = 0,05 / 41 = 0,00122`. Precio, dicho sin
+   adornos: a n=300 el liston sube del 55,0% al 59,0% de aciertos pareados.
+2. **Un solo test de ENTRADA por corte**, en la primera evaluacion con
+   `n >= min_n`. Elimina la parada opcional. La SALIDA sigue siendo diaria: una
+   oportunidad de entrar, vigilancia continua para salir. Un corte que gasta su
+   test sin pasar queda fuera hasta liberacion humana, que devuelve el test y
+   deja decidir otra vez al criterio pre-registrado.
+
+Se fijo mientras los 41 cortes estaban en `muestra_insuficiente`: nadie era
+elegible, asi que el criterio se eligio sin saber quien cruzaria primero. Los
+registros anteriores no traen `entry_test_at`; se leen como "test no consumido",
+que es lo correcto -- ninguno lo habia gastado.
 
 Politica default-deny: sin registro, sin entrada o con evidencia insuficiente,
 stake 0 (flag "prediction_gate"). Criterio completo y criterios de descarte en
@@ -73,7 +90,24 @@ VALIDATION_START = "2026-08-16"
 # Minimo de filas no empatadas por (liga, mercado). Por debajo, el signo es
 # ruido: deny.
 PREDICTION_GATE_MIN_N = 300
-PREDICTION_GATE_ALPHA = 0.05
+
+# Alpha de FAMILIA y reparto Bonferroni (pre-registro 2026-09-04, aprobado por el
+# operador). El pre-registro del 2026-08-16 asumio ~25 cortes y acepto el riesgo
+# de multiplicidad; son 41, y con K=41 a alpha 0,05 la probabilidad de al menos
+# un falso positivo en UNA evaluacion -- si los 41 fueran nulos -- es del 87,8%.
+# Una puerta que el ruido abre con esa probabilidad no es una puerta.
+PREDICTION_GATE_FAMILY_ALPHA = 0.05
+# K se FIJO el 2026-09-04, con los 41 cortes en `muestra_insuficiente`: contar
+# cuantos cortes existen es un hecho de diseno del pipeline, no un resultado --
+# no dice quien gana ni con que p-valor --, asi que fijarlo entonces no favorecio
+# a ninguno. No se re-divide sobre la marcha: eso volveria el umbral dependiente
+# del calendario de temporadas.
+PREDICTION_GATE_K = 41
+PREDICTION_GATE_ALPHA = PREDICTION_GATE_FAMILY_ALPHA / PREDICTION_GATE_K
+# Si el universo crece por encima de esto (+22% sobre K), el criterio se
+# RE-PRE-REGISTRA antes de que ningun corte nuevo sea elegible. No se corrige
+# solo: se avisa, que es lo que este repositorio sabe hacer con los candados.
+PREDICTION_GATE_K_REPREGISTRO = 50
 
 _REQUIRED = ("model_probability", "implied_probability_novig", "price_decimal")
 _TABLE_COLS = ["league", "market", "n", "wins", "p_value", "ev_flat",
@@ -216,7 +250,9 @@ def evaluate_markets(graded: pd.DataFrame, *,
 
 
 def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
-                 now: str) -> tuple[dict[str, dict], list[dict]]:
+                 now: str, *,
+                 min_n: int = PREDICTION_GATE_MIN_N) -> tuple[dict[str, dict],
+                                                              list[dict]]:
     """Fusiona la decision estadistica del dia con el estado previo del pestillo.
 
     Reglas (pre-registro 2026-08-16, criterios de descarte):
@@ -259,9 +295,36 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         was_allowed = bool(prev.get("allowed"))
         stat_allowed = bool(r.allowed)
         stat_reason = str(r.reason)
-        latched = was_latched or (was_allowed and not stat_allowed)
-        if not stat_allowed:
-            reason = stat_reason
+
+        # TEST UNICO DE ENTRADA (pre-registro 2026-09-04). La entrada se decide
+        # UNA vez, en la primera evaluacion en que el corte alcanza `min_n`. Ese
+        # punto de analisis lo determinan los datos pero esta declarado de
+        # antemano, y es lo que elimina la parada opcional: sin esto el gate
+        # reevalua a diario y un corte puede tirar el dado cada dia hasta que le
+        # salga. La SALIDA sigue siendo diaria: una oportunidad de entrar,
+        # vigilancia continua para salir.
+        entry_at = prev.get("entry_test_at")
+        if int(r.n) < min_n:
+            # Aun no elegible: el test NO se consume. Un corte sin muestra no ha
+            # gastado su unica bala.
+            nuevo_entry_at, permitido, razon = entry_at, False, stat_reason
+        elif entry_at is None:
+            # ESTE es el test de entrada. Se consume ahora, pase o no pase.
+            nuevo_entry_at, permitido = now, stat_allowed
+            razon = "" if stat_allowed else stat_reason
+        elif was_allowed:
+            # Ya dentro: se sigue vigilando a diario para poder echarlo.
+            nuevo_entry_at, permitido = entry_at, stat_allowed
+            razon = "" if stat_allowed else stat_reason
+        else:
+            # Gasto su test y no paso. No reentra sin liberacion humana, aunque
+            # los criterios vuelvan a cumplirse: eso es justo lo que seria tirar
+            # el dado otra vez.
+            nuevo_entry_at, permitido, razon = entry_at, False, "agotado_test_unico"
+
+        latched = was_latched or (was_allowed and not permitido)
+        if not permitido:
+            reason = razon
         elif latched:
             reason = "bloqueado_pendiente_revision"
         else:
@@ -269,21 +332,35 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         entry = {
             "n": int(r.n), "wins": int(r.wins), "p_value": float(r.p_value),
             "ev_flat": float(r.ev_flat),
-            "allowed": stat_allowed and not latched, "reason": reason,
+            "allowed": permitido and not latched, "reason": reason,
             "latched": latched,
             "latched_at": (prev.get("latched_at") if was_latched
                            else (now if latched else None)),
+            "entry_test_at": nuevo_entry_at,
         }
         _latch_entry(key, entry, was_latched, reason or stat_reason)
     for key in sorted(set(previous) - seen):
         prev = previous.get(key) or {}
         was_latched = bool(prev.get("latched"))
-        if not (was_latched or prev.get("allowed")):
+        was_allowed = bool(prev.get("allowed"))
+        # El test GASTADO es estado que preservar, igual que el pestillo. Sin
+        # esta tercera condicion el corte se caia del registro entero y al
+        # reaparecer estrenaba test: bastaba con quedarse sin partidos unos dias
+        # para volver a tirar el dado, que es exactamente la puerta trasera que
+        # el pre-registro del 2026-09-04 cierra.
+        gasto_test = bool(prev.get("entry_test_at"))
+        if not (was_latched or was_allowed or gasto_test):
             continue  # sin estado que preservar: ausente = deny, como siempre
+        # Pestillo solo para quien ESTABA DENTRO (o ya lo tenia): no poder
+        # verificar que sigue cumpliendo no es permiso. Quien solo gasto su test
+        # y estaba fuera no necesita pestillo -- ya esta fuera --, y armarselo
+        # ensuciaria el rastro con una transicion que no ocurrio.
+        latched = was_latched or was_allowed
         entry = {
             "n": 0, "wins": 0, "p_value": None, "ev_flat": None,
-            "allowed": False, "reason": "sin_evaluacion", "latched": True,
-            "latched_at": prev.get("latched_at") or now,
+            "allowed": False, "reason": "sin_evaluacion", "latched": latched,
+            "latched_at": (prev.get("latched_at") or now) if latched else None,
+            "entry_test_at": prev.get("entry_test_at"),
         }
         _latch_entry(key, entry, was_latched, "sin_evaluacion")
     return markets, transitions
@@ -337,13 +414,29 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
     bets_dir = Path(bets_dir)
     previous = load_prediction_gate(bets_dir)
     now = datetime.now(timezone.utc).isoformat()
-    markets, transitions = _apply_latch(decided, previous, now)
+    markets, transitions = _apply_latch(decided, previous, now, min_n=min_n)
     for t in transitions:
         log.warning("prediction_gate: pestillo ARMADO para %s|%s (%s); no "
                     "reentra sin liberacion humana (release_prediction_gate_latch).",
                     t["league"], t["market"], t["reason"])
+    # Candado del pre-registro 2026-09-04: K se fijo en 41 y el reparto de alpha
+    # depende de el. Si el universo crece, el criterio hay que re-pre-registrarlo
+    # ANTES de que un corte nuevo sea elegible. No se corrige solo -- se delata,
+    # que es lo que hacen el resto de candados de este repositorio.
+    if len(markets) > PREDICTION_GATE_K_REPREGISTRO:
+        log.warning("prediction_gate: %d cortes evaluados, por encima del limite "
+                    "%d del pre-registro (K=%d). El reparto Bonferroni de alpha "
+                    "se queda corto: RE-PRE-REGISTRAR el criterio antes de que "
+                    "un corte nuevo alcance n>=%d.",
+                    len(markets), PREDICTION_GATE_K_REPREGISTRO,
+                    PREDICTION_GATE_K, min_n)
     payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
+               # Trazabilidad del reparto: sin esto, leyendo el registro no se
+               # puede reconstruir de donde sale un alpha de 0,00122.
+               "family_alpha": float(PREDICTION_GATE_FAMILY_ALPHA),
+               "k_bonferroni": int(PREDICTION_GATE_K),
+               "n_cortes_evaluados": len(markets),
                "validation_start": str(validation_start), "markets": markets}
     path = _write_payload(payload, bets_dir)
     _append_latch_log(transitions, bets_dir)
@@ -375,11 +468,31 @@ def release_prediction_gate_latch(bets_dir: Path, league: str, market: str, *,
         return False
     key = f"{league}|{market}"
     entry = markets.get(key)
-    if not (isinstance(entry, dict) and entry.get("latched")):
+    # Hay DOS formas de quedar fuera sin reentrada automatica, y la liberacion
+    # tiene que cubrir las dos:
+    #   - pestillo armado (entro y se cayo);
+    #   - test unico de entrada gastado sin pasar (pre-registro 2026-09-04).
+    # La segunda NO arma pestillo -- `was_allowed` era False --, asi que exigir
+    # `latched` aqui habria dejado a esos cortes fuera PARA SIEMPRE, sin ningun
+    # mecanismo de revision. Es el agujero que abre la regla del test unico si se
+    # implementa sin mirar a su pareja.
+    if not isinstance(entry, dict):
+        return False
+    bloqueado_por_pestillo = bool(entry.get("latched"))
+    # `and not allowed` no es un detalle: sin el, liberar un corte que esta
+    # DENTRO y sano lo expulsaria y le exigiria volver a pasar su test unico.
+    # Lo caza `test_release_of_an_unlatched_market_is_a_noop`, que ya existia.
+    bloqueado_por_test = (bool(entry.get("entry_test_at"))
+                          and not entry.get("allowed"))
+    if not (bloqueado_por_pestillo or bloqueado_por_test):
         return False
     now = datetime.now(timezone.utc).isoformat()
     entry["latched"] = False
     entry["latched_at"] = None
+    # Devuelve el test de entrada: la siguiente evaluacion con n >= min_n vuelve
+    # a ser SU test unico. La liberacion autoriza la RE-EVALUACION, no la
+    # entrada -- quien decide sigue siendo el criterio pre-registrado.
+    entry["entry_test_at"] = None
     entry["allowed"] = False  # direccion segura: reabre la evaluacion, no la puerta
     entry["reason"] = "liberado_pendiente_reevaluacion"
     _write_payload(payload, bets_dir)

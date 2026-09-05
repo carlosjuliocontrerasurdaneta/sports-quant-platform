@@ -118,6 +118,20 @@ o si ninguno pasa en 90 días, queda registrado aquí de antemano.
   no supera sistemáticamente. Si en la práctica entran varios cortes a la vez con
   EV marginal, se endurecerá a Bonferroni.
 
+  > **SUPERSEDIDO el 2026-09-04** por
+  > `docs/research/2026-09-04-preregistro-multiplicidad-del-gate.md` (aprobado
+  > por el operador). Este párrafo se apoyaba en tres premisas y ninguna
+  > resistió la medición: no son ~25 cortes sino **41** (a α 0,05 eso da un
+  > **87,8 %** de probabilidad de al menos un falso positivo por evaluación, no
+  > «1,25 esperados»); no hay un análisis sino uno **diario**, lo que es parada
+  > opcional y hace crecer el error sin cota; y la independencia de la condición
+  > 2 nunca se comprobó — 8 de 41 cortes tienen EV > 0 y ambas condiciones se
+  > calculan sobre las mismas filas.
+  >
+  > Vigente desde el 2026-09-04: **α_corte = 0,05/41 = 0,00122** y **un solo
+  > test de entrada por corte**, en la primera evaluación con n ≥ 300. La salida
+  > sigue siendo diaria.
+
 ## Lo que esta regla NO promete
 
 Pasar el gate no es rentabilidad garantizada. Es la condición mínima para
