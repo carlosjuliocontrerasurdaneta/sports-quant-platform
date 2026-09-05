@@ -4,7 +4,10 @@ import os
 import time
 
 import pandas as pd
+import pytest
+
 from sqp.domain.models import Event, EventOdds, MarketLine
+from sqp.exceptions import LockNoAdquiridoError
 from sqp.storage.odds_store import COLUMNS, OddsStore, _locked
 
 
@@ -80,15 +83,22 @@ def test_locked_breaks_stale_lock_from_dead_process(tmp_path):
     assert not lock.exists()
 
 
-def test_locked_times_out_and_degrades_without_removing_foreign_lock(tmp_path):
+def test_locked_times_out_without_removing_foreign_lock(tmp_path):
+    """AUD-002: al agotar la espera se LANZA, no se entra sin exclusion.
+
+    Lo que se conserva del contrato viejo es lo importante y sigue igual: el
+    lock AJENO no se borra al salir. Romper el lock de otro seria peor que
+    entrar sin el.
+    """
     target = tmp_path / "odds_x_202607.csv"
     lock = target.with_suffix(target.suffix + ".lock")
     lock.write_text("")  # lock vivo de OTRO proceso (mtime fresco)
     t0 = time.monotonic()
-    with _locked(target, timeout_s=0.4, stale_s=300.0):
-        pass  # degrada: procede sin lock tras el timeout
-    assert time.monotonic() - t0 >= 0.4
-    assert lock.exists()  # el lock ajeno NO se borra al salir
+    with pytest.raises(LockNoAdquiridoError):
+        with _locked(target, timeout_s=0.4, stale_s=300.0):
+            pass
+    assert time.monotonic() - t0 >= 0.4       # espero de verdad
+    assert lock.exists()                       # y no toco el lock ajeno
 
 
 def test_concurrent_appends_do_not_interleave_rows(tmp_path):
@@ -126,7 +136,10 @@ def test_locked_honours_timeout_when_stat_fails_persistently(tmp_path, monkeypat
 
     monkeypatch.setattr(_Path, "stat", _boom)
     t0 = _time.monotonic()
-    with _locked(target, timeout_s=0.2, stale_s=300.0):
-        pass
-    # Degrada (sin lock) pero RETORNA. Antes no llegaba nunca a esta linea.
+    with pytest.raises(LockNoAdquiridoError):
+        with _locked(target, timeout_s=0.2, stale_s=300.0):
+            pass
+    # LANZA (AUD-002) pero RETORNA el control. Lo que este test protege no es el
+    # modo de salida sino que SALGA: antes giraba al 100% de CPU sin llegar
+    # nunca a esta linea.
     assert _time.monotonic() - t0 < 10.0

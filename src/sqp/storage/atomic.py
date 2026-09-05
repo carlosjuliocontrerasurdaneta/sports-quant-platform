@@ -8,13 +8,20 @@ crash mid-write must never leave them truncated (audit 2026-07-24, I-2).
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 
 import pandas as pd
 
 
 def atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
-    tmp = out.with_suffix(out.suffix + ".tmp")
+    # Temporal UNICO por proceso y llamada. Con el nombre fijo `.csv.tmp`, dos
+    # escritores concurrentes sobre el mismo destino compartian temporal: uno
+    # podia renombrar el fichero a medio escribir del otro, y `os.replace` daba
+    # atomicidad sobre datos ya corruptos (Codex, 2026-09-05, AUD-002, causa
+    # raiz secundaria). El lock lo hace improbable, no imposible: hay escritores
+    # que no pasan por `locked`.
+    tmp = out.with_suffix(f"{out.suffix}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
         # ``os.replace`` da ATOMICIDAD (nadie ve un archivo a medias), pero no
         # DURABILIDAD: sin fsync el contenido del temporal puede seguir en cache

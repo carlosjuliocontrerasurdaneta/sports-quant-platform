@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from sqp.storage.atomic import atomic_write_csv
+from sqp.exceptions import LockNoAdquiridoError
 from sqp.storage.lock import locked
 
 
@@ -74,16 +77,87 @@ def test_lock_stale_is_cleared(tmp_path):
         pass
 
 
-def test_lock_timeout_degrades_with_warning(tmp_path, caplog):
-    import logging
-    target = tmp_path / "resource.csv"
-    lock = target.with_suffix(target.suffix + ".lock")
-    lock.write_text("")  # lock que nunca se libera
-    with caplog.at_level(logging.WARNING, logger="sqp.storage.lock"):
-        with locked(target, timeout_s=0.35, stale_s=9999):
-            pass  # degrada en vez de bloquear
-    assert any("degraded" in r.getMessage()
-               for r in caplog.records if r.name == "sqp.storage.lock")
+class TestElTimeoutNoEntraSinLock:
+    """AUD-002 (Codex, 2026-09-05). CONTRATO INVERTIDO.
+
+    Sustituye a `test_lock_timeout_degrades_with_warning`, que fijaba lo
+    contrario: entrar sin exclusion y avisar. El razonamiento era "bloquear el
+    pipeline diario seria peor que el riesgo de intercalado", y tenia un
+    agujero: la degradacion se activa justo cuando HAY contencion -- es decir,
+    cuando el intercalado no es un riesgo teorico sino el escenario en curso.
+    Y el modo de fallo no era un error visible, era una escritura perdida.
+    """
+
+    def test_agotar_la_espera_lanza_en_vez_de_entrar(self, tmp_path):
+        target = tmp_path / "resource.csv"
+        target.with_suffix(target.suffix + ".lock").write_text("")  # nunca se libera
+        entro = False
+        with pytest.raises(LockNoAdquiridoError):
+            with locked(target, timeout_s=0.2, stale_s=9999):
+                entro = True
+        assert not entro, "no se debe ejecutar el cuerpo de la seccion critica"
+
+    def test_una_actualizacion_concurrente_ya_no_se_pierde(self, tmp_path):
+        """La reproduccion del hallazgo, como regresion.
+
+        Antes: A lee "old"; B entra degradado y escribe "new"; A persiste su
+        copia y "new" desaparece. Ahora B no puede entrar, asi que no hay
+        escritura que perder -- y quien no obtiene exclusion se entera."""
+        csv = tmp_path / "candidates.csv"
+        atomic_write_csv(pd.DataFrame([{"pick": "old"}]), csv)
+        with locked(csv):
+            leido_por_A = pd.read_csv(csv)
+            with pytest.raises(LockNoAdquiridoError):
+                with locked(csv, timeout_s=0):
+                    atomic_write_csv(pd.DataFrame([{"pick": "new"}]), csv)
+            atomic_write_csv(leido_por_A, csv)
+        assert pd.read_csv(csv)["pick"].tolist() == ["old"]
+
+    def test_el_lock_huerfano_sigue_rescatando_sin_lanzar(self, tmp_path):
+        """Discriminacion, y la razon de que fallar sea aceptable: un proceso
+        MUERTO no bloquea a nadie, su lock se rompe por antiguedad. La excepcion
+        significa que otro proceso VIVO lo retiene."""
+        import os
+        import time
+        target = tmp_path / "resource.csv"
+        lock = target.with_suffix(target.suffix + ".lock")
+        lock.write_text("")
+        viejo_t = time.time() - 400
+        os.utime(lock, (viejo_t, viejo_t))
+        with locked(target, timeout_s=0.2, stale_s=300):
+            pass   # adquiere rompiendo el huerfano, sin excepcion
+
+    def test_el_timeout_por_defecto_supera_la_seccion_critica_mas_lenta(self):
+        """`revalidate_pitchers` retiene el lock durante `fetch_probables` (MLB
+        Stats API, llamadas de hasta 60 s). Con el timeout en 30 s -- el valor
+        de cuando se degradaba -- dejar de degradar habria convertido en fallo
+        duro lo que antes era una escritura perdida. Y debe seguir MUY por
+        debajo de `LOCK_STALE_S`, que es quien rescata de un huerfano."""
+        from sqp.storage.lock import LOCK_STALE_S, LOCK_TIMEOUT_S
+        assert LOCK_TIMEOUT_S >= 120.0
+        assert LOCK_TIMEOUT_S < LOCK_STALE_S
+
+
+def test_el_temporal_atomico_es_unico_por_proceso(tmp_path, monkeypatch):
+    """Con el nombre fijo `.csv.tmp`, dos escritores sobre el mismo destino
+    compartian temporal: uno podia renombrar el fichero a medio escribir del
+    otro, y `os.replace` daba atomicidad sobre datos ya corruptos. El lock lo
+    hace improbable, no imposible -- hay escritores que no pasan por `locked`."""
+    vistos = []
+    real = pd.DataFrame.to_csv
+
+    def espia(self, path_or_buf=None, *a, **kw):
+        if path_or_buf is not None:
+            vistos.append(Path(path_or_buf).name)
+        return real(self, path_or_buf, *a, **kw)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", espia)
+    destino = tmp_path / "x.csv"
+    atomic_write_csv(pd.DataFrame([{"a": 1}]), destino)
+    atomic_write_csv(pd.DataFrame([{"a": 2}]), destino)
+    assert len(vistos) == 2 and vistos[0] != vistos[1], (
+        f"los dos temporales deben diferir: {vistos}")
+    assert all(n.endswith(".tmp") for n in vistos)
 
 
 def test_atomic_write_csv_fsyncs_before_replace(tmp_path, monkeypatch):
