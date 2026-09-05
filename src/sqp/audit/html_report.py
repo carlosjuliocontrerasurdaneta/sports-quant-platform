@@ -784,6 +784,30 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     return records
 
 
+def _json_para_script(obj) -> str:
+    """JSON seguro para incrustar DENTRO de un `<script>`.
+
+    Serializar a JSON NO es escapar para el contexto HTML: el parser cierra el
+    `<script>` en cuanto ve la secuencia de cierre, este donde este, incluso
+    dentro de una cadena JSON. Un nombre de equipo que llegue del proveedor con
+    una secuencia de cierre seguida de otro script crea un SEGUNDO elemento y su
+    contenido se ejecuta (AUD-003, Codex 2026-09-05, verificado sobre el HTML
+    generado: el parser reconocio dos elementos script).
+
+    Escapar los angulos con secuencias unicode es transparente para
+    `JSON.parse` --producen la misma cadena-- y hace imposible formar una
+    etiqueta. Se escapa tambien el ampersand (evita que una entidad HTML
+    reconstruya la secuencia) y U+2028/U+2029, que son saltos de linea para
+    JavaScript pero no para JSON y romperian el literal.
+    """
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace("&", "\\u0026")
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029"))
+
+
 def html_dashboard(predictions_dir: Path | None = None,
                    bets_dir: Path | None = None,
                    *, make_latest: bool = True,
@@ -820,9 +844,8 @@ def html_dashboard(predictions_dir: Path | None = None,
     # Local generation day: anchors the "Hoy" date pill to the run, not to
     # whenever the file happens to be opened.
     today_local = local_today()
-    payload = json.dumps({"picks": picks, "columns": columns_meta,
-                          "today": today_local, "todos": _todos_records()},
-                         ensure_ascii=False)
+    payload = _json_para_script({"picks": picks, "columns": columns_meta,
+                                 "today": today_local, "todos": _todos_records()})
 
     page = _TEMPLATE.format(
         run_alert=_run_alert_banner(),
@@ -1054,8 +1077,19 @@ function toggleDate(d) {{
   refresh();
 }}
 
+// AUD-003 (Codex, 2026-09-05): SEGUNDO punto de interpretacion de datos. El
+// payload ya no puede romper el <script> (ver `_json_para_script`), pero las
+// dos tablas se construyen con innerHTML, asi que un nombre de equipo con
+// marcado activo volveria a interpretarse como HTML. `esc` lo neutraliza en el
+// embudo por el que pasan los textos no confiables: los formateadores `txt` y
+// las etiquetas de liga. Los numeros no pasan por aqui y las cabeceras salen de
+// COLS/T_COLS, que son nuestros.
+const esc = v => String(v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
 const fmt = {{
-  txt: v => v == null ? "" : v,
+  txt: v => v == null ? "" : esc(v),
   num: v => v == null ? "" : (Math.round(v * 100) / 100).toString(),
   odds: v => v == null ? "" : v.toFixed(2),
   pct: v => v == null ? "" : (v * 100).toFixed(2) + "%",
@@ -1278,8 +1312,8 @@ function tSort(k) {{
   tRefresh();
 }}
 const tFmt = {{
-  txt: v => v == null ? "" : v,
-  lg:  v => labelFor(v),
+  txt: v => v == null ? "" : esc(v),
+  lg:  v => esc(labelFor(v)),
   int: v => v == null ? "" : String(Math.round(v)),
   num: v => v == null ? "—" : (Math.round(v * 100) / 100).toString(),
   odds: v => v == null ? "" : v.toFixed(2),

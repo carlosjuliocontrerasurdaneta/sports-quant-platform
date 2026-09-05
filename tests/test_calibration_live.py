@@ -136,3 +136,43 @@ def test_demo_pipeline_calibrated_equals_estimated_when_disabled():
     c = pd.read_csv(f)
     assert "calibrated_probability" in c.columns
     assert np.allclose(c["calibrated_probability"], c["estimated_probability"])
+
+
+def test_el_cli_calibra_el_mismo_objetivo_que_el_flujo_diario(monkeypatch, tmp_path):
+    """AUD-006 (Codex, 2026-09-05).
+
+    El camino MANUAL ajustaba la curva sobre `model_probability` mientras el
+    DIARIO la ajusta sobre `adjusted_probability` (= `_p_adj`), para los mismos
+    mercados. No es nominal: 2.216 filas del stream graduado tienen las dos
+    columnas distintas. Se intercepta la llamada al entrenador para comprobar
+    QUE columna recibe, sin entrenar ni promover nada.
+    """
+    import importlib.util
+    import sys
+    from pathlib import Path as _P
+
+    import pandas as pd
+
+    ruta = _P(__file__).resolve().parents[1] / "scripts" / "train_calibration.py"
+    spec = importlib.util.spec_from_file_location("train_calibration_probe", ruta)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["train_calibration_probe"] = mod
+    spec.loader.exec_module(mod)
+
+    hist = pd.DataFrame([{
+        "league": "mlb", "market": "h2h", "event_id": "e1", "selection": "A",
+        "line": None, "date": "2026-09-01", "model_probability": 0.4,
+        "adjusted_probability": 0.7, "implied_probability_novig": 0.5,
+        "result": "win"}])
+    visto = {}
+
+    def espia(h, **kw):
+        visto["prob_col"] = kw.get("prob_col")
+        return []
+
+    monkeypatch.setattr(mod, "train_market_calibrators", espia)
+    monkeypatch.setattr(mod, "load_calibration_training_history", lambda: hist)
+    monkeypatch.setattr(sys, "argv", ["train_calibration.py", "--source", "combined"])
+    mod.main()
+    assert visto["prob_col"] == "adjusted_probability", (
+        "el CLI debe calibrar la MISMA variable que sirve produccion")

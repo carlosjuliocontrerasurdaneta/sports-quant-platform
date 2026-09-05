@@ -37,7 +37,18 @@ from sqp.config import ROOT
 # line) -- el mismo lado servido N dias de horizonte es UNA observacion; las
 # dos caras del mercado son DOS --, y sin estas columnas
 # ``train_market_calibrators`` no puede colapsar por unidad (AUD-HIGH-001).
+# `served_at` viaja desde el 2026-09-05 (AUD-004): sin el, el colapso aguas
+# abajo NO puede saber cual es la observacion mas reciente de una unidad. Todas
+# las observaciones del mismo evento comparten `date` -- que es la fecha del
+# PARTIDO --, asi que ordenar por ella deja el desempate al orden de llegada de
+# las fuentes. Reproducido por Codex: 40 unidades con dos observaciones cada una
+# (0,8 generada el 31-ago y 0,2 el 30-ago, ambas del partido del 1-sep)
+# retuvieron las 40 la de 0,2, siendo 0,8 la reciente.
+#
+# Dos semanticas distintas, dos columnas distintas: `date` ordena EVENTOS para
+# el split temporal; `served_at` ordena SERVICIOS dentro de un evento.
 TRAINING_COLS = ["league", "market", "event_id", "selection", "line", "date",
+                 "served_at",
                  "model_probability", "adjusted_probability",
                  "implied_probability_novig", "result"]
 _KEY_COL = "_dedup_key"
@@ -106,6 +117,13 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     # YYYY-MM-DD day may become `date`.
     gd_day = _iso_day(gd)
     out["date"] = gd_day.where(gd_day.notna(), _iso_day(gen))
+    # Instante de generacion normalizado a UTC. Se guarda como texto ISO para
+    # que ordene lexicograficamente igual que cronologicamente y no dependa del
+    # dtype al concatenar fuentes. Sin sello -> NaT -> cadena vacia, que ordena
+    # ANTES que cualquier sello real: una fila sin fecha de servicio nunca gana
+    # el desempate a una que si la tiene.
+    _gen_ts = pd.to_datetime(gen, errors="coerce", utc=True, format="ISO8601")
+    out["served_at"] = _gen_ts.dt.strftime("%Y-%m-%dT%H:%M:%S%z").fillna("")
     if "model_probability" in frame:
         out["model_probability"] = pd.to_numeric(
             frame["model_probability"], errors="coerce")

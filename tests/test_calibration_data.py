@@ -414,3 +414,53 @@ def test_stage_helper_trains_from_settled(tmp_path, monkeypatch):
     assert mlb["trained"] is True
     assert (tmp_path / "models" / "staging").exists()  # candidate was staged
     assert cal._load_method_registry(staging=False) == {}  # staged, not live
+
+
+class TestSeConservaLaObservacionMasReciente:
+    """AUD-004 (Codex, 2026-09-05).
+
+    El colapso promete quedarse con la observacion mas fresca de cada unidad,
+    pero ordenaba por `date` -- la fecha del PARTIDO --, que es IDENTICA para
+    todas las observaciones de un mismo evento. Sin el sello de generacion, el
+    desempate lo decidia el orden de llegada de las fuentes.
+    """
+
+    def _hist(self, orden):
+        """Dos servicios del mismo pick: 0.2 el dia 30, 0.8 el 31. Mismo partido."""
+        import pandas as pd
+        filas = {
+            "vieja": {"generated_at": "2026-08-30T11:00:00+00:00",
+                      "model_probability": 0.2, "adjusted_probability": 0.2},
+            "nueva": {"generated_at": "2026-08-31T11:00:00+00:00",
+                      "model_probability": 0.8, "adjusted_probability": 0.8},
+        }
+        base = {"league": "mlb", "market": "h2h", "event_id": "e1",
+                "selection": "A", "line": None, "game_date": "2026-09-01",
+                "implied_probability_novig": 0.5, "result": "win"}
+        return pd.DataFrame([{**base, **filas[k]} for k in orden])
+
+    def test_la_proyeccion_conserva_el_sello_de_generacion(self):
+        from sqp.calibration.data import TRAINING_COLS, _project_training
+        assert "served_at" in TRAINING_COLS
+        out = _project_training(self._hist(["vieja", "nueva"]))
+        assert out["served_at"].tolist() == sorted(out["served_at"].tolist())
+        assert all(out["served_at"] != "")
+
+    def test_gana_la_mas_reciente_llegue_en_el_orden_que_llegue(self, monkeypatch):
+        """La propiedad que importa: invariancia al orden de las fuentes."""
+        from sqp.calibration.calibrator import train_market_calibrators
+        from sqp.calibration.data import _project_training
+
+        visto = {}
+
+        def espia(df, **kw):
+            visto.setdefault("probs", []).append(sorted(df["probability"].tolist()))
+            raise ValueError("corte deliberado: no se entrena nada")
+
+        monkeypatch.setattr("sqp.calibration.calibrator.train_calibration", espia)
+        for orden in (["vieja", "nueva"], ["nueva", "vieja"]):
+            train_market_calibrators(_project_training(self._hist(orden)),
+                                     min_n=1, prob_col="adjusted_probability")
+        assert visto["probs"] == [[0.8], [0.8]], (
+            f"debe quedar SIEMPRE la de 0.8 (la mas reciente), llego como llego: "
+            f"{visto['probs']}")

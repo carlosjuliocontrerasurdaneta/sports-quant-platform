@@ -79,11 +79,24 @@ def main() -> int:
         log.warning(empty_msg)
         return 1
 
-    # Las fuentes serve-anchored (combined/settled/served) calibran p_model PURO
-    # (pre-blend, el objetivo que sirve daily.py); backtest conserva la semantica
-    # legacy sobre la mezcla estimated_probability.
+    # Las fuentes serve-anchored (combined/settled/served) calibran la creencia
+    # PRE-BLEND que sirve produccion: `adjusted_probability` (= `_p_adj`, modelo
+    # + capa de ajustes), con fallback por fila a `model_probability` para filas
+    # de esquema antiguo -- el fallback lo aplica ya `_project_training`.
+    # Backtest conserva a proposito la semantica legacy sobre la mezcla.
+    #
+    # Decia `model_probability` (AUD-006, Codex 2026-09-05). El contrato de
+    # entrenamiento cambio el 2026-08-23 con la capa de ajustes -- `daily.py`
+    # entrega `_p_adj` a `_decision_probability` y `stage_calibrators_from_settled`
+    # entrena sobre `adjusted_probability` -- y este entrypoint no se actualizo
+    # con el. Resultado: el camino MANUAL ajustaba la curva sobre una variable
+    # distinta de la que aplica el camino DIARIO, para los mismos mercados. No
+    # es nominal: 2.216 filas del stream graduado tienen las dos columnas
+    # distintas. La promocion automatica esta desactivada en el YAML, lo que
+    # acota la exposicion pero no la elimina: una promocion manual instalaria
+    # una curva aprendida sobre otra cosa.
     prob_col = ("estimated_probability" if args.source == "backtest"
-                else "model_probability")
+                else "adjusted_probability")
     results = train_market_calibrators(hist, min_n=args.min_n, prob_col=prob_col)
     trained = [r for r in results if r.get("trained")]
     skipped = [r for r in results if not r.get("trained")]

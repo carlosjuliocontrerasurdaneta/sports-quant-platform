@@ -381,3 +381,50 @@ def test_open_in_browser_is_best_effort(monkeypatch, tmp_path):
         raise RuntimeError("no browser")
     monkeypatch.setattr(html_report.webbrowser, "open", boom)
     assert open_in_browser(target) is False
+
+
+class TestNoSePuedeInyectarMarcadoDesdeLosDatos:
+    """AUD-003 (Codex, 2026-09-05). Dos puntos de interpretacion, dos capas.
+
+    Serializar a JSON NO es escapar para el contexto HTML: el parser cierra el
+    `<script>` en cuanto ve la secuencia de cierre, aunque este dentro de una
+    cadena JSON. Codex lo verifico sobre el HTML generado -- el parser reconocia
+    DOS elementos script, el segundo con contenido del atacante.
+    """
+
+    HOSTIL = "</script><script>window.auditMarker=1</script>"
+
+    def test_el_payload_no_puede_cerrar_el_script(self):
+        from sqp.audit.html_report import _json_para_script
+        out = _json_para_script({"home": self.HOSTIL})
+        assert "<" not in out and ">" not in out
+        assert "</script" not in out.lower()
+
+    def test_el_escape_es_transparente_para_JSON_parse(self):
+        """Si no fuera reversible, el arreglo romperia el tablero: el dato debe
+        llegar IDENTICO a JavaScript, solo que sin poder formar etiquetas."""
+        import json
+
+        from sqp.audit.html_report import _json_para_script
+        obj = {"home": self.HOSTIL, "away": "Red Sox & Co", "n": 3}
+        assert json.loads(_json_para_script(obj)) == obj
+
+    def test_los_separadores_de_linea_de_javascript_tambien_se_escapan(self):
+        """U+2028/U+2029 son salto de linea para JavaScript pero no para JSON:
+        sin escapar romperian el literal de cadena."""
+        from sqp.audit.html_report import _json_para_script
+        out = _json_para_script({"x": "a b c"})
+        assert " " not in out and " " not in out
+
+    def test_las_tablas_escapan_el_texto_al_construir_el_DOM(self):
+        """Segunda capa: las tablas usan innerHTML, asi que el formateador de
+        texto debe escapar. Se comprueba sobre el fuente porque el render es
+        JavaScript y aqui no hay navegador."""
+        from pathlib import Path
+        fuente = (Path(__file__).resolve().parents[1]
+                  / "src/sqp/audit/html_report.py").read_text(encoding="utf-8")
+        assert "const esc = v => String(v)" in fuente
+        assert fuente.count('txt: v => v == null ? "" : esc(v),') == 2, (
+            "los DOS formateadores de texto deben escapar")
+        assert 'txt: v => v == null ? "" : v,' not in fuente, (
+            "queda un formateador que devuelve el valor sin escapar")

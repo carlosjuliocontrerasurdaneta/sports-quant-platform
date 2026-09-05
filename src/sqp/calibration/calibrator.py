@@ -574,9 +574,17 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
         event_ids = [eid if eid not in ("", "nan", "None", "<NA>")
                      else f"__row_{i}"
                      for i, eid in enumerate(raw_event_ids)]
+        # `served_at` decide cual es la observacion MAS RECIENTE dentro de una
+        # unidad; `date` (fecha del PARTIDO) solo ordena eventos para el split
+        # temporal. Confundir las dos semanticas era AUD-004: como todas las
+        # observaciones de un evento comparten `date`, el `.last()` se quedaba
+        # con la que llegara ultima de las fuentes, no con la mas fresca.
+        served = (g["served_at"].astype(str).to_numpy()
+                  if "served_at" in g.columns else np.full(len(g), ""))
         df = pd.DataFrame({"probability": g[prob_col].to_numpy(dtype=float),
                            "won": g["won"].to_numpy(dtype=float),
                            "date": g["date"].astype(str).to_numpy(),
+                           "served_at": served,
                            "event_id": event_ids}).dropna(
                                subset=["probability", "won", "date"])
         n_rows_raw = int(len(df))
@@ -591,9 +599,13 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
                               in zip(event_ids, sel, line)],
                              name="_unit")
             df = (df.assign(_unit=unit.loc[df.index])
-                  .sort_values("date", kind="stable")
+                  # `date` primero para no alterar el orden temporal entre
+                  # eventos; `served_at` como desempate DENTRO de la unidad.
+                  # `stable` conserva el orden de llegada cuando ni siquiera el
+                  # sello desempata, que es el comportamiento previo.
+                  .sort_values(["date", "served_at"], kind="stable")
                   .groupby("_unit", sort=False, as_index=False).last()
-                  .drop(columns="_unit"))
+                  .drop(columns=["_unit", "served_at"]))
         n_events = int(df["event_id"].nunique())
         rec = {"league": str(league), "market": str(market), "n": int(len(df)),
                "n_rows_raw": n_rows_raw,

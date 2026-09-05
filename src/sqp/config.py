@@ -1,5 +1,7 @@
 """Configuration: environment + YAML. No secrets are ever hardcoded."""
 from __future__ import annotations
+
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -337,8 +339,14 @@ class Settings:
         """Fail fast on unsafe or internally inconsistent operator settings."""
         if self.mode not in ("demo", "live"):
             raise ValueError(f"SQP_MODE must be 'demo' or 'live', got {self.mode!r}")
-        if self.bankroll <= 0:
-            raise ValueError("BANKROLL must be > 0")
+        # `math.isfinite` ademas del rango (AUD-005, Codex 2026-09-05):
+        # `float("inf")` es una conversion valida y `inf <= 0` es False, asi que
+        # una banca INFINITA pasaba la validacion. Reproducido: con BANKROLL=inf,
+        # p=0,6 y cuota 2, Kelly devolvia un stake no finito. Un `nan` es peor
+        # todavia -- toda comparacion con el es False, asi que ninguna guarda de
+        # rango lo detiene.
+        if not math.isfinite(self.bankroll) or self.bankroll <= 0:
+            raise ValueError(f"BANKROLL must be a finite number > 0, got {self.bankroll!r}")
         bounded = {
             "KELLY_FRACTION": self.risk.kelly_fraction,
             "MAX_STAKE_PCT": self.risk.max_stake_pct,
