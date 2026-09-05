@@ -263,3 +263,72 @@ def test_settings_revalidation_defaults_and_validation():
         raise AssertionError("validate() debio fallar con window_min=0")
     except ValueError:
         pass
+
+
+class TestLaRedYaNoOcurreBajoElLock:
+    """AUD-002, correccion de fondo (2026-09-05).
+
+    `revalidate_pitchers` retenia el lock de `candidates_<liga>.csv` durante
+    `fetch_probables` -- MLB Stats API, llamadas de hasta 60 s. Mientras el lock
+    degradaba en silencio eso "solo" causaba escrituras perdidas; desde que
+    agotar la espera ABORTA, habria empezado a tumbar al otro escritor.
+    """
+
+    def test_el_fetch_ocurre_con_el_lock_LIBRE(self, tmp_path, monkeypatch):
+        """La propiedad, comprobada por observacion y no leyendo el fuente: se
+        mira si el fichero de lock existe en el instante del fetch."""
+        import pandas as pd
+
+        from sqp.pipeline.revalidation import revalidate_pitchers
+
+        pred = tmp_path / "predictions_mlb.csv"
+        cand = tmp_path / "candidates_mlb.csv"
+        lock = tmp_path / "candidates.lock"
+        inicio = "2099-01-01T12:00:00+00:00"
+        pd.DataFrame([{"event_id": "e1", "start_time": inicio,
+                       "home": "A", "away": "B",
+                       "home_pitcher": "P1", "away_pitcher": "P2"}]
+                     ).to_csv(pred, index=False)
+        pd.DataFrame([{"event_id": "e1", "market": "h2h", "selection": "A",
+                       "line": None, "price_decimal": 2.0, "stake": 10.0,
+                       "generated_at": "2099-01-01T00:00:00+00:00"}]
+                     ).to_csv(cand, index=False)
+
+        lock_visto = {}
+
+        def fetch_espia(day):
+            lock_visto["existia"] = lock.exists()
+            return []
+
+        import datetime as dt
+        ahora = dt.datetime(2099, 1, 1, 11, 0, tzinfo=dt.timezone.utc)
+        revalidate_pitchers(tmp_path, tmp_path, "mlb", now=ahora,
+                            window_min=120, fetch_probables=fetch_espia)
+        assert lock_visto.get("existia") is False, (
+            "el fetch de red se hizo con el lock TOMADO: vuelve a retener la "
+            "seccion critica durante una llamada de hasta 60 s")
+
+    def test_sin_eventos_en_ventana_no_se_consulta_la_red(self, tmp_path):
+        """Se conserva la frugalidad del `if not targets: return` original: si
+        no hay nada que vigilar, no se gasta una llamada."""
+        import datetime as dt
+
+        import pandas as pd
+
+        from sqp.pipeline.revalidation import revalidate_pitchers
+
+        pd.DataFrame([{"event_id": "e1", "start_time": "2099-01-01T12:00:00+00:00",
+                       "home": "A", "away": "B",
+                       "home_pitcher": "P1", "away_pitcher": "P2"}]
+                     ).to_csv(tmp_path / "predictions_mlb.csv", index=False)
+        pd.DataFrame([{"event_id": "e1", "market": "h2h", "selection": "A",
+                       "line": None, "price_decimal": 2.0, "stake": 10.0,
+                       "generated_at": "2099-01-01T00:00:00+00:00"}]
+                     ).to_csv(tmp_path / "candidates_mlb.csv", index=False)
+        llamadas = []
+        # `now` muy anterior: el partido queda FUERA de la ventana de 120 min.
+        revalidate_pitchers(tmp_path, tmp_path, "mlb",
+                            now=dt.datetime(2099, 1, 1, 0, 0, tzinfo=dt.timezone.utc),
+                            window_min=120,
+                            fetch_probables=lambda d: llamadas.append(d) or [])
+        assert llamadas == [], "no debe consultarse la red sin eventos en ventana"

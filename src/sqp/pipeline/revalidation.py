@@ -38,6 +38,7 @@ from sqp.audit.clv_movement import snapshot_consensus_price
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
 from sqp.sports.team_names import normalize_key
+from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.lock import locked
 
 log = get_logger("sqp.revalidation")
@@ -270,21 +271,68 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
     pf = Path(predictions_dir) / f"predictions_{league}.csv"
     if not cf.exists() or not pf.exists():
         return summary
-    # Mismo lock que el pase de precio y el run diario: read-modify-write sobre
-    # candidates_<liga>.csv (auditoria 2026-07-24, I-5). Se mantiene durante el
-    # fetch (MLB Stats API, 1-2 dias) — breve; si otro proceso espera >30 s,
-    # degrada con warning (semantica de sqp.storage.lock).
+    # FASE A -- SIN LOCK: lectura de predictions y consulta de red (AUD-002).
+    #
+    # El fetch vivia DENTRO de la seccion critica, reteniendo el lock de
+    # candidates_<liga>.csv durante llamadas a la MLB Stats API de hasta 60 s.
+    # Mientras el lock degradaba en silencio eso "solo" causaba escrituras
+    # perdidas; desde que agotar la espera ABORTA, habria empezado a tumbar al
+    # otro escritor. La red no necesita exclusion: no toca el fichero.
+    #
+    # `predictions_<liga>.csv` se lee aqui sin lock a proposito: lo escribe
+    # `_finalize` con reemplazo atomico, asi que un lector ve la version vieja
+    # completa o la nueva completa, nunca media. No participa en el
+    # read-modify-write, que es lo unico que el lock protege.
+    try:
+        preds = pd.read_csv(pf)
+    except (pd.errors.EmptyDataError, ValueError):
+        return summary
+    if preds.empty or not {"home_pitcher", "away_pitcher"} <= set(preds.columns):
+        return summary                          # sin linea base (picks pre-feature)
+    pred_by_event = {str(p.event_id): p for p in preds.itertuples()}
+
+    # Dias a consultar, calculados SOLO con predictions: es un superset de los
+    # que necesitaran los targets (que ademas filtran por candidato vigente y
+    # generado hoy). Un dia de mas es una llamada gratuita a una API cacheada;
+    # calcularlo exacto exigiria leer candidates, y eso volveria a meter la red
+    # dentro del lock. Si no hay ningun evento en ventana no se consulta nada,
+    # que conserva la frugalidad del `if not targets: return` original.
+    fetch_days: set[str] = set()
+    for p in pred_by_event.values():
+        st = _parse_utc(str(getattr(p, "start_time", "")))
+        if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
+            continue
+        if (str(getattr(p, "home_pitcher", "") or "") in ("", "nan")
+                and str(getattr(p, "away_pitcher", "") or "") in ("", "nan")):
+            continue
+        day = str(getattr(p, "start_time", ""))[:10]
+        fetch_days.add(day)
+        if (prior := _prior_day(day)) is not None:
+            fetch_days.add(prior)
+    if not fetch_days:
+        return summary
+
+    by_pair: dict[tuple, list[dict]] = {}
+    try:
+        for day in sorted(fetch_days):
+            for g in fetch_probables(day):
+                by_pair.setdefault((nk(g["home"]), nk(g["away"])), []).append(g)
+    except Exception as exc:
+        log.warning("[%s] pitcher revalidation fetch failed (no action): %s",
+                    league, exc)
+        return summary
+
+    # FASE B -- CON LOCK: solo el read-modify-write de candidates_<liga>.csv.
+    # `df` se lee AQUI DENTRO, no antes: si se leyera fuera, otro escritor podria
+    # haberlo cambiado entre la lectura y la escritura y volveriamos a perder su
+    # actualizacion, que es exactamente el defecto que AUD-002 denuncia.
     with locked(Path(predictions_dir) / "candidates"):
         try:
             df = pd.read_csv(cf)
-            preds = pd.read_csv(pf)
         except (pd.errors.EmptyDataError, ValueError):
             return summary
-        if df.empty or "event_id" not in df.columns or preds.empty:
+        if df.empty or "event_id" not in df.columns:
             return summary
-        if not {"home_pitcher", "away_pitcher"} <= set(preds.columns):
-            return summary                      # sin linea base (picks pre-feature)
-        pred_by_event = {str(p.event_id): p for p in preds.itertuples()}
 
         # eventos del dia en ventana con linea base de abridores
         targets: dict[str, tuple] = {}
@@ -305,22 +353,6 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
                 continue                        # sin abridores base: nada que vigilar
             targets.setdefault(str(r.event_id), (p, []))[1].append(idx)
         if not targets:
-            return summary
-
-        fetch_days: set[str] = set()
-        for p, _idxs in targets.values():
-            day = str(getattr(p, "start_time", ""))[:10]
-            fetch_days.add(day)
-            if (prior := _prior_day(day)) is not None:
-                fetch_days.add(prior)
-        by_pair: dict[tuple, list[dict]] = {}
-        try:
-            for day in sorted(fetch_days):
-                for g in fetch_probables(day):
-                    by_pair.setdefault((nk(g["home"]), nk(g["away"])), []).append(g)
-        except Exception as exc:
-            log.warning("[%s] pitcher revalidation fetch failed (no action): %s",
-                        league, exc)
             return summary
 
         df = _prepare_reval_columns(df)
@@ -367,8 +399,11 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
                      len(idxs), eid, detail)
             changed = True
         if changed:
-            tmp = cf.with_suffix(".csv.tmp")
-            df.to_csv(tmp, index=False)
-            tmp.replace(cf)
+            # `atomic_write_csv` y no un temporal a mano: aporta fsync y, sobre
+            # todo, un nombre de temporal UNICO por proceso. El `.csv.tmp` fijo
+            # que habia aqui es la colision que AUD-002 senala como causa raiz
+            # secundaria -- dos escritores podian renombrar el fichero a medio
+            # escribir del otro.
+            atomic_write_csv(df, cf)
     _append_log(log_rows, root)
     return summary
