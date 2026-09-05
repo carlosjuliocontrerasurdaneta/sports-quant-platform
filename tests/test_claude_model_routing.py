@@ -628,3 +628,72 @@ def test_the_pending_marker_covers_every_python_tree_under_test():
         assert f"*{arbol}/*.py" in marcador, (
             f"el centinela de tests no cubre `{arbol}/`, cuyos modulos SI "
             "ejecuta la suite: una edicion ahi cerraria el turno sin gate.")
+
+
+# ---------------------------------------------------------------------------
+# Cuarto escalon del candado de hooks (2026-09-05). Los tres anteriores fijan
+# que el hook EXISTA, que este CABLEADO y que quepa en su TIMEOUT. Faltaba que
+# su emparejamiento de rutas funcione en la plataforma que opera.
+#
+# En Windows el harness pasa la ruta con CONTRABARRA. Tres hooks emparejaban con
+# patrones de barra normal (`*tests/*.py`, `*src/sqp/risk/*`) y por tanto NUNCA
+# disparaban: la revision cruzada de Codex no se lanzo ni una vez, el candado de
+# tests no se armo nunca y `check-secrets` no filtraba por carpeta.
+#
+# Se escondio durante meses porque probarlos a mano con una ruta de barra normal
+# --que el harness no produce jamas-- los daba por buenos. Este test no puede
+# caer en eso: es estructural.
+# ---------------------------------------------------------------------------
+
+BS = chr(92)   # la contrabarra, construida asi para que ninguna
+               # herramienta intermedia se la coma al escribir este fichero
+NORMALIZA_SEPARADOR = '${file//' + BS + BS + '//}'
+
+
+def _bloques_case(texto: str) -> list[str]:
+    """Patrones de cada `case ... in` de un script."""
+    fuera = []
+    for trozo in texto.split("case ")[1:]:
+        cuerpo = trozo.split("esac")[0]
+        fuera.extend(ln.strip() for ln in cuerpo.splitlines()
+                     if ")" in ln and ln.strip().startswith(("*", "[")))
+    return fuera
+
+
+def test_every_hook_matching_on_directories_normalises_the_separator():
+    """Si un hook empareja por CARPETA, debe normalizar el separador primero.
+
+    Un patron con `/` sobre una ruta con `` """ + BS + BS + """ `` no empareja nunca. La regla
+    aplica a la clase: un hook nuevo que empareje por carpeta y se olvide de
+    normalizar queda en rojo aqui, no en produccion seis meses despues.
+    """
+    culpables = []
+    for hook in sorted((ROOT / ".claude/hooks").glob("*.sh")):
+        texto = hook.read_text(encoding="utf-8")
+        patrones = _bloques_case(texto)
+        # Solo importan los que miran CARPETAS. `*.py` a secas no lleva barras y
+        # funciona en las dos plataformas -- por eso `post-edit-format` era el
+        # unico de los cuatro que si corria.
+        por_carpeta = [pat for pat in patrones if "/" in pat]
+        if por_carpeta and NORMALIZA_SEPARADOR not in texto:
+            culpables.append((hook.name, por_carpeta[0][:60]))
+    assert culpables == [], (
+        "hooks que emparejan por carpeta SIN normalizar el separador; en "
+        f"Windows no dispararan nunca: {culpables}")
+
+
+def test_the_normalisation_actually_maps_windows_paths():
+    """Que la regla de arriba no se cumpla con una linea decorativa.
+
+    Se comprueba la semantica de la expansion sobre una ruta real de Windows,
+    sin invocar bash: `subprocess` en esta maquina resuelve el bash de WSL --sin
+    distro instalada-- y eso ya produjo un diagnostico equivocado el 2026-09-05.
+    """
+    import fnmatch
+    # `fnmatchcase` y no `fnmatch`: en Windows este ultimo normaliza el
+    # separador por su cuenta y el test se aprobaria solo, midiendo a fnmatch en
+    # vez de al hook. `case` de bash no normaliza nada: es glob puro.
+    ruta_windows = "C:" + BS + "dev" + BS + "3" + BS + "sqp" + BS + "tests" + BS + "x.py"
+    assert not fnmatch.fnmatchcase(ruta_windows, "*tests/*.py"), (
+        "premisa: sin normalizar, un patron de carpeta NO empareja")
+    assert fnmatch.fnmatchcase(ruta_windows.replace(BS, "/"), "*tests/*.py")

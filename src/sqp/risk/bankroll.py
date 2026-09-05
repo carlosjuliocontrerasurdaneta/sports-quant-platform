@@ -18,11 +18,44 @@ from pathlib import Path
 
 import pandas as pd
 
+from sqp.exceptions import LedgerIntegridadError
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.bankroll")
 
 ADJUSTMENTS_FILE = "bankroll_adjustments.csv"
+
+
+def _exigir_pnl_legible(f: Path, df: pd.DataFrame) -> None:
+    """Un fichero con filas pero sin `pnl` numerico es INDETERMINADO, no cero.
+
+    Cubre la variante SILENCIOSA de AUD-001, encontrada al escribir sus tests y
+    peor que el hallazgo original: **pandas 3.0 no lanza `ParserError` cuando
+    todas las filas traen un campo de mas**. Reinterpreta la primera columna
+    como indice y DESPLAZA el resto, asi que `pnl` pasa a contener lo que habia
+    en `data_label`. Reproducido: dos perdidas de -400 sobre banca 1.000 daban
+    200; con el desplazamiento, `pnl` valia `['real', 'real']`, `to_numeric`
+    los volvia NaN, el `fillna(0.0)` de `realized_pnl` los sumaba como CERO y la
+    banca salia **1.000**. Sin excepcion, sin aviso y sin nada roto a la vista.
+
+    Es el mismo modo de fallo que KI-011 (deriva de esquema que desalinea
+    columnas), pero aguas arriba: alli desalineaba al ESCRIBIR, aqui al LEER.
+
+    No se exige que TODAS las filas tengan `pnl` numerico -- un push o un void
+    legitimo puede traerlo vacio --, solo que al menos una lo tenga. Un fichero
+    con filas y ni un solo `pnl` legible no es un fichero sin movimientos: es un
+    fichero que no sabemos leer.
+    """
+    if "pnl" not in df.columns:
+        raise LedgerIntegridadError(
+            f"{f.name} tiene {len(df)} filas pero ninguna columna 'pnl': el "
+            f"esquema no es el esperado y el saldo no es verificable.")
+    if pd.to_numeric(df["pnl"], errors="coerce").notna().sum() == 0:
+        raise LedgerIntegridadError(
+            f"{f.name} tiene {len(df)} filas y ningun 'pnl' numerico "
+            f"(leido: {df['pnl'].head(3).tolist()}). Sintoma tipico de columnas "
+            f"desplazadas por un campo de mas, que pandas NO senala. El saldo "
+            f"no es verificable.")
 
 
 @dataclass
@@ -35,14 +68,43 @@ class BankrollLedger:
         return self.root / "data" / "bets"
 
     def _settled(self) -> pd.DataFrame:
-        """All settled REAL-money rows across leagues (demo excluded)."""
+        """All settled REAL-money rows across leagues (demo excluded).
+
+        Un fichero ILEGIBLE aborta el calculo con `LedgerIntegridadError`. NO se
+        omite: omitirlo equipara "no se sabe" con "no aporta nada", y en un
+        ledger contable eso no es neutral -- las filas que se dejan de leer son
+        casi siempre PERDIDAS, asi que el saldo SUBE.
+
+        Reproducido (auditoria independiente de Codex, 2026-09-05, AUD-001, y
+        re-reproducido antes de tocar nada): con un `settled_mlb.csv` de PnL
+        -400 sobre banca inicial 1.000, el saldo era 600. Anadiendo una fila con
+        un campo de mas -- lo que produce un `ParserError` -- el saldo pasaba a
+        **1.000: +400 sin deposito ni ganancia**, un 66,7% de capital
+        sobreestimado, sin excepcion ni aviso. Y de ese numero cuelgan el Kelly
+        y el cap de exposicion diaria.
+
+        El fichero NO se toca ni se mueve: se nombra en el error para poder
+        diagnosticarlo. Vaciar o reparar a ciegas destruiria la evidencia.
+        """
         frames: list[pd.DataFrame] = []
         for f in sorted(self._bets_dir.glob("settled_*.csv")):
             try:
                 df = pd.read_csv(f)
-            except (pd.errors.EmptyDataError, pd.errors.ParserError):
-                continue  # empty / corrupt file: skip, do not abort the balance
+            except pd.errors.EmptyDataError as exc:
+                # Un settled_*.csv sin cabecera siquiera es anomalo: `_persist_settled`
+                # siempre escribe cabecera, asi que un frame vacio produce un
+                # fichero CON cabecera y 0 filas, que pandas lee sin error. Cero
+                # bytes significa truncado, no "liga sin apuestas".
+                raise LedgerIntegridadError(
+                    f"{f.name} esta vacio o sin cabecera: el saldo no es "
+                    f"verificable. No se omite porque las filas ilegibles "
+                    f"suelen ser perdidas y omitirlas SUBE la banca.") from exc
+            except pd.errors.ParserError as exc:
+                raise LedgerIntegridadError(
+                    f"{f.name} no es parseable ({exc}): el saldo no es "
+                    f"verificable.") from exc
             if not df.empty:
+                _exigir_pnl_legible(f, df)
                 frames.append(df)
         if not frames:
             return pd.DataFrame(columns=["pnl", "data_label", "result", "stake", "settled_at"])
@@ -63,13 +125,23 @@ class BankrollLedger:
         return float(pd.to_numeric(df["pnl"], errors="coerce").fillna(0.0).sum())
 
     def adjustments_total(self) -> float:
+        """Ajustes manuales (depositos/retiradas). Mismo criterio que `_settled`.
+
+        Ausente SI es cero legitimo -- lo normal es no haber hecho ninguno --,
+        pero ilegible NO: una retirada que no se puede leer infla la banca
+        exactamente igual que una perdida que no se puede leer.
+        """
         path = self._bets_dir / ADJUSTMENTS_FILE
         if not path.exists():
             return 0.0
         try:
             adj = pd.read_csv(path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            return 0.0
+        except pd.errors.EmptyDataError:
+            return 0.0  # existe pero vacio: sin ajustes, que es un cero legitimo
+        except pd.errors.ParserError as exc:
+            raise LedgerIntegridadError(
+                f"{ADJUSTMENTS_FILE} no es parseable ({exc}): el saldo no es "
+                f"verificable.") from exc
         if "amount" not in adj.columns:
             return 0.0
         return float(pd.to_numeric(adj["amount"], errors="coerce").fillna(0.0).sum())
@@ -146,7 +218,20 @@ def apply_dynamic_bankroll(settings, root: Path, mode: str | None) -> float:
     """
     if mode == "demo" or not getattr(settings, "bankroll_dynamic", False):
         return settings.bankroll
-    bal = BankrollLedger(root=root, initial=settings.bankroll).current_balance()
+    try:
+        bal = BankrollLedger(root=root, initial=settings.bankroll).current_balance()
+    except LedgerIntegridadError as exc:
+        # Banca a CERO, no a la cifra estatica. Caer al nominal seria justo el
+        # fallo de AUD-001 por otra puerta: dimensionar sobre un numero que el
+        # ledger ya no respalda, y ademas el MAS ALTO de los dos (el inicial no
+        # descuenta las perdidas ilegibles). Con 0 no se dimensiona ninguna
+        # apuesta -- la lista de picks se sigue generando entera, que es lo que
+        # exige la REGLA FUNDAMENTAL: el gate quita el stake, nunca la lista.
+        log.error("BANCA NO VERIFICABLE: %s. Se dimensiona sobre 0: ninguna "
+                  "apuesta llevara stake hasta que el ledger se repare. El "
+                  "fichero NO se ha tocado, para poder diagnosticarlo.", exc)
+        settings.bankroll = 0.0
+        return 0.0
     log.info("Banca dinamica: inicial %.2f -> balance actual %.2f "
              "(PnL realizado + ajustes).", settings.bankroll, bal)
     if bal <= 0:
