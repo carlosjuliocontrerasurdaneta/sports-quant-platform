@@ -230,3 +230,87 @@ def test_live_current_task_satisfies_its_own_evidence_contract():
     text = (ROOT / ".claude/automation/runtime/current-task.md").read_text(
         encoding="utf-8")
     assert mod.pass_result_missing_evidence(text) == []
+
+
+# ---------------------------------------------------------------------------
+# El CI estuvo ROJO 75 runs seguidos (2026-08-06 a 2026-09-05) y este mismo
+# script contestaba "ok". No fallo la deteccion: nada MIRABA. Estos tests fijan
+# que ahora mira, y --lo que importa mas-- que un CI rojo es ERROR y que "no se
+# pudo comprobar" no se confunde con "esta bien".
+# ---------------------------------------------------------------------------
+
+def _health_con_gh(monkeypatch, *, returncode=0, stdout="", stderr="", boom=None):
+    """Carga el modulo de salud con `gh` simulado."""
+    health = _load_health_module()
+    import subprocess as _sp
+
+    # El ORIGINAL, capturado antes de parchear: `health.subprocess` es el modulo
+    # global, asi que delegar en `_sp.run` dentro del doble se llamaria a si
+    # mismo (RecursionError, visto al escribir esto).
+    real_run = _sp.run
+
+    def fake_run(cmd, *a, **kw):
+        if cmd and cmd[0] == "gh":
+            if boom is not None:
+                raise boom
+            return _sp.CompletedProcess(cmd, returncode, stdout, stderr)
+        return real_run(cmd, *a, **kw)  # git y demas, sin tocar
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    return health
+
+
+def _run_json(conclusion, *, status="completed", created="2026-09-05T07:06:00Z"):
+    return json.dumps([{"conclusion": conclusion, "status": status,
+                        "createdAt": created}])
+
+
+def test_a_red_ci_is_an_error_not_a_warning(monkeypatch):
+    """La decision que este candado protege. Degradarlo a aviso repetiria el
+    fallo en otra forma: con el CI rojo NADA se integra con garantias."""
+    health = _health_con_gh(monkeypatch, stdout=_run_json("failure"))
+    assert health.ci_status()[0] == "failure"
+    report = json.loads(_capturar(health))
+    assert report["facts"]["ci_main"] == "failure"
+    assert any("ROJO" in e for e in report["errors"])
+    assert report["status"] == "error"
+
+
+def test_a_green_ci_raises_nothing(monkeypatch):
+    """Discriminacion: el aviso solo aparece cuando toca."""
+    health = _health_con_gh(monkeypatch, stdout=_run_json("success"))
+    report = json.loads(_capturar(health))
+    assert report["facts"]["ci_main"] == "success"
+    assert not any("CI" in e for e in report["errors"])
+
+
+def test_an_unverifiable_ci_is_not_taken_as_healthy(monkeypatch):
+    """Sin `gh`, sin auth o sin red, la respuesta honesta es "no lo se", no
+    "esta bien". Un health check que calla ante la duda es como el que no
+    miraba."""
+    health = _health_con_gh(monkeypatch, boom=FileNotFoundError("gh"))
+    estado, _ = health.ci_status()
+    assert estado == "no_verificable"
+    report = json.loads(_capturar(health))
+    assert any("sin confirmar" in w for w in report["warnings"])
+
+
+def test_gh_failure_is_unverifiable_not_green(monkeypatch):
+    health = _health_con_gh(monkeypatch, returncode=1, stderr="gh: not logged in")
+    assert health.ci_status() == ("no_verificable", "gh: not logged in")
+
+
+def test_a_running_ci_is_neither_green_nor_red(monkeypatch):
+    health = _health_con_gh(monkeypatch,
+                            stdout=_run_json(None, status="in_progress"))
+    assert health.ci_status()[0] == "en_curso"
+
+
+def _capturar(health) -> str:
+    """`main()` imprime el informe; se captura para poder aseverarlo."""
+    import contextlib
+    import io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        health.main()
+    return buf.getvalue()

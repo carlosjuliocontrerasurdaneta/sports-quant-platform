@@ -44,6 +44,46 @@ def git_output(*args: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def ci_status() -> tuple[str, str]:
+    """Conclusion del ultimo run de CI en `main`, y su fecha.
+
+    Devuelve `("no_verificable", motivo)` cuando no se puede consultar: sin `gh`,
+    sin autenticacion o sin red. **No verificable no es sano** -- el llamador lo
+    reporta como aviso, no lo da por bueno.
+
+    Existe porque el CI estuvo ROJO 75 runs seguidos, del 2026-08-06 al
+    2026-09-05, sin que nada lo dijera. Este script ya era el sitio donde el
+    proyecto pregunta "estoy sano?", y contestaba que si: miraba rutas
+    obligatorias, ficheros sensibles y el arbol de trabajo, pero no la unica
+    puerta que corre la suite en cuatro interpretes y en Linux.
+
+    Es de solo lectura y con timeout: un health check que cuelga es un health
+    check que se deja de correr.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "run", "list", "--branch", "main", "--limit", "1",
+             "--json", "conclusion,createdAt,status"],
+            cwd=ROOT, text=True, capture_output=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return "no_verificable", f"no se pudo consultar gh ({type(exc).__name__})"
+    if result.returncode != 0:
+        motivo = (result.stderr or "").strip().splitlines()
+        return "no_verificable", (motivo[-1] if motivo else "gh devolvio error")
+    try:
+        runs = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return "no_verificable", "respuesta de gh ilegible"
+    if not runs:
+        return "no_verificable", "sin runs de CI en main"
+    run = runs[0]
+    # Un run en curso todavia no concluyo: no es verde ni rojo.
+    if run.get("status") != "completed":
+        return "en_curso", str(run.get("createdAt", ""))[:16]
+    return str(run.get("conclusion") or "?"), str(run.get("createdAt", ""))[:16]
+
+
 _ACTIVE_TASK_STATES = {"active", "in-progress", "in_progress", "running"}
 _TERMINAL_TASK_STATES = {"idle", "closed"}
 
@@ -125,6 +165,18 @@ def main() -> int:
     facts["test_files"] = len(tests)
     if not tests:
         warnings.append("No test_*.py files found")
+
+    ci, cuando = ci_status()
+    facts["ci_main"] = ci
+    facts["ci_main_at"] = cuando
+    if ci == "failure":
+        # ERROR, no aviso. Un CI rojo significa que NADA se puede integrar con
+        # garantias, y durante 75 runs este script contesto "ok" con esa puerta
+        # cerrada. Degradarlo a warning seria repetir el fallo en otra forma.
+        errors.append(f"CI de `main` en ROJO (ultimo run: {cuando}). "
+                      "Nada se integra con garantias hasta arreglarlo.")
+    elif ci in {"no_verificable", "en_curso"}:
+        warnings.append(f"Estado del CI de `main` sin confirmar ({ci}: {cuando})")
 
     current_task = ROOT / ".claude/automation/runtime/current-task.md"
     if current_task.exists():

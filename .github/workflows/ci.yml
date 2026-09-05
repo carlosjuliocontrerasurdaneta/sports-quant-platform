@@ -90,3 +90,53 @@ jobs:
         run: pip install -e ".[dev]" -c requirements.lock
       - name: Pytest
         run: pytest -q
+
+  # El CI estuvo ROJO 75 runs seguidos, del 2026-08-06 al 2026-09-05, y nadie se
+  # entero. No fallo la deteccion -- los 75 runs decian "failure" en su pagina --:
+  # fallo que nada lo LLEVABA a ninguna parte. El workflow no tenia ningun paso
+  # `if: failure()`, nada en el repositorio consultaba el estado de Actions, y la
+  # capa de monitorizacion del proyecto (centinela run_status, banner del
+  # tablero, health_check) vigila el PIPELINE DIARIO, no la puerta de desarrollo.
+  # Un control que solo se descubre roto cuando alguien tropieza con el no es un
+  # control.
+  #
+  # Abre UN issue por periodo rojo, no uno por fallo: con 75 fallos, un issue por
+  # run habria sido 75 issues, que es otra forma de no avisar. Si ya hay uno
+  # abierto con la etiqueta, no hace nada -- ya esta gritando. Al cerrarlo, el
+  # siguiente fallo abre otro.
+  alerta-ci-rojo:
+    needs: [test, test-windows]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Abrir issue si no hay ya uno abierto
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          abiertos=$(gh issue list --repo "$REPO" --label ci-rojo --state open --json number --jq 'length')
+          if [ "$abiertos" != "0" ]; then
+            echo "Ya hay un issue abierto de CI rojo; no se duplica."
+            exit 0
+          fi
+          gh label create ci-rojo --repo "$REPO" --color b60205 \
+            --description "El CI de main esta fallando" 2>/dev/null || true
+          gh issue create --repo "$REPO" --label ci-rojo \
+            --title "CI rojo en main ($(echo "$SHA" | cut -c1-7))" \
+            --body "El workflow de CI ha fallado en \`main\`.
+
+          - Commit: \`$SHA\`
+          - Run: $RUN_URL
+
+          Este issue se abre automaticamente y **solo uno por periodo rojo**.
+          Mientras siga abierto, los fallos posteriores no crean issues nuevos.
+          Cierralo cuando el CI vuelva a verde; si vuelve a romperse, se abrira
+          otro.
+
+          Contexto de por que existe este aviso: el CI estuvo rojo 75 runs
+          seguidos (2026-08-06 a 2026-09-05) sin que nada lo señalara."

@@ -127,3 +127,25 @@ Para cada área indicar:
 |---|---|---|---|---|---|---|
 
 `REVISADA` no debe utilizarse sin indicar al menos el método aplicado y los componentes cubiertos.
+
+## Inventariar un control no es comprobarlo
+
+Para toda área que sea un **control** —CI/CD, hooks, gates, alertas, monitorización, tareas programadas, puertas de calidad— la matriz debe responder **dos** preguntas distintas, y la segunda es la que se olvida:
+
+1. **¿Existe y está bien configurado?** (inventario)
+2. **¿Está pasando ahora mismo?** (estado)
+
+Un área marcada `REVISADA` únicamente por la primera está **incompleta**. Consignar el estado observado, con su fecha y el comando que lo produjo.
+
+> **Por qué existe esta regla.** El CI de este proyecto estuvo **rojo 75 runs consecutivos**, del 2026-08-06 al 2026-09-05. Dos auditorías integrales seguidas —2026-09-03 y 2026-09-04— marcaron `CI/CD` como `REVISADA`: se leyó `ci.yml`, se verificó que la matriz incluye la versión de producción y que el escaneo de dependencias es bloqueante. Todo cierto, y todo sobre el **fichero**. Nadie preguntó si estaba pasando. No se descubrió auditando: se descubrió al empujar y encontrarse la puerta cerrada.
+>
+> Es el mismo error que la auditoría venía denunciando en otras cuatro instancias —hooks escritos sin cablear, un assert por subcadena, un timeout más corto que su trabajo, un alias que no entregaba el modelo declarado— aplicado esta vez a la propia matriz de cobertura. Un control que solo se descubre roto cuando alguien tropieza con él no es un control.
+
+Comprobaciones de estado típicas, todas de solo lectura:
+
+- CI/CD: `gh run list --branch main --limit 1` (o el equivalente del proveedor);
+- hooks: que estén cableados **y** que quepan en su timeout;
+- tareas programadas: última ejecución y su código de salida;
+- gates y alertas: último veredicto emitido y su fecha.
+
+Si el estado no puede consultarse, el área es `REVISADA_PARCIALMENTE` o `NO_VERIFICABLE` con el motivo — nunca `REVISADA`.
