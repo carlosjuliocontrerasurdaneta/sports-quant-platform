@@ -650,6 +650,45 @@ def _run_alert_banner(root: Path | None = None) -> str:
         "</div>")
 
 
+def _estado_por_pick(servido: pd.DataFrame) -> pd.Series:
+    """`estado` de cada fila servida, uniendo lo que solo vive en candidates.
+
+    `candidates_<liga>.csv` contiene las filas que superaron `min_edge` y es
+    donde viven `stake` y `flags`. Se une por la identidad del pick --
+    (event_id, market, selection, line) -- que es la misma clave que usa
+    `picks_vigentes_unicos`.
+
+    Una fila servida que NO aparece en candidates no es un error: es un pick que
+    no llego al suelo de edge. Se marca como tal en vez de esconderse.
+    """
+    vacio = pd.Series("", index=servido.index, dtype=str)
+    # Sin identidad no se puede unir: se degrada a columna vacia en vez de
+    # reventar. Un stream de esquema viejo (o una fixture minima) no debe tumbar
+    # el tablero entero por una columna informativa.
+    if servido.empty or not {"event_id", "market", "selection"} <= set(servido.columns):
+        return vacio
+    try:
+        cand = load_all_candidates(ROOT / "data" / "predictions", generated_day=None)
+    except Exception:
+        return vacio
+    if cand.empty or not {"event_id", "market", "selection"} <= set(cand.columns):
+        return vacio
+
+    def clave(d):
+        ln = pd.to_numeric(d.get("line"), errors="coerce").map(str)
+        return (d["event_id"].astype(str) + "|" + d["market"].astype(str) + "|"
+                + d["selection"].astype(str) + "|" + ln)
+
+    stake = pd.to_numeric(cand.get("stake"), errors="coerce").fillna(0.0)
+    flags = (cand["flags"].fillna("").astype(str) if "flags" in cand.columns
+             else pd.Series("", index=cand.index))
+    etiqueta = pd.Series(
+        [("STAKE %.2f" % v) if v > 0 else (f or "supera min_edge")
+         for v, f in zip(stake, flags)], index=cand.index)
+    mapa = dict(zip(clave(cand), etiqueta))
+    return clave(servido).map(mapa).fillna("bajo min_edge").astype(str)
+
+
 def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     """TODAS las caras priceadas del ultimo run, para la pestana "Todos los Picks".
 
@@ -755,6 +794,22 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     except Exception:
         out["tier"] = ""
         out["motivo"] = ""
+    # UNA SOLA LISTA (operador, 2026-09-05). "Picks del Dia" y "Todos los Picks"
+    # confundian porque NO eran dos listas: la primera era la segunda ya
+    # recortada por `min_edge`. Verificado antes de fundirlas: de los 95 picks
+    # vigentes de candidates, 0 faltaban en el stream servido -- subconjunto
+    # estricto, asi que fundir no pierde ni uno.
+    #
+    # Manda la COMPLETA porque es lo que exige la REGLA FUNDAMENTAL ("todos los
+    # deportes y mercados"): los gates quitan el stake, nunca la lista. Una
+    # vista primaria ya recortada por edge la contradice -- y ese edge se midio
+    # anti-informativo el 2026-08-25.
+    #
+    # Lo que era una PESTANA pasa a ser una COLUMNA: `estado` dice si la fila
+    # supero el filtro de edge y que stake lleva. La distincion no se pierde, se
+    # deja de bifurcar.
+    out["estado"] = _estado_por_pick(df)
+
     # KI-030: un partido YA EMPEZADO no es una oportunidad de ningun tier -- su
     # cuota es EN VIVO, no la que se estimo. Se sobreescribe el tier DESPUES de
     # calcularlo (y tambien en la rama de fallo, de ahi que vaya fuera del try):
@@ -769,14 +824,38 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
             for t in previo[en_juego]]
         out.loc[en_juego, "tier"] = "EN JUEGO"
 
-    out = out[p.notna() & be.notna()].sort_values("prob", ascending=False)
+    # SOLO LOS PARTIDOS DE HOY (operador, 2026-09-05: "no quiero que me des picks
+    # que juegan varios dias despues si no solo los del dia").
+    #
+    # `picks_vigentes_unicos` filtra por VIGENCIA -- todo lo que aun se puede
+    # apostar --, y como el run guarda 7 dias de horizonte eso incluia partidos
+    # de hasta 6 dias despues: el 2026-08-26, de 541 filas solo 105 se jugaban
+    # ese dia. Vigente y "de hoy" no son lo mismo, y mezclarlos es lo que hacia
+    # ilegible la lista.
+    #
+    # La fecha es la del PARTIDO en hora local (`game_date_local`), no la de
+    # generacion ni la UTC del proveedor: un partido nocturno en EEUU empieza
+    # despues de las 00:00Z y en UTC figura como de manana.
+    hoy = local_today()
+    # Si HOY no hay nada, se muestra lo que haya en vez de un tablero en blanco:
+    # esa pantalla vacia es la que hizo creer al operador durante 53 dias que el
+    # sistema no generaba nada. Se avisa en el contador, no se finge que es hoy.
+    # El filtro numerico va PRIMERO: `p`/`be` se calcularon sobre el indice
+    # original, y aplicarlos despues de recortar por fecha desalinea las
+    # mascaras (pandas reindexa y avisa). Recortar por fecha al final opera
+    # sobre un frame ya consistente.
+    out = out[p.notna() & be.notna()]
+    del_dia = out["fecha"].astype(str) == hoy
+    if del_dia.any():
+        out = out[del_dia]
+    out = out.sort_values("prob", ascending=False)
     records: list[dict] = []
     for _, row in out.iterrows():
         rec: dict = {}
         for k in out.columns:
             v = row[k]
             if k in ("fecha", "league", "partido", "market", "seleccion",
-                     "tier", "motivo", "generado"):
+                     "tier", "motivo", "estado", "generado"):
                 rec[k] = "" if pd.isna(v) else str(v)
             else:
                 rec[k] = None if pd.isna(v) else float(v)
@@ -934,8 +1013,7 @@ _TEMPLATE = """<!DOCTYPE html>
 </header>
 {run_alert}
 <nav class="tabs">
-  <div class="tab active" data-tab="picks">Picks del Dia</div>
-  <div class="tab" data-tab="todos">Todos los Picks</div>
+  <div class="tab active" data-tab="todos">Picks del Dia</div>
   <div class="tab" data-tab="audit">Auditoria</div>
   <div class="tab" data-tab="diagnostics">Diagnostico</div>
   <div class="tab" data-tab="patterns">Patrones</div>
@@ -1300,7 +1378,8 @@ const T_COLS = [
   ["seleccion","Seleccion","txt"], ["linea","Linea","num"], ["cuota","Cuota","odds"],
   ["prob","Prob. est.","pct"], ["breakeven","Breakeven","pct"],
   ["margen","Margen","pct"], ["roi_esp","ROI esp.","pct"], ["casas","Casas","int"],
-  ["tier","Tier","txt"], ["generado","Generado","txt"],
+  ["tier","Tier","txt"], ["estado","Estado","txt"],
+  ["generado","Generado","txt"],
 ];
 // Orden por defecto: PROBABILIDAD descendente (regla fundamental del operador).
 // Pinchando una cabecera se reordena -- asi "mayor probabilidad" y "mejor ROI"

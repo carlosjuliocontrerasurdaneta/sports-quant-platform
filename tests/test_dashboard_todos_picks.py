@@ -80,5 +80,13 @@ class TestEstaEnElDashboard:
                               bets_dir=tmp_path / "bets", make_latest=False)
         txt = (tmp_path / "pred" / __import__("os").path.basename(page)).read_text(
             encoding="utf-8")
-        for tab in ("picks", "audit", "diagnostics", "patterns", "history"):
+        # UNA SOLA lista de picks (operador, 2026-09-05). La pestana `picks`
+        # desaparecio al fundirse con `todos`: no eran dos listas, sino una y
+        # su recorte por `min_edge` -- verificado antes de fundirlas, 0 de 95
+        # picks vigentes faltaban en el stream servido. Las demas pestanas
+        # (auditoria, diagnostico, patrones, historial) siguen intactas.
+        for tab in ("todos", "audit", "diagnostics", "patterns", "history"):
             assert f'data-tab="{tab}"' in txt
+        assert 'data-tab="picks"' not in txt, (
+            "la pestana recortada volvio: dos listas de picks confunden, y la "
+            "que manda es la COMPLETA (los gates quitan el stake, no la lista)")
