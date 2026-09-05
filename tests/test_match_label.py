@@ -93,12 +93,33 @@ class TestGameDateLocal:
     local (UTC-4) empieza a las 02:00Z del dia SIGUIENTE, asi que leer esa
     columna en crudo corre el partido un dia."""
 
+    @pytest.fixture(autouse=True)
+    def _zona_fija(self, monkeypatch):
+        """Fija la zona local en UTC-4 para TODA la clase.
+
+        Sin esto la prueba medía la zona del runner, no el comportamiento: en
+        UTC-4 (desarrollo) la conversión difiere de la fecha cruda y los tests
+        pasaban; en UTC (el CI) no hay desfase que detectar y
+        `test_el_tipster_no_depende_de_que_el_llamador_convierta` fallaba con el
+        desconcertante `assert '2026-08-27' != '2026-08-27'`. Llevaba rojo desde
+        el 2026-09-02.
+
+        UTC-4 no es arbitrario: es la zona del ejemplo que motivó esta clase --
+        un WNBA a las 22:00 locales que en UTC cae al día siguiente.
+        """
+        import datetime as _dt
+
+        from sqp.evaluation import labels
+        monkeypatch.setattr(labels, "tz_local",
+                            lambda: _dt.timezone(_dt.timedelta(hours=-4)))
+
     @pytest.fixture
     def nocturno(self) -> pd.DataFrame:
         """Partido de las 22:00 locales: en UTC ya es el dia siguiente."""
         import datetime as _dt
 
-        tz = _dt.datetime.now(_dt.timezone.utc).astimezone().tzinfo
+        from sqp.evaluation import labels
+        tz = labels.tz_local()
         local = _dt.datetime(2026, 8, 27, 22, 0, tzinfo=tz)
         utc = local.astimezone(_dt.timezone.utc)
         return pd.DataFrame({

@@ -65,11 +65,25 @@ def match_label(df: pd.DataFrame, *, fallback: str = "event_id") -> pd.Series:
     return pd.Series("", index=df.index, dtype=str)
 
 
+def tz_local():
+    """Zona horaria LOCAL de la maquina.
+
+    Vive como funcion, y no inline en los tres sitios que la usaban, por la
+    misma razon por la que `picks_vigentes` acepta `ahora`: para que un test
+    pueda fijarla. Sin esto, cualquier prueba de la conversion UTC->local mide
+    en realidad la zona del runner -- y `test_el_tipster_no_depende_de_que_el_
+    llamador_convierta` afirmaba que la fecha convertida DIFIERE de la cruda,
+    lo cual es falso en UTC: pasaba en la maquina de desarrollo (UTC+2) y
+    fallaba en el CI (UTC) desde el 2026-09-02.
+    """
+    return datetime.now(timezone.utc).astimezone().tzinfo
+
+
 def local_today() -> str:
     """Fecha de HOY en hora local, `YYYY-MM-DD`. La pareja de
     `game_date_local`: comparar una contra una fecha UTC volveria a introducir
     el desfase que este modulo existe para eliminar."""
-    return datetime.now(timezone.utc).astimezone().date().isoformat()
+    return datetime.now(timezone.utc).astimezone(tz_local()).date().isoformat()
 
 
 def local_date(valores: pd.Series) -> pd.Series:
@@ -86,7 +100,7 @@ def local_date(valores: pd.Series) -> pd.Series:
     celda vacia no.
     """
     ts = pd.to_datetime(valores, errors="coerce", utc=True)
-    tz = datetime.now(timezone.utc).astimezone().tzinfo
+    tz = tz_local()
     fecha = ts.dt.tz_convert(tz).dt.strftime("%Y-%m-%d")
     return fecha.fillna(valores.astype(str).str[:10]).astype(str)
 
@@ -307,7 +321,7 @@ def game_date_local(df: pd.DataFrame) -> pd.Series:
         # `game_date` crudo del proveedor, que es UTC -- justo el desfase que
         # esta funcion existe para eliminar.
         st = instantes_utc(df["start_time"], index=df.index)
-        tz = datetime.now(timezone.utc).astimezone().tzinfo
+        tz = tz_local()
         fecha = st.dt.tz_convert(tz).dt.strftime("%Y-%m-%d")
     else:
         fecha = pd.Series(pd.NA, index=df.index, dtype="object")

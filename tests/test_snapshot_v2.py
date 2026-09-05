@@ -73,6 +73,15 @@ def _repo(tmp_path: Path) -> Path:
         ("config", "user.email", "t@example.com"),
         ("config", "user.name", "t"),
         ("config", "core.autocrlf", "false"),
+        # Igual que `core.autocrlf`: se fija para que el repo de prueba se
+        # comporte igual en todas las plataformas. Sin esto, en Linux
+        # (`core.fileMode=true` por defecto) git deduce el modo del fichero EN
+        # DISCO y pisa el que se puso en el indice con `update-index --chmod=+x`,
+        # asi que el modo staged salia 100644 y dos tests fallaban SOLO en el
+        # CI. En Windows el defecto ya es `false`, que es exactamente por lo que
+        # en local nunca se vio. Lo que esos tests miden es que el modo del
+        # INDICE sobrevive, no el permiso del sistema de ficheros.
+        ("config", "core.fileMode", "false"),
     ):
         _git(root, *args)
 
@@ -320,7 +329,15 @@ def _rmtree(path: Path) -> None:
         func(target)  # type: ignore[operator]
 
     if path.exists():
-        shutil.rmtree(path, onexc=_clear_readonly)
+        # `onexc` es de Python 3.12; `pyproject` admite >=3.11 y el CI corre la
+        # pata 3.11, donde esto reventaba con TypeError -- no fallo del codigo
+        # bajo prueba, sino del andamio. `onerror` sigue existiendo en 3.12+
+        # (deprecado) pero usarlo alli emitiria DeprecationWarning, asi que se
+        # elige por version en vez de por try/except.
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=_clear_readonly)
+        else:
+            shutil.rmtree(path, onerror=lambda f, t, e: _clear_readonly(f, t, e))
 
     assert not path.exists()
 

@@ -602,6 +602,10 @@ def _repo(tmp_path: Path) -> Path:
         ["init", "-q"],
         ["config", "user.email", "t@example.com"],
         ["config", "user.name", "t"],
+        # Determinismo entre plataformas: en Linux el defecto es `true` y git
+        # deduce el modo del fichero EN DISCO, pisando el que fija el indice.
+        # En Windows ya es `false`, que es por lo que en local nunca se vio.
+        ["config", "core.fileMode", "false"],
     ):
         subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
@@ -743,6 +747,10 @@ def _nested_repo(root: Path, where: str) -> Path:
         ("config", "user.email", "t@example.com"),
         ("config", "user.name", "t"),
         ("config", "core.autocrlf", "false"),
+        # Mismo motivo que `core.autocrlf`: determinismo entre plataformas.
+        # En Linux el defecto es `true` y git deduce el modo del disco,
+        # pisando el del indice (fallo exclusivo del CI).
+        ("config", "core.fileMode", "false"),
     ):
         subprocess.run(["git", *args], cwd=inner, check=True, capture_output=True)
 
