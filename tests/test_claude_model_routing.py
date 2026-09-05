@@ -697,3 +697,28 @@ def test_the_normalisation_actually_maps_windows_paths():
     assert not fnmatch.fnmatchcase(ruta_windows, "*tests/*.py"), (
         "premisa: sin normalizar, un patron de carpeta NO empareja")
     assert fnmatch.fnmatchcase(ruta_windows.replace(BS, "/"), "*tests/*.py")
+
+
+def test_the_codex_review_invocation_does_not_mix_scope_selectors():
+    """`codex review` rechaza combinar un selector de alcance con un [PROMPT].
+
+    `--uncommitted`, `--base` y `--commit` son mutuamente excluyentes con el
+    prompt posicional: juntos abortan con "the argument '--uncommitted' cannot
+    be used with '[PROMPT]'". El hook nacio con esa invocacion invalida y NADIE
+    lo supo, porque ademas nunca llegaba a dispararse (KI-031, separador de
+    rutas). Dos averias apiladas: la de fuera escondia la de dentro, y solo se
+    vio al arreglar la primera.
+
+    Las instrucciones del revisor viven en AGENTS.md, que Codex carga solo; el
+    prompt inline las duplicaba.
+    """
+    hook = (ROOT / ".claude/hooks/crossreview-on-stop.sh").read_text(encoding="utf-8")
+    invocaciones = [ln.strip() for ln in hook.splitlines()
+                    if "codex review" in ln and not ln.lstrip().startswith("#")]
+    assert invocaciones, "el hook dejo de invocar `codex review`"
+    for ln in invocaciones:
+        tiene_alcance = any(f in ln for f in ("--uncommitted", "--base", "--commit", "$alcance"))
+        # Un prompt posicional se reconoce por las comillas tras el subcomando.
+        tiene_prompt = '"' in ln.split("codex review", 1)[1].split("2>&1")[0]
+        assert not (tiene_alcance and tiene_prompt), (
+            f"invocacion invalida, mezcla alcance y prompt: {ln}")

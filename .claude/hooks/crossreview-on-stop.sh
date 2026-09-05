@@ -16,12 +16,32 @@ marker=".claude/.crossreview-pending"
 [ -f "$marker" ] || exit 0
 rm -f "$marker"   # se limpia SIEMPRE, antes de nada: nunca bloquear en bucle
 command -v codex >/dev/null 2>&1 || exit 0
-out=$(codex review --uncommitted \
-  "Revisor independiente segun AGENTS.md. Solo defectos sustantivos: fallos
-   funcionales, fugas temporales, contaminacion train/test, probabilidades
-   invalidas, errores de calibracion o de backtesting, timestamps incorrectos.
-   Usa los estados de evidencia y la severidad de AGENTS.md. Si no hay defectos
-   confirmados, responde PASS." 2>&1) || true
+
+# SIN prompt inline (2026-09-05). `--uncommitted`, `--base`, `--commit` y el
+# [PROMPT] posicional son selectores de ALCANCE mutuamente excluyentes:
+# combinarlos aborta con "the argument '--uncommitted' cannot be used with
+# '[PROMPT]'". Este hook llevaba desde que se escribio con esa invocacion
+# invalida y nunca se supo, porque tampoco llegaba a dispararse (KI-031, bug del
+# separador de rutas). Dos averias apiladas: la de fuera escondia la de dentro.
+#
+# Las instrucciones del revisor NO se pierden: viven en AGENTS.md, que Codex
+# carga solo. El prompt inline las duplicaba, que es justo la deriva entre
+# copias que este repositorio lleva meses pagando.
+
+# QUE revisar. El hook corre en el Stop, y para entonces el trabajo del turno
+# puede estar ya commiteado -- con `--uncommitted` a secas la revision saldria
+# vacia justo en los turnos que mas importan. Se mira si queda algo sin
+# commitear DENTRO del ambito vigilado (el mismo de mark-crossreview-pending);
+# si no, se revisa el ultimo commit. `NOTAS.md` y demas ficheros del operador
+# quedan fuera del ambito a proposito: estan siempre modificados y elegirian
+# `--uncommitted` para siempre.
+pendiente=$(git status --porcelain -- configs src/sqp/risk src/sqp/calibration 2>/dev/null)
+if [ -n "$pendiente" ]; then
+  alcance="--uncommitted"
+else
+  alcance="--commit HEAD"
+fi
+out=$(codex review $alcance 2>&1) || true
 [ -z "${out:-}" ] && exit 0
 { echo "REVISION CRUZADA AUTOMATICA (Codex) sobre los cambios de este turno:"
   echo
