@@ -14,8 +14,14 @@ file=$(printf '%s' "$input" | python -c "import sys,json; print((json.load(sys.s
 # --que el harness no produce nunca-- lo daba por bueno.
 # Se normaliza SOLO para emparejar; $file conserva la ruta original.
 ruta="${file//\\//}"
+# Se excluyen SOLO directorios de datos, que no se versionan. `*.md` estaba en
+# esta lista y no pinta nada aqui: `Obsidian/` (56 ficheros) y `docs/` (35) SI
+# estan rastreados por git, asi que una clave pegada en una nota o en un runbook
+# atravesaba el hook y llegaba al commit (AUD-LOW-002, 2026-09-06). El patron 4
+# de abajo -- tokens con prefijo reconocible, sin nombre de variable -- esta
+# pensado justo para texto en prosa, que es donde una clave se pega sin pensar.
 case "$ruta" in
-  */data/*|*/historical/*|*/exports/*|*/logs/*|*.md) exit 0 ;;
+  */data/*|*/historical/*|*/exports/*|*/logs/*) exit 0 ;;
 esac
 # Tres patrones (auditoria 2026-07-29, S-9: el original exigia comillas, asi que
 # `set ODDS_API_KEY=abc...` en un .bat y `key: valor` en YAML pasaban sin detectar):
