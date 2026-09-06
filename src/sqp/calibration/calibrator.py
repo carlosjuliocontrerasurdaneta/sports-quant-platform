@@ -52,11 +52,30 @@ def _model_path(sport: str, name: str, *, staging: bool = False):
 def _load_calibrator(path_str: str):
     """Load a persisted calibrator once per process (the daily loop applies it
     per candidate). Keyed by absolute path, so a retrain to a new file -- or a
-    test that redirects MODELS_DIR -- is picked up without stale caching."""
+    test that redirects MODELS_DIR -- is picked up without stale caching.
+
+    Devuelve ``None`` cuando el digest del sidecar NO cuadra: el mapa se trata
+    como inexistente y el mercado se sirve EN CRUDO, que es el comportamiento
+    seguro por defecto de todo este modulo. Los tres consumidores ya absorbian
+    ``None`` como "sin modelo legible".
+
+    Hasta el 2026-09-06 avisaba y cargaba igualmente ("loading anyway"), asi que
+    el sidecar no impedia nada: un control cuyo veredicto no cambia lo que pasa
+    despues no es un control (AUD-LOW-001). Y el fichero se abre con
+    ``joblib.load``, que es deserializacion de pickle: un artefacto alterado
+    ejecuta codigo al cargarse, asi que "cargar igualmente" era justo lo que no
+    convenia hacer con el unico indicio de que habia sido alterado.
+
+    Sin sidecar sigue cargando (`_verify_hash` devuelve True): los modelos
+    persistidos antes de que existiera el sidecar no tienen digest y negarles la
+    carga apagaria calibradores sanos."""
     path = Path(path_str)
     if not _verify_hash(path):
-        log.warning("joblib integrity check FAILED for %s — file may have been "
-                    "modified since training; loading anyway", path.name)
+        log.error("INTEGRIDAD: el digest de %s no cuadra con su sidecar .sha256; "
+                  "el fichero ha cambiado desde el entrenamiento. NO se carga: "
+                  "el mercado se sirve en crudo hasta reentrenar o promover uno "
+                  "valido.", path.name)
+        return None
     return joblib.load(path_str)
 
 
@@ -297,6 +316,12 @@ def _write_staging_meta(key: str, *, n_val: int, n_val_events: int) -> None:
 
 
 def _load_staging_meta(key: str) -> dict | None:
+    """Metadatos OOS del candidato staged, o ``None`` si no se pueden leer.
+
+    ``None`` significa "no se sabe", NUNCA "no hace falta comprobarlo": quien lo
+    consume debe DENEGAR. Ver `_motivo_muestra_insuficiente`, que es el unico
+    sitio donde se decide sobre este valor.
+    """
     path = _staging_meta_path(key)
     if not path.exists():
         return None
@@ -304,6 +329,43 @@ def _load_staging_meta(key: str) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _motivo_muestra_insuficiente(key: str, min_n_val: int) -> str | None:
+    """Motivo por el que `key` NO debe promoverse por tamano de muestra, o None.
+
+    DEFAULT-DENY (AUD-MED-002, 2026-09-06, reproducido). El guard estaba escrito
+    `if meta is not None:`, asi que un metadato AUSENTE o ILEGIBLE saltaba la
+    comprobacion entera y el candidato se promovia sin ningun control de
+    muestra. Reproducido con un candidato de UN evento de validacion:
+
+        con meta n_val_events=1 -> rechazado
+        sin fichero de meta     -> PROMOVIDO
+        meta JSON corrupto      -> PROMOVIDO
+
+    Es un default-allow dentro de la unica puerta cuyo proposito declarado es
+    "el guard que habria dejado fuera de produccion al candidato n_val=9 del
+    2026-07-02", y contradice al resto del proyecto: `clv_gate` y
+    `prediction_gate` deniegan por defecto cuando falta el registro.
+
+    La ventana no es teorica: `train_calibration` llama a `_set_best_method`
+    ANTES de `_write_staging_meta`, asi que una interrupcion entre las dos deja
+    exactamente una clave staged sin metadato.
+
+    No lo salta `force`: `force` existe para asumir una muestra fina CONOCIDA,
+    que es un juicio sobre evidencia. Una muestra que no se puede leer no es
+    evidencia -- pero la decision de saltarlo sigue siendo del llamador, que es
+    quien conoce el flag.
+    """
+    meta = _load_staging_meta(key)
+    if meta is None:
+        return (f"metadatos de staging ausentes o ilegibles "
+                f"({_staging_meta_path(key).name}): el tamano de la muestra OOS "
+                f"no es verificable")
+    n_val_events = int(meta.get("n_val_events", meta.get("n_val", 0)))
+    if n_val_events < min_n_val:
+        return f"n_val_events={n_val_events} < min_n_val={min_n_val}"
+    return None
 
 
 def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> None:
@@ -693,7 +755,9 @@ def promote_calibrators(keys: list[str] | None = None,
 
     ``min_n_val`` guards against promoting a calibrator fitted on a tiny
     out-of-sample split (the same guard ``auto_promote_calibrators`` applies).
-    Pass ``force=True`` to override it — but document why.
+    Pass ``force=True`` to override it — but document why. El guard es
+    DEFAULT-DENY: un metadato de staging ausente o ilegible tampoco promueve
+    (AUD-MED-002; ver `_motivo_muestra_insuficiente`).
 
     Un candidato con DEFECTO ESTRUCTURAL (`calibrator_defect`) no se promueve
     NUNCA, ni con ``force``: `force` existe para asumir una muestra fina, que es
@@ -715,13 +779,11 @@ def promote_calibrators(keys: list[str] | None = None,
                         key, defecto)
             continue
         if not force:
-            meta = _load_staging_meta(key)
-            if meta is not None:
-                n_val_events = int(meta.get("n_val_events", meta.get("n_val", 0)))
-                if n_val_events < min_n_val:
-                    log.warning("[%s] skipping promotion: n_val_events=%d < min_n_val=%d "
-                                "(pass force=True to override)", key, n_val_events, min_n_val)
-                    continue
+            motivo = _motivo_muestra_insuficiente(key, min_n_val)
+            if motivo is not None:
+                log.warning("[%s] promocion OMITIDA: %s (pass force=True to "
+                            "override)", key, motivo)
+                continue
         for name in ("iso", "beta"):
             src = _model_path(key, name, staging=True)
             if src.exists():
@@ -894,6 +956,8 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     if not path.exists():
         return probs
     cal = _load_calibrator(str(path))
+    if cal is None:
+        return probs        # digest que no cuadra -> crudo (AUD-LOW-001)
     defecto = structural_defect(cal.predict)
     if defecto is not None:
         log.warning("[%s] calibrador live INVALIDO (%s): se ignora y se sirve "

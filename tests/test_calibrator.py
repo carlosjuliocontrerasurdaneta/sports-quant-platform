@@ -669,6 +669,97 @@ def test_promotion_still_accepts_a_healthy_candidate(tmp_path, monkeypatch):
     assert cal._load_method_registry(staging=False) == {"liga_h2h": "isotonic"}
 
 
+def test_a_tampered_calibrator_is_not_loaded_and_serves_raw(tmp_path, monkeypatch):
+    """AUD-LOW-001. El sidecar .sha256 avisaba y cargaba igualmente ("loading
+    anyway"), asi que su veredicto no cambiaba nada. Ademas `joblib.load` es
+    pickle: cargar un artefacto que se sabe alterado es lo contrario de lo que
+    conviene hacer con esa informacion.
+
+    La direccion segura es la de siempre en este modulo: si el mapa no es
+    fiable, que hable el modelo."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    path = cal._model_path("liga_h2h", "iso")
+    joblib.dump(_ShrinkingCalibrator(), str(path))
+    cal._write_hash(path)
+    cal._set_best_method("liga_h2h", "isotonic")
+
+    probs = np.array([0.20, 0.50, 0.80])
+    calibradas = cal.apply_calibration(probs, sport="liga_h2h", method="auto")
+    assert not np.allclose(calibradas, probs), "sin manipular, el mapa SI se aplica"
+
+    # Se altera el artefacto dejando el sidecar viejo: exactamente el escenario
+    # que el digest existe para detectar.
+    joblib.dump(_ConstantCalibrator(), str(path))
+    cal._load_calibrator.cache_clear()
+
+    assert cal._load_calibrator(str(path)) is None
+    assert np.allclose(cal.apply_calibration(probs, sport="liga_h2h", method="auto"),
+                       probs), "digest que no cuadra -> se sirve en crudo"
+
+
+def test_a_calibrator_without_sidecar_still_loads(tmp_path, monkeypatch):
+    """Contraprueba y compatibilidad: los modelos persistidos antes de que
+    existiera el sidecar no tienen digest, y negarles la carga apagaria
+    calibradores sanos."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    cal._load_calibrator.cache_clear()
+    path = cal._model_path("liga_h2h", "iso")
+    joblib.dump(_ShrinkingCalibrator(), str(path))
+    assert not cal._hash_sidecar(path).exists()
+
+    assert cal._load_calibrator(str(path)) is not None
+
+
+def _stage_healthy_candidate(tmp_path, monkeypatch, key="liga_h2h"):
+    """Candidato staged SANO (pasa `calibrator_defect`), sin metadatos OOS."""
+    import joblib
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    (tmp_path / "staging").mkdir(exist_ok=True)
+    cal._load_calibrator.cache_clear()
+    joblib.dump(_ShrinkingCalibrator(), str(cal._model_path(key, "iso", staging=True)))
+    cal._set_best_method(key, "isotonic", staging=True)
+
+
+def test_promotion_denies_when_the_staging_metadata_is_missing(tmp_path, monkeypatch):
+    """AUD-MED-002. El guard estaba escrito `if meta is not None:`, asi que un
+    metadato AUSENTE saltaba la comprobacion de muestra ENTERA y el candidato se
+    promovia sin ningun control. La ventana es real: `train_calibration` escribe
+    el metodo ANTES que el metadato, y `promote_calibration.py --yes` promueve
+    todo lo staged.
+
+    Un candidato sano pero sin metadato no es "suficientemente validado": es
+    "no se sabe", y eso deniega -- como ya hacen `clv_gate` y `prediction_gate`
+    ante un registro ausente."""
+    _stage_healthy_candidate(tmp_path, monkeypatch)
+    assert not cal._staging_meta_path("liga_h2h").exists()
+
+    assert cal.promote_calibrators() == []
+    assert cal._load_method_registry(staging=False) == {}
+
+
+def test_promotion_denies_when_the_staging_metadata_is_corrupt(tmp_path, monkeypatch):
+    """Misma denegacion por la otra puerta: `_load_staging_meta` devuelve None
+    tanto si el fichero falta como si no parsea, y ambos son "no se sabe"."""
+    _stage_healthy_candidate(tmp_path, monkeypatch)
+    cal._staging_meta_path("liga_h2h").write_text("{corrupto", encoding="utf-8")
+
+    assert cal.promote_calibrators() == []
+    assert cal._load_method_registry(staging=False) == {}
+
+
+def test_force_still_promotes_without_staging_metadata(tmp_path, monkeypatch):
+    """Contraprueba: la denegacion es del guard de MUESTRA, que `force` si puede
+    saltar (a diferencia del defecto estructural). Sin esto, un guard que
+    rechazara siempre pasaria los dos tests de arriba."""
+    _stage_healthy_candidate(tmp_path, monkeypatch)
+
+    assert cal.promote_calibrators(force=True) == ["liga_h2h"]
+    assert cal._load_method_registry(staging=False) == {"liga_h2h": "isotonic"}
+
+
 def test_structural_defect_names_each_failure():
     """Un motivo por condicion: 'invalido' a secas no es auditable."""
     assert cal.structural_defect(lambda x: np.asarray(x, dtype=float)) is None

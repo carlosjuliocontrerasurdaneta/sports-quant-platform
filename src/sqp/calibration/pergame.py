@@ -121,7 +121,13 @@ def _staged_pergame_predict(league: str):
     for name in order:
         path = _cal._model_path(key, name, staging=True)
         if path.exists():
-            return _cal._load_calibrator(str(path)).predict
+            # `None` = el digest del sidecar no cuadra (AUD-LOW-001). Se sigue
+            # al siguiente metodo en vez de reventar con AttributeError; si
+            # ninguno es integro, no hay candidato, que es el valor que esta
+            # funcion ya sabe devolver.
+            modelo = _cal._load_calibrator(str(path))
+            if modelo is not None:
+                return modelo.predict
     return None
 
 
