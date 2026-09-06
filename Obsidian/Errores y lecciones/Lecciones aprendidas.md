@@ -1,7 +1,7 @@
 ---
 tags: [lecciones, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-08
+actualizada: 2026-09-06
 ---
 
 # Lecciones aprendidas
@@ -27,5 +27,11 @@ Principios destilados de la experiencia real del proyecto, en orden de importanc
 9. **Costo antes que convicción.** Verificar endpoints con requests reales antes de asumir (el histórico "401" resultó disponible); autorizar gasto por tramos; lo gratis (forward capture, ESPN, football-data) primero.
 
 10. **Comunicación operativa**: para el usuario, "loops" = solo lo llamado literalmente "Loop", NO los BAT de orquestación (incidente 2026-07-08: borrado excesivo, hubo que restaurar 6 BATs). Ante ambigüedad de alcance destructivo, confirmar el sustantivo exacto.
+
+11. **Un guard bien comentado merece más escepticismo, no menos.** El comentario explica por qué existe la defensa; no dice qué deja pasar. `storage/lock.py` (2026-09-05) y `bankroll.py` (2026-09-06) se dieron por buenos en una lectura línea a línea porque su justificación era convincente: en el primero la degradación se activaba justo cuando había contención, en el segundo `_exigir_pnl_legible` solo rechaza el fichero si NO queda ningún PnL numérico, así que la corrupción PARCIAL lo atraviesa. En ambos casos la pregunta que faltaba era **cuándo se activa**, no **por qué existe**.
+
+12. **Un arreglo cierra el caso que se miró, no el mecanismo.** `FileCache` pasó de `>` a `>=` el 2026-08-05 para que `ttl=0` caducara con edad `0.0`; la edad NEGATIVA quedó abierta y tuvo el CI en rojo desde el 2026-09-05. Su test de borde congela reloj y `mtime` al mismo valor, así que por construcción no puede producir el fallo: cubre el síntoma anterior, no la desincronización que lo causa. Al arreglar un borde, preguntar cuál es la magnitud que se descontroló y acotarla por los dos lados.
+
+13. **Un control cuyo veredicto no cambia lo que pasa después no es un control.** El digest `.sha256` de los calibradores avisaba «integrity check FAILED … loading anyway» y cargaba igual (corregido 2026-09-06). Misma familia que el CI rojo 75 runs sin que nada lo llevara a ninguna parte, y que las tareas programadas fuera de la cadena diaria, cuyo `LastTaskResult` no lee nadie. Al inventariar un control hay que responder dos preguntas, y la segunda es la que se olvida: ¿existe, y **está pasando ahora mismo**?
 
 Relacionado: [[Errores y lecciones/Errores detectados y soluciones]], [[Decisiones/Registro de decisiones]].

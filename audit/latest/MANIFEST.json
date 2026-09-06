@@ -1,143 +1,142 @@
 {
-  "audit_id": "audit-2026-08-30",
-  "started_utc": "2026-08-30T12:20:00Z",
-  "finished_utc": "2026-08-30T14:05:00Z",
+  "audit_id": "audit-2026-09-06",
+  "started_utc": "2026-09-06T12:40:00Z",
+  "finished_utc": "2026-09-06T17:45:00Z",
   "branch": "main",
-  "base_commit": "19b0635",
+  "base_commit": "01993fd",
   "commit_created": false,
+  "pushed": false,
   "python_version": "3.14",
   "platform": "win32",
+  "skills": ["full-audit (fases 0-3)", "audit-remediation (fases 4-5)"],
+  "model": "claude-opus-5",
+
   "git_state_initial": {
-    "modified": 7,
-    "untracked": 5,
-    "note": "arbol ya modificado al abrir: la reestructuracion de la skill full-audit del 2026-08-29 sin commitear, mas un cambio de politica de modelo aplicado a medias en settings.json y docs/MODEL-ROUTING.md que no introdujo esta sesion"
+    "modified": 0,
+    "untracked": 1,
+    "note": "arbol limpio al abrir salvo audit/model_vs_market_20260906.md, generado por el operador a las 09:07 y NO tocado. main iba 1 commit por delante de origin/main (01993fd, sin empujar)."
   },
   "git_state_final": {
-    "modified": 13,
-    "untracked": 5,
-    "note": "NOTAS.md y auditoria-integral-codex.md siguen untracked y no se tocaron"
+    "modified": 28,
+    "untracked": 3,
+    "note": "auditoria-integral-codex.md figura modificado (+439/-235, mtime 10:58) por un proceso EXTERNO de Codex durante la sesion; NO lo toco esta sesion y NO se commitea (regla vigente). audit/model_vs_market_20260906.md sigue sin tocar. Nuevos: Obsidian/Bitacora/2026-09-06.md y tests/test_rest_form_cutoff.py."
   },
+
   "tests_initial": {
-    "passed": 1375,
-    "failed": 3,
-    "skipped": 1,
-    "total": 1379,
-    "duration_s": 1851.08,
-    "note": "2 de los 3 fallos eran una regresion introducida el 2026-08-29 por .claude/loops/audit.md (A-1); el tercero es preexistente (I-1)"
-  },
-  "tests_final": {
-    "passed": 1378,
+    "passed": 1547,
     "failed": 0,
     "skipped": 1,
-    "total": 1379,
-    "duration_s": 910.33,
-    "note": "verde completo tras resolver KI-021 el 2026-08-30 por decision del operador"
+    "total": 1548,
+    "duration_s": 2515.40,
+    "exit_code": 0,
+    "note": "linea base capturada ANTES de tocar nada. La duracion esta inflada por dos suites compitiendo por CPU."
   },
+  "tests_final": {
+    "passed": 1575,
+    "failed": 0,
+    "skipped": 1,
+    "total": 1576,
+    "duration_s": 1067.85,
+    "exit_code": 0,
+    "note": "+28 = exactamente los tests anadidos (1 odds_cache + 5 calibrator + 2 run_status + 20 rest_form_cutoff). Cero regresiones atribuibles."
+  },
+
   "commands_executed": [
-    {
-      "cmd": "git status --short",
-      "result": "12 entradas al abrir"
-    },
-    {
-      "cmd": "git show HEAD:.claude/settings.json",
-      "result": "claude-fable-5 en HEAD; el arbol tiene claude-opus-5"
-    },
-    {
-      "cmd": "pytest tests/ -q (linea base)",
-      "result": "3 failed, 1375 passed, 1 skipped"
-    },
-    {
-      "cmd": "ruff check src scripts tests",
-      "result": "All checks passed!"
-    },
-    {
-      "cmd": "mypy src",
-      "result": "Success: no issues found in 98 source files"
-    },
-    {
-      "cmd": "pip check",
-      "result": "No broken requirements found."
-    },
-    {
-      "cmd": "scripts/health_check.py",
-      "result": "WARN (0 errors, 1 warning)"
-    },
-    {
-      "cmd": "extraccion programatica de bloques '## Common guardrails'",
-      "result": "linea base: 2 bloques distintos, audit.md sin /verification-gate"
-    },
-    {
-      "cmd": "pytest tests/test_claude_system_contract.py -q",
-      "result": "15 passed"
-    },
-    {
-      "cmd": "extraccion programatica (tras el fix)",
-      "result": "1 bloque sobre 11 loops, 0 sin /verification-gate"
-    },
-    {
-      "cmd": "pytest tests/ -q (final)",
-      "result": "1 failed, 1377 passed, 1 skipped"
-    },
-    {
-      "cmd": "barrido de secretos sobre archivos trackeados",
-      "result": "sin coincidencias; solo .env.example esta en git"
-    },
-    {
-      "cmd": "requests.get/post sin timeout en src y scripts",
-      "result": "cero coincidencias"
-    },
-    {
-      "cmd": "pytest tests/ -q (tras resolver KI-021)",
-      "result": "1378 passed, 1 skipped"
-    }
+    {"cmd": "python -m pytest -q -p no:cacheprovider (linea base)", "result": "1547 passed, 1 skipped, exit 0"},
+    {"cmd": "ruff check src scripts tests", "result": "All checks passed!, exit 0"},
+    {"cmd": "mypy src", "result": "no issues found in 98 source files, exit 0"},
+    {"cmd": "gh run list --branch main --limit 5", "result": "ultimo run de main en FAILURE (33994699340)"},
+    {"cmd": "gh run view 33994699340 --log-failed", "result": "test-windows: test_file_cache_roundtrip_and_ttl -> 1 failed, 1546 passed"},
+    {"cmd": "gh issue list --label ci-rojo --state all", "result": "issue #1 OPEN: la alarma automatica SI funciono"},
+    {"cmd": "Get-ScheduledTaskInfo sobre las 5 tareas SQP_*", "result": "SQP_Validate_OOS_Cdev last=2026-09-01 12:00 rc=0x1 next=2026-10-01"},
+    {"cmd": "python scripts/validate_claude_model_routing.py", "result": "OK, exit 0"},
+    {"cmd": "reproduccion FileCache con mtime +0.5s (tmp aislado)", "result": "antes: edad -0.4996, get(ttl=0) devolvia el valor. despues: None"},
+    {"cmd": "reproduccion promote_calibrators (MODELS_DIR redirigido a tmp)", "result": "antes: sin meta y meta corrupto PROMOVIAN. despues: los tres casos deniegan"},
+    {"cmd": "agregado programatico sobre data/odds (33 ligas, solo conteos)", "result": "0 ligas sin cuotas de cierre utilizables"},
+    {"cmd": "pytest tests/test_odds_cache.py", "result": "6 passed, exit 0"},
+    {"cmd": "pytest tests/test_calibrator.py test_calibration_live.py test_pergame_calibration.py test_auto_promote.py test_calibradores_pendientes.py", "result": "74 passed, exit 0"},
+    {"cmd": "pytest tests/test_run_status.py tests/test_health*.py (1a pasada)", "result": "1 failed, 37 passed -- REGRESION_INTRODUCIDA, corregida"},
+    {"cmd": "pytest tests/test_run_status.py tests/test_health*.py (2a pasada)", "result": "40 passed, exit 0"},
+    {"cmd": "pytest tests/test_rest_form_cutoff.py", "result": "20 passed, exit 0"},
+    {"cmd": "pytest tests/test_rest_form_cutoff.py test_backtest_parity.py test_measure_features_harness.py", "result": "37 passed, exit 0"},
+    {"cmd": "hook check-secrets.sh sobre un .md con sk-...", "result": "exit 2 (bloquea)"},
+    {"cmd": "barrido del patron de secretos sobre los 297 .md rastreados", "result": "0 coincidencias: sin falsos positivos"},
+    {"cmd": "validacion estatica de las 7 BAT (etiquetas, goto, etapas, endlocal)", "result": "todas OK"},
+    {"cmd": "comprobacion de mtimes en data/ y logs/", "result": "37 ficheros; todos del SQP_Capture_Close_Cdev programado o del subarbol demo/ de los tests. Aislacion verificada: 11 puntos de lectura usan glob() no recursivo"},
+    {"cmd": "python -m pytest -q -p no:cacheprovider (final)", "result": "1575 passed, 1 skipped, exit 0"}
   ],
-  "tools_unavailable": [
-    "pip-audit"
-  ],
+
+  "tools_unavailable": [],
   "tools_not_run": [
-    "validacion de los .bat operacionales",
-    "backtesting / walk-forward"
+    "lectura de logs/ (denegado por Read(./logs/**)): impide diagnosticar el fallo de VALIDATE_OOS del 2026-09-01",
+    "lectura de .env (denegado por Read(./.env))",
+    "ejecucion real de los .bat (dispararian produccion y consumirian cuota de API)",
+    "docker build (ningun paso de CI lo hace; por eso no se alineo la base a 3.14)",
+    "pip-audit local (evidencia indirecta: las 4 patas del job test pasaron el 2026-09-05)",
+    "medicion del timeout real de codex review (llamada de pago)"
   ],
-  "findings_by_severity": {
-    "CRITICO": 0,
-    "ALTO": 1,
-    "MEDIO": 1,
-    "BAJO": 1,
-    "INFORMATIVO": 2
-  },
+
+  "findings_by_severity": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 3, "LOW": 5, "INFERIDO": 2},
   "findings_by_status": {
-    "corregido": 3,
-    "no_corregido_por_falta_de_evidencia": 1,
-    "sin_accion_cambio_deliberado": 1
+    "corregido": 7,
+    "corregido_parcialmente": 1,
+    "no_corregido_falta_evidencia": 2,
+    "fuera_de_alcance_requiere_autorizacion": 6
   },
+
   "files_modified": [
-    ".claude/loops/audit.md",
-    ".claude/skills/full-audit/references/taxonomy.md",
+    ".claude/hooks/check-secrets.sh",
     ".claude/memory/known-issues.md",
-    "audit/latest/EXECUTIVE_SUMMARY.md",
+    ".gitignore",
+    "BACKFILL_ALL.bat",
+    "CAPTURE_CLOSE.bat",
+    "Dockerfile",
+    "README.md",
+    "REFRESH_ML.bat",
+    "REPO_DESCRIPTION.md",
+    "VALIDATE_OOS.bat",
+    "Obsidian/Errores y lecciones/Lecciones aprendidas.md",
+    "scripts/run_status.py",
+    "src/sqp/audit/html_report.py",
+    "src/sqp/calibration/calibrator.py",
+    "src/sqp/calibration/pergame.py",
+    "src/sqp/features/rest_form.py",
+    "src/sqp/monitoring/health.py",
+    "src/sqp/monitoring/run_status.py",
+    "src/sqp/pipeline/probabilities.py",
+    "src/sqp/providers/odds_cache.py",
+    "src/sqp/storage/lock.py",
+    "tests/test_calibrator.py",
+    "tests/test_odds_cache.py",
+    "tests/test_run_status.py",
     "audit/latest/FINDINGS.md",
-    "audit/latest/VALIDATION.md",
     "audit/latest/CHANGES.md",
-    "audit/latest/QUANT_REVIEW.md",
+    "audit/latest/VALIDATION.md",
     "audit/latest/BACKLOG.md",
-    "audit/latest/MANIFEST.json",
-    ".claude/automation/runtime/current-task.md",
-    "Obsidian/Bitácora/2026-08-30.md",
-    ".claude/skills/full-audit/SKILL.md",
-    ".claude/skills/full-audit/references/phases.md",
-    ".claude/skills/full-audit/references/deliverables.md",
-    ".claude/skills/full-audit/references/project-anchors.md",
-    "audit/full-audit-SKILL-reemplazado-2026-08-30.md",
-    ".claude/automation/MODEL_ROUTING.md",
-    "tests/test_claude_model_routing.py"
+    "audit/latest/MANIFEST.json"
   ],
+  "files_created": [
+    "tests/test_rest_form_cutoff.py",
+    "Obsidian/Bitácora/2026-09-06.md"
+  ],
+  "files_deleted": [],
+  "files_modified_by_third_party": [
+    {"path": "auditoria-integral-codex.md",
+     "note": "+439/-235, mtime 10:58. Reescrito por un proceso EXTERNO de Codex con una auditoria nueva del mismo commit. Leido, NO editado, NO commiteado."}
+  ],
+
   "authorization_required_actions_taken": [],
   "risk_parameters_changed": false,
   "shadow_mode_changed": false,
   "models_promoted": false,
   "paid_api_used": false,
-  "coverage_result": "PARCIAL",
+  "production_touched": false,
+  "scheduled_tasks_touched": false,
+  "deletions_performed": false,
+
+  "coverage_result": "COMPLETA_CON_EXCLUSIONES_DECLARADAS",
   "final_result": "DEGRADED",
-  "final_result_rationale": "Los hallazgos confirmados se corrigieron y KI-021 se cerro por decision del operador: la suite queda completamente verde (1375 -> 1378 aprobados, 3 -> 0 fallos). Sigue siendo DEGRADED y no PASS por una unica limitacion acotada y nombrada: la cobertura es PARCIAL, porque los gates de riesgo y el pipeline diario no recibieron lectura linea a linea. Segun STATES.md una limitacion no critica, acotada y registrada es DEGRADED.",
-  "predictive_edge_demonstrated": false
+  "final_result_rationale": "Los ocho IDs autorizados se trataron y solo ellos. Todos los comandos requeridos terminaron con codigo 0 (pytest 1575/0/1, ruff, mypy), las validaciones especificas de cada hallazgo se ejecutaron, y los artefactos obligatorios estan escritos y son legibles: se cumplen (a), (b) y (c) de PASS segun STATES.md. Es DEGRADED y no PASS por limitaciones acotadas, no criticas y registradas: (1) AUD-LOW-004 quedo corregido PARCIALMENTE -- se corrigio la afirmacion falsa del Dockerfile pero no se alineo su base a 3.14, porque validarlo exige una construccion que ningun paso de CI hace y esta sesion no puede ejecutar; (2) logs/ y .env quedaron EXCLUIDAS por politica de permisos, lo que deja NO_VERIFICABLE la causa raiz del fallo de VALIDATE_OOS del 2026-09-01 (KI-034); (3) los .bat se validaron estaticamente pero no se ejecutaron. Ninguna bloquea el objetivo aprobado, asi que no procede BLOCKED. Ademas queda constancia de que la revision de bankroll.py fue insuficiente: la auditoria independiente de Codex del mismo dia reprodujo alli un HIGH que esta auditoria no encontro (KI-032).",
+  "predictive_edge_demonstrated": false,
+  "profitability_claimed": false
 }

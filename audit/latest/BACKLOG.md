@@ -1,66 +1,105 @@
-# Backlog — Auditoría 2026-08-30
+# Backlog — Auditoría 2026-09-06
 
 Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
 
+## Primera prioridad del próximo ciclo
+
+### B-1 · Los seis hallazgos de la auditoría concurrente de Codex (2026-09-06)
+
+Un proceso externo de Codex reescribió `auditoria-integral-codex.md` durante esta
+sesión con una auditoría nueva del **mismo commit** `01993fd`. Reporta tres HIGH
+y tres MEDIUM, todos `REPRODUCED`. **Quedan fuera de la aprobación de esta
+sesión** («todos los confirmados» se resolvió contra los IDs de *este* informe) y
+requieren aprobación propia.
+
+Se verificó que ninguno colisiona con los parches aplicados (detalle en
+`FINDINGS.md`, sección final).
+
+El más grave, **AUD-20260906-01**, es un hallazgo legítimo que *esta* auditoría
+no encontró: `_exigir_pnl_legible` sólo rechaza el fichero cuando **no queda
+ningún** PnL numérico, así que una corrupción **parcial** atraviesa el
+`fillna(0.0)` y convierte una pérdida en un movimiento de cero. Reproducido por
+Codex: banca 1.000 con dos pérdidas de −400 daba **600** en vez de 200, y
+`apply_dynamic_bankroll` aceptó esa cifra sin lanzar `LedgerIntegridadError`.
+De ese número cuelgan Kelly y el cap de exposición diaria.
+
+**Para cerrarlo:** aprobación explícita de los IDs de Codex.
+
+### B-2 · Causa raíz del fallo de `SQP_Validate_OOS_Cdev` del 2026-09-01
+
+`rc=0x1` observado en el Programador de tareas. `validate_oos.py:main()` devuelve
+1 tanto por excepción no capturada como por la rama benigna «liga sin cuotas de
+cierre». Se comprobó hoy que de **33 ligas descubiertas, 0** carecen de cierre
+utilizable, así que esa rama no lo explicaría hoy.
+
+**Bloqueado por:** `logs/validate_oos.log` está denegado por la política de
+permisos (`Read(./logs/**)` en `.claude/settings.json`).
+
+**Para cerrarlo:** autorización puntual para un `grep -E "Traceback|ERROR"` sobre
+ese log. El aviso ya está arreglado (AUD-MED-003); lo que falta es el
+diagnóstico. La tarea no se reintenta sola hasta el **2026-10-01**.
+
+**Sugerencia aparte:** separar los dos códigos de salida de `validate_oos.py`
+—«nada que validar» no es un fallo— para que el centinela nuevo no marque en rojo
+una condición benigna. Requiere decisión: cambia el contrato de salida del script.
+
 ## Requiere decisión humana
 
-### D-1 · La política de modelo estaba aplicada a medias (I-1) — **CERRADO**
+### B-3 · Base del `Dockerfile`
 
-Resuelto el 2026-08-30 por decisión del operador: Opus 5 en las cuatro puntas.
-Se alinearon `.claude/automation/MODEL_ROUTING.md` y los dos literales de
-`tests/test_claude_model_routing.py`. Suite completamente verde, 1378 passed.
-La jerarquía de capacidad no cambia: `claude-fable-5` sigue siendo el techo y el
-destino de las tareas de máximo razonamiento vía el disparador de escalado.
+La imagen fija `python:3.11-slim`; producción corre 3.14. Se corrigió la
+afirmación falsa (AUD-LOW-004) pero **no** la base: alinearla exige construir la
+imagen para validarla, y ningún paso de CI la construye. Las opciones son
+alinearla a 3.14 y añadir un `docker build` al CI, o dejarla declarada como
+entorno de demo, que es lo que ahora dice.
 
-## Cobertura pendiente (primera prioridad de la próxima auditoría)
+### B-4 · Limpieza de residuo en disco (≈205 MB, todo ignorado por git)
 
-### P-1 · Gates de riesgo sin revisión línea a línea
+Propuesto en el informe de auditoría y **no autorizado**, así que no se tocó:
 
-`src/sqp/risk/prediction_gate.py`, `clv_gate.py`, `degradation.py`, `kelly.py` y
-`bankroll.py` quedaron `PARCIAL`. Con `shadow_mode: false` el sistema dimensiona
-stakes reales, así que son el código con más consecuencia directa sobre el
-capital y deben ser lo primero que se audite completo.
+| ID | Ruta | Categoría | Tamaño |
+|---|---|---|---|
+| CL-01 | `graphify-out/2026-07-08 … 2026-09-05` (39 dirs) | `GENERADO_RECONSTRUIBLE` | ~180 MB |
+| CL-02 | `.codex-tmp/run-2026081*` (20 dirs) | `ELIMINABLE_CONFIRMADO` | 25 MB |
+| CL-03 | `.claude/hooks/__pycache__/` | `OBSOLETO_REEMPLAZADO` | trivial |
 
-### P-2 · Pipeline diario, settlement, features, providers y storage
+`CL-05` (`.claude/reviews/runtime/`, 965 ficheros) y `CL-06`
+(`audit/full-audit-SKILL-reemplazado-2026-08-30.md`) se clasificaron
+`NO_VERIFICABLE` / `CONSERVAR` y **no** entran en ningún plan de borrado.
 
-`PARCIAL`. Los hotspots por `git log` desde la última auditoría persistida son
-`audit/html_report.py` (21 commits), `pipeline/daily.py` (19),
-`configs/default.yaml` (17), `config.py` (16), `calibration/calibrator.py` (9),
-`features/rest_form.py` (8) y `scripts/daily_picks.py` (8). Empezar por ahí.
+## Inferidos: falta evidencia
 
-### P-3 · Divergencia efectiva `.env` ↔ YAML no verificada
+### B-5 · AUD-INF-001 · Carrera del lock huérfano
 
-Existe el mecanismo (`_warn_risk_divergence`, `config.py:68`) pero no se
-comprobó su salida real, porque `.env` no es legible bajo la política de
-permisos. Cerrarlo requiere ejecutar una carga de configuración que reporte
-divergencias sin exponer valores.
+`storage/lock.py` rompe un `.lock` a los 300 s y el titular, al salir, hace
+`unlink()` sin comprobar que siga siendo suyo. No se encontró ninguna sección
+crítica capaz de superar 300 s desde que `d27fdd4` sacó la red fuera.
 
-### P-4 · Backtesting y walk-forward
+**Para cerrarlo:** medir la duración real de la retención del lock en producción.
+Si ninguna se acerca a 300 s, se descarta; si alguna lo hace, es HIGH.
 
-`COBERTURA_NO_VERIFICABLE` en esta auditoría. Requiere corridas largas.
+### B-6 · AUD-INF-002 · Temporales de nombre fijo
 
-### P-5 · Scripts `.bat` sin validación
+`clv_gate.write_clv_gate` y los dos escritores de `promotion_log.csv` usan
+`with_suffix(".tmp")` fijo, patrón que `atomic_write_csv` abandonó por colisión
+entre escritores concurrentes. Hoy los escribe un único proceso diario.
 
-Ocho `.bat` operacionales en la raíz. Ni `ruff`, ni `mypy`, ni `pytest` los
-cubren, y `RUN_DIARIO_ALL.bat` orquesta el run de producción. No existe
-comprobación automática de que su encadenamiento siga siendo correcto.
+**Para cerrarlo:** decidir si se unifican con el patrón de `atomic_write_csv`
+(temporal único por proceso y llamada) por prevención, o se documenta que son
+escritores únicos.
 
-### P-6 · `pip-audit` no ejecutado
+## Cobertura pendiente
 
-No está instalado en este entorno. Instalarlo sería modificar dependencias, que
-la fase de diagnóstico prohíbe. La auditoría del 2026-08-04 sí lo corrió
-("No known vulnerabilities found"), pero eso fue hace 179 commits.
+### B-7 · Áreas excluidas por política de permisos
 
-## No accionable, en seguimiento
+`logs/` y `.env` quedaron `EXCLUIDA`. La coherencia `.env` ↔
+`configs/default.yaml` no pudo verificarse directamente; el mecanismo que la
+vigila (`_warn_risk_divergence`) existe y se ejecuta en cada `Settings.load()`,
+pero su veredicto vive en el log.
 
-### B-1 · Revalidación del registro live con historial vacío
+### B-8 · Presupuesto del hook de revisión cruzada
 
-`INFERIDO`, confianza BAJA. Ver `FINDINGS.md`. No se corrige por falta de
-evidencia observada.
-
-### 152 filas servidas irrecuperables
-
-Acumulado histórico fuera de la ventana de scores del proveedor. El propio
-health check lo declara no accionable y lo registra para seguimiento. Cerrarlo
-exigiría backfill con consumo de cuota de API, que es una acción sujeta a
-aprobación.
+`crossreview-on-stop.sh` tiene un timeout de 600 s y no se ha medido cuánto tarda
+`codex review` en este repositorio. Es el mismo tipo de brecha que AUD-HIGH-001
+del 2026-09-04 (un hook cuyo trabajo no cabía en su timeout). Medirlo consume una
+llamada de pago, así que requiere autorización.

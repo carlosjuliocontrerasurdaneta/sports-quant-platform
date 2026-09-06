@@ -1,137 +1,163 @@
-# Validación — Auditoría 2026-08-30
+# Validación — Auditoría 2026-09-06 y su remediación
 
-Códigos de salida reales. Ningún resultado se declara sin haberlo ejecutado.
+Clasificación: `PASO` / `FALLO` / `FALLO_PREEXISTENTE` / `REGRESIÓN_INTRODUCIDA` /
+`NO_EJECUTADA`. Se registra el **código de salida real**.
 
-## Matriz de cobertura
+Línea base capturada **antes** de tocar nada: `1547 passed, 1 skipped` en
+2515,40 s, exit 0.
 
-| Área | Estado | Método | Limitación |
+---
+
+## 1. Matriz de cobertura de la auditoría
+
+| Área | Prio | Estado | Componentes | Método | Validación | Limitaciones |
+|---|---|---|---|---|---|---|
+| Arquitectura y límites | P0 | REVISADA | capas de `src/sqp` | lectura dirigida + llamadores | `mypy src` exit 0 | — |
+| Riesgo y staking | P0 | REVISADA | kelly, bankroll, edge, caps de exposición | lectura + llamadores | tests dirigidos | **insuficiente**: no se ejerció la condición de disparo de `_exigir_pnl_legible` (ver §5) |
+| Cuotas / no-vig | P0 | REVISADA | `markets/{odds,vig,edge}` | lectura + guards de finitud | suite completa | — |
+| Calibración y promoción | P0 | REVISADA | `calibration/calibrator.py`, `pergame.py` | lectura + **reproducción controlada** | 74 tests dirigidos, exit 0 | — |
+| Gates (CLV / prediction / degradación) | P0 | REVISADA | `risk/*_gate.py`, `daily._zero_stake_flag` | lectura + precedencia | suite | — |
+| Liquidación | P0 | REVISADA | `settlement/{settle,runner}.py` | lectura del grading | suite | — |
+| Persistencia y concurrencia | P0 | REVISADA | `storage/{atomic,lock,served_store}` | lectura + llamadores de `locked()` | suite | fsync de directorio (POSIX) no cubierto |
+| Fuga temporal / features | P0 | REVISADA | `features/rest_form.py`, `roi_engine._prior_games` | contrato + inspección de ambos llamadores | 20 tests nuevos, exit 0 | — |
+| Pipeline diario | P0 | REVISADA | `daily.py`, `probabilities.py`, `revalidation.py` | lectura + diff del último commit | suite | — |
+| Integración proveedores | P1 | REVISADA | `providers/odds_api.py` + caché | lectura de retry/timeout/redacción | reproducción de caché | — |
+| **CI/CD (fichero + estado)** | P1 | REVISADA | `ci.yml`, runs de `main` | lectura + `gh run list/view` | **ROJO** (run 33994699340) | — |
+| **Tareas programadas (fichero + estado)** | P1 | REVISADA | 5 tareas `SQP_*` | `Get-ScheduledTaskInfo` | `SQP_Validate_OOS_Cdev` rc=0x1 | — |
+| **Hooks (cableado + presupuesto)** | P1 | REVISADA_PARCIALMENTE | 7 hooks + `settings.json` | lectura + tests de contrato | 40 tests, exit 0 | el timeout real de `codex review` no se midió (llamada de pago) |
+| Configuración | P1 | REVISADA | `configs/*.yaml`, `Settings.validate` | lectura + rangos | suite | `.env` EXCLUIDA |
+| Dependencias | P1 | REVISADA | `pyproject`, `requirements.lock` | coherencia + `pip-audit` en CI | patas 3.11/3.13/3.14 verdes el 2026-09-05 | `pip-audit` no re-ejecutado localmente |
+| Seguridad | P1 | REVISADA | secretos, redacción, hook, dashboard | grep + lectura de escapes | 0/297 `.md` con coincidencia | — |
+| Pruebas | P1 | REVISADA | 1395 funciones, 4 skips | ejecución completa | ver §2 | 224 `slow` fuera del hook local (deliberado) |
+| Sistema de Skills/instrucciones | P1 | REVISADA | `.claude/**` | inventario + integridad de referencias | validador de routing exit 0 | — |
+| Docker | P2 | REVISADA | `Dockerfile`, `Makefile` | lectura | **CI no lo construye** | imagen no construida |
+| Documentación | P2 | REVISADA | README, REPO_DESCRIPTION, docs/, Obsidian | contraste con el código | 7 desviaciones halladas | — |
+| Limpieza / residuos | P2 | REVISADA | `graphify-out`, `.codex-tmp`, caches | `du`, `git check-ignore`, historial | — | ninguna eliminación autorizada |
+| `logs/` | P1 | **EXCLUIDA** | — | — | — | denegado por `Read(./logs/**)` |
+| `.env` | P0 | **EXCLUIDA** | — | — | — | denegado por `Read(./.env)` |
+| Datos operativos (contenido) | P1 | REVISADA_PARCIALMENTE | `data/odds` | agregado programático (33 ligas) | 0 sin cierre utilizable | prohibido cargar datasets a contexto |
+
+---
+
+## 2. Comandos ejecutados
+
+### Línea base (antes de corregir)
+
+| Comando | Propósito | Salida | Clase |
 |---|---|---|---|
-| Contratos de `.claude` (loops, routing, skills) | `REVISADA` | Lectura completa + los 15 tests de `test_claude_system_contract.py` + extracción programática de los bloques de guardarraíles | — |
-| Calibración (camino de servicio) | `REVISADA` | Lectura de `calibrator.py` (criterio estructural, `revalidate_live_registry`, `promote_calibrators`) + trazado de la cadena del run diario | Sin ejecución del pipeline real: no se consumió cuota de API |
-| Cuotas y edge | `REVISADA` | Lectura de `markets/odds.py`, `markets/edge.py` y de todos los consumidores de `is_usable_price` | — |
-| Seguridad (secretos, timeouts, `.env`) | `REVISADA` | Barrido sobre archivos trackeados + verificación de `requests.get/post` sin `timeout` | — |
-| Dependencias | `REVISADA` | `pip check` | `pip-audit` `NO_EJECUTADA` (no instalado en este entorno) |
-| Calidad estática de `src`, `scripts`, `tests` | `REVISADA` | `ruff check`, `mypy src` | — |
-| Suite de pruebas | `REVISADA` | `pytest tests/ -q` completo, antes y después | 30:51 por ejecución |
-| Configuración de riesgo | `PARCIAL` | Lectura de `configs/default.yaml` y de la detección de divergencia en `config.py` | `.env` no es legible por política de permisos: la divergencia efectiva `.env`↔YAML no se verificó, sólo la existencia del mecanismo que la vigila |
-| Gates de riesgo (`prediction_gate`, `clv_gate`, `degradation`, `kelly`, `bankroll`) | `REVISADA` (2026-08-31) | Lectura completa de los 5 módulos (708 líneas) + los 11 consumidores + reproducción controlada de 3 comportamientos + corroboración sobre el registro vivo del gate | No se ejecutó el pipeline real (no se consumió cuota de API); los `.bat` siguen sin validación |
-| Settlement — grading (`settlement/settle.py`) | `REVISADA` (2026-08-31) | Lectura completa + verificación empírica del guard de `away` (845 filas) y del cableado de `three_way` | — |
-| Persistencia — atomicidad y locking (`storage/atomic.py`, `storage/lock.py`) | `REVISADA` (2026-08-31) | Lectura completa + inspección de las 6 secciones críticas que usan `locked()` | — |
-| Pipeline diario (`daily.py`, `probabilities.py`, `budget.py`) | `REVISADA` (2026-08-31, it. 3) | Lectura línea a línea (1.122 líneas) + reproducciones en memoria + revalidación propia del hallazgo ALTO (N-A-4) contra `tests/test_daily_exposure.py:120-129` | No se ejecutó el pipeline real: no se consumió cuota de API |
-| Settlement (`runner.py`, `backfill_teams.py`) y `revalidation.py` | `REVISADA` (2026-08-31, it. 3) | Lectura línea a línea (764 líneas) + reproducciones + agregados de solo lectura sobre `data/bets` y `data/historical` + revalidación propia de N-A-3 sobre `runner.py:389-406` | `logs/` no legible por política de permisos: no se pudo confirmar si N-A-3, N-M-10 o N-M-12 ya se manifestaron |
-| Resto de `storage/` y captura (`closing_capture`, `intraday_scan`, `cleanup`) | `REVISADA` (2026-08-31, it. 3) | Lectura línea a línea (1.106 líneas) + 9 reproducciones en directorio temporal del sistema + revalidación propia de N-A-1 (vía `settle.py:86-95`), N-A-2 (`served_store.py:99-139`) y N-A-5 (medición sobre `data/calibration`) | Frecuencia real de N-M-19/20/21 y N-M-22 no cuantificada sobre `data/historical` |
-| Scripts `.bat` operacionales (8) | `REVISADA` (2026-08-31, it. 3) | Lectura completa de los 8 | Revisión estática: no se ejecutó ninguno (dispararían el pipeline real y consumirían cuota) |
-| Features, providers, adaptadores por deporte | `PARCIAL` | Leídos como contexto para verificar hallazgos del pipeline; sin lectura línea a línea propia | No auditados como alcance primario en ninguna iteración |
-| Backtesting y walk-forward | `COBERTURA_NO_VERIFICABLE` | — | No ejecutado: requiere corridas largas y datos que no se cargaron |
-| `data/`, `logs/`, `historical/`, `exports/` | `EXCLUIDA` | — | Prohibido por `CLAUDE.md` y por el `deny` de `settings.json` |
+| `python -m pytest -q -p no:cacheprovider` | línea base | `1547 passed, 1 skipped` en 2515,40 s, **exit 0** | `PASO` |
+| `ruff check src scripts tests` | lint | `All checks passed!`, **exit 0** | `PASO` |
+| `mypy src` | tipos | `no issues found in 98 source files`, **exit 0** | `PASO` |
+| `gh run list --branch main --limit 5` | **estado** del CI | último run `failure` | `FALLO_PREEXISTENTE` |
+| `gh run view 33994699340 --log-failed` | causa | `test_file_cache_roundtrip_and_ttl` → `1 failed, 1546 passed` | `FALLO_PREEXISTENTE` |
+| `gh issue list --label ci-rojo` | ¿avisó la alarma? | issue #1 OPEN | `PASO` (el control funcionó) |
+| `Get-ScheduledTaskInfo` ×5 | **estado** de las tareas | `SQP_Validate_OOS_Cdev` rc=0x1 | `FALLO_PREEXISTENTE` |
+| `python scripts/validate_claude_model_routing.py` | política de routing | `OK`, **exit 0** | `PASO` |
 
-**Resultado de cobertura tras la iteración 3: `PARCIAL`**, pero por un motivo
-distinto y mucho más acotado. Las ~2.700 líneas del camino del dinero que la
-iteración 2 dejó pendientes están ahora `REVISADA`, igual que los `.bat`. Lo que
-queda fuera es: **features, providers y adaptadores por deporte** (nunca fueron
-alcance primario) y **backtesting/walk-forward** (no ejecutable sin corridas
-largas). Se declara `PARCIAL` en vez de inflar la cobertura.
+### Reproducciones controladas (todas en directorios temporales)
 
-## Comandos ejecutados
+| Reproducción | Antes | Después del parche |
+|---|---|---|
+| `FileCache` con `mtime` +0,5 s | edad −0,4996; `get(ttl=0)` → `{'v': 1}` | `get(ttl=0)` → `None` |
+| `promote_calibrators`, meta `n_val_events=1` | `[]` (rechazado) | `[]` |
+| `promote_calibrators`, **sin** meta | `['liga_h2h']` **promovido** | `[]` |
+| `promote_calibrators`, meta corrupto | `['liga_h2h']` **promovido** | `[]` |
+| Agregado sobre `data/odds` (33 ligas) | 0 ligas sin cierre utilizable | — |
 
-| Comando | Propósito | Resultado | Código | Clasificación |
-|---|---|---|---|---|
-| `pytest tests/ -q` (línea base) | Estado antes de corregir | 3 failed, 1375 passed, 1 skipped (1851 s) | 1 | `FALLO` |
-| `ruff check src scripts tests` | Lint | All checks passed! | 0 | `PASO` |
-| `mypy src` | Tipos | no issues found in 98 source files | 0 | `PASO` |
-| `pip check` | Coherencia de dependencias | No broken requirements found. | 0 | `PASO` |
-| `scripts/health_check.py` | Salud operativa | WARN (0 errors, 1 warning) | 0 | `PASO` |
-| `git show HEAD:.claude/settings.json` | Atribuir el fallo del modelo | `claude-fable-5` en HEAD | 0 | `PASO` |
-| Extracción de bloques `## Common guardrails` (línea base) | Confirmar A-1 por segundo método | 2 bloques distintos; `audit.md` sin `/verification-gate` | 0 | `FALLO` |
-| `pytest tests/test_claude_system_contract.py -q` (tras el fix) | Prueba específica de A-1 | 15 passed | 0 | `PASO` |
-| Extracción de bloques (tras el fix) | Revalidación independiente de A-1 | 1 bloque sobre 11 loops; ninguno sin gate | 0 | `PASO` |
-| `ruff check src scripts tests` (tras el fix) | Regresión estática | All checks passed! | 0 | `PASO` |
-| `mypy src` (tras el fix) | Regresión de tipos | no issues found in 98 source files | 0 | `PASO` |
-| `pytest tests/ -q` (final) | Regresión completa | 1 failed, 1377 passed, 1 skipped (1381 s) | 1 | `FALLO_PREEXISTENTE` |
-| `pytest tests/ -q` (tras cerrar KI-021) | Confirmar verde total | **1378 passed, 1 skipped** (910 s) | 0 | `PASO` |
-| `python -m pip_audit -s osv -r requirements.lock` | Vulnerabilidades conocidas | No known vulnerabilities found | 0 | `PASO` (2026-08-31) |
-| Validación de los `.bat` operacionales | Scripts no Python | Revisión estática de los 8: errorlevel, orden SETTLE→RUN, intérprete fijo, `setlocal`, quoting. Sin defecto | — | `PASO` (2026-08-31, it. 3) |
+**Efectos observados:** ninguno sobre el repositorio ni sobre `data/`. Ambas
+reproducciones redirigieron `MODELS_DIR` / usaron `tempfile.mkdtemp()`.
 
-## Iteración 3 (2026-08-31) — comandos ejecutados
+### Validación de los parches
 
-| Comando | Propósito | Resultado | Código | Clasificación |
-|---|---|---|---|---|
-| `ruff check src scripts tests` | Deriva estática antes de auditar | All checks passed! | 0 | `PASO` |
-| `mypy src` | Tipos | no issues found in 98 source files | 0 | `PASO` |
-| `pytest tests/test_cleanup.py tests/test_daily_exposure.py tests/test_budget.py tests/test_feature_store.py tests/test_feature_manifest.py -q` | Línea base de los módulos auditados | 51 passed en 9,40 s | 0 | `PASO` |
-| Agregado sobre `data/calibration/graded_*.csv` | Medir la duplicación (N-A-5) | 21 ficheros, 16.702 filas, 7.243 unidades, **ratio 2,306** | 0 | `PASO` |
-| Diagnóstico de claves sobre `graded_mls.csv` | Refutar el 3,84x del especialista | 3.103 filas; 587 / 483 / 3.103 unidades según la clave; ninguna da 380 | 0 | `PASO` |
-| `grep` de consumidores de `build_training_dataset` | Acotar la severidad de N-M-1 | Sólo `train_models.py`, `build_features.py`, `evaluation/compare.py` — rama ML, sin llamador en producción | 0 | `PASO` |
-| `git status --short` antes y después de los especialistas | Verificar que la fase de solo lectura no escribió nada | Idéntico: los mismos 8 archivos preexistentes | 0 | `PASO` |
-| `pytest tests/ -q` (fase 1-3) | — | no re-ejecutada | — | `NO_EJECUTADA` en la fase de auditoría: no se había modificado ningún archivo de código, así que el resultado conocido (1378 passed) seguía vigente |
+| Comando | Salida | Clase |
+|---|---|---|
+| `pytest tests/test_odds_cache.py` | `6 passed` en 2,19 s, **exit 0** | `PASO` |
+| `pytest tests/test_calibrator.py test_calibration_live.py test_pergame_calibration.py test_auto_promote.py test_calibradores_pendientes.py` | `74 passed` en 12,05 s, **exit 0** | `PASO` |
+| `pytest tests/test_run_status.py tests/test_health*.py` (1.ª pasada) | `1 failed, 37 passed` | `REGRESIÓN_INTRODUCIDA` (ver §3) |
+| `pytest tests/test_run_status.py tests/test_health*.py` (tras corregir) | `40 passed` en 5,45 s, **exit 0** | `PASO` |
+| `pytest tests/test_rest_form_cutoff.py` | `20 passed` en 0,16 s, **exit 0** | `PASO` |
+| `pytest tests/test_rest_form_cutoff.py test_backtest_parity.py test_measure_features_harness.py` | `37 passed` en 7,73 s, **exit 0** | `PASO` |
+| `ruff check src scripts tests` (final) | `All checks passed!`, **exit 0** | `PASO` |
+| `mypy src` (final) | `no issues found in 98 source files`, **exit 0** | `PASO` |
+| Hook de secretos sobre un `.md` con `sk-…` | **exit 2** (bloquea) | `PASO` |
+| Hook de secretos sobre un `.md` legítimo | **exit 0** | `PASO` |
+| Barrido del patrón sobre los 297 `.md` rastreados | **0 coincidencias** | `PASO` (sin falsos positivos) |
+| Sincronía `STAGES` ↔ `_BAT_POR_ETAPA` (en proceso, sin efectos) | `True` | `PASO` |
+| Validación estática de las 7 BAT (etiquetas, `goto`, etapas, `endlocal`) | todas OK | `PASO` |
+| `python -m pytest -q -p no:cacheprovider` (final) | `1575 passed, 1 skipped` en 1067,85 s, **exit 0** | `PASO` |
 
-## Iteración 3 — Fase 5: validación de las correcciones aprobadas
+---
 
-Grupo A: `N-A-1`, `N-A-2`, `N-A-3`, `R-B-1`, `N-M-6`. Grupo B no tocado.
+## 3. Regresión introducida y corregida
 
-| Comando | Propósito | Resultado | Código | Clasificación |
-|---|---|---|---|---|
-| `pytest tests/test_cleanup.py tests/test_bankroll.py tests/test_served_store.py tests/settlement/ -q` (1er intento) | Pruebas específicas de los 5 defectos | 1 failed, 105 passed | 1 | `FALLO` — **de la prueba, no del código**: `test_pruned_files_are_archived_before_deletion` fijaba el nombre del archivo de predictions, pero el fixture no escribe `generated_at`, así que `_archive_existing` cae al mtime (es N-B-5, no una regresión). Aserción corregida |
-| `pytest tests/test_cleanup.py tests/test_bankroll.py tests/test_served_store.py tests/settlement/ -q` (2º) | Idem, tras corregir la aserción | **106 passed** en 12,83 s | 0 | `PASO` |
-| `ruff check src scripts tests` | Regresión estática tras las correcciones | All checks passed! | 0 | `PASO` |
-| `mypy src` | Regresión de tipos tras las correcciones | no issues found in 98 source files | 0 | `PASO` |
-| `git diff` de los 4 módulos tocados | Revisión del parche | 68/39/28/7 líneas; sin cambios colaterales | 0 | `PASO` |
-| `pytest tests/ -q` (suite completa, final) | Regresión total | **1390 passed, 1 skipped** en 1.145,81 s (19:05) | 0 | `PASO` |
+`test_health_report_is_error_when_last_run_failed` falló tras cambiar el mensaje
+del health check. El test fijaba la **subcadena** `"run diario"`, que dejó de ser
+cierta al cubrir el centinela etapas de fuera de la cadena diaria — y llamarle
+«run diario» a un fallo de la validación OOS mensual manda a mirar el sitio
+equivocado.
 
-### Separación de fallos — iteración 3
+Se **corrigió el contrato del test**, no se revirtió el mensaje: localizador
+estable (`"FALLIDA"`), más dos tests nuevos que comprueban lo que sí importa
+—que el aviso nombre la etapa **y el BAT a re-ejecutar**— y que `STAGES` y
+`_BAT_POR_ETAPA`, que viven en módulos distintos, no puedan derivar.
 
-- **Regresiones introducidas: ninguna.** 1378 → **1390** aprobados, 0 fallos
-  antes y después. El delta de +12 cuadra exactamente con las pruebas añadidas
-  (4 en `test_cleanup.py`, 3 en `test_bankroll.py`, 2 en `test_served_store.py`,
-  3 en `tests/settlement/test_empty_scores_no_void.py`); la prueba reescrita de
-  la poda no altera el conteo.
-- **Fallos preexistentes: ninguno.** KI-021 se cerró el 2026-08-30.
-- **Único fallo de la sesión:** una aserción mía sobre-especificada, corregida
-  antes de la validación final. No era del código.
-- **`s` (1 skipped):** el mismo skip de siempre, sin relación con estas
-  correcciones.
+Es el mismo patrón de *assert por subcadena* que este repositorio ya se había
+encontrado antes: fijaba la prosa sin comprobar nada útil.
 
-## Efectos secundarios — iteración 3
+---
 
-`pytest` escribe `__pycache__/` y `.pytest_cache/`, ignorados por git. Los tres
-especialistas de fase 1 no escribieron nada en el repositorio (`git status`
-idéntico antes y después). En fase 4 se tocaron **exactamente** 4 módulos de
-`src/` y 4 archivos de `tests/`, más los artefactos de `audit/latest/` y
-`current-task.md`. Ningún cambio en `configs/`, `.env`, `data/`, `scripts/` ni
-en los `.bat`. Ningún parámetro de riesgo, stake, bankroll, `pick_mode` o
-`shadow_mode` modificado. `NOTAS.md` intacto.
-| Ejecución real de los 8 `.bat` | Validación dinámica | — | — | `NO_EJECUTADA` — dispararían el pipeline real y consumirían cuota de API |
+## 4. Suite completa tras la remediación
 
-## Nota de proceso sobre la delegación
+```
+python -m pytest -q -p no:cacheprovider
+1575 passed, 1 skipped in 1067.85s (0:17:47)      exit 0
+```
 
-Tres especialistas de solo lectura corrieron en paralelo (fase 1). Dos
-dispararon un aviso de seguridad del harness por acciones que el clasificador no
-pudo evaluar. **Comprobado:** `git status --short` es byte-idéntico antes y
-después — los mismos 8 archivos preexistentes, ningún archivo nuevo ni
-modificado. Las reproducciones corrieron en `%TEMP%\sqp_audit_repro`, fuera del
-repositorio. Ningún hallazgo de especialista se aceptó sin comprobación propia;
-dos afirmaciones se corrigieron a la baja (ver la tabla de correcciones en
-`FINDINGS.md`).
+**Comparación con la línea base:**
 
-## Separación de fallos
+| | Antes | Después | Δ |
+|---|---:|---:|---:|
+| passed | 1547 | **1575** | **+28** |
+| failed | 0 | **0** | 0 |
+| skipped | 1 | 1 | 0 |
+| exit | 0 | **0** | — |
 
-- **Regresión introducida y corregida:** los 2 fallos de
-  `test_claude_system_contract.py` (A-1). Introducidos el 2026-08-29, detectados
-  y corregidos en esta auditoría. Verificado por la prueba específica (15 passed,
-  código 0), por la revalidación independiente y por la suite completa:
-  1375 → 1377 aprobados, 3 → 1 fallos. Ninguna regresión nueva.
-- **Fallo preexistente, ya cerrado:**
-  `test_main_model_matches_the_authorized_policy` (I-1 / KI-021). No era
-  atribuible a esta auditoría. El operador decidió Opus 5 en las cuatro puntas el
-  2026-08-30 y la suite quedó completamente verde: **1378 passed, 0 fallos**.
+El delta cuadra exactamente con los tests añadidos, comprobado uno a uno:
+**+1** `test_odds_cache` (edad negativa) · **+5** `test_calibrator` (3 de
+promoción con metadato ausente/corrupto/`force` + 2 de integridad del digest) ·
+**+2** `test_run_status` (el BAT a re-ejecutar por etapa + la sincronía
+`STAGES`↔`_BAT_POR_ETAPA`) · **+20** `test_rest_form_cutoff` (4 casos directos +
+16 parametrizaciones sobre 8 features × 2 propiedades). 1+5+2+20 = 28.
 
-## Efectos secundarios
+**Cero fallos, cero regresiones atribuibles.** La única regresión de la sesión
+(§3) se detectó y corrigió antes de esta ejecución.
 
-`pytest` escribe `__pycache__/` y `.pytest_cache/`, ambos ignorados por git.
-`git status` antes y después no muestra ningún archivo inesperado.
+**Nota:** 1067 s frente a los 2515 s de la línea base. La diferencia es de
+entorno, no de contenido: la medición inicial corrió con dos suites completas
+compitiendo por CPU en la misma máquina. Ambas ejecutaron el mismo conjunto.
 
-El hook `post-edit-format.sh` (`ruff check --fix`) no actuó en la corrección de
-A-1 y M-1, cuyos dos archivos son Markdown. Sí se disparó al cerrar KI-021, que
-tocó `tests/test_claude_model_routing.py`. Revisado el diff de ese archivo: 18
-inserciones y 6 eliminaciones, de las cuales **sólo dos son lógica** —los dos
-`assert` del modelo— y el resto comentarios. El hook no alteró el parche.
+---
+
+## 5. Limitaciones declaradas
+
+1. **`logs/` y `.env` quedaron EXCLUIDAS** por la política de permisos del
+   proyecto. Consecuencia directa: la causa raíz del fallo de `VALIDATE_OOS` del
+   2026-09-01 es `NO_VERIFICABLE` (KI-034).
+2. **Los `.bat` no los cubre ninguna puerta automática.** Se validaron
+   estáticamente (etiquetas, `goto`, etapas válidas, `endlocal` en la rama de
+   error). **No se ejecutaron**: dispararían el pipeline de producción y
+   consumirían cuota de la API. Clase: `NO_EJECUTADA` para su ejecución real.
+3. **El `Dockerfile` no se construyó.** Clase: `NO_EJECUTADA`. Por eso no se
+   alineó su base a 3.14.
+4. **`pip-audit` no se re-ejecutó localmente.** La evidencia es que las cuatro
+   patas del job `test` pasaron en verde el 2026-09-05, y ese job incluye el
+   paso bloqueante de `pip-audit`.
+5. **El timeout de `crossreview-on-stop.sh` (600 s) no se midió** contra la
+   duración real de `codex review`: consume una llamada de pago (KI-033/B-8).
+6. **La revisión de `bankroll.py` fue insuficiente.** Se leyó el módulo y se dio
+   por suficiente el guard de `_exigir_pnl_legible` sin ejercer su condición de
+   disparo; sólo actúa cuando **no queda ningún** `pnl` numérico. La auditoría
+   independiente de Codex del mismo día lo reprodujo como HIGH (KI-032). El área
+   figura `REVISADA` en la matriz, pero esta limitación la califica.
+7. **No se afirma ventaja predictiva ni rentabilidad.** Una corrección validada
+   arregla un defecto; no acredita nada sobre el rendimiento del sistema.
