@@ -33,6 +33,30 @@ intermedio (`logs/` y `.env` excluidos, Dockerfile sin construir) siguen vigente
 pero pertenecen al **alcance de la auditoría**, no al de las correcciones
 aprobadas, y están registradas en `audit/latest/BACKLOG.md` y `known-issues.md`.
 
+## Comandos ejecutados
+
+| Comando | Resultado |
+|---|---|
+| `python -m pytest -q -p no:cacheprovider` (base) | `1547 passed, 1 skipped`, exit 0 |
+| `python -m pytest -q -p no:cacheprovider` (final) | `1593 passed, 1 skipped`, exit 0 |
+| `ruff check src scripts tests` | `All checks passed!`, exit 0 |
+| `mypy src` | `no issues found in 98 source files`, exit 0 |
+| `gh run view 34060292683` | las cinco patas en `success`, incluida `test-windows` |
+| `Get-ScheduledTaskInfo` (5 tareas `SQP_*`) | `SQP_Validate_OOS_Cdev` rc=0x1 desde el 2026-09-01 |
+| Reproducción de `FileCache` (tmp aislado) | edad −0,4996 s; `get(ttl=0)` servía la entrada → ahora `None` |
+| Reproducción de `promote_calibrators` | meta ausente/corrupto promovía → ahora deniega |
+| Reproducción de `bankroll` (KI-032) | dos pérdidas de −400 daban 600 → ahora `LedgerIntegridadError` |
+| Ejecución del guard en repo git aislado | limpio continúa; `src/` sucio aborta con exit 1 |
+| Validación estructural de las 8 `.bat` | etiquetas, `goto`, etapas y `endlocal`: OK |
+
+## Artefactos producidos
+
+- `audit/latest/{FINDINGS,CHANGES,VALIDATION,BACKLOG}.md` y `MANIFEST.json`
+- `Obsidian/Bitácora/2026-09-06.md`; lecciones 11–13 en
+  `Obsidian/Errores y lecciones/Lecciones aprendidas.md`
+- `.claude/memory/known-issues.md`: KI-032 y KI-036 resueltos; KI-033 a KI-035 abiertos
+- 12 commits en `main` (`cb43f20` … `53f5f2b`), +46 pruebas
+
 ## Escalado de modelo
 
 **No se escaló a `claude-fable-5-1` ni se delegó en subagentes.** Las dos
