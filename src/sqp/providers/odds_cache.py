@@ -39,7 +39,22 @@ class FileCache:
         # se habia escrito en el mismo tick del reloj (age 0.0), lo que rompia la
         # pata Windows del CI de forma intermitente segun la granularidad de
         # mtime del runner (auditoria 2026-08-05).
-        if ttl != float("inf") and (time.time() - f.stat().st_mtime) >= ttl:
+        #
+        # Y `max(0.0, ...)`: la edad tambien podia salir NEGATIVA, y entonces
+        # NINGUN ttl la caducaba -- ni siquiera 0 (AUD-MED-001, 2026-09-06,
+        # reproducido). `time.time()` y el `mtime` de NTFS no salen del mismo
+        # reloj ni con la misma granularidad, asi que un fichero recien escrito
+        # puede tener sello POSTERIOR al instante que devuelve `time.time()`.
+        # El arreglo del 2026-08-05 cerro el caso age == 0 y dejo abierto age < 0,
+        # que es el que tenia el CI de `main` en rojo desde el 2026-09-05: el
+        # test de borde congela el reloj con monkeypatch, asi que por
+        # construccion no puede producir una edad negativa.
+        #
+        # Un reloj que salta hacia atras (correccion NTP) produce lo mismo sobre
+        # entradas ya guardadas: sin el piso, servirian cuotas pasadas de su TTL.
+        # Acotar por abajo es la direccion segura -- como mucho se refresca de
+        # mas, nunca se sirve algo caducado.
+        if ttl != float("inf") and max(0.0, time.time() - f.stat().st_mtime) >= ttl:
             return None
         try:
             return json.loads(f.read_text(encoding="utf-8"))

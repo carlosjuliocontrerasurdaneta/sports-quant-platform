@@ -103,3 +103,32 @@ def test_file_cache_ttl_boundary_is_deterministic(tmp_path, monkeypatch):
     os.utime(f, (frozen, frozen - 10.0))        # edad EXACTAMENTE 10
     assert c.get(k, ttl=10) is None             # borde: age == ttl -> expira
     assert c.get(k, ttl=11) == {"v": 1}         # mas joven -> sirve
+
+
+def test_file_cache_expires_when_mtime_is_ahead_of_the_clock(tmp_path, monkeypatch):
+    # AUD-MED-001 (2026-09-06). Este es el caso que el test de borde de arriba NO
+    # puede producir: al congelar el reloj Y fijar el mtime al mismo valor, la
+    # edad nunca sale negativa. En la pata Windows del CI si salia -- `time.time()`
+    # y el mtime de NTFS no comparten reloj ni granularidad --, y con edad
+    # negativa NINGUN ttl caducaba, ni siquiera 0: el CI de `main` llevaba rojo
+    # desde el 2026-09-05 por esto (run 33994699340, 1 failed / 1546 passed).
+    #
+    # Se fuerza el mtime medio segundo POR DELANTE del reloj, que es exactamente
+    # lo que produce esa diferencia de granularidad -- y tambien lo que deja un
+    # salto de reloj hacia atras por correccion NTP.
+    import os
+
+    c = FileCache(tmp_path)
+    k = c.key("/x", {"a": 1})
+    c.put(k, {"v": 1})
+    f = tmp_path / f"{k}.json"
+
+    frozen = 1_000_000.0
+    monkeypatch.setattr("sqp.providers.odds_cache.time.time", lambda: frozen)
+    os.utime(f, (frozen + 0.5, frozen + 0.5))       # edad = -0.5
+
+    assert c.get(k, ttl=0) is None                  # ttl=0 nunca sirve nada
+    assert c.get(k, ttl=float("inf")) == {"v": 1}   # inf sigue ignorando la edad
+    # Una edad negativa se trata como 0, no como "infinitamente joven": con un
+    # ttl positivo la entrada sigue siendo servible, que es lo correcto.
+    assert c.get(k, ttl=10) == {"v": 1}
