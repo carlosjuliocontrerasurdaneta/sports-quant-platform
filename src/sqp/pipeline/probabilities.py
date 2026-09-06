@@ -234,10 +234,15 @@ class AdjustmentContext:
 
     ``results`` y ``normalize`` viven aqui porque el termino de over/under rate
     depende de la LINEA de cada seleccion de totals (key[2]) y solo puede
-    computarse por clave, no por evento. El contrato temporal es del llamador:
-    ``results`` debe contener EXCLUSIVAMENTE partidos anteriores al evento
-    (daily pasa el historico liquidado; el backtest ROI recorta a fechas
-    estrictamente anteriores)."""
+    computarse por clave, no por evento.
+
+    El contrato temporal ya NO es solo del llamador: ``ref_date`` viaja con el
+    contexto y cada feature recorta por su cuenta a lo estrictamente anterior
+    (AUD-LOW-005, 2026-09-06). Los dos consumidores siguen recortando antes
+    -- daily pasa el historico liquidado, el backtest ROI usa ``_prior_games``
+    con ``d < rd`` --, asi que el filtro es un no-op exacto sobre lo que hay
+    hoy; lo que cambia es que un tercer consumidor que pase el historial
+    completo ya no puede introducir look-ahead en diez features sin enterarse."""
     rest_home: int | None
     rest_away: int | None
     form_home: float | None
@@ -258,6 +263,9 @@ class AdjustmentContext:
     weather: dict | None
     results: list[dict]
     normalize: Callable[[str], str] | None
+    # Fecha del evento (YYYY-MM-DD). `None` conserva el comportamiento anterior
+    # -- sin recorte-- para cualquier constructor que no la aporte.
+    ref_date: str | None = None
 
 
 def build_adjustment_context(home: str, away: str, ref_date: str,
@@ -273,27 +281,34 @@ def build_adjustment_context(home: str, away: str, ref_date: str,
     observacion prepartido de ``get_event_weather``; el backtest pasa None
     porque no hay pronosticos historicos capturados (termino 0, documentado en
     ``roi_engine``)."""
+    # `ref_date` va a TODAS, no solo a `team_rest_days`. Era la unica que lo
+    # recibia, y las otras diez se fiaban de que el llamador hubiera recortado
+    # (AUD-LOW-005).
     return AdjustmentContext(
         rest_home=team_rest_days(home, results, ref_date, normalize),
         rest_away=team_rest_days(away, results, ref_date, normalize),
-        form_home=team_recent_form(home, results, risk.recent_form_n, normalize),
-        form_away=team_recent_form(away, results, risk.recent_form_n, normalize),
-        h2h_home=team_h2h_form(home, away, results, risk.h2h_n, normalize),
-        avg_total_home=team_avg_total(home, results, risk.totals_tendency_n, normalize),
-        avg_total_away=team_avg_total(away, results, risk.totals_tendency_n, normalize),
-        streak_home=team_streak(home, results, normalize),
-        streak_away=team_streak(away, results, normalize),
-        avg_scored_home=team_avg_scored(home, results, risk.off_def_n, normalize),
-        avg_conceded_home=team_avg_conceded(home, results, risk.off_def_n, normalize),
-        avg_scored_away=team_avg_scored(away, results, risk.off_def_n, normalize),
-        avg_conceded_away=team_avg_conceded(away, results, risk.off_def_n, normalize),
-        form_home_at_home=team_recent_form_home(home, results,
-                                                risk.home_away_form_n, normalize),
-        form_away_at_away=team_recent_form_away(away, results,
-                                                risk.home_away_form_n, normalize),
-        margin_home=team_avg_margin(home, results, risk.margin_n, normalize),
-        margin_away=team_avg_margin(away, results, risk.margin_n, normalize),
-        weather=weather, results=results, normalize=normalize)
+        form_home=team_recent_form(home, results, risk.recent_form_n, normalize, ref_date),
+        form_away=team_recent_form(away, results, risk.recent_form_n, normalize, ref_date),
+        h2h_home=team_h2h_form(home, away, results, risk.h2h_n, normalize, ref_date),
+        avg_total_home=team_avg_total(home, results, risk.totals_tendency_n,
+                                      normalize, ref_date),
+        avg_total_away=team_avg_total(away, results, risk.totals_tendency_n,
+                                      normalize, ref_date),
+        streak_home=team_streak(home, results, normalize, ref_date),
+        streak_away=team_streak(away, results, normalize, ref_date),
+        avg_scored_home=team_avg_scored(home, results, risk.off_def_n, normalize, ref_date),
+        avg_conceded_home=team_avg_conceded(home, results, risk.off_def_n,
+                                            normalize, ref_date),
+        avg_scored_away=team_avg_scored(away, results, risk.off_def_n, normalize, ref_date),
+        avg_conceded_away=team_avg_conceded(away, results, risk.off_def_n,
+                                            normalize, ref_date),
+        form_home_at_home=team_recent_form_home(home, results, risk.home_away_form_n,
+                                                normalize, ref_date),
+        form_away_at_away=team_recent_form_away(away, results, risk.home_away_form_n,
+                                                normalize, ref_date),
+        margin_home=team_avg_margin(home, results, risk.margin_n, normalize, ref_date),
+        margin_away=team_avg_margin(away, results, risk.margin_n, normalize, ref_date),
+        weather=weather, results=results, normalize=normalize, ref_date=ref_date)
 
 
 def adjust_model_probability(p_model: float, market: str, selection: str,
@@ -310,9 +325,11 @@ def adjust_model_probability(p_model: float, market: str, selection: str,
     termino meteorologico es exactamente 0.0 en ambos casos."""
     if market == "totals" and point is not None:
         over_rate_home = team_over_rate(home, ctx.results, point,
-                                        risk.over_under_rate_n, ctx.normalize)
+                                        risk.over_under_rate_n, ctx.normalize,
+                                        ctx.ref_date)
         over_rate_away = team_over_rate(away, ctx.results, point,
-                                        risk.over_under_rate_n, ctx.normalize)
+                                        risk.over_under_rate_n, ctx.normalize,
+                                        ctx.ref_date)
     else:
         over_rate_home = over_rate_away = None
     weather_term = (weather_p_adjustment(market, selection, ctx.weather, weather_cfg)

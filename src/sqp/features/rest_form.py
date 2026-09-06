@@ -26,6 +26,34 @@ from datetime import date
 from typing import Callable
 
 
+def _hasta(results: list[dict], reference_date: str | None) -> list[dict]:
+    """`results` recortado a lo ESTRICTAMENTE anterior a `reference_date`.
+
+    Con `None` devuelve la lista tal cual, que es el comportamiento historico.
+
+    Existe porque `team_rest_days` era la UNICA feature de este modulo que
+    recibia fecha de corte y la aplicaba (`d >= ref: continue`); las otras diez
+    tomaban "las ultimas n" de la lista que les dieran, asi que la proteccion
+    contra look-ahead vivia entera en el llamador (AUD-LOW-005, 2026-09-06).
+
+    No habia fuga: los dos consumidores recortan antes -- el backtest con
+    `roi_engine._prior_games` (`d < rd`) y el run diario con partidos ya
+    terminados --, y ademas la capa esta inerte (todos los coeficientes a 0
+    desde el 2026-09-01). El problema era que un tercer consumidor que pasara el
+    historial completo introducia look-ahead en diez features a la vez, sin
+    error ni aviso. Filtrar aqui hace la garantia estructural en vez de
+    disciplinada, y con las listas ya recortadas es un no-op exacto.
+
+    Mismo criterio de corte que `team_rest_days`: se compara `date` truncado a
+    10 caracteres y el MISMO dia queda FUERA. Un partido del propio dia del
+    evento puede no haberse jugado todavia cuando se estima.
+    """
+    if reference_date is None:
+        return results
+    ref = str(reference_date)[:10]
+    return [r for r in results if str(r.get("date", ""))[:10] < ref]
+
+
 def team_rest_days(
     team: str,
     results: list[dict],
@@ -57,12 +85,14 @@ def team_recent_form(
     results: list[dict],
     n: int = 5,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Win rate (win=1, draw=0.5, loss=0) over the last n completed games.
 
     Results must be in chronological order (ascending date).
     Returns None when fewer than 2 games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
@@ -73,13 +103,20 @@ def team_recent_form(
     recent = team_games[-n:]
     if len(recent) < 2:
         return None
-    total = 0.0
+    # `graded`, no `len(recent)`: una fila con marcador ilegible se saltaba con
+    # `continue` pero seguia en el divisor, asi que contaba como DERROTA en vez
+    # de excluirse -- con 5 partidos y uno ilegible, un equipo con pleno de
+    # victorias salia 0,80 (AUD-LOW-005, 2026-09-06). Las medias de este mismo
+    # modulo (`team_avg_margin`, `team_avg_scored`...) ya acumulan en lista y
+    # dividen por lo realmente leido; las cuatro tasas de victoria no.
+    total, graded = 0.0, 0
     for r in recent:
         try:
             hs = float(r["home_score"])
             aws = float(r["away_score"])
         except (KeyError, TypeError, ValueError):
             continue
+        graded += 1
         is_home = norm(str(r.get("home", ""))) == team_n
         if hs > aws:
             total += 1.0 if is_home else 0.0
@@ -87,7 +124,9 @@ def team_recent_form(
             total += 0.0 if is_home else 1.0
         else:
             total += 0.5
-    return total / len(recent)
+    # Mismo umbral que arriba: un partido que no se puede graduar no es un
+    # partido disponible.
+    return total / graded if graded >= 2 else None
 
 
 def rest_form_p_adjustment(
@@ -133,12 +172,14 @@ def team_h2h_form(
     results: list[dict],
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Win rate of team_a vs team_b in their last n direct matchups.
 
     win=1, draw=0.5, loss=0. Returns None when fewer than 2 matchups found.
     Results must be in chronological order (ascending date).
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     a = norm(team_a)
     b = norm(team_b)
@@ -150,13 +191,14 @@ def team_h2h_form(
     recent = matchups[-n:]
     if len(recent) < 2:
         return None
-    total = 0.0
+    total, graded = 0.0, 0     # divisor = filas realmente leidas (AUD-LOW-005)
     for r in recent:
         try:
             hs = float(r["home_score"])
             aws = float(r["away_score"])
         except (KeyError, TypeError, ValueError):
             continue
+        graded += 1
         home_is_a = norm(str(r.get("home", ""))) == a
         if hs > aws:
             total += 1.0 if home_is_a else 0.0
@@ -164,7 +206,7 @@ def team_h2h_form(
             total += 0.0 if home_is_a else 1.0
         else:
             total += 0.5
-    return total / len(recent)
+    return total / graded if graded >= 2 else None
 
 
 def team_recent_form_home(
@@ -172,25 +214,28 @@ def team_recent_form_home(
     results: list[dict],
     n: int = 5,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Win rate (win=1, draw=0.5, loss=0) in the team's last n HOME games only.
 
     Returns None when fewer than 2 home games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     home_games = [r for r in results if norm(str(r.get("home", ""))) == team_n]
     recent = home_games[-n:]
     if len(recent) < 2:
         return None
-    total = 0.0
+    total, graded = 0.0, 0     # divisor = filas realmente leidas (AUD-LOW-005)
     for r in recent:
         try:
             hs, aws = float(r["home_score"]), float(r["away_score"])
         except (KeyError, TypeError, ValueError):
             continue
+        graded += 1
         total += 1.0 if hs > aws else (0.5 if hs == aws else 0.0)
-    return total / len(recent)
+    return total / graded if graded >= 2 else None
 
 
 def team_recent_form_away(
@@ -198,25 +243,28 @@ def team_recent_form_away(
     results: list[dict],
     n: int = 5,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Win rate (win=1, draw=0.5, loss=0) in the team's last n AWAY games only.
 
     Returns None when fewer than 2 away games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     away_games = [r for r in results if norm(str(r.get("away", ""))) == team_n]
     recent = away_games[-n:]
     if len(recent) < 2:
         return None
-    total = 0.0
+    total, graded = 0.0, 0     # divisor = filas realmente leidas (AUD-LOW-005)
     for r in recent:
         try:
             hs, aws = float(r["home_score"]), float(r["away_score"])
         except (KeyError, TypeError, ValueError):
             continue
+        graded += 1
         total += 1.0 if aws > hs else (0.5 if hs == aws else 0.0)
-    return total / len(recent)
+    return total / graded if graded >= 2 else None
 
 
 def home_away_form_p_adjustment(
@@ -251,6 +299,7 @@ def team_avg_margin(
     results: list[dict],
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Average scoring margin (scored - conceded) in the team's last n games.
 
@@ -258,6 +307,7 @@ def team_avg_margin(
     Captures dominance that win rate misses (winning by 1 vs winning by 10).
     Returns None when fewer than 2 games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
@@ -312,11 +362,13 @@ def team_avg_scored(
     results: list[dict],
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Average goals/runs scored per game in the team's last n games.
 
     Returns None when fewer than 2 games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
@@ -342,11 +394,13 @@ def team_avg_conceded(
     results: list[dict],
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Average goals/runs conceded per game in the team's last n games.
 
     Returns None when fewer than 2 games are available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
@@ -419,6 +473,7 @@ def team_over_rate(
     reference_line: float | None,
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Fraction of the team's last n games where (home_score + away_score) > reference_line.
 
@@ -426,6 +481,7 @@ def team_over_rate(
     calibrated to the actual bet being evaluated. Returns None when
     reference_line is None or fewer than 2 games are available.
     """
+    results = _hasta(results, reference_date)
     if reference_line is None:
         return None
     norm = normalize or (lambda x: x)
@@ -479,6 +535,7 @@ def team_streak(
     team: str,
     results: list[dict],
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> int:
     """Current consecutive win (+) or loss (-) streak for the team.
 
@@ -486,6 +543,7 @@ def team_streak(
     resets to 0 and stops. Returns 0 when no games are available.
     e.g. W W W → +3; L L → -2; W L W → +1 (only the last win counts).
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
@@ -547,12 +605,14 @@ def team_avg_total(
     results: list[dict],
     n: int = 10,
     normalize: Callable[[str], str] | None = None,
+    reference_date: str | None = None,
 ) -> float | None:
     """Average total score (home_score + away_score) per game in the team's last n games.
 
     Captures scoring environment tendency: high-scoring teams inflate totals,
     low-scoring ones deflate them. Returns None when fewer than 2 games available.
     """
+    results = _hasta(results, reference_date)
     norm = normalize or (lambda x: x)
     team_n = norm(team)
     team_games = [
