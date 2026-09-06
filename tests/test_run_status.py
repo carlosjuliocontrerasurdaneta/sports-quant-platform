@@ -277,3 +277,73 @@ def test_a02_legacy_flat_sentinel_is_still_honoured(tmp_path):
     assert st is not None and st["stage"] == "settle"
     assert clear_run_status(tmp_path, "run") is False   # no es su etapa
     assert clear_run_status(tmp_path, "settle") is True
+
+
+# --- Contrato del orquestador diario (KI-036) ---------------------------------
+#
+# Los .bat no los cubre ninguna puerta del CI: ni ruff, ni mypy, ni pytest los
+# ejecutan. Estos tests leen el fichero y fijan las propiedades estructurales que
+# importan, que es lo mas que se puede comprobar sin lanzar produccion.
+
+def _diario() -> str:
+    return (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8", errors="ignore")
+
+
+def test_el_orquestador_no_borra_etapas_que_no_arregla():
+    """REGRESION del 2026-09-06. `--clear` a secas borra el centinela ENTERO.
+
+    Era correcto cuando solo existian `settle` y `run` y este bat ejecutaba las
+    dos. Al ampliar el centinela a siete etapas ese borrado pasa a apagar en
+    silencio las alarmas que el bat NO arregla: un run diario correcto habria
+    matado el aviso de `validate_oos` -- fallado desde el 2026-09-01 y sin
+    reintento hasta el 2026-10-01 -- al dia siguiente de crearlo.
+    """
+    bat = _diario()
+    ejecutables = [ln.strip() for ln in bat.splitlines()
+                   if not ln.strip().upper().startswith("REM")]
+    clears = [ln for ln in ejecutables if "run_status.py --clear" in ln]
+    assert clears, "el orquestador debe limpiar el centinela al terminar bien"
+    for ln in clears:
+        assert "--only-stage" in ln, f"borrado sin ambito: {ln!r}"
+
+
+def test_el_guard_de_arbol_limpio_corre_antes_de_liquidar():
+    """Abortar solo no cuesta nada ANTES de tocar datos. Si el guard corriera
+    despues de `SETTLE_ALL`, la liquidacion ya habria escrito."""
+    bat = _diario()
+    guard = bat.index("SQP_TREE_DIRTY")
+    settle = bat.index("call \"%~dp0SETTLE_ALL.bat\"")
+    assert guard < settle, "el guard debe preceder a la liquidacion"
+
+
+def test_el_guard_tiene_escape_documentado_y_falla_abierto_sin_git():
+    """Dos propiedades que lo hacen operable: se puede saltar a proposito para
+    recuperacion, y la AUSENCIA de git no detiene el pipeline del dinero -- "no
+    se puede comprobar" no es "esta sucio"."""
+    bat = _diario()
+    assert "SQP_SKIP_TREE_GUARD" in bat
+    assert "git rev-parse --git-dir" in bat, "debe detectar si git esta disponible"
+    i_rev = bat.index("git rev-parse --git-dir")
+    i_status = bat.index("git status --porcelain -- src scripts configs")
+    assert i_rev < i_status, "la comprobacion de git va antes de usarlo"
+
+
+def test_el_guard_solo_vigila_codigo_que_produccion_ejecuta():
+    """El ambito NO puede incluir los ficheros del operador: estan casi siempre
+    modificados y bloquearian el run todos los dias, que es exactamente como se
+    aprende a saltarse un guard."""
+    bat = _diario()
+    linea = next(ln for ln in bat.splitlines()
+                 if "git status --porcelain -- src scripts configs" in ln
+                 and not ln.strip().upper().startswith("REM"))
+    ambito = linea.split("--porcelain --")[1].split("2^>nul")[0].strip()
+    assert set(ambito.split()) == {"src", "scripts", "configs", "*.bat"}, ambito
+
+
+def test_el_aborto_del_guard_queda_registrado():
+    """Un aborto que solo se imprime en una consola que nadie mira es invisible,
+    que es la enfermedad que esta sesion lleva todo el dia corrigiendo."""
+    bat = _diario()
+    assert "--fail --stage guard_arbol" in bat
+    from sqp.monitoring.health import _BAT_POR_ETAPA
+    assert "guard_arbol" in _BAT_POR_ETAPA

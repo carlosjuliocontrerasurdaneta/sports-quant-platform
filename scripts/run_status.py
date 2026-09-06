@@ -30,7 +30,8 @@ from sqp.monitoring.run_status import clear_run_status, record_run_failure
 #
 # Mantener sincronizado con `_BAT_POR_ETAPA` en sqp.monitoring.health, que
 # traduce cada etapa al BAT que hay que re-ejecutar.
-STAGES = ["settle", "run", "validate_oos", "backfill", "capture_close", "refresh_ml"]
+STAGES = ["settle", "run", "validate_oos", "backfill", "capture_close",
+          "refresh_ml", "guard_arbol"]
 
 
 def main() -> int:

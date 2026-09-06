@@ -40,6 +40,9 @@ _BAT_POR_ETAPA = {
     "backfill": "BACKFILL_ALL.bat",
     "capture_close": "CAPTURE_CLOSE.bat",
     "refresh_ml": "REFRESH_ML.bat",
+    # No es un fallo del pipeline sino un ABORTO deliberado: el arbol tenia
+    # cambios sin commitear en codigo de produccion (KI-036).
+    "guard_arbol": "DIARIO_COMPLETO.bat (commitea o exporta SQP_SKIP_TREE_GUARD=1)",
 }
 
 

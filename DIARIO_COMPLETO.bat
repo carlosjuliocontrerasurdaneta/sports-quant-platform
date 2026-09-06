@@ -19,6 +19,44 @@ if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 echo === SQP - DIARIO COMPLETO (%DATE% %TIME%) ===
 
+REM [0/3] GUARD DE ARBOL LIMPIO (KI-036, opcion (b), orden del operador 2026-09-06).
+REM
+REM La tarea programada apunta al ARBOL DE TRABAJO, asi que produccion ejecuta lo
+REM que haya en disco, commiteado o no. El 2026-09-06 el run de las 12:00 corrio
+REM con ocho ficheros de `src/` y los cuatro BAT ya modificados por una sesion de
+REM remediacion en curso: codigo escrito una hora antes y validado tres horas
+REM DESPUES. Y `run_all.py:331` llama a `auto_promote_calibrators`, asi que el
+REM gate de promocion que se estaba editando ese mismo rato se ejercito en vivo.
+REM Aquel dia no paso nada -- rc=0 y ninguna promocion registrada --, pero fue el
+REM resultado, no el proceso. Era la SEGUNDA vez: el 2026-09-02 el run quedo
+REM incompleto por lo mismo y la decision quedo pendiente.
+REM
+REM Ahora se aborta ANTES de liquidar, que es el unico momento en que abortar no
+REM cuesta nada: no se ha tocado ningun dato todavia.
+REM
+REM Ambito: solo codigo que produccion EJECUTA. Los ficheros del operador
+REM (NOTAS, informes, markdown suelto) quedan fuera a proposito -- estan casi
+REM siempre modificados y bloquearian el run todos los dias, que es como se
+REM aprende a saltarse un guard.
+REM
+REM Escape para recuperacion manual:  set SQP_SKIP_TREE_GUARD=1
+set "SQP_TREE_DIRTY="
+if defined SQP_SKIP_TREE_GUARD (
+    echo [AVISO] SQP_SKIP_TREE_GUARD activo: se OMITE el guard de arbol limpio.
+    goto :tree_ok
+)
+git rev-parse --git-dir >nul 2>&1
+if errorlevel 1 (
+    REM Falla ABIERTO a proposito: "no se puede comprobar" no es "esta sucio", y
+    REM detener el pipeline del dinero porque falte git seria un modo de fallo
+    REM nuevo que nadie pidio. Se avisa fuerte y se continua.
+    echo [AVISO] git no disponible: NO se pudo comprobar el arbol. Se continua.
+    goto :tree_ok
+)
+for /f "delims=" %%i in ('git status --porcelain -- src scripts configs *.bat 2^>nul') do set "SQP_TREE_DIRTY=1"
+if defined SQP_TREE_DIRTY goto :error_arbol
+:tree_ok
+
 echo [1/2] Liquidando picks del dia anterior...
 call "%~dp0SETTLE_ALL.bat"
 if errorlevel 1 goto :error_settle
@@ -64,9 +102,20 @@ REM dashboard resalta los A en verde y los B en ambar.
 "%SQP_PYTHON%" scripts\tipster_report.py >> logs\run_diario.log 2>&1
 if errorlevel 1 echo [AVISO] tipster_report.py fallo (no bloqueante) >> logs\run_diario.log
 
-REM Run correcto: limpia el centinela para que el health check deje de
-REM reportar ERROR (auditoria 2026-07-29, S-1).
-"%SQP_PYTHON%" scripts\run_status.py --clear
+REM Run correcto: limpia el centinela de las DOS etapas que este bat arregla,
+REM una por una (auditoria 2026-07-29, S-1).
+REM
+REM NO se usa `--clear` a secas, que borra el fichero ENTERO. Eso era correcto
+REM cuando solo existian `settle` y `run` y este bat ejecutaba las dos; desde que
+REM el centinela cubre seis etapas (AUD-MED-003, 2026-09-06) borraria tambien las
+REM CUATRO que este bat no arregla. Un run diario correcto habria apagado en
+REM silencio la alarma de `validate_oos` -- que lleva fallada desde el 2026-09-01
+REM y no se reintenta hasta el 2026-10-01 --, o la del backfill, o la de la
+REM captura de cierre. Es decir: la alarma nueva habria durado hasta el dia
+REM siguiente. Encontrado al implementar KI-036, el mismo dia que se creo.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage settle
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage run
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage guard_arbol
 
 echo === DIARIO COMPLETO: OK ===
 
@@ -85,6 +134,20 @@ if defined SESSIONNAME (
 
 endlocal
 goto :eof
+
+:error_arbol
+echo.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage guard_arbol --exit-code 1
+echo *** ABORTADO ANTES DE LIQUIDAR: hay cambios SIN COMMITEAR en codigo que  ***
+echo *** produccion ejecuta (src\, scripts\, configs\ o *.bat).               ***
+echo ***                                                                     ***
+echo *** No se ha tocado ningun dato. Commitea los cambios y vuelve a lanzar. ***
+echo *** Si de verdad hace falta correr sobre el arbol sucio (recuperacion):  ***
+echo ***     set SQP_SKIP_TREE_GUARD=1                                        ***
+echo.
+git status --porcelain -- src scripts configs *.bat
+endlocal
+exit /b 1
 
 :error_settle
 echo.

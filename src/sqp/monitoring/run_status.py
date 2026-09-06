@@ -92,10 +92,17 @@ def clear_run_status(root: Path, stage: str | None = None) -> bool:
     """Borra el centinela tras un run correcto. Idempotente.
 
     Con `stage` borra SOLO si el fallo registrado es de esa etapa. Lo necesitan
-    los BAT parciales: `SETTLE_ALL.bat` y `RUN_DIARIO_ALL.bat` arreglan una
-    etapa cada uno, y borrar el centinela entero dejaria el fallo de la otra sin
-    avisar. Sin `stage` se borra siempre, que es lo correcto para
-    `DIARIO_COMPLETO.bat`, que ejecuta las dos.
+    TODOS los BAT: cada uno arregla las suyas y borrar el centinela entero
+    dejaria sin avisar los fallos de las demas.
+
+    Sin `stage` se borra el fichero ENTERO. Eso era lo correcto para
+    `DIARIO_COMPLETO.bat` mientras solo existian `settle` y `run` y ese bat
+    ejecutaba las dos. Desde que el centinela cubre siete etapas (AUD-MED-003 y
+    KI-036, 2026-09-06) ya NO lo es: un run diario correcto habria apagado en
+    silencio la alarma de `validate_oos`, `backfill`, `capture_close` o
+    `refresh_ml`, que ese bat no arregla. `DIARIO_COMPLETO.bat` pasa a limpiar
+    sus tres etapas una por una. El borrado total se conserva para uso manual
+    -- reparar el centinela a mano tras un incidente --, no para el flujo diario.
 
     Devuelve True si habia centinela y se borro.
     """
