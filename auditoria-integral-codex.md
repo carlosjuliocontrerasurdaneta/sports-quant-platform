@@ -1,296 +1,500 @@
 # Auditoría integral independiente — Sports Quant Platform
 
-**Fecha:** 2026-09-05  
+**Fecha:** 6 de septiembre de 2026  
 **Auditor:** Codex  
 **Repositorio:** `C:\dev\3\sports-quant-platform`  
-**Resultado:** **NO PASS — seis defectos confirmados y limitaciones de validación explícitas.**
+**Estado auditado:** `01993fd7d33f86d8c13a7f9d05715a2fc6091107`, más los deltas externos delimitados en §2.2  
+**Dictamen:** **NO PASS: seis defectos confirmados y limitaciones de verificación explícitas.**
 
 ## 1. Dictamen ejecutivo
 
-La auditoría identificó **dos hallazgos HIGH y cuatro MEDIUM**, todos con confianza HIGH. Cinco se activaron mediante ejecuciones controladas; el sexto, relativo a inyección en el dashboard, quedó verificado por el código y por el análisis del HTML generado. No se demostró un incidente CRITICAL ni pérdida efectiva de dinero o datos en producción.
+La revisión identifica **tres hallazgos HIGH y tres MEDIUM**, todos con confianza HIGH y evidencia REPRODUCED. Afectan a la integridad de la banca, la concurrencia de la liquidación, la independencia estadística del gate, el emparejamiento del backtest, la invalidación de features y la frescura de cuotas en modo offline.
 
-Los problemas de mayor impacto son la reconstrucción de una banca artificialmente elevada cuando un CSV de liquidaciones resulta ilegible y la pérdida de actualizaciones que permite el mecanismo de bloqueo al expirar su espera. Los restantes afectan la seguridad del dashboard, la selección temporal de observaciones para calibrar, la aceptación de una banca infinita y la divergencia entre entrenamiento manual y diario.
+No se demostró un incidente CRITICAL, una pérdida efectiva de datos operativos durante esta auditoría ni una explotación de seguridad. Los escenarios adversos se ejecutaron exclusivamente con datos sintéticos en directorios temporales. Los defectos describen capacidades de fallo del código actual; no prueban que sus consecuencias hayan ocurrido en producción.
 
-El registro operativo de predicción examinado contiene **41 mercados, ninguno autorizado**. Ese estado reduce la exposición inmediata a los defectos de dimensionamiento; no elimina sus rutas de activación cuando se autoricen mercados o se usen otros entrypoints/configuraciones.
+La suite existente termina en **1.547 pruebas aprobadas y una omitida**. Ruff no encuentra incidencias y MyPy valida los 98 archivos de fuente sin errores. La cobertura de líneas de `sqp` es **89,64 %**. Estos resultados son compatibles con los seis defectos: las pruebas existentes no discriminan las condiciones que los activan.
 
-La revisión no se limitó a los cambios locales: la solicitud expresa de auditoría integral define como alcance el proyecto completo. Los defectos se presentan como problemas del estado auditado, sin atribuirlos a los cambios que estaban pendientes al comenzar.
+El registro operativo tiene **41 mercados, ninguno autorizado**. Los **134 candidatos** almacenados, generados el 5 de septiembre, suman stake cero. Esta situación limita la exposición económica inmediata, pero el gate es precisamente uno de los controles afectados y no sustituye la corrección de los problemas contables.
 
-**Validaciones:** **1.517 pruebas aprobadas y 1 omitida** en la suite completa; Ruff y MyPy sin incidencias; pip-audit sin vulnerabilidades conocidas reportadas para el lock. Estos resultados no invalidan los casos adversos de la sección 3.
+El proyecto dispone de una arquitectura modular, separación demo/live, controles de exposición, escrituras atómicas, validación temporal y una suite amplia. Las debilidades confirmadas se concentran en las fronteras entre componentes: validación por archivo frente a validación por movimiento; atomicidad frente a exclusión mutua; línea cotizada frente a ensayo independiente; determinismo frente a identidad del partido; fuente principal frente a dependencias de caché; y lectura offline frente a precio accionable.
 
-## 2. Alcance, identidad de la revisión y método
+## 2. Alcance, preservación y metodología
 
-### 2.1 Estado de Git y preservación del entorno
+### 2.1 Alcance autorizado
 
-Al inicio se observó HEAD `33f3c262903faaf61787ba4a98892744d13893cb` y cinco modificaciones locales previas:
+La solicitud expresa de auditoría integral define como alcance el proyecto completo, no un diff concreto. Por tanto, se incluyen defectos presentes en el estado actual aunque sean anteriores a esta sesión. No se atribuyen a un commit particular sin evidencia causal.
 
-- `.claude/skills/full-audit/references/discovery-coverage.md`.
-- `.github/workflows/ci.yml`.
-- `NOTAS.md`.
-- `scripts/claude_project_health.py`.
-- `tests/test_claude_system_contract.py`.
+Se inspeccionaron arquitectura, dominio, configuración, proveedores, modelos deportivos, probabilidades, calibración, evaluación, riesgo, persistencia, liquidación, backtesting, informes, automatización, CI, pruebas y documentación operativa.
 
-Durante la auditoría, actividad externa avanzó HEAD a `ad764f23cb4b6e8ebdae775e01662158d204e700` y dejó únicamente `NOTAS.md` modificado antes de escribir este informe. Codex no hizo commits, cambios de rama, push, restauraciones ni operaciones de limpieza.
+“Integral” significa cobertura de todas esas áreas mediante inventario, inspección dirigida, pruebas y contraste de datos. No significa demostración formal de cada línea, certificación de cada proveedor ni validación de rentabilidad futura. Las verificaciones no realizadas se identifican expresamente.
 
-Se creó una copia temporal de los archivos versionados disponibles, incluyendo el contenido local modificado, para ejecutar pruebas sin escribir sobre el proyecto operativo. Ubicación:
+### 2.2 Estado del repositorio
 
-`C:\Users\Richard\AppData\Local\Temp\sqp-audit-497953f85cf5451385476406165dcaa6`
+Al comienzo, Git mostraba únicamente un archivo local no versionado:
 
-Se excluyeron datos operativos, logs, secretos y carpetas de conocimiento no necesarias para las pruebas. Una comparación posterior por contenido de archivos Python/YAML de `src`, `scripts`, `tests`, `configs` y `.github` no detectó diferencias entre esa copia y el proyecto. Por tanto, el avance externo de HEAD no invalidó las validaciones sobre esos archivos.
+- `audit/model_vs_market_20260906.md`.
 
-El copiado inicial por `git ls-files` tuvo errores de representación en nombres Unicode de documentos auxiliares. Se registra como limitación del inventario documental copiado, no como defecto del proyecto; los archivos de código/configuración comparados sí coincidieron.
+Se conservó intacto. El informe solicitado ya existía, fechado el 5 de septiembre; se reemplaza con esta evaluación actualizada. No se reutilizaron sus resultados como evidencia de ejecución de esta sesión.
 
-La única escritura deliberada sobre el proyecto es la actualización de este informe, expresamente solicitada por el usuario. Se reemplaza el informe anterior de agosto con esta evaluación independiente.
+Se copiaron **529 archivos versionados**, incluyendo 272 archivos Python, a:
 
-### 2.2 Método y evidencia
+`C:\Users\Richard\AppData\Local\Temp\sqp-auditoria-20260906-8iecekla`
 
-Se combinaron:
+La copia excluyó datos operativos, logs, secretos y directorios documentales no necesarios para las pruebas. Se conservaron los archivos de configuración y los contratos auxiliares necesarios para la suite. Un manifiesto SHA-256 permitió comparar posteriormente los archivos copiados con los originales: **ninguna diferencia en la comprobación intermedia posterior a la suite completa**. HEAD permaneció en el commit indicado.
 
-1. Inspección de arquitectura, configuración y contratos documentados.
-2. Lectura dirigida de implementaciones, consumidores y pruebas por componente.
-3. Validación de sintaxis/lint, tipos y comportamiento en copia aislada.
-4. Casos adversos controlados que verifican consecuencias concretas.
-5. Lectura directa de CSV y JSON operativos para medir calidad de datos, sin invocar cargadores que reparan, renombran o ponen archivos en cuarentena.
-6. Consulta de vulnerabilidades de las versiones fijadas, sin instalar o actualizar dependencias.
+En la comprobación final aparecieron dos modificaciones externas a esta auditoría: `src/sqp/providers/odds_cache.py` y `tests/test_odds_cache.py`. Añaden un piso de cero a la edad de caché y una prueba con mtime posterior al reloj. Se inspeccionó el diff y se validó una segunda copia temporal: **14 pruebas aprobadas y Ruff sin incidencias**. El resultado de 1.547 pruebas y la cobertura pertenecen a la instantánea original; no se presentan como una ejecución completa sobre este delta. La rama offline sigue usando TTL infinito, expresamente conservado por la nueva prueba, por lo que AUD-06 permanece aplicable. Las demás rutas de los hallazgos no cambian.
 
-Se aplican los estados de AGENTS.md: únicamente `REPRODUCED` y `STATICALLY_VERIFIED` se contabilizan como defectos confirmados. Un test verde no constituye por sí solo una prueba de corrección completa; una advertencia de una herramienta tampoco se transforma automáticamente en un hallazgo.
+Después aparecieron otros dos cambios externos: `src/sqp/calibration/calibrator.py` y `tests/test_calibrator.py`. La promoción pasa a denegar metadatos OOS ausentes/ilegibles, salvo override explícito con force. Se inspeccionó su implementación y se ejecutaron las pruebas de promoción sobre la segunda copia: **9 aprobadas, 32 deseleccionadas; Ruff sin incidencias**. Esta corrección queda documentada como cambio externo validado, no como un séptimo defecto pendiente ni como una modificación realizada por Codex. El cierre cubre la instantánea original y estos cuatro archivos de delta; cambios posteriores requieren otra revisión.
 
-### 2.3 Inventario y profundidad
+La única escritura deliberada en el proyecto original es este informe. No se hicieron commits, cambios de rama, push, despliegues, modificaciones de credenciales ni ejecuciones del pipeline live contra proveedores. Las pruebas que crean repositorios Git de ejemplo lo hacen en el área temporal.
 
-| Área | Archivos inventariados | Líneas físicas |
+### 2.3 Inventario
+
+Conteo de archivos relevantes por extensión y líneas físicas, incluyendo comentarios:
+
+| Área | Archivos | Líneas |
 |---|---:|---:|
-| Python en `src/sqp` | 98 | 15.837 |
-| Python en `scripts` | 58 | 9.131 |
-| Python en `tests` | 115 | 21.558 |
-| YAML en `configs` | 5 | 582 |
+| `src` | 98 | 16.175 |
+| `scripts` | 61 | 9.228 |
+| `tests` | 115 | 22.136 |
+| `configs` | 5 | 582 |
+| `.github` | 1 | 142 |
+| `.claude`, excluyendo el plugin vendorizado superpowers-main | 197 | 10.324 |
 
-Las cifras son inventario, no cobertura de ejecución ni una afirmación de lectura manual línea por línea. La cobertura fue por componentes y rutas de riesgo, complementada por las validaciones automatizadas. No se calculó un porcentaje de cobertura durante esta auditoría.
+Los conteos de scripts incluyen archivos no Python. Se inventariaron además los BAT, Dockerfile, Makefile, manifiestos de dependencias y documentación; no se confunde su inventario con cobertura ejecutada.
+
+### 2.4 Criterios de evidencia
+
+Se aplican los estados de AGENTS.md: REPRODUCED, STATICALLY_VERIFIED, TOOL_DETECTED, INFERRED, NOT_VERIFIABLE y DISMISSED. Solo los dos primeros pueden fundamentar defectos confirmados.
+
+Los hallazgos siguientes tienen resultados observados en ejecuciones controladas. Cuando se sustituyó un proveedor, adaptador o punto de intercalado, se indica qué parte se simuló y qué lógica real produjo el fallo.
 
 ## 3. Hallazgos confirmados
 
-| ID | Severidad | Confianza | Evidencia | Problema |
-|---|---|---|---|---|
-| AUD-001 | HIGH | HIGH | REPRODUCED | Un CSV ilegible puede inflar la banca disponible |
-| AUD-002 | HIGH | HIGH | REPRODUCED | El timeout del bloqueo permite perder actualizaciones |
-| AUD-003 | MEDIUM | HIGH | STATICALLY_VERIFIED | Datos externos se insertan como código/HTML en el dashboard |
-| AUD-004 | MEDIUM | HIGH | REPRODUCED | El colapso de calibración no garantiza conservar el último servicio |
-| AUD-005 | MEDIUM | HIGH | REPRODUCED | La configuración admite banca infinita y Kelly devuelve stake infinito |
-| AUD-006 | MEDIUM | HIGH | REPRODUCED | El CLI de calibración entrena sobre una probabilidad distinta del flujo diario |
+### AUD-20260906-01 — Una corrupción parcial del ledger infla la banca
 
-### AUD-001 — El saldo aumenta cuando las pérdidas se vuelven ilegibles
+| Campo | Resultado |
+|---|---|
+| Severidad | **HIGH** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivo | `src/sqp/risk/bankroll.py` |
+| Líneas relevantes | 53, 121–125, 127–147 y 223 |
+| Activación | Un archivo conserva al menos un PnL numérico, pero otra pérdida contiene un valor ilegible; alternativamente, una retirada tiene un `amount` ilegible. |
 
-- **Severidad:** HIGH.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** REPRODUCED.
-- **Archivo y código relevante:** `src/sqp/risk/bankroll.py:43`, captura de `EmptyDataError/ParserError` seguida de `continue`; `:77`, suma del saldo; `:149`, aplicación al dimensionamiento dinámico. La lectura de ajustes en `:71` presenta el mismo patrón de devolver cero.
-- **Activación:** un archivo `settled_*.csv` que contiene pérdidas deja de ser parseable y se vuelve a calcular la banca. Para producir exposición real adicional deben estar permitidos el mercado y el staking.
-- **Problema:** datos contables desconocidos se interpretan como ausencia de movimientos. El saldo resultante tiene apariencia de cifra válida aunque ya no esté respaldado por todo el ledger.
-- **Evidencia:** en un directorio temporal se escribió una liquidación real con PnL −400 y banca inicial 1.000. El saldo fue 600. Al agregar una fila con más campos que la cabecera, pandas produjo el error de parsing que el código omite; `current_balance()` pasó a devolver 1.000.
-- **Comportamiento esperado:** señalar que el saldo es indeterminado y detener el dimensionamiento dependiente de él, o usar una política explícita de último saldo verificado cuya integridad pueda acreditarse.
-- **Comportamiento observado:** el saldo subió **600 → 1.000 sin depósito ni ganancia**. No hubo error propagado ni advertencia desde esa rama.
-- **Causa raíz:** el manejo de errores de lectura equipara corrupción con contribución contable cero.
-- **Consecuencia:** sobreestimación material del capital disponible y de los límites/stakes que se derivan de él. En el ejemplo, el saldo utilizable se sobreestima un 66,7 %. No se observó un CSV de liquidaciones corrupto en el barrido operativo.
-- **Corrección mínima propuesta:** propagar un error de integridad identificando el archivo y hacer que los entrypoints de staking rechacen una banca no verificable. Aplicar el mismo criterio al archivo de ajustes. Conservar los datos para diagnóstico.
-- **Pruebas necesarias:** integrar lectura de un ledger corrupto con `apply_dynamic_bankroll` y comprobar que no se autoriza stake; cubrir pérdidas, retiradas, CSV truncado y columnas contables ausentes. `tests/test_bankroll.py::test_corrupt_or_empty_file_is_skipped` valida actualmente el comportamiento de omisión, por lo que debe revisarse su contrato y no solamente agregarse otro test que lo repita.
+**Problema y causa raíz.** `_exigir_pnl_legible` rechaza el archivo únicamente cuando no existe ningún PnL numérico. Si queda uno válido, `realized_pnl` convierte los restantes valores inválidos a NaN y después a cero. `adjustments_total` aplica también `to_numeric(errors="coerce").fillna(0.0)`, sin una validación equivalente por movimiento. La protección frente a un CSV totalmente ilegible no cubre la corrupción parcial.
 
-### AUD-002 — La exclusión mutua desaparece precisamente cuando hay contención
+**Evidencia y comportamiento observado.**
 
-- **Severidad:** HIGH.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** REPRODUCED.
-- **Archivo y código relevante:** `src/sqp/storage/lock.py:55`–`61`: al alcanzar el deadline se hace `break` y después `yield` sin haber adquirido el lock. Consumidores: `pipeline/daily.py`, `pipeline/revalidation.py`, `storage/odds_store.py` y contadores de cierre.
-- **Activación:** un escritor retiene el bloqueo más que el timeout de otro escritor. Es una condición concreta del flujo: `revalidate_pitchers` mantiene el bloqueo durante `fetch_probables(day)` (`src/sqp/pipeline/revalidation.py:277`, `:319`), mientras el proveedor admite llamadas de 60 segundos y el timeout del lock es 30 segundos.
-- **Problema:** el segundo escritor entra en una sección supuestamente exclusiva y ambos pueden operar sobre versiones distintas del mismo CSV.
-- **Evidencia:** con un lock adquirido se leyó una fila `old`. Dentro de otra adquisición con `timeout_s=0`, que activó inmediatamente la misma rama de timeout, se escribió una fila `new`. El primer escritor persistió después su copia anterior. El resultado final fue únicamente `old`; `new` desapareció. Se observó el warning `proceeding WITHOUT lock`.
-- **Comportamiento esperado:** el escritor que no obtiene exclusión no debe ejecutar una actualización del recurso protegido; debe reintentar o devolver un fallo explícito.
-- **Comportamiento observado:** se permitió escribir y la nueva actualización se perdió. La prueba usa un intercalado determinista en un único proceso para activar la lógica de exclusión; no pretende medir la frecuencia de carreras entre procesos en producción.
-- **Causa raíz:** priorizar la continuidad del pipeline sobre la garantía de exclusión, mientras los consumidores siguen usando operaciones read-modify-write. El nombre temporal fijo `.csv.tmp` añade otra colisión posible cuando se solapan escrituras.
-- **Consecuencia:** pérdida de candidatos recién generados, revocaciones o cambios de exposición, e inconsistencias en datos/contadores compartidos. No se demostró que haya ocurrido ya en los archivos operativos.
-- **Corrección mínima propuesta:** hacer que el timeout impida entrar en la sección crítica. Sacar las consultas de red de esa sección cuando sea posible, releer/revalidar el estado al adquirir el lock y evitar temporales compartidos. Usar un mecanismo de bloqueo con semántica comprobable para procesos vivos.
-- **Pruebas necesarias:** dos escritores coordinados, uno demorado, verificando que ninguna actualización se pierde; una revocación concurrente con generación; colisión de temporales; timeout sin escritura. Las pruebas actuales de `test_storage.py` y `test_odds_store.py` esperan explícitamente degradar sin lock y no demuestran conservación de actualizaciones.
+| Caso sintético | Estado válido | Estado tras sustituir un importe por `ERROR` |
+|---|---:|---:|
+| Banca inicial 1.000; dos pérdidas de −400 | 200 | **600** |
+| Banca inicial 1.000; retirada de −400 | 600 | **1.000** |
 
-### AUD-003 — Inyección de JavaScript/HTML en el reporte interactivo
+La llamada real a `apply_dynamic_bankroll` aceptó los **600** del primer caso. No se lanzó `LedgerIntegridadError`, por lo que no se activó la salida conservadora que pone la banca a cero.
 
-- **Severidad:** MEDIUM.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** STATICALLY_VERIFIED.
-- **Archivo y código relevante:** `src/sqp/audit/html_report.py:823` serializa con `json.dumps(..., ensure_ascii=False)`; `:837` inserta `payload` sin escape contextual; `:980` lo coloca dentro de un `<script>`. En `:1058` y `:1281`, el formateador de texto devuelve el valor original y las tablas lo insertan mediante `innerHTML`.
-- **Activación:** un valor textual procedente del proveedor o de los CSV, por ejemplo el nombre de un equipo, contiene una secuencia de cierre de script o marcado HTML activo; el usuario abre el reporte generado.
-- **Problema:** serializar JSON no es escapar datos para el contexto HTML de una etiqueta script. Además, el renderizado de celdas interpreta los textos como marcado.
-- **Evidencia:** se construyó la plantilla con un valor inocuo de prueba `</script><script>window.auditMarker=1</script>`. El parser HTML reconoció **dos elementos script**, incluido uno independiente cuyo contenido era `window.auditMarker=1`. Las rutas de `innerHTML` constituyen un segundo punto de interpretación de datos.
-- **Comportamiento esperado:** representar esos caracteres como texto/datos, sin crear elementos ni ejecutar código.
-- **Comportamiento observado:** el documento generado incorpora una nueva etiqueta script a partir del dato. No se abrió el payload en un navegador ni se ejecutó JavaScript durante la auditoría; la explotación queda demostrada estáticamente por el contexto HTML.
-- **Causa raíz:** falta de separación entre serialización JSON, escape de HTML y construcción del DOM.
-- **Consecuencia:** ejecución de JavaScript en el contexto del reporte, alteración visual de picks o navegación/conexiones no deseadas. No se demuestra acceso remoto al filesystem, robo de credenciales ni control actual de los proveedores por un atacante.
-- **Corrección mínima propuesta:** neutralizar `<` al serializar el JSON embebido —por ejemplo con el escape JSON `\u003c`— y construir textos/atributos con APIs DOM como `textContent` y `setAttribute`, sin interpolar valores no confiables en HTML o handlers inline.
-- **Pruebas necesarias:** nombres con `</script>`, etiquetas con eventos, comillas y caracteres especiales; comprobar que permanecen como texto y que no se crean scripts/event handlers adicionales. Cubrir ambas tablas, filtros y atributos dinámicos.
+**Comportamiento esperado.** Una pérdida o retirada cuyo importe no puede determinarse debe invalidar el saldo verificable, no convertirse en un movimiento de importe cero. Debe preservarse la distinción con los casos legítimos de push/void documentados por el proyecto.
 
-### AUD-004 — Se pierde el timestamp necesario para elegir la observación más reciente
+**Consecuencia.** Kelly y los límites de exposición pueden dimensionarse sobre capital sobreestimado. La misma conversión también altera curvas y resúmenes contables. No se encontró esta corrupción en las 1.228 liquidaciones operativas examinadas.
 
-- **Severidad:** MEDIUM.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** REPRODUCED.
-- **Archivo y código relevante:** `src/sqp/calibration/data.py:40` no conserva `generated_at` en `TRAINING_COLS`; `:108` obtiene `date` de la fecha del partido. `src/sqp/calibration/calibrator.py:571` ordena por `date` y `:595` conserva `groupby("_unit").last()`.
-- **Activación:** varias observaciones del mismo evento/selección/línea, generadas en fechas distintas, llegan en un orden que no es el cronológico de generación. La unión de liquidaciones y stream servido y los historiales inyectables no garantizan ese orden.
-- **Problema:** la implementación promete conservar la última observación por frescura de features, pero todas las observaciones del mismo evento tienen la misma fecha de partido. Tras descartar el timestamp de generación, no puede determinar cuál es la última.
-- **Evidencia:** para 40 eventos se proporcionaron dos observaciones: probabilidad 0,8 generada el 31 de agosto y 0,2 generada el 30, ambas con partido el 1 de septiembre. Se pasó el dataset por la proyección real y se interceptó la entrada a entrenamiento, evitando crear modelos. Las **40 observaciones retenidas fueron 0,2**, aunque la más reciente era 0,8.
-- **Comportamiento esperado:** conservar 0,8 para cada unidad, independientemente del orden de llegada, manteniendo la fecha del partido para el split temporal.
-- **Comportamiento observado:** se eligió la fila antigua; el historial proyectado ya no contenía `generated_at`.
-- **Causa raíz:** utilizar un único campo de fecha para dos semánticas distintas: ordenar eventos para validación y ordenar servicios dentro de un evento.
-- **Consecuencia:** entrenamiento y métricas del gate sobre una observación distinta de la que declara el contrato, con dependencia del orden de las fuentes. No se cuantificó el impacto sobre métricas de los calibradores actualmente desplegados ni se afirma fuga de etiquetas por esta causa.
-- **Corrección mínima propuesta:** conservar un timestamp de generación normalizado a UTC; seleccionar por ese timestamp dentro de cada unidad, con desempate explícito; mantener `game_date/date` por separado para agrupar y separar eventos temporalmente.
-- **Pruebas necesarias:** permutar el orden de las mismas observaciones, intercambiar las fuentes y comprobar invariancia; cubrir múltiples días de servicio, dos lados del mismo mercado y timestamps equivalentes en distintos formatos.
+**Corrección mínima propuesta.** Validar importes finitos por fila y según su tipo de movimiento antes de sumar. Ante una pérdida, ganancia o ajuste indeterminado, lanzar `LedgerIntegridadError` indicando archivo y fila; conservar el tratamiento explícito de los estados que admiten cero. No reparar ni completar importes silenciosamente.
 
-### AUD-005 — Se aceptan valores no finitos en la banca
+**Pruebas necesarias.** Mezcla de PnL válido e inválido; una retirada ilegible entre ajustes válidos; importes NaN/inf; push/void legítimos; comprobación de que `apply_dynamic_bankroll` no devuelve una banca inflada. Las pruebas actuales de ParserError y archivo totalmente inválido no cubren estas variantes.
 
-- **Severidad:** MEDIUM.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** REPRODUCED.
-- **Archivo y código relevante:** `src/sqp/config.py:220` convierte `BANKROLL` con `float`; `:340` solo comprueba `self.bankroll <= 0`. `src/sqp/risk/kelly.py:14` calcula el stake sin validar finitud de la banca.
-- **Activación:** configuración `BANKROLL=inf`, admitida por la conversión estándar, y un candidato con probabilidad/precio que permite stake positivo.
-- **Problema:** la validación declara comprobar seguridad de configuración pero acepta una cantidad monetaria infinita.
-- **Evidencia:** `Settings.load()` aceptó `BANKROLL=inf`; con probabilidad 0,6, cuota 2 y parámetros de riesgo cargados, Kelly devolvió un porcentaje aproximado de 0,016 y un stake no finito.
-- **Comportamiento esperado:** rechazar la configuración antes de evaluar o persistir candidatos.
-- **Comportamiento observado:** `settings_accepted=true`, `bankroll_finite=false`, `stake_finite=false`.
-- **Causa raíz:** comparaciones de rango que no excluyen explícitamente infinitos/NaN en campos sin cota superior, junto con falta de validación defensiva en el cálculo monetario.
-- **Consecuencia:** stakes, sumas de exposición o PnL no finitos si esa configuración llega a una ruta autorizada. El ejemplo se ejecutó en un entorno temporal; no se detectó esa configuración en producción ni se leyó el contenido del `.env` operativo.
-- **Corrección mínima propuesta:** exigir `math.isfinite` además del rango en los campos numéricos de configuración y en los valores monetarios recibidos por Kelly; revisar también los campos de frescura y penalización que solo usan comparaciones de signo.
-- **Pruebas necesarias:** `nan`, `inf` y `-inf` en banca, límites y parámetros de frescura; verificar rechazo temprano y ausencia de salidas no finitas. Los controles existentes sobre precios inválidos no cubren este origen.
+### AUD-20260906-02 — La liquidación puede perder escrituras concurrentes
 
-### AUD-006 — El entrenamiento manual usa un objetivo distinto al servido
+| Campo | Resultado |
+|---|---|
+| Severidad | **HIGH** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivo | `src/sqp/settlement/runner.py` |
+| Líneas relevantes | 216–252; lectura de `prior` en 232 y persistencia en 249/251 |
+| Activación | Dos liquidaciones de la misma liga se solapan y persisten conjuntos distintos de filas nuevas. |
 
-- **Severidad:** MEDIUM.
-- **Confianza:** HIGH.
-- **Estado de evidencia:** REPRODUCED.
-- **Archivo y código relevante:** `scripts/train_calibration.py:85`, selección de `prob_col` antes de llamar a `train_market_calibrators`: las fuentes `combined/settled/served` usan `model_probability`. Contratos relacionados: `calibration/data.py::stage_calibrators_from_settled` usa `adjusted_probability`, y `pipeline/daily.py:760` entrega `_p_adj` a `pipeline/probabilities.py::_decision_probability` para calibrarla.
-- **Activación:** ejecutar el CLI manual sobre un historial con `adjusted_probability != model_probability`, condición presente en 2.216 filas del stream graduado examinado.
-- **Problema:** el camino manual y el diario ajustan curvas sobre variables distintas, aunque ambos producen candidatos para los mismos mercados.
-- **Evidencia:** se invocó `main()` del CLI con loader simulado y una fila con modelo 0,4/ajustada 0,7. Se interceptó la llamada de entrenamiento: `CLI_TRAIN_TARGET model_probability`. No se entrenó ni promovió ningún modelo. La lectura directa de datos reales corroboró que la distinción no es meramente nominal.
-- **Comportamiento esperado:** las fuentes de servicio usan `adjusted_probability` con el fallback legacy ya definido por la proyección, igual que el flujo diario. El backtest puede conservar su semántica explícitamente distinta.
-- **Comportamiento observado:** el CLI selecciona `model_probability`, incluso cuando dispone de la columna ajustada.
-- **Causa raíz:** la selección del objetivo en el entrypoint no se actualizó junto con el contrato de entrenamiento/servicio.
-- **Consecuencia:** candidatos manuales y métricas OOS que no representan el mismo objetivo que el entrenamiento diario; una promoción posterior puede aplicar una curva aprendida sobre otra variable. La promoción automática está desactivada en el YAML, lo que reduce la exposición inmediata.
-- **Corrección mínima propuesta:** cambiar el objetivo de las fuentes serve-anchored a `adjusted_probability` y compartir la decisión con el flujo diario; mantener el fallback de esquemas antiguos y ajustar la documentación del CLI.
-- **Pruebas necesarias:** invocar el entrypoint con probabilidades cruda y ajustada deliberadamente distintas; comprobar el campo realmente entregado al trainer; cubrir fuentes combined, served, settled y backtest.
+**Problema y causa raíz.** `_persist_settled` ejecuta lectura, deduplicación, combinación y reemplazo sin adquirir el lock compartido. El temporal único y `os.replace` protegen frente a archivos a medio escribir, pero no impiden que un escritor sustituya el resultado completo de otro. Ni `settle_all.py` ni `settle_bets.py` añaden exclusión alrededor de esa transacción.
+
+**Evidencia.** Se mantuvo intacta la implementación de `_persist_settled` y se instrumentó su llamada a `_atomic_write_csv` para producir un intercalado determinista: A prepara su escritura, B liquida y persiste, A termina. Ambas llamadas finalizan correctamente.
+
+| Resultado | Esperado | Observado |
+|---|---|---|
+| Eventos persistidos | A y B | **Solo A** |
+| Saldo con inicial 1.000 y dos pérdidas de −400 | 200 | **600** |
+
+La ejecución controla el orden de las operaciones; no mide la frecuencia de la carrera en el planificador real.
+
+**Comportamiento esperado.** Serializar la transacción completa por archivo y volver a leer el estado después de adquirir el lock, preservando la unión de liquidaciones e idempotencia.
+
+**Consecuencia.** Pérdida de movimientos del ledger y alteración de banca, ROI y evidencia de calibración. Puede activarse al solapar una liquidación manual con otra ejecución. No se verificó que tal solapamiento haya ocurrido en producción.
+
+**Corrección mínima propuesta.** Usar `locked(out)` desde antes de comprobar/leer el archivo hasta completar la deduplicación y escritura. Mantener el temporal único. Revisar los demás escritores del mismo archivo para que participen en el mismo protocolo.
+
+**Pruebas necesarias.** Dos escritores con una barrera controlada después de la lectura: filas distintas deben sobrevivir; filas repetidas deben aparecer una sola vez. Probar tanto archivo inicialmente ausente como existente y el timeout sin entrada a la sección crítica.
+
+### AUD-20260906-03 — El gate cuenta varias líneas del mismo partido como ensayos independientes
+
+| Campo | Resultado |
+|---|---|
+| Severidad | **HIGH** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivo | `src/sqp/risk/prediction_gate.py` |
+| Líneas relevantes | 172–212, especialmente 208/212; recuento y test en 215–225 |
+| Activación | Un evento aporta más de una línea de spreads o totals dentro del mismo mercado evaluado. |
+
+**Problema y causa raíz.** El agrupamiento por `(event_id, market, line)` elimina repeticiones y lados complementarios de una misma línea, pero deja varias unidades del mismo partido. Sus resultados dependen del mismo marcador: dos totales distintos son sucesos anidados, no ensayos independientes. `binomtest` trata esas unidades como observaciones independientes.
+
+No se propone fusionar las líneas por valor absoluto ni confundir contratos de apuestas distintos. El defecto está en la unidad de inferencia estadística, no en conservar la identidad de las cotizaciones.
+
+**Evidencia operativa.** En el historial posterior al preregistro:
+
+| Segmento | Unidades contadas | Partidos |
+|---|---:|---:|
+| WNBA totals | 66 | 39 |
+| WNBA spreads | 67 | 39 |
+| NCAAF totals | 39 | 15 |
+| MLS spreads | 46 | 30 |
+| MLB totals | 174 | 166 |
+
+**Reproducción.** Se generaron 150 eventos, cada uno con líneas 3,5 y 4,5, lados Over/Under, probabilidades complementarias 0,8/0,2, cuotas 1,8/3,0 y probabilidades de mercado 0,625/0,375. El resultado es compatible con ganar ambos Overs. Se conservaron los valores canónicos: mínimo 300 y alpha 0,05/41.
+
+- Con una línea por evento: `n=150`, `allowed=False`, `muestra_insuficiente`.
+- Con las dos líneas: **`n=300`, `allowed=True`**, EV medio 0,02 y p-valor aproximadamente `4,909e-91`.
+- No se añadió ningún partido independiente.
+
+**Comportamiento esperado.** La replicación de exposición al mismo marcador no debe hacer cumplir un mínimo de evidencia independiente ni fabricar precisión estadística.
+
+**Consecuencia.** Autorización prematura de mercados y posible consumo prematuro de su test único de entrada. Bonferroni y el pestillo no corrigen una unidad estadística inválida. Actualmente todos los mercados operativos siguen denegados.
+
+**Corrección mínima propuesta.** Mantener las líneas en los datos, pero construir una contribución por evento para el test, con una regla fijada de antemano; alternativamente, utilizar una inferencia que trate el evento como grupo dependiente. Documentar/preregistrar el cambio sin elegirlo por el resultado favorable de la muestra observada. No cambiar arbitrariamente los umbrales.
+
+**Pruebas necesarias.** Añadir líneas y snapshots del mismo evento no puede aumentar el número de eventos independientes. Cubrir totales anidados, handicaps que cruzan cero y lados complementarios. Revisar `tests/test_prediction_gate.py:185`: hoy exige `n=2` para dos líneas del mismo evento y consolida precisamente la confusión entre contrato distinto y ensayo independiente.
+
+### AUD-20260906-04 — El backtest cruza resultados de partidos del mismo día
+
+| Campo | Resultado |
+|---|---|
+| Severidad | **MEDIUM** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivo | `src/sqp/backtesting/roi_engine.py` |
+| Líneas relevantes | 134–161, 228–233 y 325 |
+| Activación | Dos partidos de la misma pareja y orientación comparten fecha, y el orden de `game_id` no coincide con el cronológico. |
+
+**Problema y causa raíz.** Los resultados se ordenan por fecha, equipos e identificador; el matcher asigna codiciosamente el evento de cuotas más temprano aún disponible. No utiliza el instante del resultado ni demuestra la correspondencia entre identificadores de proveedores. El orden resultante es determinista, pero puede ser incorrecto.
+
+**Evidencia.** Dos eventos sintéticos, a las 10:00 y 18:00, tienen resultados locales de 10–0 y 0–10, respectivamente. El identificador del segundo ordena antes que el del primero. Se empleó un adaptador de probabilidades constantes para aislar el emparejamiento; selección, liquidación y PnL utilizaron el código real.
+
+| Evento | Resultado esperado del pick local | Resultado observado |
+|---|---|---|
+| 10:00 | win, +20 | **loss, −20** |
+| 18:00 | loss, −20 | **win, +20** |
+
+El rastro muestra además que el resultado de las 18:00 se incorpora mediante `adapter.observe` antes de estimar el evento de las 18:00. Con un adaptador que aprende de esas filas, esa ruta permite contaminación por el resultado del propio evento.
+
+**Comportamiento esperado.** Una correspondencia demostrada por identidad/tiempo, o abstención explícita si el vínculo es ambiguo. El histórico consumido por el modelo debe ser anterior al corte de la predicción.
+
+**Consecuencia.** Etiquetas y PnL por apuesta incorrectos; posible sesgo cuantitativo. En esta reproducción el PnL agregado se cancela por simetría: no se afirma que el ROI total haya cambiado. Con precios, selecciones o stakes diferentes esa cancelación no está garantizada.
+
+**Corrección mínima propuesta.** Conservar y usar identidad y tiempos verificables; no resolver ambigüedades por orden de ID. Si el histórico solo tiene día, omitir emparejamientos ambiguos y evitar actualizaciones intradía cuyo orden no pueda demostrarse. `history_scores_map` ya adopta una abstención conservadora ante dobles jornadas ambiguas.
+
+**Pruebas necesarias.** IDs no cronológicos, horas explícitas, doble jornada sin hora verificable, cuotas asimétricas y comprobación del conjunto de resultados observado antes de cada estimación. La invariancia al barajar la entrada no demuestra que el emparejamiento sea correcto.
+
+### AUD-20260906-05 — Actualizar abridores no invalida la caché de features MLB
+
+| Campo | Resultado |
+|---|---|
+| Severidad | **MEDIUM** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivo | `src/sqp/storage/feature_store.py` |
+| Líneas relevantes | 58–68, 71–79 y 116–139 |
+| Activación | Existe un dataset MLB cacheado y cambia `starters_mlb.csv` sin cambiar `results_mlb.csv`; se reconstruye sin `force=True`. |
+
+**Problema y causa raíz.** `_mlb_results_df` consume resultados y abridores. Sin embargo, `_source_hash` solo incorpora el archivo de resultados. El manifest no refleja todas las entradas que determinan el dataset.
+
+**Evidencia.** Se construyó un dataset de cuatro partidos con el mismo abridor y luego se sustituyó el abridor del cuarto partido:
+
+| Resultado | Caché reutilizada | Reconstrucción forzada |
+|---|---|---|
+| Abridor local | Pitcher H | New starter |
+| Inicios previos del abridor | **3** | **0** |
+
+Después de la actualización, `dataset_is_current` devolvió **True**.
+
+**Comportamiento esperado.** Invalidar y reconstruir el dataset cuando cambia cualquiera de sus fuentes relevantes, incluidas correcciones y nuevas incorporaciones de abridores.
+
+**Consecuencia.** Entrenamientos o comparaciones ML pueden usar identidad y estadísticas obsoletas sin aviso. El subsistema ML está documentado como experimental y no alimenta actualmente los candidatos; ese hecho limita la exposición inmediata. `force=True` evita el problema en una ejecución concreta.
+
+**Corrección mínima propuesta.** Incorporar el contenido y la presencia/ausencia de `starters_mlb.csv` a la huella de entradas MLB. Revisar que la huella de código cubra también los helpers que realmente transforman esas entradas.
+
+**Pruebas necesarias.** Dataset vigente tras construcción; invalidación al corregir un abridor, añadir el archivo antes ausente o cambiar una dependencia relevante; reutilización cuando nada cambia; equivalencia con reconstrucción forzada.
+
+### AUD-20260906-06 — Offline omite el límite de frescura y permite candidatos live con cuotas vencidas
+
+| Campo | Resultado |
+|---|---|
+| Severidad | **MEDIUM** |
+| Confianza | **HIGH** |
+| Evidencia | **REPRODUCED** |
+| Archivos | `src/sqp/providers/odds_api.py`; `src/sqp/pipeline/daily.py` |
+| Líneas relevantes | `odds_api.py:143`; `daily.py:245–269`, 615–624 y 689 |
+| Activación | Ejecución live con `OFFLINE_MODE` activo y respuesta cacheada de un evento futuro más antigua que la política de frescura. |
+
+**Problema y causa raíz.** El pipeline acota `client.cache_ttl`, pero `OddsAPIClient._get` lo sustituye por infinito en modo offline. La antigüedad original no se propaga para impedir el uso como precio accionable; el candidato recibe un sello de generación nuevo y etiqueta real.
+
+**Contrato.** El límite procede de `revalidation_price_max_age_min`, con valor canónico de 90 minutos. `tests/test_frescura_cuotas_diario.py` declara expresamente que un precio no accionable para mantener un pick tampoco lo es para crearlo.
+
+**Evidencia.** Ejecución real de `run_league`, con cliente offline y caché temporal de **240 minutos**, para un evento que empieza dos horas después. Solo se sustituyó el adaptador por una salida fiable y constante de 0,55/0,45; no hubo red.
+
+- El log anuncia que reduce el TTL de 21.600 a **5.400 segundos**.
+- El cliente devuelve igualmente la respuesta de cuatro horas.
+- Se persiste un candidato con **stake 20**, `data_label="real"` y `generated_at` actual.
+
+Los gates se desactivaron en esta configuración sintética para aislar la frescura. Con el registro operativo actual, el gate evita stake positivo; no impide por sí mismo presentar cuotas viejas como salida recién generada.
+
+**Comportamiento esperado.** Offline puede permitir consultar una respuesta antigua, pero no convierte su precio en accionable para la ruta live.
+
+**Consecuencia.** Picks y decisiones basados en cuotas que incumplen la política del proyecto. Puede afectar stakes cuando los restantes controles permiten el mercado.
+
+**Corrección mínima propuesta.** Separar la lectura offline de la autorización del precio: propagar el instante de captura y aplicar la misma comprobación de antigüedad antes de producir un candidato accionable, o restringir explícitamente ese replay a una salida sin stake y correctamente identificada.
+
+**Pruebas necesarias.** Integración cliente–pipeline con caché por debajo y por encima del límite, modo offline/live y evento futuro. Las pruebas que buscan el texto `client.cache_ttl = acotado` en el fuente no prueban que ese valor gobierne la lectura efectiva.
 
 ## 4. Resultados por componente
 
-| Componente | Verificación realizada | Resultado y límites |
-|---|---|---|
-| Dominio y configuración | Entidades, precedence env/YAML, rangos, modos, configuración ausente | La ausencia de YAML falla explícitamente; booleanos no reconocidos no anulan silenciosamente el YAML. AUD-005 afecta finitud. No se inspeccionó el contenido del .env operativo. |
-| Cuotas y proveedores | Odds API, caché, retries, parsing, resultados ESPN/MLB, persistencia | Hay timeouts y redacción de query en errores HTTP/conexión; modo offline bloquea la salida a la red. Se preservan cuotas crudas inválidas y se filtran al calcular consenso. Disponibilidad y exactitud del vendor en vivo no comprobadas. |
-| Mercados | Conversión de cuotas, no-vig proporcional/power, consenso, spreads complementarios, edge y penalizaciones | Se verificó el rechazo de precios no finitos y el tratamiento de mercados incompletos. No se encontró un defecto adicional confirmado en las fórmulas/rutas examinadas. |
-| Modelos y adaptadores | Elo, Normal, Poisson/NegBin, Dixon-Coles, correlación, park/starter, familias deportivas | Se revisaron actualización secuencial, probabilidades condicionadas a no-push y configuración por familia. La validez predictiva por liga no se deduce de las pruebas de implementación. |
-| Simulación | Monte Carlo Normal/Poisson y pruebas asociadas | Implementación con semillas y salidas probabilísticas; no se ejecutó un benchmark independiente de todos los parámetros/regímenes. |
-| Features y ML experimental | Rolling features antes de observar resultados, selección de columnas, pipelines y TimeSeriesSplit | Hay separación de labels y transformaciones dentro del pipeline. El módulo ML no alimenta directamente los picks de producción. Disponibilidad intradía exacta y validación OOS de todos los modelos históricos no acreditadas. |
-| Calibración | Proyección served/settled, dedup, split por evento, gates, registro y aplicación | Controles de ECE/Brier y estructura de curvas. AUD-004 y AUD-006. El agrupamiento por evento evita separar sus dos lados entre train y validación; no equivale a probar independencia de todo el proceso de investigación. |
-| Backtesting y tuning | Walk-forward, matching de resultados/cuotas, cierre prepartido, OOS, comparación/blend | El ROI replay ordena resultados y comparte ajustes con servicio; usa un proxy de cierre y omite algunas decisiones de producción por diseño. No certifica el rendimiento económico de la política operativa completa. |
-| Riesgo y banca | Kelly, caps por liga/global, gates CLV/predicción, degradación, ledger | Gate ausente/ilegible se trata como denegación en las rutas inspeccionadas. AUD-001, AUD-002 y AUD-005 afectan garantías monetarias/de persistencia. |
-| Liquidación | Identidad de equipos, h2h/1X2/spreads/totals, push/void, expiración y dedup | Guards contra líneas no finitas y selección no reconocida; pruebas unitarias/integrales. No se conciliaron todas las filas con extractos de una casa de apuestas. |
-| Storage | CSV atómico, fsync, locks, snapshots, esquemas, stream servido, features | Escritura temporal+replace reduce truncados, pero no ofrece por sí sola serialización. AUD-002. No se simularon cortes de energía ni fallos reales del filesystem. |
-| Evaluación y reportes | Brier, log-loss, ECE, CLV, bootstrap por cluster, segmentación, tipster, HTML | Se observaron filtros de CLV no finito y agrupación para bootstrap. AUD-003 afecta el reporte interactivo. No hubo validación visual completa en navegador. |
-| Operación y monitoreo | BAT, run_all/settle_all, cierre, budgets, run_status, health y purga | Orden settle→run y manejo de etapas fallidas inspeccionados; purga limitada a familias de artefactos. No se ejecutaron tareas programadas, purgas ni pipelines live. |
-| Automatización de revisión | Protocolo de procedencia, launcher, snapshot, tests contractuales, health | El protocolo distingue ausencia/fallo de ejecución de revisión limpia. Se examinaron los cambios de alarma CI; no se abrieron issues ni se invocaron revisores externos. |
-| Empaquetado/CI | pyproject, lock, Makefile, Dockerfile, workflow | CI declara Python 3.11–3.14 en Linux y una pata Windows 3.12. Docker usa usuario sin privilegios. Validación local en Windows/Python 3.14; sin build Docker ni réplica de toda la matriz. |
-| Documentación | README, contratos operativos/cuantitativos y comentarios de implementación | Se usaron como contratos a contrastar, no como evidencia de que correcciones históricas ya funcionen. Las discrepancias que afectan comportamiento se documentan en hallazgos; no se cuentan preferencias editoriales. |
+| Componente | Verificaciones y conclusión |
+|---|---|
+| Arquitectura y dominio | Entidades y adaptadores separan evento, línea, probabilidad y candidato. La ruta de servicio usa adaptadores deportivos; la inferencia ML sigue separada. No se confirmó un defecto adicional de composición. |
+| Configuración | YAML seguro, precedencia de entorno, validación de modo/banca y rechazo de configuración ausente. La política versionada activa prediction gate, banca dinámica y calibración; desactiva shadow, CLV gate y promoción automática. No se leyó el contenido secreto de .env: no se certifican todos los valores efectivos del entorno. |
+| Proveedores | Se revisaron Odds API, ESPN, MLB Stats API, caché, retries, fechas y mapeos. Se ejercitaron mediante tests/mocks. Se confirmó AUD-06; disponibilidad, cuotas y respuestas actuales de proveedores externos no se verificaron. |
+| Mercados | Conversión de cuotas, descarte de precios no finitos, mercados completos para retirar vig, orientación del spread y probabilidades compartidas live/backtest cubiertos por código y suite. No se confirmó un nuevo defecto en esas primitivas. |
+| Modelos deportivos | Elo, márgenes normales, Poisson/binomial negativa, ajustes Dixon-Coles/correlación, scoring, descanso, parques, abridores y tenis revisados mediante implementación y pruebas. Se preserva el carácter estimado de las probabilidades. Las aproximaciones documentadas no se reportan como bugs sin demostrar incumplimiento. |
+| Simulación | Pruebas analíticas/Monte Carlo aprobadas. Esto valida coherencia de fórmulas bajo fixtures, no exactitud predictiva empírica de cada liga. |
+| Features y ML | Builders temporales, separación de etiquetas, pipelines de entrenamiento, TimeSeriesSplit y comparación por holdout inspeccionados. AUD-05 invalida la afirmación de que la caché siempre refleja sus fuentes. No se entrenaron nuevos modelos sobre datos operativos. |
+| Calibración | Split por evento, separación temporal, colapso de repeticiones, objetivo adjusted_probability, staging, gates estructurales y promoción revisados. La selección de la observación reciente usa served_at. CLI y staging diario comparten ahora objetivo. No se demuestra rentabilidad por una mejora de ECE/Brier. |
+| Gate y evaluación | Hay preregistro, Bonferroni, test único de entrada y pestillo. La dependencia residual entre líneas invalida parte de la evidencia estadística: AUD-03. Bootstrap por evento en evaluación es una defensa distinta y no repara automáticamente el test de signo. |
+| Riesgo y banca | Kelly valida finitud de banca/probabilidad/precio, con límites por apuesta y exposición. AUD-01 muestra que sigue faltando integridad contable por movimiento. |
+| Persistencia | Temporales únicos, fsync y reemplazo atómico mejoran durabilidad y evitan archivos parciales. El lock ya aborta al agotar espera. AUD-02 demuestra que un consumidor contable importante no lo utiliza. |
+| Liquidación | Grading por mercado, pushes, voids, identidad normalizada, deduplicación y conciliación de esquema revisados. El fallback histórico se abstiene ante ambigüedad. No se ejecutó liquidación operativa. |
+| Backtesting | Walk-forward, periodo OOS, probabilidad compartida y caps revisados. Las limitaciones documentadas de calibración/gates/clima frente a producción no se confunden con paridad completa. AUD-04 afecta identidad y temporalidad del replay. |
+| CLV y revalidación | Cierre anterior al comienzo, filtro canónico de 90 minutos, finitud de agregados y revocación conservadora revisados. No se inventaron ventanas alternativas ni se afirmó cobertura universal de cierres. |
+| Informes y dashboard | Pruebas de historial, vistas de decisión, filtros, diagnósticos y HTML aprobadas. Se inspeccionó el escape del JSON embebido y de textos de tabla. No se realizó navegación interactiva ni una prueba de explotación en navegador. |
+| Operación | BAT encadena settle antes de run, aborta en fallos bloqueantes y registra centinelas. Se revisaron presupuesto, archivo, limpieza y apertura de dashboard. La consulta al planificador no produjo información utilizable; no se certifican tareas instaladas. |
+| CI y empaquetado | Makefile inspeccionado; check equivale a lint, tipos y tests. CI declara Linux 3.11–3.14 y Windows 3.12. Docker ejecuta con usuario no root. No se construyó la imagen ni se consultó el último run remoto de CI. |
+| Automatización de revisión | Se inventariaron scripts y contratos, se inspeccionaron protocolo/procedencia y puntos de ejecución, y se ejecutaron sus tests. No se lanzaron revisores externos, agentes ni publicaciones/issues. |
+| Documentación | README, contratos de configuración, preregistros, instrucciones y reportes previos contrastados con código. Algunos comentarios describen estados históricos; solo se reportan como defectos las consecuencias de corrección demostradas arriba. |
 
-## 5. Inspección de datos operativos
+## 5. Datos operativos: comprobaciones directas
 
-El barrido fue de solo lectura y no representa un snapshot transaccional: otro proceso podía actualizar los archivos entre lecturas.
+Se utilizaron `pandas.read_csv`, lectura JSON y hashes. No se invocaron sobre producción los loaders que pueden poner archivos en cuarentena o reparar registros.
 
-| Conjunto | Archivos | Filas | Errores de lectura |
-|---|---:|---:|---:|
-| `data/bets/settled_*.csv` | 27 | 1.205 | 0 |
-| `data/calibration/graded_*.csv` | 23 | 19.333 | 0 |
-| `data/predictions/candidates_*.csv` | 14 | 144 | 0 |
-| `data/historical/results_*.csv` | 21 | 130.144 | 0 |
-| `data/odds/odds_*.csv` | 75 | 5.545.502 | 0 |
+### 5.1 Ledger
 
-Resultados concretos:
+- 27 archivos de liquidación; **1.228 filas**, todas etiquetadas `real`.
+- 746 loss, 464 win y 18 push.
+- PnL acumulado: **−84,25**.
+- Dos ajustes manuales con suma **0**.
+- Con la banca inicial versionada de 1.000, el saldo aritmético es **915,75**; no se presenta como verificación del valor BANKROLL efectivo en .env.
+- Cero errores de parseo, PnL no finitos, stakes negativos/no finitos o cuotas no utilizables en estos archivos.
 
-- En liquidaciones, stream graduado y candidatos no se encontraron probabilidades **presentes y numéricamente convertibles** fuera de [0, 1] ni duplicados por la clave completa `event_id/market/selection/line/generated_at`. Este control no demuestra unicidad a otras granularidades.
-- Las liquidaciones tenían 94 valores ausentes de `calibrated_probability`. El stream graduado tenía 14.953 valores ausentes de `adjusted_probability`. Existen fallbacks de esquema legacy; la ausencia no se clasificó por sí sola como defecto. No se afirma que todas las probabilidades de esos registros hayan sido calibradas.
-- En 2.216 filas graduadas la probabilidad ajustada difiere de la cruda: evidencia de la relevancia de AUD-006.
-- Las cuotas contienen 3.293 precios no utilizables. No se encontraron timestamps de captura/inicio inválidos en el barrido con parsing UTC de formatos mixtos.
-- Hay 288.725 filas capturadas en o después del inicio que la propia fila reporta. Su presencia en el archivo crudo no prueba look-ahead: `load_closing_odds` filtra capturas estrictamente anteriores al comienzo y el pipeline restringe la acción sobre eventos comenzados. No se consideraron esas filas como picks accionables ni se midió aquí cada replay histórico.
-- El registro de calibración contenía cuatro entradas con artefactos existentes: `mlb_h2h_pergame`, `mlb_spreads`, `mlb_totals` y `wnba_spreads`. Solo el último disponía de sidecar SHA-256 y coincidía. Los otros tres no tienen una comparación de hash disponible. La presencia de una entrada no demuestra que tenga consumidores ni que su curva sea válida.
-- El gate local de predicción contenía 41 entradas, cero permitidas y cero latched. Se leyó su estado; no se modificó ni recalculó.
+“Real” es una etiqueta de procedencia, no prueba de ejecución en una casa de apuestas. Tampoco debe interpretarse el hit rate agregado como rentabilidad: muchas observaciones tienen stake cero.
 
-## 6. Validaciones ejecutadas
+### 5.2 Stream servido y graduado
 
-Entorno principal: Windows, Python **3.14.4**. Versiones observadas: pytest **9.0.3**, Ruff **0.15.14**, MyPy **2.1.0**, NumPy **2.4.4**, pandas **3.0.2**, SciPy **1.17.1**, scikit-learn **1.9.0**, pip-audit **2.10.1**.
+| Control | Servido | Graduado |
+|---|---:|---:|
+| Filas | 23.905 | 20.048 |
+| Duplicados por evento/mercado/selección/línea/día de generación | 0 | 0 |
+| generated_at inválido | 0 | 0 |
+| start_time inválido | 0 | 0 |
+| Generación igual o posterior al inicio | 0 | 0 |
+| model_probability fuera de [0,1] o ausente | 0 | 0 |
+
+Los 23 archivos graduados contienen 1.620 eventos: 10.547 loss, 8.953 win, 286 push y 262 void. El número de filas no equivale a tamaño muestral independiente.
+
+La ausencia de generación posterior al inicio verifica esos sellos, no la disponibilidad histórica de cada feature ni la antigüedad de cada cotización subyacente.
+
+### 5.3 Históricos, candidatos y registros
+
+Se inspeccionaron 21 archivos `results_*.csv`: no contienen duplicados bajo la clave disponible `(date, home, away, game_id)`. Las fechas máximas varían por temporada y fuente; no se declara “obsoleto” un histórico solo porque una liga esté fuera de temporada. Las fuentes por tour de tenis y por liga de equipos son distintas.
+
+Los candidatos actuales son 134 filas de 14 archivos no vacíos, generadas el 5 de septiembre, con stake agregado cero. El registro de prediction gate fue generado el **5 de septiembre a las 15:11:26 UTC**, conserva 41 entradas y no autoriza ninguna.
+
+El registro de calibración enumera `mlb_h2h_pergame`, `mlb_spreads`, `mlb_totals` y `wnba_spreads`; sus cuatro artefactos existen. Solo se encontró sidecar SHA-256 para wnba_spreads y coincide. Los otros tres carecen de esa evidencia de integridad, una situación admitida por compatibilidad legacy. No se interpretó la ausencia como prueba de manipulación.
+
+La clave `mlb_h2h_pergame` no equivale a `mlb_h2h`: la ruta estándar construye `league_market`. Por tanto, cuatro entradas en el registro no significan cuatro calibradores aplicados a los mercados estándar. No se deserializaron esos artefactos de producción para esta auditoría.
+
+## 6. Validación ejecutada y clasificación
+
+Entorno: **Windows, Python 3.14.4**, NumPy 2.4.4, pandas 3.0.2, SciPy 1.17.1, scikit-learn 1.9.0, pytest 9.0.3, Ruff 0.15.14 y MyPy 2.1.0.
+
+Todos los comandos de test/lint/tipos siguientes se ejecutaron en la copia temporal.
 
 | Validación | Resultado | Clasificación |
 |---|---|---|
-| Pruebas iniciales config/odds/vig/Kelly | 38 aprobadas en la repetición aislada | Sin fallo final |
-| Ruff: `python -m ruff check --no-cache src scripts tests` | All checks passed | Sin diagnóstico |
-| MyPy: `python -m mypy --cache-dir nul src` | Sin incidencias en 98 archivos fuente | Sin diagnóstico |
-| Suite completa | 1.517 passed, 1 skipped; 1.457,58 s (24 min 17 s), salida 0 | Sin fallos de suite; una prueba omitida |
-| pip-audit del lock | No known vulnerabilities found, salida 0 | Sin vulnerabilidad conocida reportada |
-| Casos adversos de esta auditoría | AUD-001/002/004/005/006 reproducidos; AUD-003 verificado en HTML | Defectos confirmados según sección 3 |
-| Consulta del último CI remoto | `gh` no disponible en PATH ni en la ruta de instalación habitual | ENVIRONMENTAL_FAILURE; estado remoto NOT_VERIFIABLE |
+| Pruebas focalizadas: bankroll, storage, calibration_data y html_report | **80 passed** en 21,24 s | Sin fallo final |
+| `ruff check --no-cache src scripts tests` | All checks passed | Sin fallo |
+| `mypy --cache-dir nul src` | Sin incidencias en 98 archivos | Sin fallo |
+| Suite completa con cobertura | **1.547 passed, 1 skipped** en 2.286,82 s | Sin fallo |
+| Delta externo final: tests de caché y frescura; Ruff de los dos archivos modificados | **14 passed** en 20,35 s; Ruff sin incidencias | Sin fallo en el alcance del delta |
+| Segundo delta externo: selección de pruebas de promoción y Ruff | **9 passed, 32 deselected** en 12,47 s; Ruff sin incidencias | Sin fallo en el alcance del delta |
+| Seis escenarios adversos de este informe | Comportamientos incorrectos observados | **PRE_EXISTING_FAILURE** del estado auditado |
+| pip-audit sobre requirements.lock | Consulta incompleta por permisos/red y posterior ConnectionResetError | **ENVIRONMENTAL_FAILURE**; seguridad de dependencias **NOT_VERIFIABLE** |
+| Consulta de tareas SQP instaladas | Sin resultado utilizable, código de salida 1 | **NOT_VERIFIABLE** |
 
-**Detalle de la prueba omitida:** `tests/test_review_v2.py::test_every_finding_slot_tolerates_hostile_text[severity]`, con omisión explícita en `tests/test_review_v2.py:228`. El motivo es `severity is a closed enum, not free text`: el campo `severity` solo admite valores definidos (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`), por lo que no corresponde aplicarle este caso parametrizado de texto libre adverso. Es una omisión deliberada del test, no un fallo ni un problema del entorno. Se confirmó posteriormente en la copia temporal con `python -m pytest -q -rs -p no:cacheprovider --basetemp audit-skip-check "tests/test_review_v2.py::test_every_finding_slot_tolerates_hostile_text[severity]"`: **1 skipped in 0.56s**, salida 0.
-
-Comando de la suite completa, dentro de la copia:
+Comando de suite completa:
 
 ```powershell
-$env:PYTHONDONTWRITEBYTECODE='1'
-python -m pytest -q -p no:cacheprovider --basetemp audit-suite-temp
+python -B -m pytest -q --tb=short -p no:cacheprovider --basetemp ./audit-pytest-full --cov=sqp --cov-report=term --cov-report=json:audit-coverage.json
 ```
 
-Comando de auditoría de dependencias, también dentro de la copia:
+La omisión corresponde al caso parametrizado que intenta tratar severity como texto libre, cuando es un enum cerrado: `tests/test_review_v2.py:228`. No se contabiliza como prueba aprobada.
 
-```text
-python -m pip_audit -r requirements.lock --no-deps --disable-pip --cache-dir audit-vuln-cache --progress-spinner off --timeout 10
-```
+La primera ejecución focalizada utilizó el directorio temporal predeterminado de pytest y terminó con 9 passed y 71 errores de preparación por acceso denegado a `pytest-of-Richard`. Dos intentos elevados no localizaron las rutas relativas de tests. La ejecución posterior con basetemp específico dentro de la copia aislada resolvió el problema. Son fallos del entorno/ejecución, no regresiones atribuidas al código.
 
-La primera ejecución de las pruebas iniciales dio **37 passed, 1 error** porque pytest no podía acceder a su directorio temporal compartido (`WinError 5`). Se repitió con permiso de ejecución ampliado y un `--basetemp` propio: **38 passed**. Se clasifica el intento inicial como **ENVIRONMENTAL_FAILURE**, no como regresión.
+Una consulta de Git desde un subproceso temporal detectó propiedad distinta del repositorio. La verificación posterior usó `git -c safe.directory=...` solo para esa invocación: no se cambió configuración global. Las advertencias de permisos del ignore global no se clasifican como defectos del proyecto.
 
-La primera consulta pip-audit falló por bloqueo de sockets del sandbox (`WinError 10013`). Se repitió mediante el mecanismo de permisos y terminó correctamente. No se ejecutó `--fix`, resolución de paquetes ni actualización de dependencias. El resultado cubre los paquetes expresamente fijados en el archivo, no componentes transitivos ausentes de ese inventario, herramientas globales o imágenes base.
+No se ejecutó `make check` porque ya se habían ejecutado sus tres verificaciones con opciones de aislamiento. No se instalaron ni actualizaron dependencias.
 
-`make check` se inspeccionó y equivale a lint, types y test. Se usaron los comandos directamente para controlar cachés y ubicación de salidas, evitando repetir validaciones equivalentes.
+### 6.1 Cobertura y sus límites
 
-No se detectó una NEW_REGRESSION atribuible a las modificaciones locales del inicio. Los seis defectos son del estado del proyecto examinado; no se hizo bisección histórica para fechar su introducción.
+Se ejecutaron **6.358 de 7.093 líneas instrumentables** de `src/sqp`; 735 quedaron sin ejecutar. La medición es de líneas, no de ramas. No incluye una medición independiente de cobertura de los scripts.
 
-## 7. Candidatos descartados y cuestiones no verificables
+| Módulo | Cobertura aproximada |
+|---|---:|
+| distributions, Monte Carlo, métricas de calibración | 100 % |
+| adapters | 99 % |
+| probabilities | 98 % |
+| bankroll | 95 % |
+| roi_engine | 95 % |
+| prediction_gate | 94 % |
+| feature_store | 92 % |
+| html_report | 91 % |
+| calibrator | 89 % |
+| settlement.runner | 87 % |
+| revalidation | 87 % |
+| pipeline.daily | 85 % |
+| espn_tennis | 76 % |
+| ml_predict | 71 % |
+| mlb_statsapi | 43 % |
 
-### 7.1 Sospechas descartadas
+La cobertura alta de bankroll y del gate no impidió los hallazgos. Son necesarios oráculos de corrección e integración: ejecutar una línea de código no valida todas sus precondiciones.
 
-| Sospecha | Estado | Motivo |
+## 7. Seguridad, sospechas descartadas y aspectos no verificables
+
+### 7.1 Seguridad
+
+Se inspeccionaron los usos de subprocess, deserialización joblib, YAML, peticiones HTTP y generación HTML en fuente/scripts. No se confirmó en esas rutas un nuevo caso de ejecución arbitraria o exposición de credenciales. Esta afirmación no equivale a un escaneo exhaustivo del historial Git ni a una prueba de penetración.
+
+La clave Odds API se añade a la petición; los errores de conexión se resumen y los errores HTTP se vuelven a emitir con query redactada. YAML usa carga segura. No se encontró `shell=True` en el barrido de fuente/scripts. Se revisaron las capacidades de escritura del workflow de alerta; no se activó el envío de issues.
+
+Joblib presupone artefactos locales de confianza. La comprobación de hash es informativa y puede permitir carga aun cuando falle. Sin demostrar entrada de artefactos controlados por un atacante, no se convierte esa observación en una vulnerabilidad explotable confirmada.
+
+### 7.2 Registro de candidatos no confirmados
+
+| Candidato | Estado | Resolución |
 |---|---|---|
-| Todo precio crudo inválido contamina el consenso | DISMISSED | `is_usable_price` se aplica en consenso, conteo y de-vig |
-| Toda captura posterior al comienzo se usa como cierre | DISMISSED | El selector exige captura anterior al inicio y usa la hora de inicio más recientemente reportada |
-| Las dos caras de un evento se separan entre train/validación de calibración | DISMISSED | El trainer de mercados transmite `group_col="event_id"` al split |
-| Cualquier registro ausente de gate permite staking | DISMISSED | Las rutas revisadas diferencian gate apagado de registro vacío y deniegan este último |
-| Los modelos ML experimentales gobiernan los picks diarios | DISMISSED | La ruta operativa inspeccionada genera probabilidades con adaptadores/simulación; inferencia ML permanece separada |
-| Los datos legacy sin probabilidad calibrada prueban corrupción | DISMISSED | El proyecto dispone de fallbacks; la ausencia requiere contexto, no constituye por sí sola un resultado inventado |
+| El lock permite entrar sin exclusión al agotar timeout | **DISMISSED** para el código actual | Ahora lanza LockNoAdquiridoError y las pruebas pasan. AUD-02 afecta a un escritor que no adquiere ese lock. |
+| Un lock vivo envejecido permite una segunda entrada en Windows | **DISMISSED** para la reproducción realizada | Al envejecer controladamente su mtime, Windows impidió borrar el archivo abierto con WinError 32. No se reprodujo doble entrada. |
+| Recuperación de locks viejos bajo semántica POSIX | **NOT_VERIFIABLE** | No se ejecutó una reproducción Linux. El comportamiento observado en Windows no valida POSIX. |
+| CLI manual y staging diario calibran variables diferentes | **DISMISSED** | Ambos usan adjusted_probability en fuentes servidas; backtest conserva su semántica explícita. |
+| La promoción omite el control de muestra cuando faltan metadatos OOS | **DISMISSED** para el delta de cierre | La instantánea inicial tenía esa omisión; la corrección externa inspeccionada ahora deniega metadatos ausentes/ilegibles. Las pruebas de promoción y del override explícito pasan. |
+| La última observación de calibración se decide solo por fecha del partido | **DISMISSED** | El código actual incorpora served_at para el desempate y la suite focalizada pasa. |
+| BANKROLL=inf atraviesa Settings y Kelly | **DISMISSED** | Las guardas actuales verifican finitud. Esto no resuelve los importes ilegibles de AUD-01. |
+| Registro de modelos manipulado o artefactos comprometidos | **NOT_VERIFIABLE** | No hay evidencia de ataque; tres sidecars faltan por una compatibilidad admitida. |
+| Dashboard completamente libre de XSS | **NOT_VERIFIABLE** | Se verificaron escapes y tests de HTML, pero no todos los sinks dinámicos en un navegador con entradas hostiles. |
+| Dependencias sin vulnerabilidades conocidas al 6 de septiembre | **NOT_VERIFIABLE** | pip-audit no completó la consulta. El resultado limpio de una auditoría anterior no se hereda. |
+| Disponibilidad real, esquema actual y presupuesto de proveedores | **NOT_VERIFIABLE** | No se consumieron APIs de pago ni se ejercitó integración live. |
+| Ejecución actual de tareas, último CI remoto y restauración de backups | **NOT_VERIFIABLE** | No se obtuvo evidencia operativa suficiente ni se realizaron restauraciones. |
+| Rentabilidad futura o calibración válida bajo cambios de régimen | **NOT_VERIFIABLE** | Las pruebas de software y los agregados históricos no la demuestran. |
 
-### 7.2 Límites relevantes
+## 8. Plan de corrección y pruebas de aceptación
 
-- **NOT_VERIFIABLE — exactitud del mundo real:** no se consultaron Odds API, ESPN o MLB para reconciliar cada resultado/cuota. Los tests y el parsing no demuestran que el proveedor haya publicado información correcta.
-- **NOT_VERIFIABLE — rentabilidad y calibración prospectiva:** no se reentrenaron todos los modelos ni se ejecutaron todos los scripts de investigación con datos reales. No se certifica ROI futuro, calibración por liga ni superioridad sobre mercado.
-- **NOT_VERIFIABLE — disponibilidad intradía histórica:** los resultados persistidos conservan principalmente fecha de partido; no basta para acreditar el instante exacto en que cada resultado/starter/feature estuvo disponible. Se revisó el orden de actualización, pero no se certifica ausencia universal de look-ahead en dobles jornadas o replays.
-- **NOT_VERIFIABLE — multiplicidad y selección de investigación:** splits por evento y bootstrap por cluster son controles útiles; no bastan para acreditar que cada configuración/promoción resultó de un procedimiento prospectivo sin reutilización de muestras. Esa trazabilidad no se reconstruyó íntegramente.
-- **NOT_VERIFIABLE — artefactos desplegados:** no se deserializaron modelos operativos para verificar todas las curvas. Tres entradas carecen de sidecar de hash. La existencia del archivo y un hash, cuando existe, no autentican por sí solos su procedencia.
-- **NOT_VERIFIABLE — entorno efectivo y scheduler:** no se abrió el `.env`, no se alteraron credenciales y no se inspeccionaron/ejecutaron todas las tareas instaladas del Programador de Windows. La configuración versionada no se equipara a la configuración efectiva de producción.
-- **NOT_VERIFIABLE — remoto y despliegue:** sin CLI GitHub disponible, no se confirmó el último resultado de Actions, protecciones de rama ni entrega de las nuevas alertas. Tampoco se construyó la imagen Docker ni se ejecutó la matriz completa de sistemas/versiones.
-- **NOT_VERIFIABLE — seguridad exhaustiva:** el control de archivos sensibles versionados no encontró `.env`, `.env.local`, `.env.production`, `*.pem` o `*.key` dentro del patrón consultado. No equivale a un escaneo de secretos de toda la historia Git ni a una auditoría de permisos de equipos/servicios.
-- **NOT_VERIFIABLE — recuperación y visualización:** no hubo simulación de apagado abrupto, restauración desde backup o pruebas visuales completas en navegador. Las garantías de exclusión sí se activaron de forma controlada en AUD-002.
+| Orden | Trabajo propuesto | Criterio verificable de cierre |
+|---|---|---|
+| 1 | AUD-01: integridad por movimiento contable | Ninguna pérdida/retirada ilegible aumenta el saldo; el pipeline trata la banca como no verificable. |
+| 2 | AUD-02: exclusión transaccional de liquidaciones | Dos escritores concurrentes conservan todas las filas nuevas, sin duplicados ni pérdida de PnL. |
+| 3 | AUD-03: unidad independiente del gate | Variar el número de líneas del mismo partido no aumenta el número de eventos independientes ni abre el gate por duplicación. |
+| 4 | AUD-06: frescura independiente del modo de acceso | Una caché más vieja que la política no produce candidatos accionables live, incluso offline. |
+| 5 | AUD-04: emparejamiento e información disponible al corte | Dobles jornadas con IDs no cronológicos se asignan correctamente o se omiten por ambigüedad; no se observa el propio resultado antes de estimarlo. |
+| 6 | AUD-05: huella completa de features | Cambiar abridores invalida la caché y la reconstrucción normal coincide con force=True. |
 
-No se emite un PASS incondicional sobre ninguna de esas áreas.
+No se aplicaron estas correcciones. Para el criterio estadístico, la revisión del preregistro debe separar diseño de evaluación y evitar elegir una regla por su resultado favorable retrospectivo.
 
-## 8. Orden propuesto de corrección y criterios de cierre
+Tras implementar, ejecutar primero los escenarios discriminantes de cada hallazgo y después la suite completa, Ruff y MyPy. La validación de proveedores, dependencias, navegador y tareas debe completarse por separado, con resultados registrados; no queda sustituida por los tests unitarios.
 
-1. **Integridad monetaria:** corregir AUD-001 y AUD-005, de modo que una banca desconocida/no finita no se convierta en una cantidad válida para apostar.
-2. **Escrituras concurrentes:** corregir AUD-002 y demostrar preservación de actualizaciones y revocaciones con dos escritores. Un warning no es criterio de aceptación.
-3. **Dashboard:** corregir AUD-003 en el JSON embebido y en todas las interpolaciones DOM afectadas; probar cargas de texto adversas.
-4. **Calibración:** corregir AUD-004 y AUD-006 conjuntamente, conservando las dos semánticas temporales y un único objetivo de entrenamiento para las fuentes servidas. Comparar el dataset resultante antes de entrenar/promover.
-5. **Revalidación:** ejecutar las pruebas específicas nuevas y las puertas existentes; documentar por separado la evidencia OOS y la decisión de promoción si los candidatos cambian.
+## 9. Trazabilidad de las reproducciones
 
-Estos pasos son propuestas de remediación, no cambios realizados por la auditoría. No se recomienda promover automáticamente los modelos ni reconstruir datos operativos sin una tarea de implementación y revisión de sus resultados.
+Los resultados detallados se guardaron en la copia temporal, fuera del proyecto:
 
-## 9. Conclusión
+- `audit-source-manifest.json`: hashes de los archivos fuente copiados.
+- `audit-coverage.json`: cobertura de la suite completa.
+- `audit-data-results.json`: inventario y agregados de datos/registros.
+- `audit-data-quality.json`: controles de fechas, duplicados y probabilidades.
+- `audit-adverse-results.json`: corrupción parcial, retirada, líneas correlacionadas y pérdida de escritura.
+- `audit-backtest-results.json`: traza de estimación/observación y resultados cruzados.
+- `audit-feature-results.json`: caché frente a reconstrucción forzada.
+- `audit-offline-results.json`: precio vencido utilizado por run_league.
 
-El proyecto dispone de una base amplia de pruebas, controles explícitos de riesgo y mecanismos de trazabilidad. Las validaciones automatizadas no detectaron los seis problemas demostrados, en parte porque algunas pruebas consolidan comportamientos de degradación que permiten perder garantías de integridad.
+Los archivos temporales son evidencia auxiliar y pueden caducar por mantenimiento del sistema. Las entradas, resultados, causas y pasos esenciales se incluyen en este informe para no depender exclusivamente de ellos.
 
-El resultado de esta auditoría es **NO PASS**. El cierre requiere corregir y verificar los seis hallazgos, manteniendo separadas la corrección del software, la integridad de los datos y la evidencia cuantitativa prospectiva. Este informe no certifica seguridad absoluta ni rentabilidad.
+El delta externo final se validó en `C:\Users\Richard\AppData\Local\Temp\sqp-audit-delta-20260906-1hp7yoi5`, con `tests/test_odds_cache.py` y `tests/test_frescura_cuotas_diario.py`. No se suman sus 14 casos a los 1.547 de la suite como si fueran pruebas distintas: hay solapamiento.
+
+En esa segunda copia se incorporó después el delta de calibración y se ejecutó `pytest ... tests/test_calibrator.py -k promot`: 9 pruebas aprobadas y 32 deseleccionadas. Tampoco se suman estos casos al total de la suite. Las referencias de líneas del informe corresponden al código de la instantánea original, salvo las menciones explícitas a los deltas.
+
+### Reproducción compacta de AUD-01
+
+Ejecutar solo en un entorno aislado con `src` en PYTHONPATH:
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from sqp.risk.bankroll import BankrollLedger
+
+with TemporaryDirectory() as td:
+    root = Path(td)
+    bets = root / "data" / "bets"
+    bets.mkdir(parents=True)
+    (bets / "settled_mlb.csv").write_text(
+        "pnl,data_label,result,stake\n"
+        "-400,real,loss,400\n"
+        "ERROR,real,loss,400\n",
+        encoding="utf-8",
+    )
+    print(BankrollLedger(root, 1000).current_balance())
+    # Observado: 600. El saldo no es verificable.
+```
+
+### Reproducción compacta de AUD-03
+
+```python
+import pandas as pd
+from sqp.risk.prediction_gate import evaluate_markets
+
+rows = []
+for event in range(150):
+    for line in (3.5, 4.5):
+        for side, p, price, fair, result in (
+            ("Over", 0.8, 1.8, 0.625, "win"),
+            ("Under", 0.2, 3.0, 0.375, "loss"),
+        ):
+            rows.append(dict(
+                league="mlb", market="totals",
+                event_id=f"e{event}", game_date="2026-09-01",
+                line=line, selection=side, model_probability=p,
+                price_decimal=price, implied_probability_novig=fair,
+                result=result,
+            ))
+df = pd.DataFrame(rows)
+print(evaluate_markets(df)[["n", "allowed"]])
+print(evaluate_markets(df[df.line == 3.5])[["n", "allowed"]])
+# Dos líneas: n=300, allowed=True.
+# Una línea: n=150, allowed=False. Son los mismos 150 partidos.
+```
+
+## 10. Conclusión
+
+El estado auditado supera las puertas automatizadas existentes, pero **no satisface todavía una conclusión incondicional de corrección integral**. Seis casos reproducidos muestran que pueden sobreestimarse saldos, perderse liquidaciones, autorizarse evidencia estadística dependiente, cruzarse resultados de backtest, reutilizarse features obsoletas y tratarse cuotas vencidas como accionables.
+
+La prioridad es corregir los controles que gobiernan integridad contable y autorización, conservando los datos y el rastro de evidencia. El informe no recomienda activar mercados ni modificar umbrales a partir de estos experimentos. El cierre requiere las pruebas de aceptación indicadas y completar las verificaciones externas que quedaron pendientes.
