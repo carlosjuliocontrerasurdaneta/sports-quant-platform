@@ -15,15 +15,24 @@ requieren aprobación propia.
 Se verificó que ninguno colisiona con los parches aplicados (detalle en
 `FINDINGS.md`, sección final).
 
-El más grave, **AUD-20260906-01**, es un hallazgo legítimo que *esta* auditoría
-no encontró: `_exigir_pnl_legible` sólo rechaza el fichero cuando **no queda
-ningún** PnL numérico, así que una corrupción **parcial** atraviesa el
-`fillna(0.0)` y convierte una pérdida en un movimiento de cero. Reproducido por
-Codex: banca 1.000 con dos pérdidas de −400 daba **600** en vez de 200, y
-`apply_dynamic_bankroll` aceptó esa cifra sin lanzar `LedgerIntegridadError`.
-De ese número cuelgan Kelly y el cap de exposición diaria.
+**AUD-20260906-01 quedó CORREGIDO** el mismo 2026-09-06, autorizado aparte por
+el operador (KI-032). Era un hallazgo legítimo que *esta* auditoría no encontró:
+`_exigir_pnl_legible` sólo rechaza el fichero cuando **no queda ningún** PnL
+numérico, así que una corrupción **parcial** atravesaba el `fillna(0.0)` y
+convertía una pérdida en un movimiento de cero. Reproducido antes de parchear:
+banca 1.000 con dos pérdidas de −400 daba **600** en vez de 200, y
+`apply_dynamic_bankroll` aceptaba esa cifra. Ahora lanza y el staking cae a 0.
 
-**Para cerrarlo:** aprobación explícita de los IDs de Codex.
+La discriminación es **por tipo de movimiento**, no por severidad: `settle.py`
+grada push y void con `pnl` 0.0 explícito, así que un importe vacío en esos dos
+estados sigue siendo un cero legítimo y la decisión registrada en
+`test_un_push_con_pnl_vacio_no_dispara_la_guarda` **no se contradice** — que es
+también lo que proponía Codex. Impacto en producción: ninguno; medido antes de
+endurecer la guarda, de las 1.305 filas reales y los 2 ajustes **cero** tienen
+importe no numérico, y el balance real sigue siendo 915,75.
+
+**Quedan los otros cinco (AUD-20260906-02..06). Para cerrarlos:** aprobación
+explícita por ID.
 
 ### B-2 · Causa raíz del fallo de `SQP_Validate_OOS_Cdev` del 2026-09-01
 
