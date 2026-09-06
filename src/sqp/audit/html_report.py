@@ -696,9 +696,12 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     "generar picks para todos los deportes y mercados, priorizando aquellos con
     las mayores probabilidades".
 
-    Existe aparte de "Picks del Dia" porque esa muestra lo que llevaria DINERO
-    (stake>0) -- hoy CERO, porque el gate bloquea los 32 mercados -- mientras
-    esta muestra todo lo evaluado: 541 filas el 2026-08-26.
+    Es la UNICA lista de picks del tablero desde el 2026-09-05: "Picks del Dia"
+    no era otra lista sino esta misma recortada por `min_edge`, y se fundieron.
+    Lo que distinguia a aquella -- si la fila supero el suelo de edge y que stake
+    lleva -- vive ahora en la columna `estado` (`_estado_por_pick`). Este
+    docstring seguia describiendo dos pestanas separadas despues de la fusion
+    (AUD-LOW-003, 2026-09-06).
 
     `fecha` es la del PARTIDO en hora local, no la de generacion. El run guarda
     eventos con horizonte de 7 dias, asi que "generado hoy" incluye partidos de

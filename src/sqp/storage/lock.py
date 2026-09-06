@@ -22,12 +22,17 @@ log = get_logger("sqp.storage.lock")
 # 30 -> 120 s el 2026-09-05, junto con dejar de degradar (AUD-002). Mientras el
 # timeout ENTRABA sin lock, su valor solo decidia cuanto se esperaba antes de
 # arriesgarse; ahora decide cuando se ABORTA, asi que 30 s convertiria en fallo
-# duro cualquier seccion critica legitimamente lenta. La mas lenta que hay es
-# `revalidate_pitchers`, que retiene el lock durante `fetch_probables` (MLB
-# Stats API, 1-2 dias, llamadas de hasta 60 s): con 30 s el pipeline diario
-# habria empezado a abortar donde antes perdia escrituras en silencio.
-# 120 s deja margen holgado sobre esa espera y sigue MUY por debajo de
-# `LOCK_STALE_S`, que es quien rescata de un lock huerfano.
+# duro cualquier seccion critica legitimamente lenta.
+#
+# El margen se fijo cuando `revalidate_pitchers` retenia el lock durante
+# `fetch_probables` (MLB Stats API, llamadas de hasta 60 s). Ya NO: el mismo
+# 2026-09-05, el commit d27fdd4 saco la red de la seccion critica, asi que hoy
+# lo unico que queda dentro es el read-modify-write de un CSV -- decimas de
+# segundo (AUD-LOW-003, 2026-09-06: el comentario seguia justificando los 120 s
+# con una espera que ya no ocurre). Se CONSERVAN los 120 s a proposito: el
+# margen sobra, y en una puerta que ahora ABORTA sobrar es la direccion segura.
+# Sigue MUY por debajo de `LOCK_STALE_S`, que es quien rescata de un lock
+# huerfano, y esa relacion es la que importa mantener.
 LOCK_TIMEOUT_S = 120.0  # espera maxima antes de ABORTAR (ya no se degrada)
 LOCK_STALE_S = 300.0    # un .lock mas viejo que esto es de un proceso muerto
 

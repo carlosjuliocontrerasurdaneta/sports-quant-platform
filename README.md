@@ -110,7 +110,7 @@ python scripts/run_daily.py --sports mlb nba nfl nhl epl --mode demo
 # Live (requiere ODDS_API_KEY):
 python scripts/run_daily.py --sports nba wnba ligamx --mode live
 python scripts/run_backtest.py --league nba --mode demo     # backtest de calibración
-python scripts/settle_all.py --days-from 2                  # liquidación multi-liga
+python scripts/settle_all.py --days-from 3                  # liquidación multi-liga (lo que usa SETTLE_ALL.bat)
 python scripts/list_sports.py                               # cobertura activa (incl. tenis)
 ```
 

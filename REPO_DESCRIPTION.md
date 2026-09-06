@@ -122,13 +122,24 @@ Calibración por (liga, mercado) con Brier/log-loss/ECE; backtesting walk-forwar
 ### BAT (Windows Task Scheduler, producción)
 | Archivo | Propósito |
 |---|---|
-| `DIARIO_COMPLETO.bat` | Orquestador maestro (tarea diaria 11:00): SETTLE → RUN → abre dashboard |
-| `SETTLE_ALL.bat` | `scripts/settle_all.py --days-from 2` |
+| `DIARIO_COMPLETO.bat` | Orquestador maestro (`SQP_Diario_Completo_Cdev`, diaria a las **15:00 UTC**): SETTLE → RUN → abre dashboard |
+| `SETTLE_ALL.bat` | `scripts/settle_all.py --days-from 3` |
 | `RUN_DIARIO_ALL.bat` | `scripts/run_all.py --mode live` |
-| `CAPTURE_CLOSE.bat` | Captura cierre horaria + revalidación + intraday scan |
+| `CAPTURE_CLOSE.bat` | Captura de cierre **cada 30 min** (`PT30M`) + revalidación + intraday scan |
 | `BACKFILL_ALL.bat` | Semanal — rellena histórico |
 | `REFRESH_ML.bat` | **Manual** desde 2026-08-29 — ML experimental, sin consumidor; su tarea semanal se retiró (AUD-LOW-003) |
 | `VALIDATE_OOS.bat` | Mensual — validación out-of-sample |
+
+Los horarios se dan en **UTC** a propósito. La máquina opera en `Pacific SA
+Standard Time`, que cambia de −04:00 a −03:00 con el horario de verano: la tarea
+diaria figuraba aquí como «11:00» y desde el cambio de septiembre de 2026 dispara
+a las 12:00 locales, sin que su `StartBoundary` (`12:00:00-03:00` = 15:00 UTC) se
+haya movido. La hora local de un `.bat` no es un dato estable; la UTC sí
+(AUD-LOW-003, 2026-09-06).
+
+Los cuatro BAT de fuera de la cadena diaria registran su fallo en el centinela
+(`scripts/run_status.py --fail --stage …`) desde AUD-MED-003: hasta entonces solo
+lo hacían `SETTLE_ALL` y `RUN_DIARIO_ALL`, y un fallo de los demás era invisible.
 
 ### Scripts Python
 `run_all.py`, `run_daily.py`, `run_backtest.py`, `settle_all.py`, `list_sports.py`, `train_calibration.py`, `promote_calibration.py`, `tune_ratings.py`, `tune_mlb_pitcher.py`, `backfill_*.py`, `clv_analysis.py`, `bankroll_status.py`, `health_check.py`, `update_prediction_gate.py`.

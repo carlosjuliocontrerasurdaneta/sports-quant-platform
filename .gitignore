@@ -56,8 +56,14 @@ graphify-out/
 # sin esta linea el marcador aparece como no rastreado entre el PostToolUse y
 # el Stop del mismo turno (auditoria 2026-09-03, AUD-LOW-001).
 .claude/.crossreview-pending
-# Bytecode de los hooks: tests/test_claude_model_routing.py carga
-# route-model.py via importlib y genera el __pycache__ (auditoria 2026-07-29).
+# Bytecode de los hooks. La razon original (2026-07-29) era que
+# tests/test_claude_model_routing.py cargaba `route-model.py` via importlib y
+# generaba el __pycache__. Ese hook se RETIRO el 2026-09-01 y el mismo test hoy
+# afirma lo contrario -- que el fichero NO existe (test_claude_model_routing.py,
+# `test_the_route_classifier_is_not_wired_as_a_hook`) --, asi que la entrada
+# describia un contrato invertido (AUD-LOW-003, 2026-09-06). Se conserva: los
+# siete hooks vivos son .sh, pero .claude/hooks/__pycache__/ sigue en disco como
+# residuo de aquel modulo y nada garantiza que no vuelva a haber un hook Python.
 .claude/hooks/__pycache__/
 
 # Parches sueltos generados por auditorias: son residuo, no fuente (auditoria 2026-08-04).
