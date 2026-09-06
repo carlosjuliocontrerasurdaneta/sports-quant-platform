@@ -249,3 +249,188 @@ class TestElDesplazamientoSilencioso:
         _write_settled(bets, "mlb", [_row(-100.0, result="loss"),
                                      _row(None, result="push")])
         assert BankrollLedger(root=tmp_path, initial=1000.0).current_balance() == 900.0
+
+
+class TestLaCorrupcionParcial:
+    """KI-032 / AUD-20260906-01 (Codex, HIGH, REPRODUCED).
+
+    La guarda de AUD-001 solo rechaza el fichero cuando NO queda NINGUN `pnl`
+    numerico. Si queda uno valido, los demas valores ilegibles pasan por
+    `to_numeric(errors="coerce").fillna(0.0)` y una PERDIDA se convierte en un
+    movimiento de CERO. La proteccion contra el fichero totalmente ilegible no
+    cubria la corrupcion parcial, que es la mas probable de las dos.
+
+    Direccion del error: la banca siempre SUBE, porque las filas que se dejan de
+    leer son casi siempre perdidas. Y de esa cifra cuelgan el Kelly y el cap de
+    exposicion diaria.
+    """
+
+    def test_una_perdida_ilegible_entre_perdidas_validas_no_desaparece(self, tmp_path):
+        """El caso exacto de Codex: banca 1.000, dos perdidas de -400.
+
+        Con el ledger integro son 200. Sustituyendo UN importe por texto, la
+        guarda anterior lo dejaba pasar (queda otro `pnl` numerico) y el saldo
+        salia 600: +400 sin deposito ni ganancia.
+        """
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-400.0, result="loss"),
+                                     _row("ERROR", result="loss")])
+        with pytest.raises(LedgerIntegridadError, match="loss"):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_una_ganancia_ilegible_tambien_para_el_calculo(self, tmp_path):
+        """No se trata de proteger solo a la baja: un importe que no se puede
+        determinar hace el saldo NO VERIFICABLE, suba o baje."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(50.0, result="win"),
+                                     _row("n/d", result="win")])
+        with pytest.raises(LedgerIntegridadError):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_un_pnl_infinito_no_es_un_importe(self, tmp_path):
+        """`to_numeric` convierte 'inf' en un float valido y `notna()` lo acepta,
+        asi que una comprobacion de "es numerico" a secas lo deja pasar y la
+        banca sale infinita."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-100.0, result="loss"),
+                                     _row("inf", result="win")])
+        with pytest.raises(LedgerIntegridadError):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_una_retirada_ilegible_entre_ajustes_validos(self, tmp_path):
+        """Segundo caso de Codex: banca 1.000 con una retirada de -400 da 600;
+        con el importe ilegible daba 1.000. Un ajuste no tiene estado que admita
+        importe vacio -- un movimiento sin cantidad no es un movimiento."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-100.0, result="loss")])
+        (bets / "bankroll_adjustments.csv").write_text(
+            NL.join(["date,amount", "2026-09-01,-400", "2026-09-02,ERROR", ""]),
+            encoding="utf-8")
+        with pytest.raises(LedgerIntegridadError, match="amount"):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_el_error_nombra_la_fila_y_el_fichero(self, tmp_path):
+        """Un ledger de 1.305 filas necesita saber CUAL revisar. El fichero no
+        se toca ni se repara: se nombra para poder diagnosticarlo."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-400.0, result="loss"),
+                                     _row(-400.0, result="loss"),
+                                     _row("ERROR", result="loss")])
+        with pytest.raises(LedgerIntegridadError) as exc:
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+        assert "settled_mlb.csv" in str(exc.value)
+        assert "fila" in str(exc.value).lower()
+
+    def test_el_staking_cae_a_CERO_ante_corrupcion_parcial(self, tmp_path):
+        """Lo que de verdad protege el capital: `apply_dynamic_bankroll` NO debe
+        aceptar la cifra inflada. Codex verifico que aceptaba los 600."""
+        from types import SimpleNamespace
+        from sqp.risk.bankroll import apply_dynamic_bankroll
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-400.0, result="loss"),
+                                     _row("ERROR", result="loss")])
+        s = SimpleNamespace(bankroll=1000.0, bankroll_dynamic=True)
+        assert apply_dynamic_bankroll(s, tmp_path, "live") == 0.0
+        assert s.bankroll == 0.0
+
+    # --- Discriminacion: lo que NO debe cambiar -------------------------------
+
+    def test_un_push_con_pnl_vacio_sigue_siendo_cero_legitimo(self, tmp_path):
+        """DECISION REGISTRADA que este arreglo NO contradice
+        (`test_un_push_con_pnl_vacio_no_dispara_la_guarda`).
+
+        La discriminacion correcta no es "todo pnl debe ser numerico" sino POR
+        TIPO DE MOVIMIENTO: `settle.py` grada push y void con pnl 0.0 explicito,
+        asi que un importe vacio en esos estados es un cero legitimo. En una
+        `loss` no lo es: ahi el importe es el corazon del movimiento.
+        """
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-100.0, result="loss"),
+                                     _row(None, result="push"),
+                                     _row(None, result="void")])
+        assert BankrollLedger(root=tmp_path, initial=1000.0).current_balance() == 900.0
+
+    def test_un_ledger_integro_no_se_toca(self, tmp_path):
+        """Contraprueba obligatoria: sin ella, una guarda que lanzara SIEMPRE
+        pasaria todos los tests de arriba."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-400.0, result="loss"),
+                                     _row(-400.0, result="loss")])
+        assert BankrollLedger(root=tmp_path, initial=1000.0).current_balance() == 200.0
+
+    def test_las_1305_filas_reales_seguirian_pasando(self, tmp_path):
+        """Fija la premisa medida antes de endurecer la guarda: de las 1.305
+        filas liquidadas en produccion y los 2 ajustes, CERO tienen importe no
+        numerico. Se reproduce aqui la forma de esas filas."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(18.5, result="win"),
+                                     _row(-20.0, result="loss"),
+                                     _row(0.0, result="push"),
+                                     _row(0.0, result="void")])
+        assert BankrollLedger(root=tmp_path, initial=1000.0).current_balance() == 998.5
+
+
+class TestElDiagnosticoNoPuedeRomperse:
+    """Defecto introducido POR el arreglo de KI-032 y encontrado por la revision
+    cruzada de Codex sobre ese mismo cambio.
+
+    Las guardas numeraban las filas con `int(i) + 2` sobre la ETIQUETA del
+    indice, asumiendo el RangeIndex por defecto. No lo es justo en el caso que
+    existen para detectar: con un campo de mas en todas las filas, pandas toma
+    la primera columna como indice y las etiquetas pasan a ser fechas, asi que
+    `int("2026-09-01")` lanza `ValueError`.
+
+    Y un `ValueError` NO es `LedgerIntegridadError`, que es lo unico que captura
+    `apply_dynamic_bankroll`: en vez de caer a banca 0 se propagaba y
+    `settings.bankroll` se quedaba en la cifra ESTATICA. El codigo de
+    diagnostico reintroducia el fallo que su propia guarda arregla.
+    """
+
+    def test_ajustes_desplazados_lanzan_integridad_y_no_ValueError(self, tmp_path):
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-100.0, result="loss")])
+        (bets / "bankroll_adjustments.csv").write_text(
+            NL.join(["date,amount,kind,note",
+                     "2026-09-01,-400,withdrawal,note,SOBRA", ""]),
+            encoding="utf-8")
+        with pytest.raises(LedgerIntegridadError):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_el_staking_cae_a_CERO_con_ajustes_desplazados(self, tmp_path):
+        """Lo que de verdad importaba: sin esto, `settings.bankroll` se quedaba
+        en 1000 -- la cifra que el ledger ya no respalda."""
+        from types import SimpleNamespace
+        from sqp.risk.bankroll import apply_dynamic_bankroll
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-100.0, result="loss")])
+        (bets / "bankroll_adjustments.csv").write_text(
+            NL.join(["date,amount,kind,note",
+                     "2026-09-01,-400,withdrawal,note,SOBRA", ""]),
+            encoding="utf-8")
+        s = SimpleNamespace(bankroll=1000.0, bankroll_dynamic=True)
+        assert apply_dynamic_bankroll(s, tmp_path, "live") == 0.0
+        assert s.bankroll == 0.0
+
+    def test_liquidados_con_indice_no_entero_tampoco_rompen(self, tmp_path):
+        """La misma suposicion vivia en `_exigir_importes_legibles`. Se llega ahi
+        con un desplazamiento que deja `pnl` numerico, asi que `_exigir_pnl_legible`
+        no lo intercepta antes."""
+        bets = tmp_path / "data" / "bets"
+        bets.mkdir(parents=True, exist_ok=True)
+        (bets / "settled_mlb.csv").write_text(
+            NL.join(["pnl,result,stake,data_label,settled_at",
+                     "-100.0,loss,100,real,2026-06-01T00:00:00+00:00,SOBRA",
+                     "ERROR,loss,100,real,2026-06-02T00:00:00+00:00,SOBRA", ""]),
+            encoding="utf-8")
+        with pytest.raises(LedgerIntegridadError):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+    def test_los_numeros_de_fila_son_los_del_csv(self, tmp_path):
+        """Contraprueba: el diagnostico tiene que seguir siendo UTIL. La tercera
+        fila de datos es la linea 4 del fichero (cabecera + base 1)."""
+        bets = tmp_path / "data" / "bets"
+        _write_settled(bets, "mlb", [_row(-1.0, result="loss"),
+                                     _row(-1.0, result="loss"),
+                                     _row("ERROR", result="loss")])
+        with pytest.raises(LedgerIntegridadError, match=r"\[4\]"):
+            BankrollLedger(root=tmp_path, initial=1000.0).current_balance()

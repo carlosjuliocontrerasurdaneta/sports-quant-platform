@@ -25,6 +25,103 @@ log = get_logger("sqp.bankroll")
 
 ADJUSTMENTS_FILE = "bankroll_adjustments.csv"
 
+# Estados de liquidacion cuyo importe PUEDE venir vacio sin que eso signifique
+# "no se sabe". `settle.py` los grada con `pnl` 0.0 explicito -- el mapa de
+# `settle_candidates` cubre los cuatro estados y ninguno produce vacio --, asi
+# que un hueco aqui solo aparece en ficheros de otra procedencia; y en un push o
+# un void el importe no es el corazon del movimiento, el resultado si.
+#
+# En una `win` o una `loss` es al reves: el importe ES el movimiento, y un hueco
+# ahi no es un cero, es un dato que falta.
+_ESTADOS_SIN_IMPORTE = frozenset({"push", "void"})
+_INF = float("inf")
+
+
+def _filas_csv(mala: pd.Series, limite: int = 5) -> list[int]:
+    """Numeros de fila del CSV (cabecera + base 1) de las posiciones marcadas.
+
+    Por POSICION, nunca por etiqueta de indice. La primera version hacia
+    `int(i) + 2` sobre `df.index[mala]`, y eso asume que el indice es el
+    RangeIndex por defecto. No lo es justo en el caso que estas guardas existen
+    para detectar: cuando todas las filas traen un campo de mas, pandas toma la
+    primera columna como indice, asi que las etiquetas pasan a ser fechas y
+    `int("2026-09-01")` lanza `ValueError`.
+
+    Y ese ValueError NO es `LedgerIntegridadError`, asi que `apply_dynamic_bankroll`
+    no lo captura: en vez de caer a banca 0 se propagaba y `settings.bankroll`
+    se quedaba en la cifra estatica -- exactamente el fallo que KI-032 arregla,
+    reintroducido por su propio codigo de diagnostico. Encontrado por la revision
+    cruzada de Codex sobre este mismo cambio y reproducido antes de corregirlo.
+    """
+    return [pos + 2 for pos, bad in enumerate(mala.to_numpy()) if bad][:limite]
+
+
+def _finitos(valores: pd.Series) -> pd.Series:
+    """Mascara de importes numericos Y finitos.
+
+    `to_numeric` convierte la cadena "inf" en un float perfectamente valido que
+    `notna()` acepta, asi que comprobar solo "es numerico" deja pasar un importe
+    infinito y la banca sale infinita.
+    """
+    num = pd.to_numeric(valores, errors="coerce")
+    return num.notna() & (num.abs() != _INF)
+
+
+def _exigir_importes_legibles(f: Path, df: pd.DataFrame) -> None:
+    """Ninguna fila que DECIDA el saldo puede traer un importe indeterminado.
+
+    KI-032 / AUD-20260906-01 (auditoria independiente de Codex, 2026-09-06,
+    HIGH, REPRODUCED). `_exigir_pnl_legible` solo rechaza el fichero cuando NO
+    queda NINGUN `pnl` numerico. Si queda uno valido -- que es el caso mucho mas
+    probable --, los demas valores ilegibles pasaban por
+    `to_numeric(errors="coerce").fillna(0.0)` y una PERDIDA se convertia en un
+    movimiento de CERO. La proteccion contra el fichero totalmente ilegible no
+    cubria la corrupcion PARCIAL.
+
+    Reproducido antes de tocar nada: banca inicial 1.000 con dos perdidas de
+    -400 da 200 con el ledger integro; sustituyendo UN importe por texto salia
+    **600**, y `apply_dynamic_bankroll` aceptaba esa cifra sin excepcion. De ese
+    numero cuelgan el Kelly y el cap de exposicion diaria.
+
+    El error siempre va en la misma direccion -- la banca SUBE --, porque las
+    filas que se dejan de leer son casi siempre perdidas.
+
+    DISCRIMINACION POR TIPO DE MOVIMIENTO, no por severidad: un `push` o un
+    `void` con importe VACIO sigue siendo un cero legitimo (decision registrada
+    en `test_un_push_con_pnl_vacio_no_dispara_la_guarda`, que este cambio NO
+    contradice). Lo que se rechaza es un importe indeterminado donde el importe
+    es el movimiento, y tambien un valor PRESENTE pero ilegible en un estado
+    exento: ahi ya no falta el dato, esta corrupto.
+
+    Se comprueba el fichero entero, antes de filtrar por `data_label`, igual que
+    la guarda que amplia: es la direccion conservadora, y los liquidados demo
+    viven en `data/bets/demo/`, fuera de este glob.
+
+    El fichero NO se toca ni se repara: se nombran fichero y filas para poder
+    diagnosticarlo. Un ledger de 1.305 filas necesita saber cual mirar.
+    """
+    crudo = df["pnl"]
+    finito = _finitos(crudo)
+    vacio = crudo.isna() | (crudo.astype(str).str.strip() == "")
+    if "result" in df.columns:
+        exento = df["result"].astype(str).str.strip().str.lower().isin(_ESTADOS_SIN_IMPORTE)
+    else:
+        # Sin `result` no se puede acreditar la exencion, y no acreditarla es
+        # exactamente "no se sabe": se exige importe legible en todas.
+        exento = pd.Series(False, index=df.index)
+    malas = ~(finito | (exento & vacio))
+    if not malas.any():
+        return
+    idx = _filas_csv(malas)
+    muestra = crudo[malas].head(3).tolist()
+    estados = df.loc[malas, "result"].head(3).tolist() if "result" in df.columns else ["?"]
+    raise LedgerIntegridadError(
+        f"{f.name}: {int(malas.sum())} de {len(df)} filas con importe "
+        f"indeterminado (fila/s {idx}, result={estados}, leido: {muestra}). "
+        f"Un importe que no se puede determinar NO es cero: las filas ilegibles "
+        f"suelen ser perdidas y tratarlas como cero SUBE la banca. Solo un push "
+        f"o un void admiten importe vacio. El saldo no es verificable.")
+
 
 def _exigir_pnl_legible(f: Path, df: pd.DataFrame) -> None:
     """Un fichero con filas pero sin `pnl` numerico es INDETERMINADO, no cero.
@@ -104,7 +201,10 @@ class BankrollLedger:
                     f"{f.name} no es parseable ({exc}): el saldo no es "
                     f"verificable.") from exc
             if not df.empty:
+                # Primero el desplazamiento de columnas, que tiene diagnostico
+                # propio; despues la corrupcion PARCIAL fila a fila (KI-032).
                 _exigir_pnl_legible(f, df)
+                _exigir_importes_legibles(f, df)
                 frames.append(df)
         if not frames:
             return pd.DataFrame(columns=["pnl", "data_label", "result", "stake", "settled_at"])
@@ -119,6 +219,13 @@ class BankrollLedger:
         return out
 
     def realized_pnl(self) -> float:
+        """Suma de los PnL realizados de las apuestas REALES liquidadas.
+
+        El `fillna(0.0)` es seguro AQUI y solo aqui: `_exigir_importes_legibles`
+        ya aborto si quedaba algun importe indeterminado, asi que los unicos NaN
+        que sobreviven son los de un push o un void con importe vacio, donde
+        cero es el valor correcto y no una suposicion (KI-032).
+        """
         df = self._settled()
         if df.empty or "pnl" not in df.columns:
             return 0.0
@@ -144,7 +251,20 @@ class BankrollLedger:
                 f"verificable.") from exc
         if "amount" not in adj.columns:
             return 0.0
-        return float(pd.to_numeric(adj["amount"], errors="coerce").fillna(0.0).sum())
+        # Aqui NO hay estado exento: un ajuste sin cantidad no es un ajuste de
+        # cero, es un movimiento que no sabemos leer. Codex lo reprodujo con la
+        # otra mitad de KI-032: banca 1.000 con una retirada de -400 da 600, y
+        # con el importe ilegible daba 1.000 -- la retirada se evaporaba.
+        malos = ~_finitos(adj["amount"])
+        if malos.any():
+            idx = _filas_csv(malos)
+            raise LedgerIntegridadError(
+                f"{ADJUSTMENTS_FILE}: {int(malos.sum())} de {len(adj)} filas con "
+                f"'amount' indeterminado (fila/s {idx}, leido: "
+                f"{adj['amount'][malos].head(3).tolist()}). Una retirada que no "
+                f"se puede leer infla la banca igual que una perdida que no se "
+                f"puede leer. El saldo no es verificable.")
+        return float(pd.to_numeric(adj["amount"], errors="coerce").sum())
 
     def current_balance(self) -> float:
         return round(self.initial + self.realized_pnl() + self.adjustments_total(), 2)
