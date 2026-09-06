@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from sqp.config import ROOT
 from sqp.monitoring.run_status import (STATUS_FILENAME, clear_run_status,
                                        read_run_status, record_run_failure)
 
@@ -115,25 +116,67 @@ def test_read_returns_none_on_corrupt_sentinel(tmp_path):
 
 # --- Integracion con el health check ------------------------------------------
 
+def _error_de_etapa(root) -> str:
+    """El error del centinela dentro del informe de salud, o "".
+
+    Se localiza por el marcador estable `FALLIDA`, no por la prosa. El assert
+    anterior exigia la subcadena "run diario", que dejo de ser cierta cuando el
+    centinela paso a cubrir etapas de FUERA de la cadena diaria (AUD-MED-003):
+    llamarle "run diario" a un fallo de la validacion OOS mensual manda a mirar
+    el sitio equivocado. Fijar la prosa del aviso ademas no comprobaba nada util
+    -- el mismo patron de assert por subcadena que este repositorio ya se ha
+    encontrado antes."""
+    from sqp.monitoring.health import generate_health_report
+    for e in generate_health_report(root).get("errors", []):
+        if "FALLIDA" in e:
+            return e
+    return ""
+
+
 def test_health_report_is_error_when_last_run_failed(tmp_path):
     from sqp.monitoring.health import generate_health_report
     record_run_failure(tmp_path, stage="run", exit_code=1)
-    r = generate_health_report(tmp_path)
-    assert r["status"] == "ERROR"
-    assert any("run diario" in e.lower() for e in r["errors"])
+    assert generate_health_report(tmp_path)["status"] == "ERROR"
+    assert _error_de_etapa(tmp_path) != ""
 
 
 def test_health_error_names_the_failed_stage(tmp_path):
-    from sqp.monitoring.health import generate_health_report
     record_run_failure(tmp_path, stage="settle", exit_code=1)
-    joined = " ".join(generate_health_report(tmp_path)["errors"])
-    assert "settle" in joined
+    assert "settle" in _error_de_etapa(tmp_path)
+
+
+def test_health_error_names_the_bat_to_rerun(tmp_path):
+    """Un aviso que no dice como recuperarse manda a buscar, y buscar es lo que
+    no se hace cuando el aviso llega solo. Una etapa por cadena de produccion:
+    con `stage` libre, un nombre sin traduccion daria un aviso mudo."""
+    for etapa, bat in (("settle", "SETTLE_ALL.bat"),
+                       ("run", "RUN_DIARIO_ALL.bat"),
+                       ("validate_oos", "VALIDATE_OOS.bat"),
+                       ("backfill", "BACKFILL_ALL.bat"),
+                       ("capture_close", "CAPTURE_CLOSE.bat"),
+                       ("refresh_ml", "REFRESH_ML.bat")):
+        clear_run_status(tmp_path)
+        record_run_failure(tmp_path, stage=etapa, exit_code=1)
+        error = _error_de_etapa(tmp_path)
+        assert etapa in error and bat in error, f"{etapa}: {error!r}"
+
+
+def test_every_cli_stage_translates_to_a_bat(tmp_path):
+    """Las dos listas viven en modulos distintos (`scripts/run_status.py` y
+    `sqp.monitoring.health`) y solo un test puede impedir que deriven: una etapa
+    aceptada por el CLI y sin BAT asociado produce un aviso que no dice que
+    re-ejecutar."""
+    import importlib.util
+    from sqp.monitoring.health import _BAT_POR_ETAPA
+    spec = importlib.util.spec_from_file_location(
+        "run_status_cli", ROOT / "scripts" / "run_status.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert set(mod.STAGES) == set(_BAT_POR_ETAPA)
 
 
 def test_health_report_has_no_run_error_when_sentinel_absent(tmp_path):
-    from sqp.monitoring.health import generate_health_report
-    r = generate_health_report(tmp_path)
-    assert not any("run diario" in e.lower() for e in r.get("errors", []))
+    assert _error_de_etapa(tmp_path) == ""
 
 
 # --- Banner del dashboard -----------------------------------------------------

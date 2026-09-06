@@ -32,11 +32,17 @@ def _path(root: Path) -> Path:
 
 
 def record_run_failure(root: Path, stage: str, exit_code: int) -> Path:
-    """Registra que la etapa `stage` del run diario fallo con `exit_code`.
+    """Registra que la etapa `stage` fallo con `exit_code`.
 
-    `stage` es "settle" o "run": distinguirlas importa porque un fallo en la
-    liquidacion ABORTA el run (para no sobrescribir picks sin liquidar), asi que
-    las consecuencias son distintas.
+    Distinguir la etapa importa porque las consecuencias no son iguales: un
+    fallo en la liquidacion ABORTA el run diario (para no sobrescribir picks sin
+    liquidar), mientras que uno de la validacion OOS mensual no detiene nada.
+
+    Las etapas validas las enumera `scripts/run_status.py:STAGES`. Desde
+    AUD-MED-003 (2026-09-06) no son solo las dos de la cadena diaria: tambien
+    registran centinela `validate_oos`, `backfill`, `capture_close` y
+    `refresh_ml`. Antes no podian, y por eso `SQP_Validate_OOS_Cdev` llevaba
+    fallando desde el 2026-09-01 sin que nada lo dijera.
     """
     out = _path(root)
     out.parent.mkdir(parents=True, exist_ok=True)

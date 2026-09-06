@@ -1,5 +1,7 @@
 @echo off
-REM SQP - Captura de linea de cierre. Horaria. Solo gasta cuota en ligas con
+REM SQP - Captura de linea de cierre. CADA 30 MIN (SQP_Capture_Close_Cdev,
+REM Repetition.Interval = PT30M); este comentario decia "horaria" y llevaba al
+REM menos desde julio sin coincidir con el disparador (AUD-LOW-003). Solo gasta cuota en ligas con
 REM picks abiertos cuyo partido arranca en <120 min (guard interno + tope diario
 REM de creditos). Anade un segundo snapshot de cuotas para que el CLV sea medible.
 setlocal
@@ -18,11 +20,21 @@ echo === SQP - CAPTURA CIERRE (%DATE% %TIME%) === >> logs\capture_close.log
 "%SQP_PYTHON%" scripts\capture_closing_odds.py >> logs\capture_close.log 2>&1
 if errorlevel 1 goto :error
 
+REM Captura correcta: limpia SOLO esta etapa (corre cada 30 min, asi que se
+REM auto-recupera en la siguiente pasada buena).
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage capture_close
+
 endlocal
 goto :eof
 
 :error
 echo.
+REM AUD-MED-003 (2026-09-06): sin centinela, un fallo de la captura era invisible.
+REM Importa mas de lo que parece: esta es la que produce el segundo snapshot de
+REM cuotas, y sin el el CLV no es medible -- el gate de CLV se quedaria sin
+REM evidencia nueva indefinidamente, denegando por defecto (que es seguro) pero
+REM sin que nadie supiera por que.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage capture_close --exit-code 1
 echo *** ERROR EN LA CAPTURA DE CIERRE. Revisa logs\capture_close.log. ***
 endlocal
 exit /b 1

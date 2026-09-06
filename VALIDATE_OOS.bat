@@ -29,12 +29,24 @@ echo --- Marcador modelo vs mercado --- >> logs\validate_oos.log
 "%SQP_PYTHON%" scripts\model_vs_market_report.py >> logs\validate_oos.log 2>&1
 if errorlevel 1 echo *** AVISO: el marcador modelo-vs-mercado fallo (no bloqueante) *** >> logs\validate_oos.log
 
+REM Validacion correcta: limpia SOLO esta etapa. Un fallo del run diario o de la
+REM liquidacion sigue avisando hasta que su propio BAT termine bien.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage validate_oos
+
 echo === DONE ===
 endlocal
 goto :eof
 
 :error
 echo.
-echo *** ERROR EN LA VALIDACION OOS ***
+REM AUD-MED-003 (2026-09-06): este BAT terminaba con un echo y `exit /b 1`, y ahi
+REM moria el aviso. Nadie lee el LastTaskResult del Programador de tareas -- el
+REM centinela es el UNICO consumidor--, asi que `SQP_Validate_OOS_Cdev` llevaba
+REM fallado desde el 2026-09-01 (rc=0x1) sin que el health check, el banner del
+REM tablero ni ninguna alarma lo supieran. Y al ser MENSUAL no se reintenta hasta
+REM el 2026-10-01: un mes de silencio sobre la puerta que vigila que los
+REM parametros sigan generalizando.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage validate_oos --exit-code 1
+echo *** ERROR EN LA VALIDACION OOS. Revisa logs\validate_oos.log. ***
 endlocal
 exit /b 1

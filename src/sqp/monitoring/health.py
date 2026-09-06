@@ -30,6 +30,17 @@ SERVED_EXPIRED_DAYS = 3.0
 # ACCIONABLE (una fila que acaba de expirar: el proveedor puede estar roto ahora)
 # de la perdida acumulada. No es un umbral nuevo: es el que ya define el store.
 PENDING_MAX_AGE_DAYS = 7.0
+# Que BAT re-ejecutar por etapa. Un aviso que no dice como recuperarse manda a
+# buscar, y buscar es justo lo que no se hace cuando el aviso llega solo
+# (AUD-MED-003, 2026-09-06).
+_BAT_POR_ETAPA = {
+    "settle": "SETTLE_ALL.bat",
+    "run": "RUN_DIARIO_ALL.bat",
+    "validate_oos": "VALIDATE_OOS.bat",
+    "backfill": "BACKFILL_ALL.bat",
+    "capture_close": "CAPTURE_CLOSE.bat",
+    "refresh_ml": "REFRESH_ML.bat",
+}
 
 
 def _rows(path: Path) -> int | None:
@@ -232,16 +243,22 @@ def generate_health_report(root: Path = ROOT) -> dict:
         if not moneyline_exists:
             errors.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
 
-    # Fallo del ultimo run diario: es un ERROR porque significa que el pipeline
-    # de produccion no completo, y sin esto el fallo es invisible -- el del
+    # Fallo de una etapa de produccion: es un ERROR porque significa que ese
+    # tramo del pipeline no completo, y sin esto el fallo es invisible -- el del
     # 2026-07-29 estuvo 24 h sin detectar (auditoria 2026-07-29, S-1).
+    #
+    # Ya no se habla solo del "run diario": desde AUD-MED-003 (2026-09-06)
+    # tambien registran centinela las etapas FUERA de la cadena diaria
+    # (validate_oos, backfill, capture_close, refresh_ml), y decirle "run diario"
+    # a un fallo de la validacion OOS mensual manda a mirar el sitio equivocado.
     run_status = read_run_status(root)
     if run_status and run_status.get("failed"):
+        etapa = str(run_status.get("stage", "?"))
         errors.append(
-            f"run diario FALLIDO en la etapa '{run_status.get('stage', '?')}' "
+            f"etapa '{etapa}' FALLIDA "
             f"(exit {run_status.get('exit_code', '?')}, "
             f"{run_status.get('failed_at', 'fecha desconocida')}); "
-            f"revisar logs/ y re-ejecutar DIARIO_COMPLETO.bat")
+            f"revisar logs/ y re-ejecutar {_BAT_POR_ETAPA.get(etapa, 'el BAT correspondiente')}")
 
     served_expired, served_expired_total = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):

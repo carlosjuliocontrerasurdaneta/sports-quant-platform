@@ -37,12 +37,21 @@ if errorlevel 1 goto :error
 "%SQP_PYTHON%" scripts\health_check.py >> logs\refresh_ml.log 2>&1
 if errorlevel 1 goto :error
 
+REM Refresh correcto: limpia SOLO esta etapa.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage refresh_ml
+
 echo === DONE ===
 endlocal
 goto :eof
 
 :error
 echo.
+REM AUD-MED-003 (2026-09-06). Este BAT es MANUAL, asi que su fallo no es
+REM invisible como el de los otros tres -- el operador lo ve en consola --, pero
+REM registra centinela igual: su ultimo resultado bajo el Programador fue
+REM 0xC000013A y ese es justo el modo en que un fallo se olvida. Se limpia solo
+REM en la siguiente ejecucion correcta.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage refresh_ml --exit-code 1
 echo *** ERROR EN REFRESH ML. Revisa logs\refresh_ml.log. ***
 endlocal
 exit /b 1

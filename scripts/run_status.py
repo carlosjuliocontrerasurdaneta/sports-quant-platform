@@ -4,7 +4,7 @@
 Lo invocan los BAT de produccion:
 
     python scripts/run_status.py --fail --stage settle --exit-code 1
-    python scripts/run_status.py --clear                    # las dos etapas
+    python scripts/run_status.py --clear                    # todas las etapas
     python scripts/run_status.py --clear --only-stage run   # solo esa etapa
 
 Siempre sale con 0: este script es instrumentacion de la alerta, y un fallo suyo
@@ -21,6 +21,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.config import ROOT
 from sqp.monitoring.run_status import clear_run_status, record_run_failure
 
+# Etapas que pueden registrar centinela. Hasta el 2026-09-06 solo existian las
+# dos de la cadena diaria, asi que los BAT de FUERA de esa cadena no tenian
+# forma de avisar aunque quisieran: `SQP_Validate_OOS_Cdev` fallo el 2026-09-01
+# (LastTaskResult = 1) y ninguna capa de monitorizacion se entero, porque nadie
+# lee el codigo de salida del Programador de tareas -- el centinela es el UNICO
+# mecanismo (AUD-MED-003).
+#
+# Mantener sincronizado con `_BAT_POR_ETAPA` en sqp.monitoring.health, que
+# traduce cada etapa al BAT que hay que re-ejecutar.
+STAGES = ["settle", "run", "validate_oos", "backfill", "capture_close", "refresh_ml"]
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -29,9 +40,9 @@ def main() -> int:
                    help="registrar que el run fallo")
     g.add_argument("--clear", action="store_true",
                    help="borrar el centinela tras un run correcto")
-    ap.add_argument("--stage", default="run", choices=["settle", "run"],
+    ap.add_argument("--stage", default="run", choices=STAGES,
                     help="etapa que fallo (default: run)")
-    ap.add_argument("--only-stage", default=None, choices=["settle", "run"],
+    ap.add_argument("--only-stage", default=None, choices=STAGES,
                     help="con --clear, borrar solo si el fallo registrado es de "
                          "esa etapa (para los BAT que arreglan una sola)")
     ap.add_argument("--exit-code", type=int, default=1)

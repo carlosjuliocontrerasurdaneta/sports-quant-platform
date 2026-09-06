@@ -30,12 +30,19 @@ REM .closing_credits_*. Best-effort a proposito: un fallo de la purga no debe
 REM marcar el backfill como fallido (por eso no hay chequeo de errorlevel).
 "%SQP_PYTHON%" scripts\purge_artifacts.py >> logs\backfill.log 2>&1
 
+REM Backfill correcto: limpia SOLO esta etapa.
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage backfill
+
 echo === DONE ===
 endlocal
 goto :eof
 
 :error
 echo.
-echo *** ERROR EN EL BACKFILL ***
+REM AUD-MED-003 (2026-09-06): sin centinela, un backfill fallado era invisible y
+REM las ratings se quedaban con la ventana de 3 dias de The Odds API, que es
+REM justo la limitacion que este BAT existe para evitar.
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage backfill --exit-code 1
+echo *** ERROR EN EL BACKFILL. Revisa logs\backfill.log. ***
 endlocal
 exit /b 1
