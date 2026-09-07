@@ -68,14 +68,56 @@ def _mlb_results_df(root: Path) -> pd.DataFrame:
     return df
 
 
+def _source_paths(root: Path, league: str) -> list[Path]:
+    """TODOS los ficheros que el dataset de `league` consume, en orden fijo.
+
+    El primero es siempre el de resultados: sin el no hay dataset posible.
+
+    MLB anade los ABRIDORES. `_mlb_results_df` los une por `game_id`, asi que
+    forman parte de las entradas tanto como los resultados -- pero la huella solo
+    miraba el fichero de resultados, asi que corregir un abridor no invalidaba
+    nada (AUD-20260906-05, Codex, MEDIUM, REPRODUCED). Reproducido: con el mismo
+    `results_mlb.csv`, cambiar el abridor del cuarto partido movia el dataset de
+    "Pitcher H" a "New starter" y la huella salia IDENTICA, asi que
+    `dataset_is_current` seguia diciendo True.
+
+    Al anadir una fuente aqui hay que anadirla tambien a `_mlb_results_df` o al
+    builder correspondiente, y al reves: esta lista y lo que el builder lee son
+    la misma cosa dicha dos veces, y su deriva es justo el defecto que cierra.
+    """
+    paths = [ResultsStore(root).path(league)]
+    if league == "mlb":
+        paths.append(StartersStore(root).path("mlb"))
+    return paths
+
+
 def _source_hash(root: Path, league: str) -> str | None:
-    p = ResultsStore(root).path(league)
-    if not p.exists():
+    """Huella de las ENTRADAS del dataset, o None si no hay resultados.
+
+    Se mezcla el nombre y un byte de PRESENCIA de cada fuente, no solo su
+    contenido: "el fichero de abridores no existe" y "existe y esta vacio" son
+    estados distintos que producen datasets distintos, y sin ese byte tendrian la
+    misma huella. Anadir por primera vez un `starters_mlb.csv` que antes faltaba
+    debe invalidar la cache.
+
+    Efecto colateral aceptado: cambia la huella de TODAS las ligas, asi que el
+    primer `build_training_dataset` tras este cambio reconstruye una vez cada
+    dataset. Es la direccion segura -- reconstruir, no servir rancio --, sale de
+    CSV locales sin tocar la red, y el subsistema ML no alimenta picks.
+    """
+    paths = _source_paths(root, league)
+    if not paths[0].exists():
         return None
     h = hashlib.sha256()
-    with p.open("rb") as f:
-        for block in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(block)
+    for p in paths:
+        h.update(p.name.encode("utf-8"))
+        if not p.exists():
+            h.update(b"\x00")
+            continue
+        h.update(b"\x01")
+        with p.open("rb") as f:
+            for block in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(block)
     return h.hexdigest()
 
 
