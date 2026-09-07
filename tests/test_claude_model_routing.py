@@ -776,3 +776,33 @@ def test_los_hallazgos_reales_siguen_bloqueando_el_turno():
     hook = _crossreview_hook()
     assert hook.rstrip().endswith("exit 2"), (
         "el camino de hallazgos reales ya no bloquea el cierre del turno")
+
+
+def test_agents_md_dirige_el_tmpdir_de_pytest_dentro_del_workspace():
+    """KI-037. El sandbox del revisor concede `workdir`, `/tmp` y `$TMPDIR`. En
+    Windows `/tmp` no existe y `TMPDIR` NO esta definida -- es una variable
+    POSIX; Windows usa `TEMP` --, asi que el tmpdir por defecto de pytest
+    (el `Temp` de `AppData/Local`) cae fuera de los tres y todo test
+    que pida `tmp_path` muere en el setup con `PermissionError [WinError 5]`.
+
+    Medido el 2026-09-06: una revision reporto 95 passed y 65 errores de setup,
+    dejando esos 65 tests como NOT_VERIFIABLE. No se reporto nada falso -- Codex
+    los clasifico bien como ENVIRONMENTAL_FAILURE --, pero se perdio justo la
+    evidencia que una revision cruzada mas aporta.
+
+    `.codex-tmp/` esta dentro del workspace, ya declarado como su arbol de
+    scratch y gitignored. Este test existe porque la deriva entre lo que la
+    documentacion dice y lo que de verdad funciona es el modo de fallo que este
+    repositorio lleva meses pagando.
+    """
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    invocacion = next((ln for ln in agents.splitlines()
+                       if ln.strip().startswith("pytest")), None)
+    assert invocacion is not None, "AGENTS.md dejo de proponer una invocacion de pytest"
+    assert "--basetemp=.codex-tmp/pytest" in invocacion, (
+        f"sin --basetemp dentro del workspace, la revision cruzada pierde los "
+        f"tests que usan tmp_path: {invocacion!r}")
+    # El destino tiene que estar ignorado: si no, cada revision ensuciaria el
+    # arbol y el guard de KI-036 abortaria el run diario siguiente.
+    ignorados = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert ".codex-tmp/" in ignorados

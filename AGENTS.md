@@ -116,10 +116,29 @@ Run the narrowest relevant validation first.
 Preferred Python validations when applicable:
 
 ```bash
-pytest -q
+pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest
 ruff check src scripts tests
 mypy src
 ```
+
+**`--basetemp` is not optional on this machine (KI-037).** Without it, pytest
+writes its temporary directories under `TEMP`, which on Windows resolves to
+`C:\Users\<user>\AppData\Local\Temp`. That path is outside every directory this
+sandbox grants: it allows `workdir`, `/tmp` and `$TMPDIR`, and on Windows `/tmp`
+does not exist while `TMPDIR` is not defined at all — it is a POSIX variable, and
+Windows uses `TEMP`/`TMP`. Every test that requests `tmp_path` therefore fails at
+setup with `PermissionError: [WinError 5]`.
+
+Measured on 2026-09-06: two consecutive reviews were degraded by this. The second
+one reported **95 passed and 65 setup errors**, leaving those 65 tests as
+`NOT_VERIFIABLE` — which is precisely the evidence a cross-review contributes
+most. The errors were correctly classified as `ENVIRONMENTAL_FAILURE`, so nothing
+was misreported; the loss was of coverage, not of accuracy.
+
+`.codex-tmp/` sits inside the workspace, is already declared as this reviewer's
+scratch tree and is gitignored, so writing there is both permitted and clean.
+`-p no:cacheprovider` avoids leaving a `.pytest_cache` behind, consistent with
+this file's rule of preferring no-write execution modes.
 
 Before using `make check`, inspect its target/commands. Run it only if its effects are compatible with review safety. If it safely covers the relevant checks, avoid unnecessarily repeating equivalent validations.
 
