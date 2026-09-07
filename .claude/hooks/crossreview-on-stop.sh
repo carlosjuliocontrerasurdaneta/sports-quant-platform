@@ -32,12 +32,39 @@ command -v codex >/dev/null 2>&1 || exit 0
 # puede estar ya commiteado -- con `--uncommitted` a secas la revision saldria
 # vacia justo en los turnos que mas importan. Se mira si queda algo sin
 # commitear DENTRO del ambito vigilado (el mismo de mark-crossreview-pending);
-# si no, se revisa el ultimo commit. `NOTAS.md` y demas ficheros del operador
-# quedan fuera del ambito a proposito: estan siempre modificados y elegirian
-# `--uncommitted` para siempre.
+# si no, se revisa lo COMMITEADO Y NO PUBLICADO. `NOTAS.md` y demas ficheros del
+# operador quedan fuera del ambito a proposito: estan siempre modificados y
+# elegirian `--uncommitted` para siempre.
+#
+# `--commit HEAD` ERA UN ALCANCE ROTO (2026-09-07). Solo revisa el ULTIMO
+# commit, asi que en un turno con varios commits los demas no se revisaban
+# NUNCA. Medido en el turno de la remediacion de la auditoria integral: seis
+# commits, y el hook reviso el sexto -- 133 lineas de bitacora -- devolviendo
+# PASS mientras las 1.143 lineas de los otros cinco (los hooks que vigilan el
+# codigo del dinero, la configuracion que describe el gasto de cuota y el precio
+# de ejecucion de los picks) no las miro nadie. Codex lo dijo en su propio
+# veredicto: "HEAD only adds documentation... changes no executable code".
+#
+# Y un PASS es PEOR que no ejecutar la revision: se lee como "revisado y
+# limpio". Es la enfermedad cronica de este repositorio -- un control que dice
+# algo distinto de lo que mide -- dentro del control que existe para cazarla,
+# igual que KI-035 pero por el alcance en vez de por el codigo de salida.
+#
+# El nuevo criterio es "lo que todavia no ha pasado por ninguna puerta": los
+# commits por delante del upstream. Al publicar, la base avanza sola y el
+# alcance se vacia, asi que no puede crecer sin limite. Sin upstream (rama
+# local nueva, clon sin remoto) se degrada al comportamiento anterior, que es
+# incompleto pero nunca vacio.
 pendiente=$(git status --porcelain -- configs src/sqp/risk src/sqp/calibration 2>/dev/null)
+base=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+[ -z "${base:-}" ] && base=$(git rev-parse --verify --quiet origin/main >/dev/null 2>&1 \
+                             && echo "origin/main" || true)
+sin_publicar=0
+[ -n "${base:-}" ] && sin_publicar=$(git rev-list --count "$base..HEAD" 2>/dev/null || echo 0)
 if [ -n "$pendiente" ]; then
   alcance="--uncommitted"
+elif [ "${sin_publicar:-0}" -gt 0 ]; then
+  alcance="--base $base"
 else
   alcance="--commit HEAD"
 fi

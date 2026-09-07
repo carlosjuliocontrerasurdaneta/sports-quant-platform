@@ -806,3 +806,50 @@ def test_agents_md_dirige_el_tmpdir_de_pytest_dentro_del_workspace():
     # arbol y el guard de KI-036 abortaria el run diario siguiente.
     ignorados = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert ".codex-tmp/" in ignorados
+
+
+def test_el_hook_no_revisa_solo_el_ultimo_commit():
+    """El alcance `--commit HEAD` dejaba sin revisar todo turno de varios commits.
+
+    Medido el 2026-09-07, en el turno de remediacion de la auditoria integral:
+    seis commits, y el hook reviso el SEXTO -- 133 lineas de bitacora --
+    devolviendo PASS, mientras las 1.143 lineas de los otros cinco (los hooks
+    que vigilan el codigo del dinero, la configuracion que describe el gasto de
+    cuota y el precio de ejecucion de los picks) no las miro nadie. Lo dijo el
+    propio veredicto de Codex: "HEAD only adds documentation... changes no
+    executable code".
+
+    Y un PASS es PEOR que no ejecutar la revision, porque se lee como "revisado
+    y limpio". Misma clase que KI-035 --un control que dice algo distinto de lo
+    que mide-- pero por el ALCANCE en vez de por el codigo de salida.
+
+    El criterio pasa a ser "lo que todavia no ha pasado por ninguna puerta": los
+    commits por delante del upstream. Al publicar, la base avanza sola, asi que
+    el alcance no puede crecer sin limite. `--commit HEAD` se conserva SOLO como
+    degradacion para un repo sin upstream: incompleto, pero nunca vacio.
+    """
+    hook = _crossreview_hook()
+    ejecutable = [ln for ln in hook.splitlines() if not ln.lstrip().startswith("#")]
+    assert any("--base" in ln for ln in ejecutable), (
+        "el hook volvio a revisar un solo commit: en un turno con varios, los "
+        "demas no se revisan nunca y el veredicto se emite igual")
+    assert any("rev-list --count" in ln for ln in ejecutable), (
+        "no se cuenta lo que queda sin publicar, asi que no se puede decidir "
+        "el alcance")
+    # `--commit HEAD` sigue existiendo, pero solo como ULTIMO recurso.
+    rama_head = [i for i, ln in enumerate(ejecutable) if "--commit HEAD" in ln]
+    rama_base = [i for i, ln in enumerate(ejecutable) if "--base" in ln]
+    assert rama_head and rama_base and min(rama_base) < min(rama_head), (
+        "`--commit HEAD` debe quedar por detras de `--base`: es la degradacion "
+        "para un repo sin upstream, no el camino normal")
+
+
+def test_el_hook_prefiere_lo_no_commiteado_sobre_lo_no_publicado():
+    """El orden importa: si queda trabajo sin commitear en el ambito vigilado,
+    ESO es lo que hay que revisar. Invertirlo revisaria commits viejos e
+    ignoraria el codigo que se acaba de escribir."""
+    hook = _crossreview_hook()
+    ejecutable = [ln for ln in hook.splitlines() if not ln.lstrip().startswith("#")]
+    i_unc = next(i for i, ln in enumerate(ejecutable) if "--uncommitted" in ln)
+    i_base = next(i for i, ln in enumerate(ejecutable) if "--base" in ln)
+    assert i_unc < i_base, "lo no commiteado dejo de tener prioridad"
