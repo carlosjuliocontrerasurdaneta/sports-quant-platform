@@ -125,13 +125,28 @@ def main() -> int:
         log.warning("No leagues with captured odds found in data/odds/; nothing to validate.")
         return 0
     log.info("OOS validation for: %s", ", ".join(leagues))
-    failures = 0
+    # DOS contadores, no uno (KI-034). `failures` mezclaba dos cosas que exigen
+    # respuestas distintas:
+    #
+    #   - "esta liga no tiene cuotas de cierre capturadas": es un estado NORMAL
+    #     -- liga recien anadida, temporada sin empezar, backfill pendiente --.
+    #     No hay nada que validar y no hay nada roto.
+    #   - un ERROR de verdad al validar una liga.
+    #
+    # Las dos sumaban a `failures` y el script salia con 1. Daba igual mientras
+    # nadie mirara ese codigo de salida; desde AUD-MED-003 (2026-09-06) el
+    # centinela SI lo mira, asi que una condicion benigna encenderia el health
+    # check en rojo. Una alarma que se enciende cuando no pasa nada se aprende a
+    # ignorar, que es como el CI llego a estar 75 runs en rojo.
+    sin_cierre: list[str] = []
 
     for league in leagues:
         odds = load_closing_odds(ROOT, league)
         if not odds:
-            log.warning("[%s] no historical odds captured; run backfill_historical_odds.py.", league)
-            failures += 1
+            log.warning("[%s] sin cuotas de cierre capturadas; nada que validar "
+                        "(corre scripts/backfill_historical_odds.py si deberia "
+                        "haberlas).", league)
+            sin_cierre.append(league)
             continue
         meta = _league_meta(league)
         family, three_way = meta["family"], meta.get("three_way", False)
@@ -178,7 +193,20 @@ def main() -> int:
 
     print("\nOut-of-sample realized ROI over a single pre-game snapshot proxy; "
           "limited coverage; a backtest, never a profit guarantee.")
-    return 1 if failures else 0
+    validadas = len(leagues) - len(sin_cierre)
+    print(f"\nResumen: {validadas} liga(s) validada(s) de {len(leagues)}; "
+          f"{len(sin_cierre)} sin cuotas de cierre capturadas.")
+    if sin_cierre:
+        print("  Nada que validar en: " + ", ".join(sin_cierre))
+    # Sale 0. "Nada que validar" NO es un fallo, y desde AUD-MED-003 este codigo
+    # de salida enciende el centinela y con el el health check: devolver 1 por una
+    # liga sin backfill seria una alarma que suena cuando no pasa nada, y esas se
+    # aprenden a ignorar -- que es exactamente como el CI llego a 75 runs en rojo.
+    #
+    # Un fallo REAL sigue saliendo con 1: una excepcion no capturada propaga y
+    # `SystemExit(main())` la convierte en codigo distinto de cero. Lo que se
+    # elimina es el 1 FABRICADO por una condicion normal.
+    return 0
 
 
 if __name__ == "__main__":
