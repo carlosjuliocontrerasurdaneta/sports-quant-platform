@@ -65,3 +65,28 @@ def test_guard_unknown_league_sorted_after_priority():
     sel = leagues_within_budget(active, DEFAULT_PRIORITY, remaining=10_000,
                                 cost_per_league=1, days_left=1)
     assert sel[0] == "mlb" and "zzz_league" in sel
+
+
+def test_priority_only_names_leagues_the_configuration_supports():
+    """Una lista de prioridad no puede nombrar una liga retirada.
+
+    `frauen_bundesliga` se retiro de `configs/leagues/soccer.yaml` el 2026-09-06
+    (cierre de KI-005, orden del operador) y siguio nombrada en
+    `DEFAULT_PRIORITY` hasta el 2026-09-07 (auditoria integral, AUD-LOW-002).
+    Era INERTE -- `leagues_within_budget` solo ordena ligas ya presentes en
+    `active`, y `active` se construye desde la configuracion --, pero un resto
+    asi hace dudar de si la retirada llego a aplicarse, y en modo demo
+    `run_all` recorre justo esta lista.
+
+    Se cierra la CLASE, no la instancia: cualquier liga que salga de la
+    configuracion y se quede aqui deja la suite en rojo. Se compara contra la
+    MISMA fuente que usa `run_all._supported_leagues()`.
+    """
+    from sqp.config import CONFIG_DIR, load_yaml
+    from sqp.providers.odds_api import SPORT_KEYS
+    soportadas = set(SPORT_KEYS) | set(
+        (load_yaml(CONFIG_DIR / "leagues" / "soccer.yaml").get("leagues") or {}))
+    huerfanas = sorted(set(DEFAULT_PRIORITY) - soportadas)
+    assert not huerfanas, (
+        f"DEFAULT_PRIORITY nombra ligas que la configuracion NO soporta: "
+        f"{huerfanas}. O se re-anaden a configs/leagues/, o salen de la lista.")

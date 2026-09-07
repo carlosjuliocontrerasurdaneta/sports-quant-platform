@@ -14,10 +14,19 @@ from datetime import date
 
 # Priority order: when the budget can't cover every active league, the most
 # valuable (highest-volume / best-modeled) leagues run first.
+#
+# `frauen_bundesliga` salio de aqui el 2026-09-07 (auditoria integral,
+# AUD-LOW-002): se habia retirado de `configs/leagues/soccer.yaml` el 2026-09-06
+# al cerrar KI-005, y esta lista se quedo con la referencia. Era INERTE -- esta
+# funcion solo ordena ligas ya presentes en `active`, que se construye desde la
+# configuracion --, pero una lista de prioridad que nombra una liga retirada es
+# la clase de resto que hace dudar de si la retirada llego a aplicarse.
+# `tests/test_budget.py` fija ahora que DEFAULT_PRIORITY no puede nombrar una
+# liga que la configuracion no soporte.
 DEFAULT_PRIORITY: tuple[str, ...] = (
     "mlb", "nba", "nhl", "wnba", "nfl", "ncaaf", "ncaab", "wncaab",
     "epl", "laliga", "seriea", "bundesliga", "ligue1", "ucl", "mls",
-    "brasileirao", "ligamx", "chile", "uwcl", "frauen_bundesliga",
+    "brasileirao", "ligamx", "chile", "uwcl",
 )
 
 

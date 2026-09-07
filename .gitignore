@@ -61,9 +61,12 @@ graphify-out/
 # generaba el __pycache__. Ese hook se RETIRO el 2026-09-01 y el mismo test hoy
 # afirma lo contrario -- que el fichero NO existe (test_claude_model_routing.py,
 # `test_the_route_classifier_is_not_wired_as_a_hook`) --, asi que la entrada
-# describia un contrato invertido (AUD-LOW-003, 2026-09-06). Se conserva: los
-# siete hooks vivos son .sh, pero .claude/hooks/__pycache__/ sigue en disco como
-# residuo de aquel modulo y nada garantiza que no vuelva a haber un hook Python.
+# describia un contrato invertido (AUD-LOW-003, 2026-09-06). Se conserva, pero
+# por una razon distinta de la que decia: el directorio YA NO EXISTE en disco --
+# se comprobo el 2026-09-07 (auditoria integral, AUD-LOW-003) y la frase "sigue
+# en disco como residuo" llevaba un dia siendo falsa. Lo que justifica la entrada
+# hoy es que `.claude/hooks/_targets.py` es un modulo Python que los hooks .sh
+# invocan, asi que un __pycache__ puede reaparecer ahi en cualquier momento.
 .claude/hooks/__pycache__/
 
 # Parches sueltos generados por auditorias: son residuo, no fuente (auditoria 2026-08-04).
