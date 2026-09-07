@@ -11,7 +11,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Iterable
 from sqp.calibration.calibrator import calibrate_probability
 from sqp.domain.models import EventOdds
 from sqp.features.rest_form import (h2h_p_adjustment, home_away_form_p_adjustment,
@@ -363,3 +363,61 @@ def adjust_model_probability(p_model: float, market: str, selection: str,
                + over_under_rate_p_adjustment(
                    market, selection, over_rate_home, over_rate_away,
                    risk.over_under_rate_coef)))
+
+
+def _execution_prices(eo: EventOdds, cons: dict, books: Iterable[str], *,
+                      max_uplift: float) -> dict:
+    """(mercado, seleccion, punto) -> (precio de EJECUCION, origen).
+
+    Donde se COBRA un pick, que no es lo mismo que donde se ESTIMA. El benchmark
+    no-vig se sigue calculando sobre ``cons`` -- la mediana del consenso COMPLETO
+    -- y esta funcion no lo toca ni puede tocarlo: de-vigear precios best-of-N da
+    suma < 1 y FABRICA edge que no existe. Lo unico que cambia aqui es el precio
+    al que se cobraria.
+
+    ``books`` vacio = line shopping DESACTIVADO (default-deny): devuelve la
+    mediana del consenso para todas las claves, byte-identico al comportamiento
+    historico. Solo el operador sabe en que casas puede realmente transaccionar,
+    y un mejor precio en una casa inalcanzable no es un precio -- produciria
+    stake que no se puede tomar. Por eso la lista se declara y no se infiere.
+
+    Con una casa accesible que cotiza la clave, el precio de ejecucion es el
+    SUYO aunque no supere a la mediana: la mediana del consenso no es una casa en
+    la que se pueda apostar. Solo se vuelve a ella cuando ninguna casa accesible
+    cotiza esa linea, o cuando el mejor precio supera a la mediana por mas de
+    ``max_uplift``: una cuota muy por encima del consenso es cotizacion obsoleta
+    o error de origen mucho antes que valor -- el mismo criterio conservador que
+    ``max_plausible_edge``.
+
+    Se aplica el MISMO predicado de usabilidad que ``_consensus_lines``
+    (``is_usable_price``), asi que un ``inf`` de una casa permitida no puede
+    ganar el maximo -- que es exactamente como una cotizacion corrupta se
+    convertiria en el precio de ejecucion de todo el mercado.
+
+    Desempate DETERMINISTA por nombre de casa: dos casas al mismo precio no
+    pueden producir dos ejecuciones distintas segun el orden en que el proveedor
+    devolvio las lineas.
+    """
+    permitidas = {str(b).strip().lower() for b in (books or ()) if str(b).strip()}
+    salida: dict = {k: (float(v), "consensus_median") for k, v in cons.items()}
+    if not permitidas:
+        return salida
+    mejores: dict = {}
+    for ln in eo.lines:
+        if str(ln.bookmaker).strip().lower() not in permitidas:
+            continue
+        if not is_usable_price(ln.price_decimal):
+            continue
+        key = (ln.market, ln.outcome, ln.point)
+        if key not in cons:
+            continue        # defensa: `cons` cubre toda linea usable
+        precio, casa = float(ln.price_decimal), str(ln.bookmaker)
+        actual = mejores.get(key)
+        if (actual is None or precio > actual[0]
+                or (precio == actual[0] and casa < actual[1])):
+            mejores[key] = (precio, casa)
+    for key, (precio, casa) in mejores.items():
+        if precio > float(cons[key]) * (1.0 + max_uplift):
+            continue        # uplift implausible: manda la mediana
+        salida[key] = (precio, casa)
+    return salida

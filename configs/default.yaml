@@ -122,13 +122,45 @@ risk:
 bankroll:
   initial: 1000
   dynamic: true
-odds:
-  regions: "us,eu"
-  markets: "h2h,spreads,totals"
-  odds_format: "decimal"
-simulation:
-  n_sims: 20000
-  seed: 42
+# NO existen aqui los bloques `odds:` ni `simulation:`, y su ausencia es
+# deliberada (auditoria integral 2026-09-07, AUD-MED-003). Estuvieron declarados
+# hasta ese dia y NADIE los leia: `Settings.load()` nunca los recorrio. Editarlos
+# no cambiaba nada, y peor -- mentian sobre produccion:
+#
+#   `odds.regions` declaraba "us,eu" (2 regiones) mientras RUN_DIARIO_ALL.bat fija
+#   ODDS_API_REGIONS=us,us2,uk,eu,au (5) y SETTLE_ALL.bat fija us. Como el coste
+#   por liga es (markets x regions) + 1, el unico fichero VERSIONADO que describia
+#   la configuracion de cuotas decia 7 creditos/liga/dia donde produccion gasta 16.
+#
+# Donde viven de verdad, para que se puedan encontrar:
+#
+#   regions      -> env ODDS_API_REGIONS (lo fijan los BAT); default "us,eu" en
+#                   Settings.regions (src/sqp/config.py).
+#   markets      -> literal del codigo: scripts/run_all.py:MARKETS y
+#                   pipeline/daily.py (h2h a secas en tenis).
+#   odds_format  -> env ODDS_API_ODDS_FORMAT; OddsAPIClient RECHAZA cualquier
+#                   valor distinto de "decimal" (los precios se persisten como
+#                   price_decimal).
+#   n_sims/seed  -> defaults de firma en simulation/monte_carlo.py.
+#
+# Se retiran en vez de cablearse porque cablearlas cambiaria el gasto de cuota
+# real, y eso es un parametro operativo que decide el operador, no una auditoria.
+# `tests/test_config_yaml_keys.py` cierra la CLASE: una clave nueva en este
+# fichero sin consumidor en `Settings.load()` deja la suite en rojo.
+
+# Donde se COBRA el pick (line shopping). `books` vacio = DESACTIVADO
+# (default-deny): la ejecucion es la mediana del consenso, byte-identica al
+# comportamiento historico. Solo el operador sabe en que casas puede realmente
+# transaccionar; un mejor precio en una casa inalcanzable produciria stake que no
+# se puede tomar, por eso la lista se DECLARA y no se infiere.
+# `max_uplift` acota cuanto puede superar el mejor precio a la mediana antes de
+# tratarse como cotizacion obsoleta o error de origen en vez de valor.
+# INVARIANTE: el benchmark no-vig se calcula siempre sobre el consenso completo;
+# de-vigear precios best-of-N daria suma < 1 y fabricaria edge inexistente.
+# Env vars EXECUTION_BOOKS / EXECUTION_MAX_UPLIFT (cuando estan) ganan sobre esto.
+execution:
+  books: []
+  max_uplift: 0.15
 # Modo de seleccion de picks. ACTIVO: "edge" -- seleccion clasica por valor
 # esperado (Kelly fraccional sobre min_edge, los tres mercados).
 #

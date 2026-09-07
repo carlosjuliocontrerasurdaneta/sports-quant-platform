@@ -194,6 +194,23 @@ class RiskConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    """Donde se COBRA el pick: line shopping sobre las casas accesibles.
+
+    `books` vacio = line shopping DESACTIVADO (default-deny), y la ejecucion es
+    la mediana del consenso, byte-identica al comportamiento historico. Solo el
+    operador sabe en que casas puede realmente transaccionar, y un mejor precio
+    en una casa inalcanzable no es un precio: produciria stake que no se puede
+    tomar. Por eso la lista se declara y no se infiere.
+
+    `max_uplift` acota cuanto puede superar el mejor precio a la mediana antes
+    de tratarse como cotizacion obsoleta o error de origen en vez de valor.
+    """
+    books: tuple[str, ...] = ()
+    max_uplift: float = 0.15
+
+
+@dataclass
 class WeatherConfig:
     enabled: bool = False
     timeout_s: int = 10
@@ -234,6 +251,7 @@ class Settings:
     event_horizon_days: int = field(default_factory=lambda: int(os.getenv("MAX_EVENT_HORIZON_DAYS", "7")))
     risk: RiskConfig = field(default_factory=RiskConfig)
     weather: WeatherConfig = field(default_factory=WeatherConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     # Modo de seleccion de picks (decision 2026-07-27: el objetivo del proyecto
     # es maximizar el porcentaje de aciertos). "edge": seleccion clasica por
     # valor esperado (Kelly sobre min_edge). "accuracy": seleccion por
@@ -337,6 +355,11 @@ class Settings:
 
     def validate(self) -> "Settings":
         """Fail fast on unsafe or internally inconsistent operator settings."""
+        if not (0.0 < self.execution.max_uplift <= 1.0):
+            raise ValueError(
+                "execution.max_uplift debe estar en (0, 1]: por encima de la "
+                "mediana del consenso un +100% es error de origen, no valor "
+                f"(recibido {self.execution.max_uplift})")
         if self.mode not in ("demo", "live"):
             raise ValueError(f"SQP_MODE must be 'demo' or 'live', got {self.mode!r}")
         # `math.isfinite` ademas del rango (AUD-005, Codex 2026-09-05):
@@ -463,6 +486,15 @@ class Settings:
             over_under_rate_n=int(r.get("over_under_rate_n", 10)),
         )
         _warn_risk_divergence(r)
+        ex = cfg.get("execution") or {}
+        _books_env = os.getenv("EXECUTION_BOOKS")
+        _books_raw = (_books_env.split(",") if _books_env is not None
+                      else list(ex.get("books") or []))
+        s.execution = ExecutionConfig(
+            books=tuple(b.strip().lower() for b in _books_raw if str(b).strip()),
+            max_uplift=float(os.getenv("EXECUTION_MAX_UPLIFT",
+                                       ex.get("max_uplift", 0.15))),
+        )
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                             for lg, mk in (cfg.get("paused_markets") or {}).items()}
         if _env_flag("SHADOW_MODE") is None and "shadow_mode" in cfg:
