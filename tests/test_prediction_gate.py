@@ -182,11 +182,26 @@ def test_both_sides_of_a_spread_count_once():
     assert int(out.iloc[0]["n"]) == 1, "las dos caras de un spread son UN ensayo"
 
 
-def test_the_same_side_at_opposite_lines_stays_separate():
-    """Contraparte del anterior: colapsar por `abs(line)` seria un arreglo
-    INCORRECTO. `home -1.5` y `home +1.5` son mercados DISTINTOS (la linea cruzo
-    el pick'em entre dias), y en los datos reales del 2026-09-01 hay 20 pares
-    evento/seleccion que tienen ambas. Deben seguir contando como dos."""
+def test_the_same_side_at_opposite_lines_is_still_ONE_trial():
+    """CONTRATO INVERTIDO el 2026-09-06 (AUD-20260906-03, Codex, HIGH).
+
+    Este test exigia `n == 2`, razonando que `home -1.5` y `home +1.5` son
+    mercados DISTINTOS. Lo son -- y lo siguen siendo: sus filas no se fusionan ni
+    se pierde ninguna --, pero eso es identidad de COTIZACION, no independencia
+    ESTADISTICA. Las dos las decide el mismo marcador del mismo partido, asi que
+    son sucesos anidados y `binomtest` no puede tratarlas como dos ensayos.
+
+    La confusion entre "contrato distinto" y "ensayo independiente" es
+    exactamente lo que el hallazgo denuncia, y este test la consolidaba.
+
+    Consecuencia medida de no arreglarlo: con 150 partidos identicos, pasar de
+    una linea a dos llevaba `n=150, allowed=False` a `n=300, allowed=True` sin
+    anadir un solo partido; y sobre el stream real, 22 de 41 segmentos contaban
+    mas unidades que encuentros (`ncaaf|totals`, 118 sobre 44).
+
+    NO se colapsa por `abs(line)` -- eso si seria incorrecto --: se colapsa por
+    EVENTO, que es lo que ocurre una sola vez.
+    """
     filas = [
         _serving("e1", "LA Galaxy", result="win", p_model=0.6, p_market=0.5,
                  price=2.0, generated_at="2026-08-21T12:00:00Z",
@@ -196,7 +211,38 @@ def test_the_same_side_at_opposite_lines_stays_separate():
                  market="spreads", line=1.5),
     ]
     out = evaluate_markets(pd.DataFrame(filas))
-    assert int(out.iloc[0]["n"]) == 2, "misma cara a lineas opuestas son DOS mercados"
+    assert int(out.iloc[0]["n"]) == 1, "un partido es UN ensayo, tenga las lineas que tenga"
+
+
+def test_adding_lines_to_the_same_games_cannot_add_evidence():
+    """La propiedad que cierra el hallazgo, dicha como invariante y no como caso:
+    replicar exposicion al mismo marcador no puede fabricar precision
+    estadistica. Es la forma que pidio Codex ("anadir lineas y snapshots del
+    mismo evento no puede aumentar el numero de eventos independientes")."""
+    def muestra(lineas):
+        filas = []
+        for e in range(40):
+            for ln in lineas:
+                filas.append(_serving(f"e{e}", "LA Galaxy", result="win",
+                                      p_model=0.6, p_market=0.5, price=2.0,
+                                      generated_at="2026-08-21T12:00:00Z",
+                                      market="totals", line=ln))
+        return int(evaluate_markets(pd.DataFrame(filas)).iloc[0]["n"])
+
+    una = muestra([2.5])
+    assert una == 40
+    for extra in ([2.5, 3.5], [2.5, 3.5, 4.5], [2.5, 3.5, 4.5, 5.5]):
+        assert muestra(extra) == una, f"{len(extra)} lineas inflaron n a {muestra(extra)}"
+
+
+def test_distinct_events_still_count_separately():
+    """Contraprueba obligatoria: sin ella, colapsar TODO a una unidad pasaria los
+    dos tests de arriba y el gate no podria acumular evidencia jamas."""
+    filas = [_serving(f"e{e}", "LA Galaxy", result="win", p_model=0.6,
+                      p_market=0.5, price=2.0,
+                      generated_at="2026-08-21T12:00:00Z",
+                      market="totals", line=2.5) for e in range(7)]
+    assert int(evaluate_markets(pd.DataFrame(filas)).iloc[0]["n"]) == 7
 
 
 def test_rows_without_event_id_are_denied():

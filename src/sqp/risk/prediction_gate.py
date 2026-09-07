@@ -12,8 +12,11 @@ Un (liga, mercado) lleva stake real solo si cumple LAS DOS condiciones:
    n >= min_n y p < alpha. Se usa ``model_probability`` y no la mezcla ni la
    calibrada porque ambas contienen el precio dentro: compararlas con el mercado
    no diria si el modelo aporta algo propio.
-   ``n`` cuenta OBSERVACIONES INDEPENDIENTES, una por (evento, mercado, linea),
-   no filas del stream: ver ``_independent_units``.
+   ``n`` cuenta OBSERVACIONES INDEPENDIENTES, una por (evento, mercado) -- es
+   decir, UNA POR PARTIDO --, no filas del stream ni cotizaciones: ver
+   ``_independent_units``. Hasta el 2026-09-06 la unidad incluia la LINEA, y dos
+   totales del mismo encuentro contaban como dos ensayos pese a depender del
+   mismo marcador (AUD-20260906-03).
 2. Su EV a stake plano es positivo. Acertar mas que el precio no basta si el
    margen no cubre el vig (leccion de pick_mode accuracy, favoritos a 1.07).
 
@@ -77,7 +80,6 @@ import pandas as pd
 from scipy.stats import binomtest
 
 from sqp.logging_config import get_logger
-from sqp.sports.team_names import normalize_key
 
 log = get_logger(__name__)
 
@@ -142,35 +144,50 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     return df
 
 
-def _home_oriented_line(g: pd.DataFrame) -> pd.Series:
-    """Linea de `spreads` reorientada al LOCAL, para que las dos caras del mismo
-    handicap caigan en el mismo grupo.
-
-    `pipeline/probabilities.py` emite `(spreads, home, +L)` y
-    `(spreads, away, -L)`: la linea es RELATIVA AL LADO, no un identificador de
-    mercado. Agrupar por la cruda separaba dos filas que son el mismo ensayo.
-
-    NO se usa `abs(line)`: `home -1.5` y `home +1.5` son mercados DISTINTOS
-    (la linea cruza el pick'em entre dias) y hay 20 pares evento/seleccion asi en
-    los datos del 2026-09-01; `abs` los habria fusionado. Se niega el signo solo
-    en la cara visitante, que es exactamente la inversa del productor.
-
-    `h2h` (linea nula en ambas caras) y `totals` (Over/Under comparten el mismo
-    total) ya colapsaban solos y no se tocan. Si faltan las columnas de identidad
-    no se puede reorientar: se devuelve la linea cruda, que es el comportamiento
-    previo.
-    """
-    line = pd.to_numeric(g["line"], errors="coerce")
-    if not {"market", "selection", "away"}.issubset(g.columns):
-        return line
-    sel = g["selection"].astype(str).map(normalize_key)
-    is_away = sel == g["away"].astype(str).map(normalize_key)
-    is_spread = g["market"].astype(str) == "spreads"
-    return line.where(~(is_spread & is_away), -line)
+# `_home_oriented_line` se retiro el 2026-09-06 al cambiar la unidad de
+# inferencia a (evento, mercado): reorientaba la linea de `spreads` al local para
+# que las dos caras del mismo handicap cayeran en el mismo grupo, y con la linea
+# fuera de la clave eso ocurre por construccion. Quedaba sin un solo llamador.
+# Su razon de ser esta conservada en el docstring de `_independent_units`.
 
 
 def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
-    """Una observacion por (evento, mercado, linea): `d` y `ev` promediados.
+    """Una observacion por (EVENTO, mercado): `d` y `ev` promediados.
+
+    La unidad era `(evento, mercado, LINEA)`, y eso dejaba varias unidades del
+    mismo partido (AUD-20260906-03, Codex, HIGH; reproducido de forma
+    independiente el 2026-09-06). Dos totales distintos del mismo encuentro
+    dependen del MISMO marcador: son sucesos anidados, no ensayos
+    independientes, y `binomtest` los contaba como observaciones separadas.
+
+    Reproducido con 150 partidos identicos y probabilidades complementarias,
+    conservando los valores canonicos (min 300, alpha 0,05/41):
+
+        1 linea por evento  -> n=150, allowed=False, muestra_insuficiente
+        2 lineas por evento -> n=300, allowed=True
+        3 lineas por evento -> n=450, allowed=True
+
+    No se anadio ni un partido independiente. Medido ademas sobre las 11.315
+    filas usables del stream graduado: 22 de 41 segmentos contaban mas unidades
+    que partidos, con `ncaaf|totals` en 118 unidades sobre 44 encuentros (2,68x)
+    y `wnba|spreads` en 67 sobre 39.
+
+    QUE NO ES ESTE ARREGLO. No fusiona lineas por valor absoluto ni confunde
+    contratos distintos: `home -1.5` y `home +1.5` siguen siendo dos mercados
+    distintos y sus filas siguen intactas en los datos. Lo que cambia es la
+    UNIDAD DE INFERENCIA, que pasa a ser el partido, porque es el partido -- y no
+    la cotizacion -- lo que se realiza una sola vez. El promedio de `d` dentro
+    del evento responde a "en este partido, ¿le gano el modelo al mercado?", que
+    si es un ensayo de Bernoulli independiente entre eventos.
+
+    La regla se fijo ANTES de mirar que le pasa a ningun veredicto, y es la misma
+    que la funcion ya aplicaba un nivel mas abajo (promediar las repeticiones
+    dentro de una linea). No se toco ningun umbral: `min_n` y `alpha` siguen
+    siendo los canonicos.
+
+    Subsume la orientacion de linea al local que hacia falta antes: las dos caras
+    de un spread caen ahora en el mismo grupo por construccion, sin necesidad de
+    reorientar nada.
 
     El test de signo asume ENSAYOS INDEPENDIENTES, y las filas del stream servido
     no lo son, por dos vias que se multiplican:
@@ -205,10 +222,15 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
     ev = (g["model_probability"] * (g["price_decimal"] - 1.0)
           - (1.0 - g["model_probability"]))
     units = pd.DataFrame({"d": d, "ev": ev})
-    keys = [c for c in ("event_id", "market", "line") if c in g.columns]
-    oriented = _home_oriented_line(g) if "line" in g.columns else None
+    # SIN `line`: la unidad es el partido. Ver el docstring.
+    keys = [c for c in ("event_id", "market") if c in g.columns]
+    if not keys:
+        # Sin identidad de evento no se puede acreditar independencia. Se
+        # devuelve una unidad por fila, que es el comportamiento anterior y el
+        # unico posible; `min_n` sigue protegiendo aguas abajo.
+        return units
     for k in keys:
-        units[k] = oriented if k == "line" else g[k]
+        units[k] = g[k]
     return units.groupby(keys, dropna=False, sort=False)[["d", "ev"]].mean().reset_index()
 
 
