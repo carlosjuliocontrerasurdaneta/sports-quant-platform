@@ -62,15 +62,33 @@ imagen para validarla, y ningún paso de CI la construye. Las opciones son
 alinearla a 3.14 y añadir un `docker build` al CI, o dejarla declarada como
 entorno de demo, que es lo que ahora dice.
 
-### B-4 · Limpieza de residuo en disco (≈205 MB, todo ignorado por git)
+### B-4 · Limpieza de residuo en disco — **EJECUTADA** (2026-09-06)
 
-Propuesto en el informe de auditoría y **no autorizado**, así que no se tocó:
+Autorizada expresamente por el operador. **171 MB liberados.**
 
-| ID | Ruta | Categoría | Tamaño |
-|---|---|---|---|
-| CL-01 | `graphify-out/2026-07-08 … 2026-09-05` (39 dirs) | `GENERADO_RECONSTRUIBLE` | ~180 MB |
-| CL-02 | `.codex-tmp/run-2026081*` (20 dirs) | `ELIMINABLE_CONFIRMADO` | 25 MB |
-| CL-03 | `.claude/hooks/__pycache__/` | `OBSOLETO_REEMPLAZADO` | trivial |
+| ID | Ruta | Resultado |
+|---|---|---|
+| CL-01 | `graphify-out/2026-07-08 … 2026-09-05` (39 dirs) | ✅ borrados. `graphify-out`: 194 → **47 MB** |
+| CL-02 | `.codex-tmp/*` (22 entradas) | ⚠️ parcial: 25 → **1 MB**; quedan 21 directorios VACÍOS |
+| CL-03 | `.claude/hooks/__pycache__/` | ✅ borrado |
+
+**Se conservó `graphify-out/2026-09-06`**, el snapshot más reciente, como punto
+de retorno: cuesta 6 MB y elimina todo riesgo. El grafo VIVO es
+`graphify-out/graph.json` (raíz), que es el que documenta `.claude/CLAUDE.md`, y
+quedó intacto — verificado con `graphify query`: 93 nodos, 6.037 en el grafo.
+
+**Lo que no se pudo borrar y por qué.** Los 21 directorios restantes de
+`.codex-tmp/` están vacíos pero su ACL deniega incluso *leerla* (`Get-Acl` →
+`UnauthorizedAccessException`): los creó el sandbox de Codex bajo una identidad
+restringida. Borrarlos exige `takeown` + `icacls /reset`, es decir **modificar
+descriptores de seguridad**, que es bastante más que retirar residuo y no estaba
+autorizado. Ocupan ~1 MB y son inertes. Si se quiere cerrar, desde una consola
+elevada: `takeown /f .codex-tmp /r /d s` y `icacls .codex-tmp /reset /t`.
+
+`CL-05` (`.claude/reviews/runtime/`) y `CL-06`
+(`audit/full-audit-SKILL-reemplazado-2026-08-30.md`) siguen clasificados
+`NO_VERIFICABLE` / `CONSERVAR` y **no** se tocaron. Los caches de herramientas
+(`.mypy_cache`, `.ruff_cache`, `.pytest_cache`) tampoco: están en uso activo.
 
 `CL-05` (`.claude/reviews/runtime/`, 965 ficheros) y `CL-06`
 (`audit/full-audit-SKILL-reemplazado-2026-08-30.md`) se clasificaron
