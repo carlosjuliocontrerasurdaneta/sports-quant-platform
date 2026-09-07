@@ -286,9 +286,32 @@ def picks_vigentes_unicos(df: pd.DataFrame, *, hoy: str | None = None) -> pd.Dat
         return vigentes.assign(**{EN_JUEGO: False})
     claves = [*_IDENTIDAD_PICK] + (["line"] if "line" in vigentes.columns else [])
     if "generated_at" in vigentes.columns:
-        # `sort` estable: ante sellos repetidos manda el orden de llegada, que en
-        # un fichero append-only es el cronologico.
-        vigentes = vigentes.sort_values("generated_at", kind="stable")
+        # Se ordena por el INSTANTE PARSEADO, no por el texto. `sort` estable:
+        # ante sellos repetidos manda el orden de llegada, que en un fichero
+        # append-only es el cronologico.
+        #
+        # Ordenar el texto es la averia que este proyecto ya arreglo DOS veces:
+        # `bankroll.equity_curve` (M-18) y `roi_engine.load_closing_odds` (M-30),
+        # ambas con la misma frase -- "el orden lexicografico no es cronologico".
+        # Aqui decide que fila SOBREVIVE al `drop_duplicates(keep="last")`, o sea
+        # que precio y que probabilidad ve el operador.
+        #
+        # Medido el 2026-09-06 sobre las 63 fuentes: los 46.955 sellos son UTC
+        # `+00:00`, y con prefijo `YYYY-MM-DDTHH:MM:SS` de ancho fijo el orden
+        # del texto coincide hoy con el cronologico. Es decir: esto NO corrige un
+        # fallo vivo, cierra la puerta por la que entro dos veces. Un solo sello
+        # con desfase local -- `-03:00`, la zona de la maquina -- bastaria para
+        # que el texto ordenara por hora local y la fila superviviente fuera la
+        # equivocada, sin error ni aviso.
+        #
+        # Un sello ilegible queda AL PRINCIPIO (`na_position="first"`), nunca
+        # elegido como el mas reciente: no saber cuando se sirvio una fila no
+        # puede convertirla en la vigente.
+        _orden = pd.to_datetime(vigentes["generated_at"], errors="coerce",
+                                utc=True, format="ISO8601")
+        vigentes = (vigentes.assign(_orden=_orden)
+                    .sort_values("_orden", kind="stable", na_position="first")
+                    .drop(columns="_orden"))
     # Sin `generated_at` no se puede afirmar cual es la mas reciente, pero el
     # stream es append-only: la ultima del fichero es la ultima servida.
     #

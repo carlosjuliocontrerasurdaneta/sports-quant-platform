@@ -71,7 +71,32 @@ def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
                 # colgando el run diario (auditoria 2026-08-05, F-08).
                 stale = False
             if stale:
-                lock.unlink(missing_ok=True)
+                try:
+                    lock.unlink(missing_ok=True)
+                except OSError as exc:
+                    # El `except OSError` de arriba solo envuelve el `stat`, no
+                    # este `unlink`, y en Windows borrar un fichero cuyo titular
+                    # mantiene el descriptor abierto lanza PermissionError
+                    # (WinError 32). Observado el 2026-09-06 montando la
+                    # reproduccion de AUD-20260906-02: la excepcion salia SIN
+                    # capturar desde `locked.__enter__`, y como no es
+                    # `LockNoAdquiridoError` tampoco la captura
+                    # `apply_dynamic_bankroll` ni ningun consumidor.
+                    #
+                    # No poder romper el candado NO es motivo para reventar: es
+                    # informacion de que el titular sigue vivo. Se degrada a
+                    # espera normal, y si no se libera manda `timeout_s`, que ya
+                    # aborta ruidosamente.
+                    log.warning("no se pudo romper el lock caducado %s (%s); "
+                                "el titular parece seguir vivo. Se sigue "
+                                "esperando hasta agotar el timeout.",
+                                lock.name, exc)
+                    if time.monotonic() >= deadline:
+                        raise LockNoAdquiridoError(
+                            f"el lock de {lock.name} parecia caducado pero no se "
+                            f"pudo romper ({exc}) y se agoto la espera de "
+                            f"{timeout_s:g}s. No se entra sin exclusion.") from exc
+                    time.sleep(0.25)
                 continue
             if time.monotonic() >= deadline:
                 # NO se entra sin lock (AUD-002). Antes se degradaba con un

@@ -264,6 +264,50 @@ class TestVigenciaNoDiaDeGeneracion:
         out = picks_vigentes_unicos(df)
         assert len(out) == 2, "sin identidad de evento se conservan las filas"
 
+    def test_el_orden_es_por_INSTANTE_y_no_por_texto(self):
+        """AUD2-LOW-001. `sort_values("generated_at")` ordenaba el TEXTO, y de
+        ese orden sale que fila sobrevive al colapso -- o sea, que precio y que
+        probabilidad ve el operador.
+
+        Es la averia que este proyecto ya arreglo dos veces con la misma frase
+        ("el orden lexicografico no es cronologico"): `bankroll.equity_curve`
+        (M-18) y `roi_engine.load_closing_odds` (M-30).
+
+        Medido el 2026-09-06: los 46.955 sellos reales son UTC `+00:00`, asi que
+        NO habia fallo vivo. Un solo sello con desfase local -- `-03:00`, la zona
+        de esta maquina -- basta para romperlo: como texto, "T09:00:00-03:00"
+        ordena ANTES que "T11:00:00+00:00", pero es DOS HORAS DESPUES.
+        """
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = _served([
+            {"event_id": "e1", "price_decimal": 2.0,
+             "generated_at": "2026-09-06T11:00:00+00:00",
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"event_id": "e1", "price_decimal": 9.9,
+             "generated_at": "2026-09-06T09:00:00-03:00",   # = 12:00Z, la ULTIMA
+             "start_time": "2099-01-01T18:00:00Z"},
+        ])
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 1
+        assert float(out.iloc[0]["price_decimal"]) == 9.9, (
+            "sobrevivio la fila mas antigua: se ordeno el texto, no el instante")
+
+    def test_un_sello_ilegible_nunca_gana_el_colapso(self):
+        """No saber cuando se sirvio una fila no puede convertirla en la vigente:
+        va al principio del orden, nunca al final."""
+        from sqp.evaluation.labels import picks_vigentes_unicos
+        df = _served([
+            {"event_id": "e1", "price_decimal": 2.0,
+             "generated_at": "no es una fecha",
+             "start_time": "2099-01-01T18:00:00Z"},
+            {"event_id": "e1", "price_decimal": 3.3,
+             "generated_at": "2026-09-06T11:00:00+00:00",
+             "start_time": "2099-01-01T18:00:00Z"},
+        ])
+        out = picks_vigentes_unicos(df)
+        assert len(out) == 1
+        assert float(out.iloc[0]["price_decimal"]) == 3.3
+
     def test_sin_generated_at_sigue_colapsando_por_identidad(self):
         """El stream es append-only: sin sello, la ultima fila del fichero es la
         ultima servida. Antes, la ausencia de `generated_at` desactivaba el
