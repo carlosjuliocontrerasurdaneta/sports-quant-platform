@@ -13,6 +13,7 @@ from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
 from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
+from sqp.storage.lock import locked
 from sqp.providers.odds_api import OddsAPIClient
 from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start,
                                    settle_candidates, void_stale_candidates)
@@ -223,32 +224,50 @@ def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
     and silently misalign every value on re-read. So we take the union of the
     prior and new columns (prior order first) and rewrite the file aligned, which
     also self-heals any file written by a previous schema. Returns the NEWLY
-    settled rows (post-dedup)."""
+    settled rows (post-dedup).
+
+    TODA la transaccion -- comprobar, leer, deduplicar, combinar y escribir --
+    corre BAJO EL LOCK del fichero (AUD-20260906-02, Codex, HIGH, REPRODUCED).
+    El temporal unico y `os.replace` protegen contra un fichero a medio escribir,
+    pero NO contra que un escritor sustituya el resultado completo de otro: es un
+    read-modify-write, y sin exclusion el segundo en escribir pisa lo que el
+    primero acababa de anadir. Reproducido con un intercalado determinista (A lee
+    y prepara, B liquida entero, A escribe): de dos liquidaciones de -400
+    sobrevivio SOLO una, y el saldo daba 600 en vez de 200.
+
+    `prior` se lee DENTRO del lock a proposito. Leerlo fuera y escribir dentro no
+    arregla nada -- el estado podria haber cambiado entre ambos --, que es
+    exactamente la correccion que `revalidation.py` ya aplico en d27fdd4.
+
+    La seccion critica no toca la red: es lectura y escritura de un CSV local.
+    Se activa por una liquidacion manual solapada con la programada, o por dos
+    ligas que compartan fichero."""
     out = ROOT / "data" / "bets" / f"settled_{league}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
-    prior: pd.DataFrame | None = None
-    if out.exists():
-        try:
-            prior = pd.read_csv(out)
-        except pd.errors.EmptyDataError:
-            prior = None  # empty prior: genuinely a fresh file
-        # ParserError PROPAGATES on purpose: treating a corrupt settled_*.csv as
-        # fresh would rewrite it with only today's rows and wipe the PnL history
-        # feeding the ROI audit, bankroll ledger and calibrators. Fix the file
-        # instead (audit 2026-07-24, M-21).
-    if not settled.empty and prior is not None and set(DEDUP_KEY).issubset(prior.columns):
-        have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
-        keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
-        settled = settled[keep]
-    if settled.empty:
-        return settled
-    if prior is not None:
-        cols = list(prior.columns) + [c for c in settled.columns if c not in prior.columns]
-        combined = pd.concat([prior.reindex(columns=cols), settled.reindex(columns=cols)],
-                             ignore_index=True)
-        _atomic_write_csv(combined, out)
-    else:
-        _atomic_write_csv(settled, out)
+    with locked(out):
+        prior: pd.DataFrame | None = None
+        if out.exists():
+            try:
+                prior = pd.read_csv(out)
+            except pd.errors.EmptyDataError:
+                prior = None  # empty prior: genuinely a fresh file
+            # ParserError PROPAGATES on purpose: treating a corrupt settled_*.csv as
+            # fresh would rewrite it with only today's rows and wipe the PnL history
+            # feeding the ROI audit, bankroll ledger and calibrators. Fix the file
+            # instead (audit 2026-07-24, M-21).
+        if not settled.empty and prior is not None and set(DEDUP_KEY).issubset(prior.columns):
+            have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
+            keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
+            settled = settled[keep]
+        if settled.empty:
+            return settled
+        if prior is not None:
+            cols = list(prior.columns) + [c for c in settled.columns if c not in prior.columns]
+            combined = pd.concat([prior.reindex(columns=cols), settled.reindex(columns=cols)],
+                                 ignore_index=True)
+            _atomic_write_csv(combined, out)
+        else:
+            _atomic_write_csv(settled, out)
     return settled
 
 

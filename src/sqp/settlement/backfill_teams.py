@@ -8,6 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
+from sqp.storage.lock import locked
+
 
 def teams_from_odds(odds_dir: Path, league: str) -> dict[str, dict]:
     """event_id -> {home, away, game_date} from odds_<league>_*.csv snapshots."""
@@ -26,26 +28,38 @@ def teams_from_odds(odds_dir: Path, league: str) -> dict[str, dict]:
 def backfill_settled_file(settled_path: Path, meta: dict[str, dict]) -> tuple[int, int]:
     """Fill empty home/away/game_date rows in one settled file. Returns
     (filled, unresolved). Writes only if something changed (idempotent)."""
-    df = pd.read_csv(settled_path).fillna("")
-    if df.empty:
-        return 0, 0
-    for col in ("home", "away", "game_date"):
-        if col not in df.columns:
-            df[col] = ""
-    filled = unresolved = 0
-    for i in df.index:
-        if str(df.at[i, "home"]).strip():
-            continue
-        m = meta.get(str(df.at[i, "event_id"]))
-        if not m:
-            unresolved += 1
-            continue
-        df.at[i, "home"], df.at[i, "away"], df.at[i, "game_date"] = (
-            m["home"], m["away"], m["game_date"])
-        filled += 1
-    if filled:
-        # Same crash-safety as _persist_settled: settled_*.csv feeds the ROI
-        # audit, the bankroll ledger and calibrator training.
-        from sqp.settlement.runner import _atomic_write_csv
-        _atomic_write_csv(df, settled_path)
+    # BAJO EL LOCK del fichero, igual que `_persist_settled` (AUD2-MED-001).
+    # Esto tambien es un read-modify-write sobre `settled_*.csv`, asi que sin
+    # exclusion pierde escrituras exactamente igual: es el SEGUNDO escritor que
+    # AUD-20260906-02 pedia revisar ("los demas escritores del mismo archivo
+    # deben participar en el mismo protocolo") y que el arreglo de aquel hallazgo
+    # dejo fuera. La ventana es la misma: este backfill se lanza A MANO y la
+    # liquidacion es programada, asi que solaparlos es justo el escenario
+    # descrito.
+    #
+    # El fichero se lee DENTRO del lock: leerlo fuera y escribir dentro no
+    # arregla nada, porque el estado puede cambiar entre ambos.
+    from sqp.settlement.runner import _atomic_write_csv
+    with locked(settled_path):
+        df = pd.read_csv(settled_path).fillna("")
+        if df.empty:
+            return 0, 0
+        for col in ("home", "away", "game_date"):
+            if col not in df.columns:
+                df[col] = ""
+        filled = unresolved = 0
+        for i in df.index:
+            if str(df.at[i, "home"]).strip():
+                continue
+            m = meta.get(str(df.at[i, "event_id"]))
+            if not m:
+                unresolved += 1
+                continue
+            df.at[i, "home"], df.at[i, "away"], df.at[i, "game_date"] = (
+                m["home"], m["away"], m["game_date"])
+            filled += 1
+        if filled:
+            # Same crash-safety as _persist_settled: settled_*.csv feeds the ROI
+            # audit, the bankroll ledger and calibrator training.
+            _atomic_write_csv(df, settled_path)
     return filled, unresolved

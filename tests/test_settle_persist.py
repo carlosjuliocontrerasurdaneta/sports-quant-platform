@@ -91,3 +91,97 @@ def test_persist_is_idempotent_on_repeat(tmp_path, monkeypatch):
     assert len(first) == 1 and second.empty          # already settled -> deduped
     back = pd.read_csv(tmp_path / "data" / "bets" / "settled_nfl.csv")
     assert len(back) == 1                             # not double-written
+
+
+class TestLaTransaccionCorreBajoLock:
+    """AUD-20260906-02 (Codex, HIGH, REPRODUCED).
+
+    `_persist_settled` hacia lectura, dedup, combinacion y reemplazo SIN lock. El
+    temporal unico y `os.replace` protegen contra un fichero a medio escribir,
+    pero no contra que un escritor sustituya el resultado COMPLETO de otro: es un
+    read-modify-write.
+
+    Reproducido antes de arreglarlo con un intercalado determinista -- A lee y
+    prepara, B liquida entero, A escribe --: de dos liquidaciones de -400
+    sobrevivio SOLO una y el saldo daba 600 en vez de 200. Movimientos del ledger
+    perdidos, con la banca, el ROI y las etiquetas de calibracion detras.
+    """
+
+    @staticmethod
+    def _fila(eid, pnl=-400.0):
+        return {"event_id": eid, "market": "h2h", "selection": "A", "line": "nan",
+                "generated_at": "2026-09-06T00:00:00Z", "pnl": pnl, "result": "loss",
+                "stake": 400, "data_label": "real",
+                "settled_at": "2026-09-06T00:00:00+00:00"}
+
+    def _lock(self, tmp_path):
+        return tmp_path / "data" / "bets" / "settled_nfl.csv.lock"
+
+    def test_la_escritura_ocurre_dentro_de_la_seccion_critica(self, tmp_path, monkeypatch):
+        """La propiedad que cierra el hallazgo. Un test que solo comprobara el
+        resultado final pasaria igual SIN lock cuando no hay concurrencia: hay
+        que comprobar que el lock esta TOMADO en el momento de escribir."""
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        visto = {}
+        real = runner._atomic_write_csv
+
+        def espia(df, path):
+            visto["tomado"] = self._lock(tmp_path).exists()
+            real(df, path)
+
+        monkeypatch.setattr(runner, "_atomic_write_csv", espia)
+        _persist(tmp_path, pd.DataFrame([self._fila("e1")]))
+        assert visto["tomado"] is True, "se escribio FUERA del lock"
+
+    def test_el_lock_se_libera_al_salir(self, tmp_path, monkeypatch):
+        """Sin esto, la primera liquidacion del dia dejaria el fichero bloqueado
+        para todas las demas hasta que venciera `LOCK_STALE_S`."""
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        _persist(tmp_path, pd.DataFrame([self._fila("e1")]))
+        assert not self._lock(tmp_path).exists()
+
+    def test_tambien_con_el_fichero_inicialmente_ausente(self, tmp_path, monkeypatch):
+        """Codex pidio cubrir las dos ramas: `prior is None` y `prior` existente.
+        La rama sin fichero previo escribe por otra linea."""
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        assert not (tmp_path / "data" / "bets" / "settled_nfl.csv").exists()
+        visto = {}
+        real = runner._atomic_write_csv
+        monkeypatch.setattr(runner, "_atomic_write_csv",
+                            lambda df, path: (visto.__setitem__("tomado", self._lock(tmp_path).exists()),
+                                              real(df, path))[1])
+        _persist(tmp_path, pd.DataFrame([self._fila("e1")]))
+        assert visto["tomado"] is True
+
+    def test_dos_liquidaciones_secuenciales_se_unen(self, tmp_path, monkeypatch):
+        """Lo que el defecto destruia: filas distintas deben sobrevivir las dos."""
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        _persist(tmp_path, pd.DataFrame([self._fila("evA")]))
+        _persist(tmp_path, pd.DataFrame([self._fila("evB")]))
+        df = pd.read_csv(tmp_path / "data" / "bets" / "settled_nfl.csv")
+        assert sorted(df["event_id"]) == ["evA", "evB"]
+        assert df["pnl"].sum() == -800.0
+
+    def test_una_fila_repetida_sigue_apareciendo_una_sola_vez(self, tmp_path, monkeypatch):
+        """El lock no puede haber roto la idempotencia, que es el contrato que ya
+        tenia el modulo."""
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        _persist(tmp_path, pd.DataFrame([self._fila("evA")]))
+        nuevas = _persist(tmp_path, pd.DataFrame([self._fila("evA")]))
+        df = pd.read_csv(tmp_path / "data" / "bets" / "settled_nfl.csv")
+        assert len(nuevas) == 0 and len(df) == 1
+
+    def test_un_lock_retenido_aborta_en_vez_de_entrar(self, tmp_path, monkeypatch):
+        """La otra mitad del contrato de `locked`: agotar la espera NO entra sin
+        exclusion (AUD-002, 2026-09-05). Se inyecta un timeout corto para no
+        esperar los 120 s reales."""
+        from sqp.exceptions import LockNoAdquiridoError
+        from sqp.storage import lock as lock_mod
+        monkeypatch.setattr(runner, "ROOT", tmp_path)
+        bets = tmp_path / "data" / "bets"
+        bets.mkdir(parents=True, exist_ok=True)
+        self._lock(tmp_path).touch()          # otro proceso VIVO lo retiene
+        monkeypatch.setattr(runner, "locked",
+                            lambda p: lock_mod.locked(p, timeout_s=0.5, stale_s=300.0))
+        with pytest.raises(LockNoAdquiridoError):
+            _persist(tmp_path, pd.DataFrame([self._fila("e1")]))
