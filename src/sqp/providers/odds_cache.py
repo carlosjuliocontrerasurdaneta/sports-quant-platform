@@ -29,6 +29,22 @@ class FileCache:
     def _file(self, key: str) -> Path:
         return self.dir / f"{key}.json"
 
+    def age_s(self, key: str) -> float | None:
+        """Antiguedad en segundos de la entrada cacheada, o None si no existe.
+
+        La expone `OddsAPIClient` para que el pipeline pueda distinguir "esta
+        respuesta vino de la red" de "esta respuesta tiene cuatro horas"
+        (AUD-20260906-06). Acotada por abajo por la misma razon que `get`: el
+        `mtime` puede ir por delante del reloj.
+        """
+        f = self._file(key)
+        if not f.exists():
+            return None
+        try:
+            return max(0.0, time.time() - f.stat().st_mtime)
+        except OSError:
+            return None
+
     def get(self, key: str, ttl: float):
         """Return cached payload if present and younger than ttl (ttl=inf = any age)."""
         f = self._file(key)

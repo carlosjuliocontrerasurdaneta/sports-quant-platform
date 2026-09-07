@@ -448,7 +448,8 @@ def _gate_verdicts(prediction_gate: dict[str, dict] | None,
 def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
                      clv_blocked: bool = False,
                      incomplete_market: bool = False,
-                     prediction_blocked: bool = False) -> str | None:
+                     prediction_blocked: bool = False,
+                     stale_quote: bool = False) -> str | None:
     """Reason a selected candidate must be recorded with stake 0, or None to
     stake it. Pausing wins over the plausibility cap; shadow mode (global,
     stake-0 evidence gathering) zeroes whatever remains; then the per-market
@@ -466,6 +467,17 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
     Prediction outranks CLV so the reported reason is the rule actually in
     force. Shadow outranks both, so reports keep the shadow_mode flag while
     shadow is on."""
+    # Precede a todo lo demas: si el PRECIO no es accionable, ninguna razon
+    # posterior describe bien por que no lleva dinero. La cuota vino de una
+    # respuesta mas vieja que `revalidation_price_max_age_min`, que es el limite
+    # que el propio proyecto declara para MANTENER un pick -- si no vale para
+    # mantenerlo, no vale para crearlo (AUD-20260906-06). Ocurre en modo offline,
+    # donde la lectura de cache se permite a cualquier edad a proposito.
+    #
+    # Se quita el STAKE, nunca la fila: la REGLA FUNDAMENTAL exige que la lista
+    # se genere entera y que los gates solo retiren el dinero.
+    if stale_quote:
+        return "cuota_vencida"
     if paused:
         return "market_paused"
     if incomplete_market:
@@ -602,6 +614,14 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                         "scripts/update_prediction_gate.py lo reescriba.",
                         league)
 
+    # Se inicializa ANTES de la bifurcacion, no dentro de la rama live. La rama
+    # demo no mide frescura -- sus cuotas son sinteticas y nacen ahora --, y
+    # dejar la variable sin definir ahi produciria un `NameError` que la suite no
+    # veria: es literalmente el fallo que documenta `_gate_verdicts`, donde una
+    # expresion que solo se evalua con `mode != "demo"` escondio un NameError a
+    # 1073 pruebas y solo lo cazo ruff (auditoria 2026-08-17).
+    cuota_vencida = False
+
     if mode == "demo":
         provider = SyntheticProvider(family)
         results = provider.fetch_results(league)
@@ -664,6 +684,18 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                      league, len(results), len(history), len(recent))
         markets = "h2h" if family == "tennis" else "h2h,spreads,totals"
         events = client.fetch_odds(league, meta["sport_key"], markets)
+        # Antiguedad de la respuesta que fundamenta estos precios. 0.0 si vino de
+        # la red; en modo offline la cache se sirve a cualquier edad, y esa edad
+        # decide si el precio es ACCIONABLE (AUD-20260906-06). `getattr` porque
+        # un cliente inyectado en tests puede no tener el atributo.
+        _edad = float(getattr(client, "last_response_age_s", 0.0) or 0.0)
+        _tope = float(settings.revalidation_price_max_age_min) * 60.0
+        cuota_vencida = _edad > _tope
+        if cuota_vencida:
+            log.warning("[%s] las cuotas vienen de una respuesta de %.0f min, por "
+                        "encima del limite de frescura de %.0f min: se generan los "
+                        "picks pero NINGUNO llevara stake (flag cuota_vencida).",
+                        league, _edad / 60.0, _tope / 60.0)
         n_fetched = len(events)
         events = _within_horizon(events, settings.event_horizon_days)
         if len(events) < n_fetched:
@@ -849,7 +881,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 paused, suspect, settings.shadow_mode,
                 clv_blocked=clv_blocked,
                 incomplete_market=incomplete_market,
-                prediction_blocked=pred_blocked) or ""
+                prediction_blocked=pred_blocked,
+                stale_quote=cuota_vencida) or ""
             if flag:
                 stake, pct = 0.0, 0.0
             if accuracy:

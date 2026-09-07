@@ -76,3 +76,26 @@ def test_daily_clv_rewrites_gate_registry(tmp_path):
     assert (tmp_path / CLV_GATE_FILENAME).exists()
     assert summary["gate_allowed"] == []
     assert summary["gate_path"].endswith(CLV_GATE_FILENAME)
+
+
+def test_una_cuota_vencida_manda_sobre_cualquier_otra_razon():
+    """AUD-20260906-06. Si el PRECIO no es accionable, ninguna razon posterior
+    describe bien por que la fila no lleva dinero: decir "market_paused" sobre un
+    pick construido con cuotas de cuatro horas oculta el problema real.
+
+    Precede incluso a `shadow_mode`, que es global."""
+    from sqp.pipeline.daily import _zero_stake_flag
+    assert _zero_stake_flag(True, True, True, clv_blocked=True,
+                            incomplete_market=True, prediction_blocked=True,
+                            stale_quote=True) == "cuota_vencida"
+
+
+def test_sin_cuota_vencida_no_cambia_ninguna_precedencia_anterior():
+    """Contraprueba: el parametro nuevo es aditivo y por defecto no altera nada
+    de lo ya fijado."""
+    from sqp.pipeline.daily import _zero_stake_flag
+    assert _zero_stake_flag(True, False, False) == "market_paused"
+    assert _zero_stake_flag(False, True, False) == "edge_exceeds_max_plausible"
+    assert _zero_stake_flag(False, False, True) == "shadow_mode"
+    assert _zero_stake_flag(False, False, False, prediction_blocked=True) == "prediction_gate"
+    assert _zero_stake_flag(False, False, False) is None

@@ -132,3 +132,72 @@ def test_file_cache_expires_when_mtime_is_ahead_of_the_clock(tmp_path, monkeypat
     # Una edad negativa se trata como 0, no como "infinitamente joven": con un
     # ttl positivo la entrada sigue siendo servible, que es lo correcto.
     assert c.get(k, ttl=10) == {"v": 1}
+
+
+class TestOfflineNoConvierteEnAccionable:
+    """AUD-20260906-06 (Codex, MEDIUM, REPRODUCED).
+
+    `_get` sustituia el TTL por `inf` en modo offline, asi que el techo de
+    frescura que `daily` impone acotando `cache_ttl` -- derivado de
+    `revalidation_price_max_age_min`, 90 min canonicos -- dejaba de gobernar la
+    lectura. El pipeline persistia candidatos con stake, `data_label="real"` y
+    `generated_at` de AHORA sobre cuotas de cuatro horas.
+
+    La separacion correcta, que es la que se implementa: offline SI puede leer
+    una respuesta antigua -- ese es su proposito --, pero su antiguedad viaja con
+    ella y decide si el precio es ACCIONABLE. Si un precio no vale para MANTENER
+    un pick, no vale para CREARLO.
+    """
+
+    def test_la_cache_expone_la_antiguedad(self, tmp_path):
+        import os
+        import time
+        c = FileCache(tmp_path)
+        k = c.key("/x", {"a": 1})
+        assert c.age_s(k) is None, "sin entrada no hay edad"
+        c.put(k, {"v": 1})
+        f = tmp_path / f"{k}.json"
+        os.utime(f, (time.time() - 4 * 3600, time.time() - 4 * 3600))
+        edad = c.age_s(k)
+        assert edad is not None and 3.9 * 3600 < edad < 4.1 * 3600
+
+    def test_la_edad_nunca_es_negativa(self, tmp_path):
+        """Mismo motivo que el piso de `get`: el mtime puede ir por delante."""
+        import os
+        import time
+        c = FileCache(tmp_path)
+        k = c.key("/x", {"a": 1}); c.put(k, {"v": 1})
+        f = tmp_path / f"{k}.json"
+        os.utime(f, (time.time() + 5.0, time.time() + 5.0))
+        assert c.age_s(k) == 0.0
+
+    def test_offline_sirve_la_respuesta_vieja_pero_declara_su_edad(self, tmp_path):
+        """Las dos mitades a la vez: se PUEDE leer (offline sigue funcionando) y
+        se SABE que es vieja (el pipeline puede negarle el stake)."""
+        import os
+        import time
+        session = _CountingSession()
+        client = _client(tmp_path, session, offline_mode=True, cache_ttl=60)
+        # Se siembra la cache como si un run anterior la hubiera escrito.
+        ckey = client._cache.key("/sports/baseball_mlb/odds", {
+            "regions": "us", "oddsFormat": "decimal", "markets": "h2h"})
+        client._cache.put(ckey, _ODDS)
+        f = (tmp_path / "cache" / f"{ckey}.json")
+        viejo = time.time() - 4 * 3600
+        os.utime(f, (viejo, viejo))
+
+        datos = client._get("/sports/baseball_mlb/odds", cache=True,
+                            regions="us", oddsFormat="decimal", markets="h2h")
+        assert datos == _ODDS, "offline debe seguir sirviendo lo cacheado"
+        assert session.calls == 0, "offline no toca la red"
+        assert client.last_response_cached is True
+        assert client.last_response_age_s > 3.9 * 3600, (
+            "la antiguedad se perdia: el pipeline no podia distinguir esta "
+            "respuesta de una recien traida de la red")
+
+    def test_una_respuesta_de_red_declara_edad_cero(self, tmp_path):
+        """Contraprueba: sin esto, un umbral de frescura marcaria como vencido
+        todo lo que llega de la red."""
+        client = _client(tmp_path, _CountingSession(), cache_ttl=1000)
+        client.fetch_odds("mlb", "baseball_mlb")
+        assert client.last_response_age_s == 0.0

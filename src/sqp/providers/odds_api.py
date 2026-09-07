@@ -93,6 +93,10 @@ class OddsAPIClient:
         # network call, no credit spent). Lets callers skip side effects that must
         # happen once per real fetch (e.g. persisting an odds snapshot).
         self.last_response_cached: bool = False
+        # Antiguedad en segundos de la ultima respuesta servida (0.0 = red).
+        # Separa "se puede leer" de "es accionable": en modo offline la primera
+        # sigue siendo si y la segunda la decide el pipeline (AUD-20260906-06).
+        self.last_response_age_s: float = 0.0
         # Segundos de espera por errores de CONEXION que le quedan al cliente.
         self._connection_wait_left: float = _CONNECTION_WAIT_BUDGET
         # On-disk TTL cache for paid endpoints: re-running within the TTL costs no
@@ -138,12 +142,23 @@ class OddsAPIClient:
         # llamada ANTERIOR y lo volvia a sumar al contador diario de creditos en
         # closing_capture (auditoria 2026-07-29, D-06).
         self.requests_last = None
+        # Edad de la respuesta servida: 0.0 si vino de la red. La necesita el
+        # pipeline para decidir si un precio es ACCIONABLE, que es una pregunta
+        # distinta de si se puede leer (AUD-20260906-06).
+        self.last_response_age_s = 0.0
         ckey = self._cache.key(path, params) if cache else None
         if ckey is not None and not self.force_refresh:
+            # `inf` en offline: leer una respuesta vieja sigue permitido -- ese
+            # es el proposito del modo --, pero YA NO se pierde su antiguedad.
+            # Antes, el techo de frescura que `daily` impone acotando
+            # `cache_ttl` quedaba sustituido por `inf` aqui, asi que en offline
+            # el pipeline generaba candidatos con stake y `data_label="real"`
+            # sobre cuotas de horas, selladas con `generated_at` de ahora.
             ttl = float("inf") if self.offline_mode else self.cache_ttl
             hit = self._cache.get(ckey, ttl)
             if hit is not None:
                 self.last_response_cached = True
+                self.last_response_age_s = self._cache.age_s(ckey) or 0.0
                 return hit
         # El guard offline NO puede depender de `cache`. Estaba dentro de
         # `if cache`, asi que solo cubria /odds y /historical: `fetch_scores`
