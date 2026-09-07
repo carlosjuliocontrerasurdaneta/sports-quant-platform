@@ -722,3 +722,57 @@ def test_the_codex_review_invocation_does_not_mix_scope_selectors():
         tiene_prompt = '"' in ln.split("codex review", 1)[1].split("2>&1")[0]
         assert not (tiene_alcance and tiene_prompt), (
             f"invocacion invalida, mezcla alcance y prompt: {ln}")
+
+
+def _crossreview_hook() -> str:
+    return (ROOT / ".claude/hooks/crossreview-on-stop.sh").read_text(encoding="utf-8")
+
+
+def test_el_hook_conserva_el_codigo_de_salida_de_codex():
+    """KI-035. `out=$(codex review ...) || true` TIRABA el codigo de salida, y
+    despues cualquier salida no vacia se presentaba bajo el encabezado de
+    hallazgos: un fallo de infraestructura llegaba disfrazado de veredicto.
+
+    Paso dos veces el 2026-09-06 -- cuota agotada y 65 PermissionError sobre el
+    tmpdir de pytest -- e invita al modelo a "atender o refutar" hallazgos que no
+    existen. En un repositorio cuya enfermedad cronica es que un control diga
+    algo distinto de lo que mide, esto era esa enfermedad dentro del control.
+    """
+    hook = _crossreview_hook()
+    invocacion = next(ln for ln in hook.splitlines()
+                      if "codex review" in ln and not ln.lstrip().startswith("#"))
+    assert "|| true" not in invocacion, "el codigo de salida se vuelve a tirar"
+    assert "rc=$?" in hook, "el codigo de salida no se captura"
+
+
+def test_el_hook_distingue_fallo_de_entorno_de_hallazgos():
+    """Dos encabezados distintos, y el de entorno dice explicitamente que NO son
+    hallazgos. La deteccion mira el codigo de salida Y patrones conocidos, porque
+    `codex review` puede salir con 0 habiendo abortado (la cuota agotada lo
+    hizo)."""
+    hook = _crossreview_hook()
+    assert "LA REVISION CRUZADA NO SE EJECUTO" in hook
+    assert "REVISION CRUZADA AUTOMATICA" in hook
+    assert "Esto NO son hallazgos" in hook
+    assert '"$rc" -ne 0' in hook, "no se mira el codigo de salida"
+    for patron in ("usage limit", "Review was interrupted"):
+        assert patron in hook, f"patron de fallo conocido ausente: {patron}"
+
+
+def test_un_fallo_de_entorno_no_bloquea_pero_aplaza_la_revision():
+    """Bloquear no serviria de nada -- el modelo no puede arreglar una cuota
+    agotada -- y dejaria el turno sin salida. Pero saltarse la revision en
+    silencio tampoco vale: se restaura el centinela para reintentarla en el turno
+    siguiente. Sin bloqueo no hay riesgo de bucle."""
+    hook = _crossreview_hook()
+    rama = hook.split("LA REVISION CRUZADA NO SE EJECUTO", 1)[1].split("REVISION CRUZADA AUTOMATICA", 1)[0]
+    assert 'touch "$marker"' in rama, "la revision se saltaria en silencio"
+    assert "exit 0" in rama, "un fallo de entorno no debe bloquear el turno"
+
+
+def test_los_hallazgos_reales_siguen_bloqueando_el_turno():
+    """Contraprueba: sin ella, un hook que saliera con 0 SIEMPRE pasaria los tres
+    tests de arriba y la revision cruzada dejaria de tener efecto."""
+    hook = _crossreview_hook()
+    assert hook.rstrip().endswith("exit 2"), (
+        "el camino de hallazgos reales ya no bloquea el cierre del turno")

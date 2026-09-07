@@ -41,8 +41,42 @@ if [ -n "$pendiente" ]; then
 else
   alcance="--commit HEAD"
 fi
-out=$(codex review $alcance 2>&1) || true
+# El codigo de salida se CONSERVA. Antes se tiraba con `|| true` y cualquier
+# salida no vacia se presentaba bajo el encabezado de hallazgos, asi que un fallo
+# de INFRAESTRUCTURA llegaba disfrazado de veredicto (KI-035). Paso dos veces el
+# 2026-09-06: primero con la cuota de Codex agotada, y el mensaje "You've hit
+# your usage limit" aparecio bajo "Atiende o REFUTA cada hallazgo"; despues con
+# 65 PermissionError sobre el tmpdir de pytest.
+#
+# El riesgo no es cosmetico: invita al modelo a "atender o refutar" hallazgos que
+# no existen, y en un repositorio cuya enfermedad cronica es que un control diga
+# algo distinto de lo que mide, esto es esa enfermedad dentro del propio control.
+out=$(codex review $alcance 2>&1)
+rc=$?
 [ -z "${out:-}" ] && exit 0
+
+# Fallo de infraestructura: la revision NO se ejecuto. Se detecta por codigo de
+# salida Y por patrones conocidos, porque `codex review` puede salir con 0
+# habiendo abortado (la cuota agotada del 2026-09-06 lo hizo).
+if [ "$rc" -ne 0 ] || printf '%s' "$out" | grep -qiE \
+     "usage limit|Review was interrupted|failed to refresh available models|rate.?limit|401 Unauthorized|ECONNREFUSED"; then
+  { echo "LA REVISION CRUZADA NO SE EJECUTO (fallo de entorno, codigo $rc)."
+    echo
+    printf '%s\n' "$out" | tail -25
+    echo
+    echo "Esto NO son hallazgos: no hay nada que atender ni que refutar. El"
+    echo "cambio de este turno se queda SIN revisar por un tercero."
+    echo "El centinela se deja puesto para reintentarlo en el turno siguiente."; } >&2
+  # Se restaura el centinela: la revision queda APLAZADA, no saltada en silencio.
+  # No hay riesgo de bucle porque esta rama NO bloquea (exit 0): el turno cierra
+  # y el siguiente vuelve a intentarlo cuando la cuota o el entorno se recuperen.
+  #
+  # Bloquear aqui no serviria de nada -- el modelo no puede arreglar una cuota
+  # agotada -- y dejaria el turno sin salida.
+  touch "$marker" 2>/dev/null || true
+  exit 0
+fi
+
 { echo "REVISION CRUZADA AUTOMATICA (Codex) sobre los cambios de este turno:"
   echo
   printf '%s\n' "$out" | tail -60
