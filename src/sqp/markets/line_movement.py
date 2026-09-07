@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.clv_movement import snapshot_consensus_price
+from sqp.evaluation.labels import instantes_utc
 
 
 @dataclass(frozen=True)
@@ -59,14 +60,37 @@ def event_line_movement(
     event_odds = league_odds[league_odds["event_id"].astype(str) == str(event_id)]
     if event_odds.empty:
         return None
-    ts = pd.to_datetime(event_odds["captured_at"], errors="coerce", utc=True)
-    valid = event_odds[ts.notna()]
-    if valid.empty:
+    # Parser CANONICO (`labels.instantes_utc`), no `pd.to_datetime` a pelo
+    # (auditoria integral 2026-09-07, AUD-LOW-005). Habia TRES parseos de la
+    # misma columna, ninguno con `format="ISO8601"`.
+    #
+    # Sin ese formato pandas infiere UNO SOLO para toda la serie y convierte en
+    # `NaT` toda variante ISO que no encaje. Aqui eso no lanzaba nada: el
+    # `errors="coerce"` del primer parseo se tragaba las filas discrepantes y el
+    # evento perdia snapshots EN SILENCIO. Medido sobre `["...T11:00:00Z",
+    # "...T11:00:00"]` (con zona + naive, ambos ISO validos): la version anterior
+    # se quedaba con UN snapshot de dos y devolvia `None` -- "no hay movimiento"
+    # -- en vez de medir los +12,5 pp que habia. El fallo se presentaba como
+    # ausencia de dato, que es la forma mas dificil de notar.
+    #
+    # No es un fallo alcanzable HOY: los dos escritores de `captured_at` sellan
+    # siempre con zona (`odds_store.append_snapshot` usa `datetime.now(
+    # timezone.utc)`, y el backfill copia el sello `Z` del proveedor), asi que la
+    # mezcla peligrosa no se produce. La mezcla que `roi_engine` SI documenta --
+    # `+00:00` frente a `Z`, ambos con zona -- pandas la resuelve bien. Es, por
+    # tanto, un candado, no una reparacion.
+    #
+    # `instantes_utc` existe justo para que este parseo viva en un solo sitio: su
+    # docstring dice que no se puede saltar, y aqui se estaba saltando. De paso
+    # se parsea UNA vez en lugar de tres.
+    ts = instantes_utc(event_odds["captured_at"])
+    valid_ts = ts[ts.notna()]
+    if valid_ts.empty:
         return None
-    stamps = sorted(pd.to_datetime(valid["captured_at"], utc=True).unique())
+    valid = event_odds.loc[valid_ts.index]
+    stamps = sorted(valid_ts.unique())
     if len(stamps) < 2:
         return None
-    valid_ts = pd.to_datetime(valid["captured_at"], utc=True)
     ref = snapshot_consensus_price(
         valid[valid_ts == stamps[0]], market, selection, point
     )
