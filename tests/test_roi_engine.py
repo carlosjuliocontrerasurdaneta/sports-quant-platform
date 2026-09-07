@@ -207,3 +207,69 @@ def test_tennis_backtest_matches_reversed_players():
                                 RiskConfig(), 1000.0, warmup=0)
     assert out["n_events_matched"] == 1          # reversed players still matched
     assert isinstance(out["n_bets"], int)
+
+
+class TestAmbiguedadNoSeEmpareja:
+    """AUD-20260906-04 (Codex, MEDIUM, REPRODUCED).
+
+    Con dos partidos de la misma pareja el MISMO dia (doble jornada), el matcher
+    desempataba por `commence_time` mientras los resultados se recorren en orden
+    de `game_id`. Ese orden no es cronologico, asi que el emparejamiento podia
+    salir CRUZADO: Codex lo reprodujo con eventos a las 10:00 y las 18:00 y
+    marcadores 10-0 y 0-10, y el pick local del de las 10:00 salia `loss, -20`
+    cuando debia ser `win, +20`.
+
+    Ahora se OMITE: es la misma politica que ya aplica
+    `settlement.runner.history_scores_map` ("ambiguity never grades"). Un
+    backtest con menos partidos emparejados es honesto; uno con etiquetas
+    cruzadas no lo es.
+    """
+
+    @staticmethod
+    def _eo(eid, start):
+        from sqp.domain.models import Event, EventOdds, MarketLine
+        return EventOdds(event=Event(event_id=eid, sport_key="bt", league="test",
+                                     home="Boston Red Sox", away="Tampa Bay Rays",
+                                     start_time=start, data_label="real"),
+                         lines=[MarketLine("h2h", "dk", "Boston Red Sox", 1.9, None)])
+
+    def test_una_doble_jornada_sin_hora_no_se_empareja(self):
+        idx = _match_index({"a": self._eo("e_tarde", "2026-06-10T22:00:00Z"),
+                            "b": self._eo("e_temprano", "2026-06-10T14:00:00Z")})
+        r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
+        assert _match_result(r, idx, set()) is None, (
+            "con dos candidatos el mismo dia y solo la fecha, emparejar es adivinar")
+
+    def test_con_hora_verificable_si_desempata(self):
+        """La abstencion es por FALTA DE EVIDENCIA, no por principio: si el
+        historico aporta un instante, se usa."""
+        tarde = self._eo("e_tarde", "2026-06-10T22:00:00Z")
+        idx = _match_index({"a": tarde, "b": self._eo("e_temprano", "2026-06-10T14:00:00Z")})
+        r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays",
+             "date": "2026-06-10", "start_time": "2026-06-10T21:45:00Z"}
+        assert _match_result(r, idx, set()) is tarde
+
+    def test_un_unico_candidato_sigue_emparejando(self):
+        """Contraprueba obligatoria: sin ella, abstenerse SIEMPRE pasaria el
+        primer test y el backtest no emparejaria nada."""
+        eo = self._eo("e1", "2026-06-10T22:00:00Z")
+        r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
+        assert _match_result(r, _match_index({"a": eo}), set()) is eo
+
+    def test_dias_distintos_no_son_ambiguos(self):
+        """Una serie de dias consecutivos NO es una doble jornada: las distancias
+        difieren (0 y 1), asi que el minimo es unico y se sigue emparejando."""
+        exacto = self._eo("e_exacto", "2026-06-10T22:00:00Z")
+        idx = _match_index({"a": self._eo("e_dia_sig", "2026-06-11T22:00:00Z"),
+                            "b": exacto})
+        r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
+        assert _match_result(r, idx, set()) is exacto
+
+    def test_si_uno_ya_esta_consumido_el_otro_deja_de_ser_ambiguo(self):
+        """El `used` se aplica ANTES de decidir ambiguedad: quedar uno solo
+        disponible es un emparejamiento legitimo, no una adivinanza."""
+        primero = self._eo("e1", "2026-06-10T14:00:00Z")
+        segundo = self._eo("e2", "2026-06-10T22:00:00Z")
+        idx = _match_index({"a": primero, "b": segundo})
+        r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
+        assert _match_result(r, idx, {"e1"}) is segundo

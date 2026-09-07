@@ -40,6 +40,7 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.domain.models import Event, EventOdds, MarketLine
+from sqp.logging_config import get_logger
 from sqp.markets.edge import adjusted_edge
 from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
                                 _pick_main_lines, _spread_novig)
@@ -50,6 +51,8 @@ from sqp.risk.kelly import edge, kelly_fraction_stake
 from sqp.settlement.settle import settle_candidates
 from sqp.sports.registry import get_adapter
 from sqp.sports.team_names import normalize_key
+
+log = get_logger("sqp.roi_engine")
 
 
 def discover_leagues_with_odds(root: Path) -> list[str]:
@@ -140,25 +143,72 @@ def _match_result(r: dict, idx: dict, used: set[str],
     Picks the candidate with the SMALLEST day distance (exact date first),
     breaking ties by commence_time: taking the first candidate within the
     window could pair a bet's odds with the score of the adjacent day's game
-    in consecutive-day series and doubleheaders (audit 2026-07-24, I-4)."""
+    in consecutive-day series and doubleheaders (audit 2026-07-24, I-4).
+
+    ABSTENCION ANTE AMBIGUEDAD (AUD-20260906-04, Codex, MEDIUM, REPRODUCED).
+    Cuando quedan DOS O MAS candidatos a la misma distancia minima -- una doble
+    jornada -- y el resultado solo trae el DIA, no hay forma de acreditar cual es
+    cual. Antes se desempataba por `commence_time` y, como los resultados se
+    recorren en orden de `game_id` y ese orden no es cronologico, el emparejamiento
+    podia salir CRUZADO: reproducido por Codex con dos eventos a las 10:00 y las
+    18:00 y marcadores 10-0 y 0-10, el pick local del de las 10:00 salia `loss,
+    -20` cuando debia ser `win, +20`, y viceversa.
+
+    Ahora se OMITE el emparejamiento, que es la misma politica conservadora que
+    ya aplica `settlement.runner.history_scores_map` ante dobles jornadas
+    ambiguas ("grading with the wrong game's score would corrupt the calibration
+    evidence, so ambiguity never grades"). Un backtest con menos partidos
+    emparejados es honesto; uno con etiquetas cruzadas no.
+
+    Si el resultado SI trae un instante verificable -- `date` con hora, no solo
+    el dia --, se usa para desempatar: la abstencion es por falta de evidencia,
+    no por principio."""
     cands = idx.get(_pair_key(r["home"], r["away"], order_insensitive))
     if not cands:
         return None
     rday = str(r.get("date", ""))[:10]
-    best = None
-    best_rank: tuple[int, str] | None = None
-    for day, eo in cands:
-        if eo.event.event_id in used:
-            continue
-        dist = abs(_day_diff(day, rday))
-        if dist > 1:
-            continue
-        rank = (dist, str(eo.event.start_time))
-        if best_rank is None or rank < best_rank:
-            best, best_rank = eo, rank
-    if best is not None:
-        used.add(best.event.event_id)
+    disponibles = [(abs(_day_diff(day, rday)), eo) for day, eo in cands
+                   if eo.event.event_id not in used and abs(_day_diff(day, rday)) <= 1]
+    if not disponibles:
+        return None
+    mejor_dist = min(dist for dist, _ in disponibles)
+    empatados = [eo for dist, eo in disponibles if dist == mejor_dist]
+    if len(empatados) > 1:
+        instante = _result_instant(r)
+        if instante is None:
+            log.warning("emparejamiento AMBIGUO omitido: %s vs %s el %s tiene %d "
+                        "eventos de cuotas a la misma distancia y el resultado "
+                        "solo trae el dia. Emparejar por orden de id fabricaria "
+                        "una etiqueta.", r.get("home"), r.get("away"), rday,
+                        len(empatados))
+            return None
+        empatados.sort(key=lambda eo: abs(_seconds_between(instante, eo.event.start_time)))
+    else:
+        empatados.sort(key=lambda eo: str(eo.event.start_time))
+    best = empatados[0]
+    used.add(best.event.event_id)
     return best
+
+
+def _result_instant(r: dict) -> str | None:
+    """Instante del resultado si el historico lo trae, o None si solo hay dia.
+
+    `results_*.csv` guarda `date` como `YYYY-MM-DD` en la practica totalidad de
+    las fuentes, asi que esto casi siempre devuelve None: existe para que la
+    abstencion sea por FALTA DE EVIDENCIA y no por principio, y para que una
+    fuente que si aporte hora desambigue sola sin tocar este codigo otra vez.
+    """
+    raw = str(r.get("start_time") or r.get("commence_time") or r.get("date") or "")
+    return raw if len(raw) > 10 and "T" in raw else None
+
+
+def _seconds_between(a: str, b: str) -> float:
+    """Segundos entre dos sellos ISO; `inf` si alguno no se puede parsear."""
+    ta = pd.to_datetime(a, errors="coerce", utc=True)
+    tb = pd.to_datetime(b, errors="coerce", utc=True)
+    if pd.isna(ta) or pd.isna(tb):
+        return float("inf")
+    return float((ta - tb).total_seconds())
 
 
 def _day_diff(a: str, b: str) -> int:
