@@ -11,5 +11,20 @@ leagues:
   mls:            {sport_key: soccer_usa_mls,             name: "MLS",                   avg_goals: 3.07}
   brasileirao:    {sport_key: soccer_brazil_campeonato,   name: "Brasileirão Série A",   avg_goals: 2.40}
   chile:          {sport_key: soccer_chile_campeonato,    name: "Primera División Chile",avg_goals: 2.71}
-  frauen_bundesliga: {sport_key: soccer_germany_bundesliga_women, name: "Frauen-Bundesliga", avg_goals: 3.20}
+  # frauen_bundesliga RETIRADA el 2026-09-06 (orden del operador; cierra KI-005,
+  # abierto desde el 2026-06-12). No tiene proveedor de resultados historicos:
+  # no existe en el catalogo de ESPN -- verificado entonces contra sus 244 ligas
+  # de soccer, y RE-VERIFICADO hoy con peticiones reales a ocho rutas plausibles,
+  # todas HTTP 400, mientras los controles `ger.1`, `ger.2` y `uefa.wchampions`
+  # devolvian 200. Es la unica liga de este fichero sin slug de ESPN.
+  #
+  # Sin resultados no hay historico, y sin historico: sus ratings dependerian
+  # solo de la ventana de 3 dias de The Odds API, no se puede validar OOS, y sus
+  # cuotas capturadas consumen cuota de un plan de pago para nada. De hecho
+  # nunca llego a servir ni un pick (0 filas servidas, 0 graduadas).
+  #
+  # La otra via para cerrar KI-005 sigue disponible si algun dia se quiere la
+  # liga de vuelta: integrar un vendor alternativo con cobertura femenina alemana
+  # (football-data u otro) implementando `ResultsProvider`. Se retira la liga, no
+  # la posibilidad.
   uwcl:           {sport_key: soccer_uefa_champs_league_women, name: "UEFA Women's CL",  avg_goals: 3.00}
