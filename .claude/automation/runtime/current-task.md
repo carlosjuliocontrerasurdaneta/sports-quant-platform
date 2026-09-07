@@ -18,13 +18,14 @@ auditoría independiente de Codex) y **KI-036** (opción (b)).
 
 | | Inicio | Final |
 |---|---:|---:|
-| pytest | 1547 passed / 0 failed / 1 skipped | **1593 / 0 / 1** |
+| pytest | 1547 passed / 0 failed / 1 skipped | **1620 / 0 / 1** |
 | ruff, mypy | exit 0 | exit 0 |
 | CI de `main` | **ROJO** (75 runs previos + el del 2026-09-05) | **VERDE** (run 34060292683) |
 | issue `ci-rojo` | #1 abierto | cerrado con causa raíz |
 
-11 commits en `main`, todos empujados y con CI verde. 10 defectos corregidos:
-8 del informe propio + KI-032 + KI-036. +46 tests.
+19 commits en `main`. 16 defectos corregidos: 8 del informe propio de la
+manana, KI-032, KI-036, y los 6 de la SEGUNDA pasada de auditoria
+(AUD2-MED-001 + los cinco de KI-033). +73 pruebas.
 
 `PASS` y no `DEGRADED`: todos los comandos requeridos terminaron en 0, las
 validaciones específicas de cada hallazgo se ejecutaron, y los artefactos están
@@ -38,7 +39,7 @@ aprobadas, y están registradas en `audit/latest/BACKLOG.md` y `known-issues.md`
 | Comando | Resultado |
 |---|---|
 | `python -m pytest -q -p no:cacheprovider` (base) | `1547 passed, 1 skipped`, exit 0 |
-| `python -m pytest -q -p no:cacheprovider` (final) | `1593 passed, 1 skipped`, exit 0 |
+| `python -m pytest -q -p no:cacheprovider` (final) | `1620 passed, 1 skipped`, exit 0 |
 | `ruff check src scripts tests` | `All checks passed!`, exit 0 |
 | `mypy src` | `no issues found in 98 source files`, exit 0 |
 | `gh run view 34060292683` | las cinco patas en `success`, incluida `test-windows` |
@@ -55,7 +56,7 @@ aprobadas, y están registradas en `audit/latest/BACKLOG.md` y `known-issues.md`
 - `Obsidian/Bitácora/2026-09-06.md`; lecciones 11–13 en
   `Obsidian/Errores y lecciones/Lecciones aprendidas.md`
 - `.claude/memory/known-issues.md`: KI-032 y KI-036 resueltos; KI-033 a KI-035 abiertos
-- 12 commits en `main` (`cb43f20` … `53f5f2b`), +46 pruebas
+- 19 commits en `main` (`cb43f20` … la punta), +73 pruebas
 
 ## Escalado de modelo
 
@@ -81,14 +82,11 @@ Escape para recuperación: `set SQP_SKIP_TREE_GUARD=1`.
 
 ## Siguiente decisión del operador
 
-1. **KI-033** — cinco hallazgos de Codex sin tocar, dos HIGH: pérdida de
-   escrituras concurrentes en la liquidación, y el prediction gate contando
-   varias líneas del mismo partido como ensayos independientes.
-2. **KI-034** — autorizar la lectura de `logs/validate_oos.log`. La validación
+1. **KI-034** — autorizar la lectura de `logs/validate_oos.log`. La validación
    OOS lleva fallada desde el 2026-09-01 y no se reintenta hasta el 2026-10-01.
-3. **KI-035** — el hook de revisión cruzada presenta errores de infraestructura
-   bajo el encabezado de hallazgos.
-4. **B-4** — ~205 MB de residuo ignorado por git, pendiente de autorización.
+2. **KI-035 y KI-037** — el hook de revisión cruzada presenta errores de
+   infraestructura como hallazgos, y su sandbox no puede correr la suite.
+3. **B-4** — ~205 MB de residuo ignorado por git, pendiente de autorización.
 5. Dos ficheros sin commitear a propósito: `auditoria-integral-codex.md`
    (modificado por un Codex externo durante la sesión; prohibido commitearlo sin
    autorización expresa) y `audit/model_vs_market_20260906.md` (del operador).
