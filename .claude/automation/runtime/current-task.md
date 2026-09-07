@@ -18,14 +18,15 @@ auditoría independiente de Codex) y **KI-036** (opción (b)).
 
 | | Inicio | Final |
 |---|---:|---:|
-| pytest | 1547 passed / 0 failed / 1 skipped | **1620 / 0 / 1** |
+| pytest | 1547 passed / 0 failed / 1 skipped | **1636 / 0 / 1** |
 | ruff, mypy | exit 0 | exit 0 |
 | CI de `main` | **ROJO** (75 runs previos + el del 2026-09-05) | **VERDE** (run 34060292683) |
 | issue `ci-rojo` | #1 abierto | cerrado con causa raíz |
 
-19 commits en `main`. 16 defectos corregidos: 8 del informe propio de la
+28 commits en `main`. 22 defectos corregidos: 8 del informe propio de la
 manana, KI-032, KI-036, y los 6 de la SEGUNDA pasada de auditoria
-(AUD2-MED-001 + los cinco de KI-033). +73 pruebas.
+(AUD2-MED-001 + los cinco de KI-033), KI-005, KI-034, KI-035, KI-037 y
+B-4. +89 pruebas.
 
 `PASS` y no `DEGRADED`: todos los comandos requeridos terminaron en 0, las
 validaciones específicas de cada hallazgo se ejecutaron, y los artefactos están
@@ -39,7 +40,8 @@ aprobadas, y están registradas en `audit/latest/BACKLOG.md` y `known-issues.md`
 | Comando | Resultado |
 |---|---|
 | `python -m pytest -q -p no:cacheprovider` (base) | `1547 passed, 1 skipped`, exit 0 |
-| `python -m pytest -q -p no:cacheprovider` (final) | `1620 passed, 1 skipped`, exit 0 |
+| `python -m pytest -q -p no:cacheprovider` (final) | `1636 passed, 1 skipped`, exit 0 |
+| `python scripts/validate_oos.py` (33 ligas) | **32 validadas, exit 0** (el 2026-09-01: 4 y un IndexError) |
 | `ruff check src scripts tests` | `All checks passed!`, exit 0 |
 | `mypy src` | `no issues found in 98 source files`, exit 0 |
 | `gh run view 34060292683` | las cinco patas en `success`, incluida `test-windows` |
@@ -82,11 +84,13 @@ Escape para recuperación: `set SQP_SKIP_TREE_GUARD=1`.
 
 ## Siguiente decisión del operador
 
-1. **KI-034** — autorizar la lectura de `logs/validate_oos.log`. La validación
-   OOS lleva fallada desde el 2026-09-01 y no se reintenta hasta el 2026-10-01.
-2. **KI-035 y KI-037** — el hook de revisión cruzada presenta errores de
-   infraestructura como hallazgos, y su sandbox no puede correr la suite.
-3. **B-4** — ~205 MB de residuo ignorado por git, pendiente de autorización.
+**Ninguna.** Todo lo abierto en esta sesión quedó cerrado: KI-032 a KI-037,
+KI-005 (abierto desde el 2026-06-12) y B-4.
+
+Lo que sigue vivo del backlog anterior son los inferidos AUD-INF-001 (carrera del
+lock huérfano; falta demostrar que alguna sección crítica supere 300 s) y
+AUD-INF-002, más las áreas que la auditoría dejó `REVISADA_PARCIALMENTE`
+(`models/*`, `simulation/`, `sports/` sin lectura línea a línea).
 5. Dos ficheros sin commitear a propósito: `auditoria-integral-codex.md`
    (modificado por un Codex externo durante la sesión; prohibido commitearlo sin
    autorización expresa) y `audit/model_vs_market_20260906.md` (del operador).
