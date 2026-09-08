@@ -465,7 +465,7 @@ def test_el_aviso_de_arbol_atrasado_NO_aborta():
     """Detener el pipeline del dinero por un commit de documentacion seria un
     modo de fallo nuevo y desproporcionado. Avisa, no aborta."""
     t = _diario()
-    i = t.index("ARBOL NO ESTA AL DIA")
+    i = t.index("POR DETRAS de")
     bloque = t[i:t.index(":tree_ok", i)]
     assert "no aborta" in bloque
     assert "goto :error" not in bloque, (
