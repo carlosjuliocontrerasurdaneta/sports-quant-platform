@@ -347,3 +347,167 @@ def test_el_aborto_del_guard_queda_registrado():
     assert "--fail --stage guard_arbol" in bat
     from sqp.monitoring.health import _BAT_POR_ETAPA
     assert "guard_arbol" in _BAT_POR_ETAPA
+
+
+# --- El banner tampoco puede depender solo del centinela (AUD-HIGH-002) -------
+
+def _predicciones_viejas(root, dias_atras: float = 3.0):
+    import os
+    import time
+    d = root / "data" / "predictions"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / "predictions_mlb.csv"
+    p.write_text("event_id\n1\n", encoding="utf-8")
+    t = time.time() - dias_atras * 86400
+    os.utime(p, (t, t))
+
+
+def test_el_banner_avisa_de_un_pipeline_parado_sin_centinela(tmp_path):
+    """El tablero mostraba picks de hace dos dias con el banner APAGADO porque
+    nadie habia escrito el centinela. Ahora la edad del ultimo artefacto basta."""
+    from sqp.audit.html_report import _run_alert_banner
+    _predicciones_viejas(tmp_path)
+    assert not (tmp_path / "logs" / STATUS_FILENAME).exists()
+    banner = _run_alert_banner(tmp_path)
+    assert "NO ha generado nada" in banner
+    assert "DIARIO_COMPLETO.bat" in banner
+
+
+def test_el_banner_de_parada_precede_al_de_etapa(tmp_path):
+    """"No ha corrido" describe la situacion mejor que cualquier etapa concreta,
+    y ademas cubre el caso en que no hay centinela."""
+    from sqp.audit.html_report import _run_alert_banner
+    _predicciones_viejas(tmp_path)
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    assert "NO ha generado nada" in _run_alert_banner(tmp_path)
+
+
+def test_con_el_pipeline_al_dia_el_banner_vuelve_a_ser_el_de_etapa(tmp_path):
+    from sqp.audit.html_report import _run_alert_banner
+    _predicciones_viejas(tmp_path, dias_atras=0.1)
+    record_run_failure(tmp_path, stage="settle", exit_code=1)
+    banner = _run_alert_banner(tmp_path)
+    assert "NO ha generado nada" not in banner
+    assert "settle" in banner
+
+
+# --- El orquestador tiene que dejar rastro (AUD-MED-001, auditoria 2026-09-08) -
+
+def _diario() -> str:
+    from sqp.config import ROOT
+    return (ROOT / "DIARIO_COMPLETO.bat").read_text(encoding="utf-8", errors="replace")
+
+
+def test_diario_completo_escribe_en_un_log_propio():
+    """No escribia NADA: todos sus echo iban a la consola, y bajo el Programador
+    de tareas no hay consola. El fallo del 2026-09-07 (0x1 a las 12:00) no dejo
+    ni una linea, y por eso su causa raiz es hoy indeterminable."""
+    t = _diario()
+    assert r"logs\diario_completo.log" in t
+    assert ":log" in t, "no existe la subrutina que escribe en consola Y fichero"
+
+
+def test_las_tres_ramas_de_error_dejan_rastro():
+    """Son las que mas importan: si el aborto no se escribe, el fallo es
+    indiagnosticable justo cuando hay que diagnosticarlo."""
+    t = _diario()
+    for etiqueta in (":error_arbol", ":error_settle", ":error_run"):
+        i = t.index("\n" + etiqueta)
+        fin = t.find("exit /b 1", i)
+        bloque = t[i:fin]
+        assert "call :log" in bloque, f"{etiqueta} no escribe en el log"
+        assert "diario_completo.log" in bloque, (
+            f"{etiqueta} no manda al log la salida de sus diagnosticos")
+
+
+def test_la_redireccion_del_log_precede_al_echo():
+    """`echo %~1>> fichero` se come el ultimo caracter si es un digito: cmd lo
+    lee como descriptor. Las lineas del aviso de arbol atrasado terminan en un
+    SHA, que acaba en digito la mitad de las veces."""
+    t = _diario()
+    assert r">>logs\diario_completo.log echo %~1" in t
+    # Se ignoran los REM: el comentario del BAT explica el defecto citando el
+    # idioma malo, y prohibir la cadena prohibiria explicarlo (misma leccion que
+    # el escaneo de `.csv.tmp` en test_storage.py).
+    codigo = "\n".join(linea for linea in t.splitlines()
+                       if not linea.strip().upper().startswith("REM"))
+    assert "echo %~1>>" not in codigo
+
+
+# --- El arbol atrasado tambien avisa (AUD-MED-004, auditoria 2026-09-08) -------
+
+def test_el_guard_comprueba_tambien_si_el_arbol_esta_ATRASADO():
+    """Comprobaba solo si estaba SUCIO. El 2026-09-08 este clon iba 2 commits por
+    detras de origin/main -- uno de ellos una correccion de codigo publicada
+    desde otra sesion -- y nada lo decia. Produccion ejecuta el arbol de trabajo."""
+    t = _diario()
+    assert "git fetch" in t, "sin fetch se compara contra una referencia obsoleta"
+    assert "@{u}" in t
+    assert "rev-parse HEAD" in t
+
+
+def test_el_aviso_distingue_ir_POR_DETRAS_de_ir_POR_DELANTE():
+    """Comparar SHA por igualdad confunde dos situaciones opuestas.
+
+    Ir por DELANTE (commits locales sin publicar) es el estado normal entre un
+    arreglo y su push, y ahi produccion ejecuta codigo mas NUEVO, no mas viejo:
+    avisar seria una alarma diaria y falsa, y una alarma que suena sin motivo es
+    una alarma que se aprende a ignorar. Solo importa lo que le FALTA a esta
+    maquina, que es `git rev-list --count HEAD..@{u}`.
+    """
+    t = _diario()
+    assert "rev-list --count HEAD.." in t
+    assert 'if "%SQP_DETRAS%"=="0" goto :tree_ok' in t
+    assert "POR DETRAS" in t
+
+
+def test_el_aviso_de_arbol_atrasado_NO_aborta():
+    """Detener el pipeline del dinero por un commit de documentacion seria un
+    modo de fallo nuevo y desproporcionado. Avisa, no aborta."""
+    t = _diario()
+    i = t.index("ARBOL NO ESTA AL DIA")
+    bloque = t[i:t.index(":tree_ok", i)]
+    assert "no aborta" in bloque
+    assert "goto :error" not in bloque, (
+        "el aviso de arbol atrasado saltaria a una rama de error")
+
+
+def test_el_fetch_no_puede_bloquear_el_pipeline():
+    """Un aviso consultivo no puede parar el pipeline del dinero.
+
+    La primera version acotaba el fetch SOLO con `GIT_HTTP_LOW_SPEED_LIMIT/TIME`,
+    y eso limita la velocidad de TRANSFERENCIA HTTP: no cubre la espera de un
+    gestor de credenciales ni la duracion total del subproceso. Bajo el
+    Programador de tareas no hay escritorio, asi que un git que pida credenciales
+    se queda esperando a nadie y bloquea la liquidacion. Lo señalo la revision
+    cruzada de Codex (2026-09-08) y era correcto.
+
+    Medido con un `git` que se cuelga 120 s y un plazo de 8 s: aborta a los 8,7 s
+    con codigo 124 y el proceso matado; con git real, 0 en 0,9 s.
+    """
+    t = _diario()
+    # 1. Nada interactivo puede quedarse esperando.
+    assert "GIT_TERMINAL_PROMPT=0" in t
+    assert "GCM_INTERACTIVE=never" in t
+    assert "GIT_ASKPASS=" in t
+    # 2. Plazo de PARED, no de velocidad de transferencia.
+    assert "SQP_FETCH_TIMEOUT_MS" in t
+    assert "WaitForExit(" in t
+    # 3. Y al agotarse se MATA el proceso, no se deja huerfano.
+    assert "$p.Kill()" in t
+    # 4. Falla ABIERTO: el codigo del plazo se avisa y se continua.
+    i = t.index("if errorlevel 124")
+    bloque = t[i:t.index(":tree_ok", i)]
+    assert "se continua" in bloque
+    assert "goto :error" not in bloque
+    # Los limites de velocidad se conservan: abortan una transferencia
+    # estancada DENTRO del plazo, que sigue siendo util.
+    assert "GIT_HTTP_LOW_SPEED_LIMIT" in t
+    assert "GIT_HTTP_LOW_SPEED_TIME" in t
+
+
+def test_sin_upstream_la_comprobacion_se_salta_sin_fallar():
+    """Falla ABIERTO, igual que el guard de arbol sucio: "no se puede comprobar"
+    no es "esta atrasado"."""
+    t = _diario()
+    assert "if not defined SQP_UPSTREAM" in t
