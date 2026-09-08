@@ -1,150 +1,129 @@
-# Cambios aplicados — Remediación de la auditoría 2026-09-06
+# Cambios aplicados — Fase 4 de la auditoría 2026-09-08
 
-Fase 4 de `full-audit` → `audit-remediation`. Autorización del operador:
-**«todos los confirmados»**, resuelto contra `FINDINGS.md` como los ocho IDs
-`AUD-MED-001..003` y `AUD-LOW-001..005`.
+Autorización: el operador aprobó expresamente Fases 4 y 5 sobre «todas las
+correcciones correspondientes a los hallazgos confirmados» y «todas las mejoras
+cuya necesidad y beneficio hayan quedado demostrados mediante la evidencia
+obtenida durante la auditoría».
 
-**Explícitamente NO autorizado y NO hecho:** leer `logs/` para diagnosticar el
-fallo del 2026-09-01; las eliminaciones de limpieza `CL-01/02/03`; los inferidos
-`AUD-INF-001/002`; los seis hallazgos de la auditoría concurrente de Codex.
-Sin commits, sin push, sin cambios de parámetros de riesgo, sin promoción de
-modelos, sin consumo de API de pago, sin tocar el Programador de tareas.
+IDs tratados: **AUD-HIGH-001, AUD-HIGH-002, AUD-HIGH-003, AUD-MED-001,
+AUD-MED-002, AUD-MED-003, AUD-MED-004, AUD-LOW-002** y la limpieza **L-1, L-3,
+L-4, L-5** (L-2 parcial). No se tocó nada fuera de esa lista.
+
+Base: `62108b1`, árbol limpio al empezar.
+
+---
+
+## Código
+
+| ID | Archivo | Cambio |
+|---|---|---|
+| AUD-HIGH-001 | `src/sqp/logging_config.py` | `_shared_file_handler()`: una única instancia de `RotatingFileHandler` por proceso, memoizada (incluido el `None` cuando no hay `logs/`), compartida por todos los loggers. `get_logger` deja de crear una por nombre. |
+| AUD-HIGH-002 | `src/sqp/monitoring/health.py` | Constante `RUN_MAX_AGE_DAYS = 1.5` (derivada de la cadencia diaria) y función pública `pipeline_liveness(root, max_age_days)`. `generate_health_report` añade un **ERROR** cuando dispara y expone `pipeline_liveness` en el informe JSON. |
+| AUD-HIGH-002 | `src/sqp/audit/html_report.py` | `_run_alert_banner` evalúa primero `pipeline_liveness` y emite su propio banner; el de etapa queda como segunda fuente. Nuevo import de `sqp.monitoring.health`. |
+| CODEX-01 | `src/sqp/audit/html_report.py` | Contenedor `#stale-alert` + bloque JS que embebe el sello UTC de la página y `RUN_MAX_AGE_DAYS`, y pinta el aviso de tablero rancio **en el navegador**, al abrir y cada 60 s. Es lo único que puede avisar cuando la página no se regenera. |
+| CODEX-02 | `DIARIO_COMPLETO.bat` | El fetch pasa a ser no interactivo (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `GIT_ASKPASS`) y con **plazo de pared duro** vía `Start-Process` + `WaitForExit(SQP_FETCH_TIMEOUT_MS)` + `Kill`; exit 124 se avisa y se continúa. |
+| AUD-HIGH-003 | `src/sqp/risk/bankroll.py` | `adjustments_total`: con filas y sin columna `amount`, `LedgerIntegridadError` nombrando fichero y columnas leídas. Cabecera sin filas sigue devolviendo `0.0`. |
+| AUD-MED-002 | `src/sqp/storage/served_store.py` | `append_graded` y `append_served` envuelven la transacción completa en `with locked(path)`, leyendo `prior` dentro. Nuevo import de `sqp.storage.lock`. |
+| AUD-MED-003 | `src/sqp/pipeline/revalidation.py` | Sitios `:74` (log de revalidación) y `:239` (`candidates_<liga>.csv`) pasan a `atomic_write_csv`. |
+| AUD-MED-003 | `src/sqp/risk/prediction_gate.py` | `_append_latch_log` pasa a `atomic_write_csv` (+ import). |
+| AUD-MED-003 | `src/sqp/risk/degradation.py` | `append_degradation_log` pasa a `atomic_write_csv` (+ import). |
+| AUD-MED-003 | `src/sqp/calibration/calibrator.py` | Los dos escritores del log de promoción pasan a `atomic_write_csv` (+ import). |
+
+## Scripts operacionales
+
+| ID | Archivo | Cambio |
+|---|---|---|
+| AUD-MED-001 | `DIARIO_COMPLETO.bat` | `mkdir logs` + `rotate_log.cmd logs\diario_completo.log`; subrutina `:log` (consola **y** fichero, con la redirección **delante** del `echo`); guard, etapas `[1/2]`/`[2/2]`/`[3/3]`, cierre OK y las tres ramas de error escriben ahí; `:error_*` vuelcan además `git status` y la llamada al centinela. |
+| AUD-MED-004 | `DIARIO_COMPLETO.bat` | Bloque `[0b]`: `git fetch` acotado por `GIT_HTTP_LOW_SPEED_LIMIT/TIME`, comparación `HEAD` vs `@{u}`, aviso con ambos SHA y el comando de diagnóstico. Avisa y continúa; falla abierto sin upstream, sin git o si el fetch falla. |
+
+## Sistema de instrucciones
+
+| ID | Archivo | Cambio |
+|---|---|---|
+| AUD-LOW-002 | `.claude/skills/memoria-persistente/SKILL.md` | `name: memoria-persistente-pro` → `memoria-persistente`. |
+| AUD-LOW-002 | `.claude/skills/mlb-pipeline/SKILL.md` | `name: mlb-pipeline-inspect` → `mlb-pipeline`. |
+
+## Pruebas añadidas (todas discriminantes del hallazgo)
+
+| Archivo | Casos | Cubre |
+|---|---|---|
+| `tests/test_logging_config.py` *(nuevo)* | 3 | AUD-HIGH-001 |
+| `tests/test_health.py` | +5 | AUD-HIGH-002 (liveness, umbral, contraprueba de ausencia, artefacto más reciente) |
+| `tests/test_run_status.py` | +10 | AUD-HIGH-002 (banner, precedencia), AUD-MED-001 (3), AUD-MED-004 (4) |
+| `tests/test_bankroll.py` | +5 | AUD-HIGH-003 |
+| `tests/test_served_store.py` | +4 | AUD-MED-002 (lock tomado en el instante de la escritura, idempotencia, liberación ante fallo) |
+| `tests/test_storage.py` | +2 | AUD-MED-003 (contrato de fuente + PID en el temporal) |
+| `tests/test_html_report.py` | +5 | CODEX-01 (sello y umbral embebidos, reevaluación periódica, y **3 ejecutando el JS real con Node**: página de hoy sin aviso, la misma página +2 días con aviso, borde 24 h/37 h) |
+
+## Limpieza ejecutada
+
+| ID | Ruta | Resultado |
+|---|---|---|
+| L-1 | `.claude/reviews/runtime/v2/scratch/work/` (8 repos git de scratch) | eliminado |
+| L-3 | `.claude/settings.local.json.backup-audit-20260623` (7.359 B) | eliminado |
+| L-4 | `__pycache__/` (raíz) | eliminado |
+| L-5 | `audit/reproductions/__pycache__/` | eliminado |
+| L-2 | `.codex-tmp/run-20260809T124242-*`, `run-20260809T141756-*` | **PARCIAL**: sus subdirectorios `pytest/test_*` tienen ACL denegada a esta sesión y no se pudieron borrar. Limitación ya declarada como `NO_VERIFICABLE` en la fase de diagnóstico. |
+| L-6, L-7, L-8 | `graphify-out/<fecha>/`, `audit/00-13 + FINAL-AUDIT.md`, `audit/full-audit-SKILL-reemplazado-*` | **CONSERVADOS** por decisión de la auditoría |
+
+Ninguna ruta eliminada estaba versionada (`git ls-files` sobre las cinco: 0
+resultados). `git status` tras la limpieza no muestra ningún borrado de fichero
+rastreado.
 
 ---
 
-## Por ID
+## Segunda pasada: los dos defectos que encontró la revisión cruzada
 
-### AUD-MED-001 — caché de cuotas
+El hook `crossreview-on-stop` lanzó a Codex sobre los cambios de este turno y
+reportó **dos MEDIUM `STATICALLY_VERIFIED` en mis propias correcciones**. Se
+verificaron los dos y **los dos eran correctos**; no se refutó ninguno.
 
-`src/sqp/providers/odds_cache.py` · `tests/test_odds_cache.py`
+1. **El banner de liveness era decorativo.** `_run_alert_banner()` sólo se
+   evalúa mientras se escribe el HTML, y `report_latest.html` es estático: si el
+   pipeline deja de correr, la página no se regenera y el aviso no puede
+   aparecer **nunca**, justo en la parada que existe para señalar. La mitad
+   servidor del arreglo sólo cubre «el run terminó pero una etapa falló».
+   Corregido evaluando la frescura en el navegador.
+2. **El `git fetch` podía bloquear el pipeline.** `GIT_HTTP_LOW_SPEED_LIMIT/TIME`
+   acota la velocidad de transferencia HTTP, no la espera de un gestor de
+   credenciales ni la duración del subproceso. Bajo el Programador de tareas, sin
+   escritorio, un git que pidiera credenciales habría bloqueado la liquidación —
+   un aviso consultivo parando el pipeline del dinero. Corregido con tres
+   candados no interactivos y un plazo de pared real.
 
-```diff
--if ttl != float("inf") and (time.time() - f.stat().st_mtime) >= ttl:
-+if ttl != float("inf") and max(0.0, time.time() - f.stat().st_mtime) >= ttl:
-```
-
-Una edad negativa (mtime por delante del reloj) no la caducaba ningún `ttl`.
-Test nuevo `test_file_cache_expires_when_mtime_is_ahead_of_the_clock`, que fija
-el caso que el test de borde existente no puede producir (congela el reloj *y*
-el mtime al mismo valor).
-
-### AUD-MED-002 — puerta de promoción de calibradores
-
-`src/sqp/calibration/calibrator.py` · `tests/test_calibrator.py`
-
-Nueva `_motivo_muestra_insuficiente(key, min_n_val)`, **default-deny**: un
-metadato de staging ausente o ilegible ya no salta el control de muestra. El
-guard pasa de `if meta is not None:` a un motivo explícito registrado en el log.
-`_load_staging_meta` documenta que `None` significa «no se sabe», nunca «no hace
-falta comprobarlo». 3 tests nuevos (ausente, corrupto, contraprueba con `force`).
-
-### AUD-MED-003 — centinela de fallo de las etapas fuera de la cadena diaria
-
-`scripts/run_status.py` · `src/sqp/monitoring/run_status.py` ·
-`src/sqp/monitoring/health.py` · `VALIDATE_OOS.bat` · `BACKFILL_ALL.bat` ·
-`CAPTURE_CLOSE.bat` · `REFRESH_ML.bat` · `tests/test_run_status.py`
-
-- `STAGES` pasa de `{settle, run}` a seis etapas.
-- Las cuatro BAT registran su fallo (`--fail --stage …`) y limpian su propia
-  etapa al terminar bien (`--clear --only-stage …`), igual que las dos que ya lo
-  hacían.
-- El health check nombra la etapa **y el BAT a re-ejecutar** (`_BAT_POR_ETAPA`).
-- Tests: se sustituyó el assert por subcadena `"run diario"` —que dejó de ser
-  cierto y que además no comprobaba nada útil— por un localizador estable, y se
-  añadieron dos: uno por etapa comprobando que el aviso nombra su BAT, y otro que
-  impide que `STAGES` y `_BAT_POR_ETAPA` deriven (viven en módulos distintos).
-
-**Nota de diseño:** `REFRESH_ML.bat` es manual desde el 2026-08-29, así que su
-fallo no es invisible como el de los otros tres. Se le añadió el centinela igual
-(su último resultado bajo el Programador fue `0xC000013A`), y se autolimpia en la
-siguiente ejecución correcta.
-
-### AUD-LOW-001 — integridad del calibrador
-
-`src/sqp/calibration/calibrator.py` · `src/sqp/calibration/pergame.py` ·
-`tests/test_calibrator.py`
-
-`_load_calibrator` devuelve `None` cuando el digest del sidecar no cuadra, en vez
-de avisar y cargar igualmente. Se añadieron las dos comprobaciones de `None` que
-faltaban (`apply_calibration`, `_staged_pergame_predict`); `calibrator_defect` y
-`calibrator_resolution` ya lo absorbían. Sin sidecar sigue cargando. 2 tests.
-
-### AUD-LOW-002 — hook de secretos
-
-`.claude/hooks/check-secrets.sh`
-
-`*.md` fuera de la lista de exclusión. Verificado end-to-end (un `.md` con
-`sk-…` → `exit 2`; uno legítimo → `exit 0`) y medido el coste: **0 coincidencias
-sobre los 297 `.md` rastreados**.
-
-### AUD-LOW-003 — siete textos desfasados
-
-`src/sqp/storage/lock.py` · `src/sqp/audit/html_report.py` · `.gitignore` ·
-`REPO_DESCRIPTION.md` · `README.md` · `CAPTURE_CLOSE.bat`
-
-Sólo comentarios y documentación; ningún cambio de comportamiento. Los 120 s de
-`LOCK_TIMEOUT_S` **se conservan** a propósito (el margen sobra y sobrar es la
-dirección segura en una puerta que ahora aborta); lo que se corrigió es la
-justificación, que citaba una espera de red que ya no ocurre. Los horarios pasan
-a UTC.
-
-### AUD-LOW-004 — Dockerfile
-
-`Dockerfile`
-
-Se declara que la imagen es de demo y referencia, que su intérprete (3.11, el
-suelo de `pyproject`) **no** es el de producción (3.14), y que ningún paso de CI
-la construye. **No se cambió la imagen base:** alinearla a 3.14 exige construirla
-para validarla, y esta sesión no puede. Queda en `BACKLOG.md`.
-
-### AUD-LOW-005 — corte temporal de las features pregame
-
-`src/sqp/features/rest_form.py` · `src/sqp/pipeline/probabilities.py` ·
-`tests/test_rest_form_cutoff.py` (nuevo)
-
-- Helper `_hasta(results, reference_date)`; `reference_date: str | None = None`
-  añadido a las diez features que no lo tenían; mismo criterio de corte que
-  `team_rest_days` (el propio día queda fuera).
-- `AdjustmentContext` transporta `ref_date` y `build_adjustment_context` lo pasa
-  a **todas**, no sólo a `team_rest_days`.
-- Divisor de las cuatro tasas de victoria: filas realmente leídas en vez de
-  `len(recent)`, con el mismo umbral de 2.
-- 10 tests nuevos, incluida la demostración de que sobre una lista ya recortada
-  el filtro es un **no-op exacto**.
-
----
+Codex señaló además que la prueba del plazo «sólo comprobaba que existieran los
+nombres de las variables de entorno»: verificaba la intención, no el
+comportamiento. Reescrita para exigir el mecanismo, y respaldada por una
+ejecución real (git colgado 120 s, plazo 8 s → **exit 124 a los 8,7 s**).
 
 ## Efecto del hook de formato
 
-El `PostToolUse` del repositorio ejecuta `ruff check --fix` sobre cada archivo
-editado con `Edit`/`Write`, así que los parches llevan además sus autofixes
-seguros de lint. Revisado el diff final: **el hook no tocó lógica**. La única
-huella observable es la eliminación de una línea en blanco dentro del docstring
-de `AdjustmentContext` en `pipeline/probabilities.py`.
+`.claude/hooks/post-edit-format.sh` ejecuta `ruff check --fix` sobre cada
+archivo `.py` tras `Edit`/`Write`. Se revisó el diff completo: **no aplicó
+ningún autofix**; todo el diff corresponde al parche mínimo y a sus comentarios.
+Un único detalle de estilo introducido a mano y deliberadamente no revertido:
+en `calibrator.py` el nuevo import queda antes de `sqp.logging_config` en vez de
+en orden alfabético. Ruff no tiene activadas las reglas `I`, pasa limpio, y
+reordenar sería limpieza cosmética fuera del alcance autorizado.
 
-`src/sqp/features/rest_form.py` se transformó con un script Python ejecutado vía
-Bash (diez firmas idénticas), así que **ese archivo no pasó por el hook**; se le
-aplicaron `ruff` y `mypy` manualmente, ambos limpios.
+---
 
-## Archivo modificado por un tercero durante la sesión
+## Lo que se decidió NO tocar
 
-`auditoria-integral-codex.md` aparece modificado (+439/−235, mtime 10:58). **No
-lo tocó esta sesión**: un proceso externo de Codex reescribió su informe con una
-auditoría nueva del mismo commit. Se ha leído, no se ha editado, y **no se
-commitea** — la regla vigente prohíbe editarlo, borrarlo o commitearlo sin
-autorización expresa. Sus seis hallazgos están resumidos al final de
-`FINDINGS.md`.
-
-`audit/model_vs_market_20260906.md` sigue sin rastrear y sin tocar: ya estaba ahí
-al abrir la sesión.
-
-## Lo que se decidió no tocar
-
-| Qué | Por qué |
-|---|---|
-| Causa raíz del fallo de `VALIDATE_OOS` del 2026-09-01 | requiere `logs/`, denegado por permisos |
-| Base 3.11 del `Dockerfile` | cambiarla exige construir la imagen para validarla |
-| `CL-01/02/03` (≈205 MB de residuo ignorado) | eliminaciones no autorizadas |
-| `AUD-INF-001/002` | inferidos: falta la condición necesaria |
-| Los seis hallazgos de Codex del 2026-09-06 | fuera de la aprobación de esta sesión |
-| `LOCK_TIMEOUT_S = 120` | el margen es deliberado; sólo cambió su justificación |
+- **AUD-LOW-001** (`crossreview-on-stop.sh` revisa sólo `HEAD`): ya corregido en
+  `origin/main` por `c28ee6a`. La corrección es **traer el commit**, y un `git
+  pull` es un merge, expresamente excluido de la autorización de corrección por
+  la skill `audit-remediation`. Editar el fichero a mano crearía una divergencia
+  con el remoto — justo el modo de fallo que este repositorio lleva meses
+  documentando.
+- **AUD-INF-001** (lock POSIX sin heartbeat): `INFERIDO`, no confirmado. La
+  skill prohíbe corregir sobre inferencias.
+- **Paso 0 operativo** (relanzar `DIARIO_COMPLETO.bat` para recuperar los dos
+  días perdidos): consume cuota de API de pago y escribe datos de producción.
+  `audit-remediation` exige para eso una aprobación humana **separada e
+  independiente** de la aprobación de la corrección.
+- **Commit de estos cambios**: prohibido sin autorización específica. **Tiene
+  consecuencia operativa inmediata** — ver `BACKLOG.md`.
+- `.env`, `logs/` (más allá de lectura), datos operativos, parámetros de riesgo,
+  `shadow_mode`, `pick_mode`, umbrales, calibradores y Programador de tareas:
+  intactos.

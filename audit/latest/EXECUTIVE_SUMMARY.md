@@ -1,73 +1,68 @@
-# Resumen ejecutivo — Auditoría integral 2026-08-30
+# Resumen ejecutivo — Auditoría integral y remediación, 2026-09-08
 
-Sustituye el contenido de `audit/latest/` de la auditoría del 2026-08-04, que
-era el último informe persistido pese a que entre medias hubo al menos una
-auditoría más (2026-08-29) que no dejó artefactos.
+**Base:** `62108b1`. **Alcance:** repositorio completo. **Fases 0–5 completadas.**
 
-## Alcance y método
+## Lo que se encontró
 
-Repositorio completo: 588 archivos trackeados, 275 módulos Python, 44.072 líneas.
-179 commits desde la última auditoría con informe. Fases 0–3 en solo lectura
-según la skill `full-audit`; fase 4 sólo tras la autorización explícita del
-operador para "los hallazgos confirmados".
+El **código** estaba sano: 1.636 pruebas verdes, Ruff y MyPy limpios, CI verde
+en las cinco patas con `pip-audit` bloqueante, los seis hallazgos de la
+auditoría independiente de Codex (2026-09-06) cerrados con pruebas
+discriminantes, los 16 calibradores live y de staging sin defecto estructural, y
+el ledger íntegro y verificable (915,75 sobre 1.305 liquidaciones).
 
-**Resultado de cobertura: `PARCIAL`.** Se declara así, y no `COMPLETA`, porque
-los gates de riesgo y el pipeline diario no recibieron la lectura línea a línea
-que el procedimiento exige para marcar un área `REVISADA`. Inflar la cobertura
-habría sido el fallo más caro de esta auditoría.
+Lo que fallaba era **la operación y su instrumentación**:
 
-## Estado del proyecto
+> **Producción llevaba 48 horas sin generar un solo pick y ningún control lo
+> decía.** El último run completo terminó el 2026-09-06 12:01. La tarea del
+> 2026-09-07 falló con `0x1` **sin escribir una línea en ningún log**. El
+> centinela de fallo no existía, así que el informe de salud decía
+> `WARN, 0 errors` y el banner rojo del tablero estaba apagado. Y `logs/sqp.log`
+> llevaba desde el 2026-09-06 23:30 congelado en su tope de 5 MB, **descartando
+> cada registro** que intentaba escribirse.
 
-El repositorio está en buena forma estructural. `ruff` limpio sobre `src`,
-`scripts` y `tests`; `mypy` sin incidencias en 98 archivos; `pip check` sin
-dependencias rotas; ningún secreto versionado; ninguna petición HTTP sin
-timeout; health check en `WARN` por una advertencia conocida y declarada no
-accionable.
+Tres defectos HIGH, cuatro MEDIUM y dos LOW, todos confirmados por reproducción
+o verificación estática. Ninguno es un defecto cuantitativo: son controles que
+decían algo distinto de lo que medían — la enfermedad crónica que este
+repositorio lleva meses documentando, esta vez en la capa que vigila al resto.
 
-La defensa contra el fallo cuantitativo más grave que este proyecto ha sufrido
-—un calibrador colapsado sirviendo en producción— está construida, unificada en
-una sola definición y cableada en las tres puertas donde importa: promoción,
-tablero y registro live. Se verificó la cadena completa hasta el run diario.
+## Lo que se corrigió
 
-## Hallazgos
+Nueve de los diez IDs (el décimo, `AUD-LOW-001`, ya está corregido en
+`origin/main` y su remedio es traer el commit, no editar el fichero):
 
-| ID | Severidad | Estado | Resultado |
-|---|---|---|---|
-| A-1 | ALTO | `REPRODUCIDO` | **Corregido y verificado** |
-| M-1 | MEDIO | `VERIFICADO_ESTATICAMENTE` | **Corregido** (causa raíz + documentación) |
-| B-1 | BAJO | `INFERIDO` | No corregido por decisión: sin evidencia observada |
-| I-1 | INFORMATIVO | `VERIFICADO_ESTATICAMENTE` | Requiere decisión humana |
-| I-2 | INFORMATIVO | `VERIFICADO_ESTATICAMENTE` | Sin acción: cambio deliberado |
+1. **Rotación de logs** — un único `RotatingFileHandler` compartido en vez de
+   uno por nombre de logger. Verificado en producción: `sqp.log` rotó y los
+   tracebacks desaparecieron.
+2. **Liveness del pipeline** — comprobación independiente del centinela, en el
+   informe de salud y en el banner del tablero. Verificado: `health_check.py`
+   pasó de `WARN, 0 errors` a `ERROR`, detectando la parada real.
+3. **Integridad de los ajustes de banca** — una cabecera derivada ya no evapora
+   una retirada e infla el capital sobre el que se dimensiona Kelly.
+4. **Rastro del orquestador** — `DIARIO_COMPLETO.bat` ya escribe en un log
+   propio, incluidas sus tres ramas de error.
+5. **Aviso de árbol atrasado** — producción ya no ejecuta código desactualizado
+   en silencio.
+6. **Exclusión en `ServedStore`** — la carrera que se cerró para el fichero del
+   dinero, cerrada también para el de la evidencia.
+7. **Escritura atómica única** — los seis sitios que la reimplementaban a mano
+   usan ya el helper canónico.
+8. **Nombres de skills** alineados con sus directorios.
+9. **Limpieza** de residuo ignorado (4 de 5 lotes; el quinto bloqueado por ACL).
 
-El hallazgo con más consecuencia, **A-1, lo introduje yo el día anterior**. Al
-reestructurar la skill `full-audit` creé `.claude/loops/audit.md` con
-guardarraíles redactados a medida en lugar del bloque canónico, y no ejecuté la
-suite completa después. Dos tests de contrato llevaban un día en rojo. La
-lección no es sobre el archivo: es que la reestructuración se validó con los
-tests que parecían relevantes (`test_claude_model_routing.py`) en vez de con la
-suite, y el contrato que se rompió vivía en otro archivo.
+Todo con **29 pruebas nuevas discriminantes** y validación final:
+**1.665 passed, 1 skipped**, Ruff y MyPy limpios, sin regresiones atribuibles.
+Los `.bat` se validaron aparte, en un banco git aislado, con cinco casos.
 
-**M-1** es el motivo por el que ese día en rojo pudo pasar inadvertido: la
-auditoría del 2026-08-29 corrigió cinco hallazgos (`AUD-HIGH-001`,
-`AUD-MED-002`, `AUD-LOW-001/002/003`) sin dejar informe. Existen los arreglos en
-`git log`, no la evidencia ni la línea base. Este directorio es la corrección.
+## Lo que queda
 
-## Riesgos pendientes
+**Producción sigue parada.** Recuperarla exige dos comandos del operador
+(`git commit` para desbloquear el guard de árbol limpio, y `DIARIO_COMPLETO.bat`),
+porque relanzar el pipeline consume cuota de pago y escribe datos de producción,
+y eso requiere una aprobación separada. Detalle en `BACKLOG.md` (B-1).
 
-1. **La política de modelo está aplicada a medias** y deja la suite con un fallo
-   permanente. Es lo único que exige decisión del operador. Detalle en
-   `BACKLOG.md` D-1 y en `known-issues.md` KI-021.
-2. **Los gates de riesgo no se auditaron completos.** Con `shadow_mode: false`
-   el sistema dimensiona stakes reales, así que son el código con más
-   consecuencia directa sobre el capital. Primera prioridad de la próxima
-   auditoría (`BACKLOG.md` P-1).
-3. **`pip-audit` no se ejecutó** (no instalado; instalarlo es modificar
-   dependencias, prohibido en diagnóstico). La última corrida limpia fue hace
-   179 commits.
+## Lo que esto no acredita
 
-## Lo que esta auditoría NO establece
-
-No se midió hit rate observado frente a prometido, ni ROI esperado frente a
-realizado, ni CLV, ni calibración sobre datos nuevos. **No hay ventaja
-predictiva demostrada.** Una suite verde y un calibrador defendido significan
-que el sistema está sano como software, no que gane dinero.
+Una corrección validada arregla un defecto; **no acredita ventaja predictiva ni
+rentabilidad**. El gate sigue en 0 de 41 cortes autorizados, con `n_max = 186`
+frente a `min_n = 300`, y la octava medición del proyecto (2026-09-07) sigue sin
+encontrar ventaja demostrada sobre el mercado.

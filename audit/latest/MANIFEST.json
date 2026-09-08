@@ -1,142 +1,132 @@
 {
-  "audit_id": "audit-2026-09-06",
-  "started_utc": "2026-09-06T12:40:00Z",
-  "finished_utc": "2026-09-06T17:45:00Z",
+  "audit_id": "audit-2026-09-08",
+  "started_utc": "2026-09-08T08:40:00Z",
+  "finished_utc": "2026-09-08T16:05:00Z",
   "branch": "main",
-  "base_commit": "01993fd",
+  "base_commit": "62108b1",
   "commit_created": false,
   "pushed": false,
-  "python_version": "3.14",
+  "python_version": "3.14.4",
   "platform": "win32",
   "skills": ["full-audit (fases 0-3)", "audit-remediation (fases 4-5)"],
   "model": "claude-opus-5",
 
   "git_state_initial": {
     "modified": 0,
-    "untracked": 1,
-    "note": "arbol limpio al abrir salvo audit/model_vs_market_20260906.md, generado por el operador a las 09:07 y NO tocado. main iba 1 commit por delante de origin/main (01993fd, sin empujar)."
+    "untracked": 0,
+    "note": "arbol limpio al abrir. main == origin/main LOCAL (62108b1), pero la referencia remota estaba OBSOLETA: el remoto real iba 2 commits por delante (c28ee6a, 1d987b7), publicados desde otro clon. Ese desfase es el hallazgo AUD-MED-004."
   },
   "git_state_final": {
-    "modified": 28,
-    "untracked": 3,
-    "note": "auditoria-integral-codex.md figura modificado (+439/-235, mtime 10:58) por un proceso EXTERNO de Codex durante la sesion; NO lo toco esta sesion y NO se commitea (regla vigente). audit/model_vs_market_20260906.md sigue sin tocar. Nuevos: Obsidian/Bitacora/2026-09-06.md y tests/test_rest_form_cutoff.py."
+    "modified": 24,
+    "untracked": 2,
+    "note": "sin commitear a proposito: la skill audit-remediation prohibe commits sin autorizacion especifica. CONSECUENCIA OPERATIVA: el guard de arbol limpio de DIARIO_COMPLETO.bat abortara el run de manana hasta que se commitee (BACKLOG.md B-1)."
   },
 
   "tests_initial": {
-    "passed": 1547,
+    "passed": 1636,
     "failed": 0,
     "skipped": 1,
-    "total": 1548,
-    "duration_s": 2515.40,
-    "exit_code": 0,
-    "note": "linea base capturada ANTES de tocar nada. La duracion esta inflada por dos suites compitiendo por CPU."
+    "total": 1637,
+    "duration_s": 1136.89,
+    "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/audit-pytest --tb=line",
+    "exit_code": 0
   },
   "tests_final": {
-    "passed": 1575,
+    "passed": 1671,
     "failed": 0,
     "skipped": 1,
-    "total": 1576,
-    "duration_s": 1067.85,
+    "total": 1672,
+    "duration_s": 1016.86,
+    "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/audit-final2 --tb=short",
     "exit_code": 0,
-    "note": "+28 = exactamente los tests anadidos (1 odds_cache + 5 calibrator + 2 run_status + 20 rest_form_cutoff). Cero regresiones atribuibles."
+    "delta_tests_added": 35
+  },
+  "static_gates_final": {
+    "ruff": {"command": "ruff check --no-cache src scripts tests", "exit_code": 0},
+    "mypy": {"command": "mypy --cache-dir=.codex-tmp/mypy src", "exit_code": 0, "files": 98}
   },
 
-  "commands_executed": [
-    {"cmd": "python -m pytest -q -p no:cacheprovider (linea base)", "result": "1547 passed, 1 skipped, exit 0"},
-    {"cmd": "ruff check src scripts tests", "result": "All checks passed!, exit 0"},
-    {"cmd": "mypy src", "result": "no issues found in 98 source files, exit 0"},
-    {"cmd": "gh run list --branch main --limit 5", "result": "ultimo run de main en FAILURE (33994699340)"},
-    {"cmd": "gh run view 33994699340 --log-failed", "result": "test-windows: test_file_cache_roundtrip_and_ttl -> 1 failed, 1546 passed"},
-    {"cmd": "gh issue list --label ci-rojo --state all", "result": "issue #1 OPEN: la alarma automatica SI funciono"},
-    {"cmd": "Get-ScheduledTaskInfo sobre las 5 tareas SQP_*", "result": "SQP_Validate_OOS_Cdev last=2026-09-01 12:00 rc=0x1 next=2026-10-01"},
-    {"cmd": "python scripts/validate_claude_model_routing.py", "result": "OK, exit 0"},
-    {"cmd": "reproduccion FileCache con mtime +0.5s (tmp aislado)", "result": "antes: edad -0.4996, get(ttl=0) devolvia el valor. despues: None"},
-    {"cmd": "reproduccion promote_calibrators (MODELS_DIR redirigido a tmp)", "result": "antes: sin meta y meta corrupto PROMOVIAN. despues: los tres casos deniegan"},
-    {"cmd": "agregado programatico sobre data/odds (33 ligas, solo conteos)", "result": "0 ligas sin cuotas de cierre utilizables"},
-    {"cmd": "pytest tests/test_odds_cache.py", "result": "6 passed, exit 0"},
-    {"cmd": "pytest tests/test_calibrator.py test_calibration_live.py test_pergame_calibration.py test_auto_promote.py test_calibradores_pendientes.py", "result": "74 passed, exit 0"},
-    {"cmd": "pytest tests/test_run_status.py tests/test_health*.py (1a pasada)", "result": "1 failed, 37 passed -- REGRESION_INTRODUCIDA, corregida"},
-    {"cmd": "pytest tests/test_run_status.py tests/test_health*.py (2a pasada)", "result": "40 passed, exit 0"},
-    {"cmd": "pytest tests/test_rest_form_cutoff.py", "result": "20 passed, exit 0"},
-    {"cmd": "pytest tests/test_rest_form_cutoff.py test_backtest_parity.py test_measure_features_harness.py", "result": "37 passed, exit 0"},
-    {"cmd": "hook check-secrets.sh sobre un .md con sk-...", "result": "exit 2 (bloquea)"},
-    {"cmd": "barrido del patron de secretos sobre los 297 .md rastreados", "result": "0 coincidencias: sin falsos positivos"},
-    {"cmd": "validacion estatica de las 7 BAT (etiquetas, goto, etapas, endlocal)", "result": "todas OK"},
-    {"cmd": "comprobacion de mtimes en data/ y logs/", "result": "37 ficheros; todos del SQP_Capture_Close_Cdev programado o del subarbol demo/ de los tests. Aislacion verificada: 11 puntos de lectura usan glob() no recursivo"},
-    {"cmd": "python -m pytest -q -p no:cacheprovider (final)", "result": "1575 passed, 1 skipped, exit 0"}
+  "findings_addressed": [
+    "AUD-HIGH-001", "AUD-HIGH-002", "AUD-HIGH-003",
+    "AUD-MED-001", "AUD-MED-002", "AUD-MED-003", "AUD-MED-004",
+    "AUD-LOW-002",
+    "CODEX-01", "CODEX-02"
   ],
-
-  "tools_unavailable": [],
-  "tools_not_run": [
-    "lectura de logs/ (denegado por Read(./logs/**)): impide diagnosticar el fallo de VALIDATE_OOS del 2026-09-01",
-    "lectura de .env (denegado por Read(./.env))",
-    "ejecucion real de los .bat (dispararian produccion y consumirian cuota de API)",
-    "docker build (ningun paso de CI lo hace; por eso no se alineo la base a 3.14)",
-    "pip-audit local (evidencia indirecta: las 4 patas del job test pasaron el 2026-09-05)",
-    "medicion del timeout real de codex review (llamada de pago)"
+  "findings_not_addressed": [
+    {"id": "AUD-LOW-001", "reason": "ya corregido en origin/main (c28ee6a); su remedio es un git pull, que es un merge y la skill lo excluye de la autorizacion de correccion"},
+    {"id": "AUD-INF-001", "reason": "INFERIDO, no confirmado: sin reproduccion POSIX posible en win32"}
   ],
-
-  "findings_by_severity": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 3, "LOW": 5, "INFERIDO": 2},
-  "findings_by_status": {
-    "corregido": 7,
-    "corregido_parcialmente": 1,
-    "no_corregido_falta_evidencia": 2,
-    "fuera_de_alcance_requiere_autorizacion": 6
-  },
 
   "files_modified": [
-    ".claude/hooks/check-secrets.sh",
-    ".claude/memory/known-issues.md",
-    ".gitignore",
-    "BACKFILL_ALL.bat",
-    "CAPTURE_CLOSE.bat",
-    "Dockerfile",
-    "README.md",
-    "REFRESH_ML.bat",
-    "REPO_DESCRIPTION.md",
-    "VALIDATE_OOS.bat",
-    "Obsidian/Errores y lecciones/Lecciones aprendidas.md",
-    "scripts/run_status.py",
-    "src/sqp/audit/html_report.py",
-    "src/sqp/calibration/calibrator.py",
-    "src/sqp/calibration/pergame.py",
-    "src/sqp/features/rest_form.py",
+    "DIARIO_COMPLETO.bat",
+    "src/sqp/logging_config.py",
     "src/sqp/monitoring/health.py",
-    "src/sqp/monitoring/run_status.py",
-    "src/sqp/pipeline/probabilities.py",
-    "src/sqp/providers/odds_cache.py",
-    "src/sqp/storage/lock.py",
-    "tests/test_calibrator.py",
-    "tests/test_odds_cache.py",
+    "src/sqp/audit/html_report.py",
+    "src/sqp/risk/bankroll.py",
+    "src/sqp/risk/prediction_gate.py",
+    "src/sqp/risk/degradation.py",
+    "src/sqp/calibration/calibrator.py",
+    "src/sqp/pipeline/revalidation.py",
+    "src/sqp/storage/served_store.py",
+    "tests/test_bankroll.py",
+    "tests/test_health.py",
+    "tests/test_html_report.py",
     "tests/test_run_status.py",
+    "tests/test_served_store.py",
+    "tests/test_storage.py",
+    ".claude/skills/memoria-persistente/SKILL.md",
+    ".claude/skills/mlb-pipeline/SKILL.md",
+    ".claude/memory/known-issues.md",
+    ".claude/automation/runtime/current-task.md",
     "audit/latest/FINDINGS.md",
     "audit/latest/CHANGES.md",
     "audit/latest/VALIDATION.md",
     "audit/latest/BACKLOG.md",
+    "audit/latest/EXECUTIVE_SUMMARY.md",
     "audit/latest/MANIFEST.json"
   ],
   "files_created": [
-    "tests/test_rest_form_cutoff.py",
-    "Obsidian/Bitácora/2026-09-06.md"
+    "tests/test_logging_config.py",
+    "Obsidian/Bitácora/2026-09-08.md"
   ],
-  "files_deleted": [],
-  "files_modified_by_third_party": [
-    {"path": "auditoria-integral-codex.md",
-     "note": "+439/-235, mtime 10:58. Reescrito por un proceso EXTERNO de Codex con una auditoria nueva del mismo commit. Leido, NO editado, NO commiteado."}
+  "files_deleted": [
+    ".claude/reviews/runtime/v2/scratch/work/ (8 repos git de scratch, 952 ficheros, ignorado)",
+    ".claude/settings.local.json.backup-audit-20260623 (7359 B, ignorado)",
+    "__pycache__/ (raiz, ignorado)",
+    "audit/reproductions/__pycache__/ (ignorado)"
   ],
+  "deletions_performed": true,
+  "deletions_note": "Las cuatro rutas eliminadas estaban IGNORADAS por git (git ls-files sobre ellas: 0 resultados) y fueron aprobadas como L-1, L-3, L-4 y L-5. L-2 quedo PARCIAL: dos directorios de .codex-tmp tienen ACL denegada a la sesion. Ningun fichero versionado se borro.",
+
+  "cross_review": {
+    "reviewer": "codex",
+    "trigger": ".claude/hooks/crossreview-on-stop.sh",
+    "findings": 2,
+    "severity": "MEDIUM",
+    "evidence_state": "STATICALLY_VERIFIED",
+    "refuted": 0,
+    "accepted_and_fixed": 2,
+    "note": "Los dos defectos estaban en las CORRECCIONES de esta sesion, no en el codigo preexistente: el banner de liveness solo se evaluaba al generar el HTML estatico, y el git fetch no tenia plazo de pared ni bloqueo de interactividad. Ninguna de las 1666 pruebas, ni ruff, ni mypy los habrian detectado: no son fallos de codigo, son controles que dicen algo distinto de lo que miden."
+  },
 
   "authorization_required_actions_taken": [],
   "risk_parameters_changed": false,
   "shadow_mode_changed": false,
+  "pick_mode_changed": false,
+  "thresholds_changed": false,
   "models_promoted": false,
+  "calibrators_touched": false,
   "paid_api_used": false,
-  "production_touched": false,
+  "production_pipeline_executed": false,
+  "production_data_written": false,
   "scheduled_tasks_touched": false,
-  "deletions_performed": false,
+  "commits_or_merges_performed": false,
 
   "coverage_result": "COMPLETA_CON_EXCLUSIONES_DECLARADAS",
   "final_result": "DEGRADED",
-  "final_result_rationale": "Los ocho IDs autorizados se trataron y solo ellos. Todos los comandos requeridos terminaron con codigo 0 (pytest 1575/0/1, ruff, mypy), las validaciones especificas de cada hallazgo se ejecutaron, y los artefactos obligatorios estan escritos y son legibles: se cumplen (a), (b) y (c) de PASS segun STATES.md. Es DEGRADED y no PASS por limitaciones acotadas, no criticas y registradas: (1) AUD-LOW-004 quedo corregido PARCIALMENTE -- se corrigio la afirmacion falsa del Dockerfile pero no se alineo su base a 3.14, porque validarlo exige una construccion que ningun paso de CI hace y esta sesion no puede ejecutar; (2) logs/ y .env quedaron EXCLUIDAS por politica de permisos, lo que deja NO_VERIFICABLE la causa raiz del fallo de VALIDATE_OOS del 2026-09-01 (KI-034); (3) los .bat se validaron estaticamente pero no se ejecutaron. Ninguna bloquea el objetivo aprobado, asi que no procede BLOCKED. Ademas queda constancia de que la revision de bankroll.py fue insuficiente: la auditoria independiente de Codex del mismo dia reprodujo alli un HIGH que esta auditoria no encontro (KI-032).",
+  "final_result_rationale": "Se cumplen (a), (b) y (c) de PASS segun STATES.md: todos los comandos requeridos terminaron con codigo 0 (pytest 1671/0/1, ruff, mypy), las validaciones especificas de cada hallazgo se ejecutaron -- incluidas dos verificaciones sobre el estado REAL de produccion (sqp.log volvio a rotar; health_check paso de WARN a ERROR) -- y los artefactos obligatorios estan escritos y son legibles. Es DEGRADED y no PASS por tres limitaciones acotadas, no criticas y registradas: (1) L-2 quedo parcial por ACL denegada sobre dos directorios de .codex-tmp; (2) AUD-LOW-001 no se corrigio porque su remedio es un git pull, excluido de la autorizacion de correccion; (3) los .bat no los cubre ninguna puerta automatica -- se validaron en un banco git aislado con 6 casos, pero CI no los ejecuta. Ninguna bloquea el objetivo aprobado, y las acciones que requieren aprobacion humana posterior (recuperar el servicio, traer los commits) quedan registradas como siguiente decision, que es lo que STATES.md permite dejar fuera de BLOCKED. NOTA CRITICA NO TECNICA: produccion sigue PARADA desde el 2026-09-06 12:01 y estos cambios la mantienen parada hasta que se commiteen, porque el guard de arbol limpio abortara; la recuperacion son dos comandos del operador (BACKLOG.md B-1).",
+
   "predictive_edge_demonstrated": false,
-  "profitability_claimed": false
+  "profitability_claimed": false,
+  "evidence_note": "Ninguna correccion de esta sesion toca el modelo, los umbrales ni la calibracion. El gate sigue en 0 de 41 cortes autorizados con n_max=186 frente a min_n=300. Una correccion validada arregla un defecto; no acredita ventaja predictiva ni rentabilidad."
 }

@@ -1,132 +1,118 @@
-# Backlog — Auditoría 2026-09-06
+# Backlog — Auditoría 2026-09-08
 
 Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
 
-## Primera prioridad del próximo ciclo
+---
 
-### B-1 · Los seis hallazgos de la auditoría concurrente de Codex (2026-09-06)
+## B-1 · URGENTE: producción sigue parada, y estos cambios la bloquean
 
-Un proceso externo de Codex reescribió `auditoria-integral-codex.md` durante esta
-sesión con una auditoría nueva del **mismo commit** `01993fd`. Reporta tres HIGH
-y tres MEDIUM, todos `REPRODUCED`. **Quedan fuera de la aprobación de esta
-sesión** («todos los confirmados» se resolvió contra los IDs de *este* informe) y
-requieren aprobación propia.
+**Estado: requiere acción del operador. Dos comandos.**
 
-Se verificó que ninguno colisiona con los parches aplicados (detalle en
-`FINDINGS.md`, sección final).
+El pipeline no genera picks desde el **2026-09-06 12:01**. Esta sesión ha
+corregido la **ceguera** (ahora el informe de salud da `ERROR` y el tablero
+enciende el banner), pero **no ha relanzado el pipeline**: hacerlo consume cuota
+de API de pago y escribe datos de producción, y `audit-remediation` exige para
+eso una aprobación humana separada de la aprobación de la corrección.
 
-**AUD-20260906-01 quedó CORREGIDO** el mismo 2026-09-06, autorizado aparte por
-el operador (KI-032). Era un hallazgo legítimo que *esta* auditoría no encontró:
-`_exigir_pnl_legible` sólo rechaza el fichero cuando **no queda ningún** PnL
-numérico, así que una corrupción **parcial** atravesaba el `fillna(0.0)` y
-convertía una pérdida en un movimiento de cero. Reproducido antes de parchear:
-banca 1.000 con dos pérdidas de −400 daba **600** en vez de 200, y
-`apply_dynamic_bankroll` aceptaba esa cifra. Ahora lanza y el staking cae a 0.
+Además, el árbol está **sucio** con las correcciones de esta sesión, así que
+`DIARIO_COMPLETO.bat` **abortará en el guard KI-036** hasta que se commiteen.
+El guard funciona: es el comportamiento correcto, no un efecto secundario.
 
-La discriminación es **por tipo de movimiento**, no por severidad: `settle.py`
-grada push y void con `pnl` 0.0 explícito, así que un importe vacío en esos dos
-estados sigue siendo un cero legítimo y la decisión registrada en
-`test_un_push_con_pnl_vacio_no_dispara_la_guarda` **no se contradice** — que es
-también lo que proponía Codex. Impacto en producción: ninguno; medido antes de
-endurecer la guarda, de las 1.305 filas reales y los 2 ajustes **cero** tienen
-importe no numérico, y el balance real sigue siendo 915,75.
+Secuencia para recuperar el servicio:
 
-**Quedan los otros cinco (AUD-20260906-02..06). Para cerrarlos:** aprobación
-explícita por ID.
+```
+git add -A && git commit          # desbloquea el guard de árbol limpio
+DIARIO_COMPLETO.bat               # settle -> run, en ese orden
+```
 
-### B-2 · Causa raíz del fallo de `SQP_Validate_OOS_Cdev` del 2026-09-01
+Después conviene `git pull --ff-only` (ver B-2). Verificación de que el servicio
+volvió: `python scripts/health_check.py` debe dejar de emitir el `ERROR` de
+liveness.
 
-`rc=0x1` observado en el Programador de tareas. `validate_oos.py:main()` devuelve
-1 tanto por excepción no capturada como por la rama benigna «liga sin cuotas de
-cierre». Se comprobó hoy que de **33 ligas descubiertas, 0** carecen de cierre
-utilizable, así que esa rama no lo explicaría hoy.
+---
 
-**Bloqueado por:** `logs/validate_oos.log` está denegado por la política de
-permisos (`Read(./logs/**)` en `.claude/settings.json`).
+## B-2 · AUD-LOW-001 · Traer los 2 commits de `origin/main`
 
-**Para cerrarlo:** autorización puntual para un `grep -E "Traceback|ERROR"` sobre
-ese log. El aviso ya está arreglado (AUD-MED-003); lo que falta es el
-diagnóstico. La tarea no se reintenta sola hasta el **2026-10-01**.
+`origin/main` va por delante en **8 commits**: una sesión de remediación
+completa del 2026-09-07 publicada desde otro clon (AUD-MED-001..003,
+AUD-LOW-001..005 de *aquel* informe, más su KI-038), que toca `src/sqp/config.py`,
+`markets/line_movement.py`, `pipeline/budget.py`, `pipeline/probabilities.py`,
+los cuatro hooks `PostToolUse`, `.claude/settings.json` y `configs/default.yaml`.
+El árbol de producción no los tiene.
 
-**Sugerencia aparte:** separar los dos códigos de salida de `validate_oos.py`
-—«nada que validar» no es un fallo— para que el centinela nuevo no marque en rojo
-una condición benigna. Requiere decisión: cambia el contrato de salida del script.
+**Nota:** la fase de diagnóstico dijo «2 commits». Estaba mal inferido de
+`git fetch --dry-run`, que imprime un rango de refs y no un conteo.
 
-## Requiere decisión humana
+**No se aplicó** porque `git pull` es un merge, y la skill `audit-remediation`
+excluye expresamente commits, pushes y merges de la autorización de corrección.
+Editar el hook a mano sería peor: crearía una divergencia con el remoto.
 
-### B-3 · Base del `Dockerfile`
+**Cierre:** `git pull --ff-only` (o `--rebase` si ya hay commits locales), y
+después la suite. Riesgo bajo: avance rápido sobre un árbol que, una vez
+commiteado B-1, no diverge en esos ficheros.
 
-La imagen fija `python:3.11-slim`; producción corre 3.14. Se corrigió la
-afirmación falsa (AUD-LOW-004) pero **no** la base: alinearla exige construir la
-imagen para validarla, y ningún paso de CI la construye. Las opciones son
-alinearla a 3.14 y añadir un `docker build` al CI, o dejarla declarada como
-entorno de demo, que es lo que ahora dice.
+---
 
-### B-4 · Limpieza de residuo en disco — **EJECUTADA** (2026-09-06)
+## B-3 · AUD-INF-001 · Lock caducado sin heartbeat (POSIX)
 
-Autorizada expresamente por el operador. **171 MB liberados.**
+`storage/lock.py` nunca refresca el `mtime` del `.lock`. Bajo semántica POSIX,
+una sección crítica de más de `LOCK_STALE_S = 300 s` puede ser robada por un
+segundo proceso, y al salir el primero borra el `.lock` del segundo, en cascada.
+En Windows —el SO de producción— el `unlink` falla con `WinError 32` y degrada a
+espera, que es el comportamiento correcto y ya está probado.
 
-| ID | Ruta | Resultado |
-|---|---|---|
-| CL-01 | `graphify-out/2026-07-08 … 2026-09-05` (39 dirs) | ✅ borrados. `graphify-out`: 194 → **47 MB** |
-| CL-02 | `.codex-tmp/*` (22 entradas) | ⚠️ parcial: 25 → **1 MB**; quedan 21 directorios VACÍOS |
-| CL-03 | `.claude/hooks/__pycache__/` | ✅ borrado |
+**No se corrigió**: es `INFERIDO`, no confirmado, y la skill prohíbe corregir
+sobre inferencias.
 
-**Se conservó `graphify-out/2026-09-06`**, el snapshot más reciente, como punto
-de retorno: cuesta 6 MB y elimina todo riesgo. El grafo VIVO es
-`graphify-out/graph.json` (raíz), que es el que documenta `.claude/CLAUDE.md`, y
-quedó intacto — verificado con `graphify query`: 93 nodos, 6.037 en el grafo.
+**Qué falta para cerrarlo:** (1) medir el tiempo real **dentro** del `with
+locked()` de `revalidate_candidates` —no de la función completa, que en
+`capture_close.log` va de 38 s a 99 s—; (2) una reproducción en Linux con un
+titular que duerma 301 s. Si la medición deja margen suficiente, la resolución
+correcta puede ser documentar que no aplica, no añadir un heartbeat.
 
-**Lo que no se pudo borrar y por qué.** Los 21 directorios restantes de
-`.codex-tmp/` están vacíos pero su ACL deniega incluso *leerla* (`Get-Acl` →
-`UnauthorizedAccessException`): los creó el sandbox de Codex bajo una identidad
-restringida. Borrarlos exige `takeown` + `icacls /reset`, es decir **modificar
-descriptores de seguridad**, que es bastante más que retirar residuo y no estaba
-autorizado. Ocupan ~1 MB y son inertes. Si se quiere cerrar, desde una consola
-elevada: `takeown /f .codex-tmp /r /d s` y `icacls .codex-tmp /reset /t`.
+---
 
-`CL-05` (`.claude/reviews/runtime/`) y `CL-06`
-(`audit/full-audit-SKILL-reemplazado-2026-08-30.md`) siguen clasificados
-`NO_VERIFICABLE` / `CONSERVAR` y **no** se tocaron. Los caches de herramientas
-(`.mypy_cache`, `.ruff_cache`, `.pytest_cache`) tampoco: están en uso activo.
+## B-4 · L-2 · Residuo de `.codex-tmp` con ACL denegada
 
-`CL-05` (`.claude/reviews/runtime/`, 965 ficheros) y `CL-06`
-(`audit/full-audit-SKILL-reemplazado-2026-08-30.md`) se clasificaron
-`NO_VERIFICABLE` / `CONSERVAR` y **no** entran en ningún plan de borrado.
+Dos directorios `run-20260809T*` no se pudieron borrar: sus subdirectorios
+`pytest/test_*` fueron creados por un proceso con otra ACL y esta sesión no
+puede enumerarlos ni eliminarlos (`Permission denied`). Es la misma limitación
+que la fase de diagnóstico ya declaró `NO_VERIFICABLE`.
 
-## Inferidos: falta evidencia
+**Cierre:** borrado manual por el operador con permisos suficientes, o
+`takeown`/`icacls` sobre `.codex-tmp`. Impacto: ~21 MB de scratch ignorado.
+No urgente.
 
-### B-5 · AUD-INF-001 · Carrera del lock huérfano
+---
 
-`storage/lock.py` rompe un `.lock` a los 300 s y el titular, al salir, hace
-`unlink()` sin comprobar que siga siendo suyo. No se encontró ninguna sección
-crítica capaz de superar 300 s desde que `d27fdd4` sacó la red fuera.
+## B-5 · Causa raíz del fallo del 2026-09-07: irrecuperable
 
-**Para cerrarlo:** medir la duración real de la retención del lock en producción.
-Si ninguna se acerca a 300 s, se descarta; si alguna lo hace, es HIGH.
+`DIARIO_COMPLETO.bat` no escribía en ningún log, así que la evidencia de aquel
+`0x1` se perdió en una consola inexistente. **AUD-MED-001 impide que vuelva a
+pasar, no recupera lo perdido.** Lo que sí se acotó: `settle_all.log` no tiene
+cabecera del 2026-09-07, y `SETTLE_ALL.bat` escribe la suya como primera acción,
+así que el aborto ocurrió **antes o durante** el `call SETTLE_ALL.bat`.
 
-### B-6 · AUD-INF-002 · Temporales de nombre fijo
+Queda **abierto como incógnita**, no como tarea: si vuelve a ocurrir, el nuevo
+`logs\diario_completo.log` lo dirá.
 
-`clv_gate.write_clv_gate` y los dos escritores de `promotion_log.csv` usan
-`with_suffix(".tmp")` fijo, patrón que `atomic_write_csv` abandonó por colisión
-entre escritores concurrentes. Hoy los escribe un único proceso diario.
+---
 
-**Para cerrarlo:** decidir si se unifican con el patrón de `atomic_write_csv`
-(temporal único por proceso y llamada) por prevención, o se documenta que son
-escritores únicos.
+## B-6 · Cobertura de ramas y `.bat` en CI
 
-## Cobertura pendiente
+Ninguna de las puertas cubre los `.bat`. Esta sesión los validó en un banco git
+aislado (5 casos) y con pruebas de contrato sobre el texto, pero **CI no los
+ejecuta** y no puede hacerlo (corre en Linux salvo una pata Windows que sólo
+lanza pytest). Mejora posible, no urgente: un test que ejecute
+`DIARIO_COMPLETO.bat` con stubs en la pata Windows del CI.
 
-### B-7 · Áreas excluidas por política de permisos
+---
 
-`logs/` y `.env` quedaron `EXCLUIDA`. La coherencia `.env` ↔
-`configs/default.yaml` no pudo verificarse directamente; el mecanismo que la
-vigila (`_warn_risk_divergence`) existe y se ejecuta en cada `Settings.load()`,
-pero su veredicto vive en el log.
+## No es backlog: es el estado de la evidencia
 
-### B-8 · Presupuesto del hook de revisión cruzada
-
-`crossreview-on-stop.sh` tiene un timeout de 600 s y no se ha medido cuánto tarda
-`codex review` en este repositorio. Es el mismo tipo de brecha que AUD-HIGH-001
-del 2026-09-04 (un hook cuyo trabajo no cabía en su timeout). Medirlo consume una
-llamada de pago, así que requiere autorización.
+El gate sigue en **0 de 41 cortes autorizados**, con `n_max = 186` contra
+`min_n = 300`. La parada de 48 h ha detenido la acumulación de esa muestra, que
+es el recurso más escaso del sistema. Ninguna corrección de esta sesión cambia
+la conclusión de la octava medición (2026-09-07): sin ventaja predictiva
+demostrada, ROI OOS −23,71 %, ROI realizado −15,26 %,
+`corr(edge declarado, PnL) = −0,105`.

@@ -1,97 +1,83 @@
 # Current Task
 
 Status: closed
-Result: PASS
-Primary loop: `audit.md` → `bugfix.md`
-Skills: `full-audit` (fases 0–3) → `audit-remediation` (fases 4–5) → `bugfix` (KI-032, KI-036)
+Result: DEGRADED
+Primary loop: `audit.md`
+Skills: `full-audit` (fases 0–3) → `audit-remediation` (fases 4–5)
 Iteration: 1 / 1
 Owner: sesión principal (`claude-opus-5`), sin delegación
-Date: 2026-09-06
+Date: 2026-09-08
 
 ## Objective
 
-Auditoría integral del repositorio y, tras aprobación explícita por lote,
-corregir: los ocho confirmados del informe propio, **KI-032** (HIGH de la
-auditoría independiente de Codex) y **KI-036** (opción (b)).
+Auditoría integral del repositorio y, tras aprobación explícita del operador de
+Fases 4 y 5, corregir todos los hallazgos confirmados y las mejoras demostradas
+por la evidencia de la auditoría.
 
 ## Resultado
 
 | | Inicio | Final |
 |---|---:|---:|
-| pytest | 1547 passed / 0 failed / 1 skipped | **1636 / 0 / 1** |
+| pytest | 1636 passed / 0 failed / 1 skipped | **1671 / 0 / 1** |
 | ruff, mypy | exit 0 | exit 0 |
-| CI de `main` | **ROJO** (75 runs previos + el del 2026-09-05) | **VERDE** (run 34060292683) |
-| issue `ci-rojo` | #1 abierto | cerrado con causa raíz |
+| CI de `main` | VERDE (5/5, `pip-audit` incluido) | sin cambios (no se ha empujado) |
+| informe de salud | `WARN` (0 errors) **con producción parada 48 h** | **`ERROR`**, nombrando el artefacto y su antigüedad |
+| `logs/sqp.log` | congelado en 4.999.946 B, descartando cada registro | **rota** (`.1` = 4.999.946 B, nuevo = 871 B) |
 
-28 commits en `main`. 22 defectos corregidos: 8 del informe propio de la
-manana, KI-032, KI-036, y los 6 de la SEGUNDA pasada de auditoria
-(AUD2-MED-001 + los cinco de KI-033), KI-005, KI-034, KI-035, KI-037 y
-B-4. +89 pruebas.
+10 defectos corregidos: 8 del informe propio (3 HIGH, 4 MEDIUM, 1 LOW) más los
+**2 MEDIUM que la revisión cruzada de Codex encontró en mis propias
+correcciones**. +35 pruebas. 4 de 5 lotes de limpieza ejecutados.
 
-`PASS` y no `DEGRADED`: todos los comandos requeridos terminaron en 0, las
-validaciones específicas de cada hallazgo se ejecutaron, y los artefactos están
-escritos y son legibles. Las limitaciones que hacían `DEGRADED` al informe
-intermedio (`logs/` y `.env` excluidos, Dockerfile sin construir) siguen vigentes
-pero pertenecen al **alcance de la auditoría**, no al de las correcciones
-aprobadas, y están registradas en `audit/latest/BACKLOG.md` y `known-issues.md`.
+`DEGRADED` y no `PASS`: se cumplen (a), (b) y (c) de `STATES.md`, pero quedan
+tres limitaciones acotadas y registradas — L-2 parcial por ACL denegada,
+AUD-LOW-001 sin corregir porque su remedio es un `git pull` (merge, excluido de
+la autorización), y los `.bat` fuera de toda puerta automática (validados en un
+banco git aislado con 6 casos).
+
+## Lo que hizo la revisión cruzada
+
+Los dos hallazgos de Codex estaban en las **correcciones de esta sesión**, no en
+el código preexistente, y ninguna de las 1.666 pruebas, ni ruff, ni mypy los
+habría detectado — porque no son fallos de código, son controles que dicen algo
+distinto de lo que miden:
+
+1. El banner de liveness sólo se evaluaba al **generar** el HTML estático, así
+   que no podía aparecer nunca en la parada que existe para señalar.
+2. El `git fetch` no tenía plazo de pared ni bloqueo de interactividad: bajo el
+   Programador de tareas habría podido bloquear la liquidación.
+
+Ambos verificados y corregidos; ninguno refutado.
 
 ## Comandos ejecutados
 
-| Comando | Resultado |
-|---|---|
-| `python -m pytest -q -p no:cacheprovider` (base) | `1547 passed, 1 skipped`, exit 0 |
-| `python -m pytest -q -p no:cacheprovider` (final) | `1636 passed, 1 skipped`, exit 0 |
-| `python scripts/validate_oos.py` (33 ligas) | **32 validadas, exit 0** (el 2026-09-01: 4 y un IndexError) |
-| `ruff check src scripts tests` | `All checks passed!`, exit 0 |
-| `mypy src` | `no issues found in 98 source files`, exit 0 |
-| `gh run view 34060292683` | las cinco patas en `success`, incluida `test-windows` |
-| `Get-ScheduledTaskInfo` (5 tareas `SQP_*`) | `SQP_Validate_OOS_Cdev` rc=0x1 desde el 2026-09-01 |
-| Reproducción de `FileCache` (tmp aislado) | edad −0,4996 s; `get(ttl=0)` servía la entrada → ahora `None` |
-| Reproducción de `promote_calibrators` | meta ausente/corrupto promovía → ahora deniega |
-| Reproducción de `bankroll` (KI-032) | dos pérdidas de −400 daban 600 → ahora `LedgerIntegridadError` |
-| Ejecución del guard en repo git aislado | limpio continúa; `src/` sucio aborta con exit 1 |
-| Validación estructural de las 8 `.bat` | etiquetas, `goto`, etapas y `endlocal`: OK |
+| Comando | Exit | Resultado |
+|---|---:|---|
+| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/audit-pytest --tb=line` (base) | 0 | 1636 passed, 1 skipped, 1136,89 s |
+| `pytest ... --basetemp=.codex-tmp/audit-final2 --tb=short` (final) | 0 | **1671 passed, 1 skipped**, 1016,86 s |
+| `ruff check --no-cache src scripts tests` | 0 | All checks passed |
+| `mypy --cache-dir=.codex-tmp/mypy src` | 0 | 98 ficheros sin incidencias |
+| `python scripts/health_check.py` | 1 | `ERROR (1 errors, 5 warnings)` — la alarma nueva disparando sobre la parada real |
+| `python scripts/validate_claude_model_routing.py` | 0 | OK |
+| Banco aislado de `DIARIO_COMPLETO.bat`, 6 casos | — | los 6 `PASO`, incluido el fetch colgado (124 a los 8,7 s) |
 
-## Artefactos producidos
+## SIGUIENTE DECISIÓN (requiere al operador)
 
-- `audit/latest/{FINDINGS,CHANGES,VALIDATION,BACKLOG}.md` y `MANIFEST.json`
-- `Obsidian/Bitácora/2026-09-06.md`; lecciones 11–13 en
-  `Obsidian/Errores y lecciones/Lecciones aprendidas.md`
-- `.claude/memory/known-issues.md`: KI-032 y KI-036 resueltos; KI-033 a KI-035 abiertos
-- 19 commits en `main` (`cb43f20` … la punta), +73 pruebas
+**Producción sigue parada desde el 2026-09-06 12:01**, y estos cambios la
+mantienen parada: el árbol está sucio y el guard KI-036 abortará el run de
+mañana. Eso es el guard funcionando.
 
-## Escalado de modelo
+```
+git add -A && git commit      # desbloquea el guard
+DIARIO_COMPLETO.bat           # settle -> run
+git pull --ff-only            # trae c28ee6a y 1d987b7 (AUD-LOW-001)
+```
 
-**No se escaló a `claude-fable-5-1` ni se delegó en subagentes.** Las dos
-decisiones dudosas, declaradas:
+No se ejecutaron aquí porque commits, merges y el consumo de cuota de pago
+exigen aprobación humana separada de la aprobación de la corrección.
 
-- **AUD-MED-002** (puerta de promoción de calibradores): toca un gate, pero no
-  diseña criterio ni mueve umbral — `min_n_val` sigue en 30. Cierra un agujero
-  del guard existente, con el fallo reproducido antes de tocar nada.
-- **KI-032** (`bankroll.py`, ruta del dinero): la vía obvia habría contradicho
-  una decisión registrada (`test_un_push_con_pnl_vacio_no_dispara_la_guarda`),
-  que sí es clase de escalado. Se evitó yendo a la fuente: `settle.py:92` grada
-  los cuatro estados con número, así que la discriminación correcta es por tipo
-  de movimiento y la decisión registrada queda intacta. Sin conflicto, nada que
-  escalar.
+## Advertencia de alcance
 
-## Cambio de comportamiento en producción
-
-**Entra en vigor en el run de las 15:00 UTC del 2026-09-07.** Con `src/`,
-`scripts/`, `configs/` o algún `.bat` modificado sin commitear, `DIARIO_COMPLETO`
-aborta antes de liquidar y el health check lo reporta como etapa `guard_arbol`.
-Escape para recuperación: `set SQP_SKIP_TREE_GUARD=1`.
-
-## Siguiente decisión del operador
-
-**Ninguna.** Todo lo abierto en esta sesión quedó cerrado: KI-032 a KI-037,
-KI-005 (abierto desde el 2026-06-12) y B-4.
-
-Lo que sigue vivo del backlog anterior son los inferidos AUD-INF-001 (carrera del
-lock huérfano; falta demostrar que alguna sección crítica supere 300 s) y
-AUD-INF-002, más las áreas que la auditoría dejó `REVISADA_PARCIALMENTE`
-(`models/*`, `simulation/`, `sports/` sin lectura línea a línea).
-5. Dos ficheros sin commitear a propósito: `auditoria-integral-codex.md`
-   (modificado por un Codex externo durante la sesión; prohibido commitearlo sin
-   autorización expresa) y `audit/model_vs_market_20260906.md` (del operador).
-   Los `model_vs_market_2026082*.md` anteriores sí están versionados.
+Ninguna corrección toca el modelo, los umbrales ni la calibración. El gate sigue
+en **0 de 41** cortes autorizados, con `n_max = 186` frente a `min_n = 300`. Una
+corrección validada arregla un defecto; **no acredita ventaja predictiva ni
+rentabilidad**.

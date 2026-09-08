@@ -1,16 +1,16 @@
-# Hallazgos — Auditoría integral 2026-09-06
+# Hallazgos — Auditoría integral 2026-09-08
 
 Severidades e IDs según `.claude/skills/full-audit/references/evidence-findings.md`.
 Estado de evidencia: `REPRODUCIDO` / `VERIFICADO_ESTÁTICAMENTE` / `INFERIDO` /
 `NO_VERIFICABLE` / `DESCARTADO`. Sólo los dos primeros son **confirmados**.
 
-Alcance: repositorio completo. Resultado de cobertura: **REVISADA** salvo dos
-áreas `EXCLUIDA` por política de permisos (`logs/`, `.env`) y una
-`REVISADA_PARCIALMENTE` (contenido de datos operativos). Matriz completa en
-`VALIDATION.md`.
+Base: `62108b1`, árbol de trabajo limpio al abrir. Suite de partida
+**1636 passed, 1 skipped** (1136,89 s), `ruff` y `mypy` limpios.
 
-Base: `01993fd` (+1 commit local sobre `origin/main`). Suite de partida
-**1547 passed, 1 skipped**, `ruff` y `mypy` limpios.
+> `CLAUDE_CODE_REVIEW.md` y `QUANT_REVIEW.md` de este directorio pertenecen al
+> ciclo **2026-09-06** y no se han reescrito: este ciclo no generó revisiones
+> equivalentes. El resto de artefactos de `audit/latest/` sí corresponden al
+> 2026-09-08.
 
 ---
 
@@ -18,251 +18,257 @@ Base: `01993fd` (+1 commit local sobre `origin/main`). Suite de partida
 
 | ID | Sev. | Evidencia | Estado |
 |---|---|---|---|
-| AUD-MED-001 | MEDIUM | REPRODUCIDO | **corregido** |
-| AUD-MED-002 | MEDIUM | REPRODUCIDO | **corregido** |
-| AUD-MED-003 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** (diagnóstico del fallo concreto: pendiente, ver `BACKLOG.md`) |
-| AUD-LOW-001 | LOW | VERIFICADO_ESTÁTICAMENTE | **corregido** |
+| AUD-HIGH-001 | HIGH | REPRODUCIDO | **corregido y verificado en producción** |
+| AUD-HIGH-002 | HIGH | REPRODUCIDO + VERIFICADO_ESTÁTICAMENTE | **corregido** (la alarma ya dispara sobre el estado real) |
+| AUD-HIGH-003 | HIGH | REPRODUCIDO | **corregido** |
+| AUD-MED-001 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** (validado en banco aislado, 5 casos) |
+| AUD-MED-002 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** |
+| AUD-MED-003 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** (6 sitios) |
+| AUD-MED-004 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** (validado en banco aislado) |
+| AUD-LOW-001 | LOW | VERIFICADO_ESTÁTICAMENTE | **no corregido** — requiere `git pull`, fuera de la autorización de corrección |
 | AUD-LOW-002 | LOW | VERIFICADO_ESTÁTICAMENTE | **corregido** |
-| AUD-LOW-003 | LOW | VERIFICADO_ESTÁTICAMENTE | **corregido** (7 instancias) |
-| AUD-LOW-004 | LOW | VERIFICADO_ESTÁTICAMENTE | **corregido parcialmente** — se corrigió la afirmación falsa; alinear la imagen con 3.14 requiere una construcción que esta sesión no puede validar |
-| AUD-LOW-005 | LOW | VERIFICADO_ESTÁTICAMENTE | **corregido** |
-| AUD-INF-001 | HIGH (potencial) | INFERIDO | **no corregido** — falta condición necesaria |
-| AUD-INF-002 | LOW | INFERIDO | **no corregido** — falta condición necesaria |
+| CODEX-01 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** — defecto en mi arreglo de AUD-HIGH-002, hallado por la revisión cruzada |
+| CODEX-02 | MEDIUM | VERIFICADO_ESTÁTICAMENTE | **corregido** — defecto en mi arreglo de AUD-MED-004, hallado por la revisión cruzada |
+| AUD-INF-001 | MEDIUM (potencial) | INFERIDO | **no corregido** — falta condición necesaria (POSIX no ejecutable aquí) |
 
-Ningún hallazgo `CRITICAL` ni `HIGH` confirmado en esta auditoría. Ver la
-sección final: una auditoría independiente de Codex sobre el mismo commit,
-escrita durante esta sesión, sí reporta tres HIGH que **no están en este alcance**.
+Limpieza: **L-1, L-3, L-4, L-5 ejecutadas**; **L-2 parcial** (ACL denegada);
+**L-6, L-7, L-8 conservadas** por decisión de la auditoría.
 
 ---
 
-## MEDIUM
+## AUD-HIGH-001 — La rotación de `sqp.log` estaba rota y descartaba cada registro
 
-### AUD-MED-001 · La caché de cuotas sirve una entrada caducada cuando el `mtime` va por delante del reloj
+**Componente:** `src/sqp/logging_config.py:32-45`.
 
-- **Evidencia:** `REPRODUCIDO` · **Confianza:** HIGH
-- **Componente:** `src/sqp/providers/odds_cache.py:42`
-- **Activación:** `time.time()` devuelve un instante anterior al `st_mtime` del
-  fichero → la edad sale negativa → ningún `ttl` la caduca, ni `0`.
-- **Reproducción:** forzando `os.utime(f, (time.time()+0.5, ...))`, la edad daba
-  `−0,4996 s` y `c.get(k, ttl=0)` devolvía `{'v': 1}` en vez de `None`.
-- **Causa raíz:** `(time.time() - st_mtime) >= ttl` sin acotar por abajo. En
-  Windows ese reloj y el `mtime` de NTFS no comparten fuente ni granularidad. El
-  arreglo del 2026-08-05 cambió `>` por `>=` y cerró `age == 0`, dejando abierto
-  `age < 0`. El test de borde congela el reloj con `monkeypatch`, así que por
-  construcción no podía producirlo.
-- **Consecuencia:** el CI de `main` estaba **ROJO** desde el 2026-09-05T22:01
-  (run 33994699340, `test-windows`: `1 failed, 1546 passed`) — la puerta de
-  desarrollo cerrada. En producción el impacto es acotado: con `cache_ttl` de
-  21600 s sólo importa ante un salto de reloj hacia atrás (NTP), que serviría
-  cuotas pasadas de su TTL.
-- **Corrección aplicada:** `max(0.0, time.time() - st_mtime)`. Acotar por abajo
-  es la dirección segura: como mucho se refresca de más.
-- **Prueba añadida:** `test_file_cache_expires_when_mtime_is_ahead_of_the_clock`.
+`get_logger(name)` creaba un `RotatingFileHandler` **nuevo por cada nombre de
+logger**; hay ~50 nombres distintos en 53 llamadas, todos sobre `logs/sqp.log`.
+Con decenas de descriptores abiertos, `doRollover()` cerraba sólo el suyo y
+`os.rename` fallaba con `WinError 32`. Y como el rollover ocurre **dentro** del
+`try` de `emit`, al lanzar se saltaba la escritura: **el registro se perdía**.
 
-### AUD-MED-002 · La promoción de calibradores instalaba en producción sin comprobar la muestra
+**Evidencia.** `sqp.log` congelado en 4.999.946 B contra `maxBytes` 5.000.000,
+con `sqp.log.3` presente y `.1`/`.2` ausentes; primer `WinError 32` el
+2026-09-06 23:30:44; 1.002 bloques `--- Logging error ---` en `run_diario.log`.
+Reproducción aislada: 1 handler → 3 backups, 0 errores; 2 handlers → 0 backups,
+**162 registros perdidos de 200**.
 
-- **Evidencia:** `REPRODUCIDO` · **Confianza:** HIGH
-- **Componente:** `src/sqp/calibration/calibrator.py`, `promote_calibrators`
-- **Activación:** una clave en el registro de staging cuyo `<key>_n_val.json`
-  falta o no parsea.
-- **Reproducción** (mismo candidato, **1 evento** de validación OOS):
+**Corrección.** Una única instancia de `RotatingFileHandler` por proceso,
+memoizada y compartida por todos los loggers. Se comparte el **objeto** en vez
+de reorganizar la jerarquía padre/hijos para no alterar ninguna otra semántica
+(niveles, propagación, riesgo de líneas duplicadas). `logging.Handler` lleva su
+propio lock.
 
-  | Caso | Antes | Después |
-  |---|---|---|
-  | meta con `n_val_events=1` | rechazado | rechazado |
-  | **sin** fichero de meta | **PROMOVIDO** | rechazado |
-  | meta JSON corrupto | **PROMOVIDO** | rechazado |
+**Verificado en producción:** tras el cambio, `sqp.log` **rotó** (`sqp.log.1` =
+4.999.946 B, nuevo `sqp.log` = 871 B) y desaparecieron los tracebacks.
 
-- **Causa raíz:** `_load_staging_meta` devuelve `None` tanto para «no existe»
-  como para «ilegible», y el guard estaba escrito `if meta is not None:`. Un
-  **default-allow** dentro de la única puerta cuyo propósito declarado es «el
-  guard que habría dejado fuera al candidato `n_val=9` del 2026-07-02», y
-  contrario al resto del proyecto (`clv_gate` y `prediction_gate` deniegan por
-  defecto ante un registro ausente).
-- **La ventana no es teórica:** `train_calibration` llama a `_set_best_method`
-  **antes** de `_write_staging_meta`; una interrupción entre ambas deja
-  exactamente una clave staged sin metadato.
-- **Ruta de exposición:** `scripts/promote_calibration.py --yes`.
-  `auto_promote_calibrators` no estaba afectado (prefiltra por su cuenta).
-- **Corrección aplicada:** `_motivo_muestra_insuficiente`, default-deny, con el
-  motivo en el log. `force` sigue pudiendo saltarlo (es el guard de muestra, no
-  el de defecto estructural, que no se salta ni con `force`).
-- **Pruebas añadidas:** 3 (meta ausente, meta corrupto, contraprueba con `force`).
-  No existía ninguna: `grep n_val_events tests/` sólo cubría metadatos presentes.
-
-### AUD-MED-003 · Tres tareas programadas fallaban en silencio; la validación OOS lleva rota desde el 2026-09-01
-
-- **Evidencia:** `VERIFICADO_ESTÁTICAMENTE` (la brecha) + estado observado (el fallo)
-- **Componentes:** `VALIDATE_OOS.bat`, `BACKFILL_ALL.bat`, `CAPTURE_CLOSE.bat`,
-  `REFRESH_ML.bat`, `scripts/run_status.py`
-- **Estado observado** (`Get-ScheduledTaskInfo`, 2026-09-06):
-  `SQP_Validate_OOS_Cdev` → `last=2026-09-01 12:00`, **`rc=0x1`**, `next=2026-10-01`.
-- **Evidencia de la brecha:** sólo `SETTLE_ALL`, `RUN_DIARIO_ALL` y
-  `DIARIO_COMPLETO` invocaban `run_status.py`; los demás terminaban su rama
-  `:error` con un `echo`. Y `--stage` sólo admitía `{settle, run}`, así que ni
-  siquiera podían registrarse. **Nada** lee `LastTaskResult` (`grep` sobre `src`,
-  `scripts`, `*.ps1`, `*.bat`): el centinela es el único mecanismo.
-- **Consecuencia:** la validación OOS mensual —la que vigila que los parámetros
-  sigan generalizando— lleva cinco días fallada sin que el health check, el
-  banner del tablero ni ninguna alarma lo señalen, y no se reintenta hasta el
-  2026-10-01. Es el modo de fallo que `sqp/monitoring/run_status.py:3` documenta
-  («el 2026-07-29 terminó con `LastTaskResult = 1` y nadie se enteró»),
-  reaparecido en las tareas que quedaron fuera de la cadena diaria.
-- **Corrección aplicada:** `STAGES` con seis etapas; las cuatro BAT registran
-  fallo y limpian su propia etapa al terminar bien; el health check nombra la
-  etapa y **el BAT a re-ejecutar**.
-- **Pendiente:** la causa raíz del fallo del 2026-09-01 sigue
-  **`NO_VERIFICABLE`**. `main()` devuelve 1 tanto por excepción como por la rama
-  benigna «liga sin cuotas de cierre»; comprobado hoy que de **33 ligas
-  descubiertas, 0** carecen de cierre utilizable, así que esa rama no lo
-  explicaría hoy. Requiere `logs/validate_oos.log`, denegado por permisos.
+**Pruebas:** `tests/test_logging_config.py` (3).
 
 ---
 
-## LOW
+## AUD-HIGH-002 — Producción llevaba 48 h parada sin que ningún control lo dijera
 
-### AUD-LOW-001 · La verificación de integridad avisaba y cargaba igualmente
+**Componentes:** `src/sqp/monitoring/health.py`, `src/sqp/audit/html_report.py`.
 
-`_load_calibrator` registraba «integrity check FAILED … loading anyway» y hacía
-`joblib.load` de todas formas: un control cuyo veredicto no cambia nada. Y
-`joblib.load` es deserialización de pickle, así que cargar un artefacto que se
-sabe alterado es lo contrario de lo que conviene hacer con ese indicio.
+Las dos superficies de alarma leían **sólo** `logs/last_run_status.json`, que
+escribe el propio proceso que falla desde la rama `:error` de su BAT. No existía
+ninguna comprobación independiente de si el pipeline había producido algo.
 
-**Corregido:** devuelve `None` y el mercado se sirve **en crudo**, que es el
-comportamiento seguro por defecto del módulo. Los tres consumidores ya absorbían
-`None` como «sin modelo legible»; se añadió la comprobación que faltaba en
-`apply_calibration` y en `pergame._staged_pergame_predict`. Sin sidecar sigue
-cargando (compatibilidad con modelos anteriores al digest). 2 pruebas nuevas.
+**Evidencia (2026-09-08).** `SQP_Diario_Completo_Cdev` última ejecución
+2026-09-07 12:00:01 → `0x1`; `SQP_Capture_Close_Cdev` 2026-09-08 10:30:02 →
+`0x1`; `logs/last_run_status.json` **inexistente**; informe de salud
+`WARN, 0 errors`; último run completo el **2026-09-06 12:01**; todos los
+artefactos (`candidates_*`, `predictions_*`, `report_latest.html`,
+`prediction_gate.json`) sellados el 2026-09-06.
 
-### AUD-LOW-002 · El hook de secretos no miraba ningún `.md`, y los `.md` sí se versionan
+**Corrección.** `pipeline_liveness(root)` mide la antigüedad del artefacto más
+reciente de `data/predictions/predictions_*.csv` y devuelve el desfase si supera
+`RUN_MAX_AGE_DAYS`. El informe de salud lo eleva a **ERROR**; el banner del
+tablero lo consume **antes** que el centinela.
 
-`check-secrets.sh` excluía `*.md` junto a los directorios de datos. Pero
-`Obsidian/` y `docs/` **están rastreados por git**: una clave pegada en una nota
-llegaba al commit. El patrón 4 del propio hook (`sk-…`, `Bearer …`) está pensado
-justo para prosa.
+- El testigo es `predictions_*` y no `candidates_*` porque `_finalize` lo escribe
+  **siempre** (los candidates se borran si quedan vacíos) y **antes** de
+  construir el tablero, de modo que en un run sano el banner ya ve el sello nuevo.
+- `RUN_MAX_AGE_DAYS = 1.5` **no es un umbral inventado**: sale de la cadencia
+  declarada (tarea diaria a las 12:00). Un artefacto sano tiene 0–24 h; si se
+  pierde un run llega a ~47 h. 36 h es el punto medio: no dispara porque el run
+  de hoy aún no haya llegado, y avisa como mucho ~12 h después de perder uno.
+- La **ausencia total** de artefactos no es fallo: no distingue «nunca ha
+  corrido» de un clon recién hecho.
 
-**Corregido:** exclusión retirada. Medido antes de aplicarlo: **0 coincidencias
-sobre los 297 `.md` rastreados**, así que no introduce falsos positivos.
-Verificado end-to-end que un `.md` con `sk-…` ahora sale con `exit 2`.
+**Verificado:** `pipeline_liveness` devuelve 2,0 días sobre producción y
+`health_check.py` pasa de `WARN, 0 errors` a `ERROR (1 errors, 5 warnings)`.
 
-### AUD-LOW-003 · Siete textos describían un estado que el código ya no tiene
+**Corrección posterior — la mitad del arreglo era decorativa.** La revisión
+cruzada de Codex señaló que `_run_alert_banner()` sólo se evalúa **mientras se
+escribe el HTML**, y `report_latest.html` es un fichero estático que el operador
+abre desde un bookmark: si el pipeline deja de correr, la página no se regenera
+y ese banner **no puede aparecer nunca**, justo en la parada que existe para
+señalar. Era correcto. La página lleva ahora su sello UTC y el umbral, y evalúa
+la frescura **en el navegador** al abrirla y cada 60 s.
 
-Una sola causa raíz: comentarios y documentos que no se movieron con el código.
-
-| Ubicación | Afirmaba | Realidad |
-|---|---|---|
-| `storage/lock.py` | los 120 s son por `fetch_probables` dentro del lock | `d27fdd4` sacó la red de la sección crítica |
-| `audit/html_report.py` | «Existe aparte de *Picks del Día*» | `fae6cdc` fundió las dos vistas |
-| `.gitignore` | el test carga `route-model.py` vía `importlib` | el test afirma que **no existe** |
-| `REPO_DESCRIPTION.md` | tarea diaria «11:00» | 15:00 UTC; la hora local cambió con el horario de verano |
-| `REPO_DESCRIPTION.md` | `settle_all.py --days-from 2` | el BAT usa `3` |
-| `README.md` | `--days-from 2` | ídem |
-| `CAPTURE_CLOSE.bat` + `REPO_DESCRIPTION.md` | captura «horaria» | `Repetition.Interval = PT30M` |
-
-**Corregido** en los siete sitios. Los horarios pasan a expresarse en **UTC**: la
-máquina opera en `Pacific SA Standard Time`, que cambia de −04:00 a −03:00, así
-que la hora local de un `.bat` no es un dato estable.
-
-### AUD-LOW-004 · El `Dockerfile` afirmaba una paridad que no tiene y nadie lo construye
-
-`FROM python:3.11-slim` con el comentario «mismas versiones que produccion/CI»,
-cuando producción corre 3.14 (los `.bat` fijan `SQP_PYTHON` a Python314, y por
-eso CI añadió esa pata). Además `ci.yml` no tiene ningún paso de docker build.
-
-**Corregido parcialmente:** se declara explícitamente que la imagen es de **demo
-y referencia**, no réplica de producción, y que nadie la construye. **No** se
-alineó la base a 3.14: cambiar la imagen base sin poder construirla introduciría
-un riesgo no validado, y un `Dockerfile` roto es peor que uno desfasado. Queda
-en `BACKLOG.md`.
-
-### AUD-LOW-005 · Diez features no recibían fecha de corte; la protección contra fuga vivía entera en el llamador
-
-`team_rest_days` recibía `reference_date` y descartaba `d >= ref`. Sus diez
-hermanas (`team_recent_form`, `team_streak`, `team_avg_margin`, `team_over_rate`,
-`team_h2h_form`, `team_avg_total`, …) tomaban «las últimas n» de la lista que les
-dieran. `build_adjustment_context` recibía `ref_date` y **sólo se lo pasaba a
-`team_rest_days`**.
-
-**No había fuga activa**, y así se verificó: los dos únicos consumidores recortan
-antes —el backtest con `roi_engine._prior_games` (`d < rd`, estrictamente
-anterior) y el run diario con partidos ya terminados—, y además la capa está
-inerte (todos los coeficientes a 0 desde el 2026-09-01). El riesgo era que un
-tercer consumidor introdujera look-ahead en diez features a la vez, sin aviso.
-
-**Defecto asociado, éste sí real:** las cuatro tasas de victoria dividían por
-`len(recent)` pero saltaban con `continue` las filas de marcador ilegible, así
-que esas contaban como **derrota**. Con 4 victorias y una fila rota, un equipo
-con pleno salía 0,80.
-
-**Corregido:** helper `_hasta()`, `reference_date` opcional en las diez, y
-`ref_date` propagado desde `AdjustmentContext`. Divisor = filas realmente leídas,
-con el mismo umbral de 2. **10 pruebas nuevas**, incluida la que demuestra que
-sobre una lista ya recortada el filtro es un **no-op exacto** — que es lo que
-hace seguro añadirlo a un pipeline en producción.
+**Pruebas:** `tests/test_health.py` (5), `tests/test_run_status.py` (3),
+`tests/test_html_report.py` (5, tres de ellas ejecutando el JS real con Node:
+la misma página sin regenerar avisa a los 2 días y no avisa a las 24 h).
 
 ---
 
-## Inferidos (no confirmados, no corregidos)
+## AUD-HIGH-003 — Un ajuste de banca con la cabecera derivada se evaporaba
 
-**AUD-INF-001 · Carrera del lock huérfano.** `storage/lock.py` rompe un `.lock`
-a los 300 s y el titular, al salir, hace `lock.unlink()` sin comprobar que siga
-siendo suyo: podría borrar el candado de un tercero. *Falta la condición
-necesaria:* no se encontró ninguna sección crítica capaz de superar 300 s desde
-que `d27fdd4` sacó la red fuera. Severidad potencial HIGH, confianza LOW.
+**Componente:** `src/sqp/risk/bankroll.py:252`.
 
-**AUD-INF-002 · Temporales de nombre fijo.** `clv_gate.write_clv_gate` y los dos
-escritores de `promotion_log.csv` usan `with_suffix(".tmp")` fijo, el patrón que
-`atomic_write_csv` abandonó por colisión entre escritores concurrentes. *Falta
-la condición:* los tres los escribe un único proceso diario.
+`adjustments_total()` validaba el **valor** del importe pero no la **presencia**
+de su columna: con `amount` renombrada devolvía `0.0` en silencio. Es el hueco
+que `_exigir_pnl_legible` ya cierra en `settled_*.csv`, dejado abierto en el
+otro sumando del saldo. El error va **siempre hacia arriba**: lo que se registra
+ahí son correcciones y retiradas, y de esa cifra cuelgan Kelly y el cap diario.
 
----
+**Evidencia (reproducida).** Banca 1.000 con una pérdida de −100 y una retirada
+de −400: esquema correcto → 500; con `amount` renombrada a `importe` → **900**.
+El fichero **existe en producción** con dos filas reales y se mantiene a mano.
 
-## Falsos positivos descartados
+**Corrección.** Con filas y sin columna `amount`, `LedgerIntegridadError`
+nombrando el fichero y las columnas leídas. Cabecera sin filas sigue siendo cero
+legítimo. `apply_dynamic_bankroll` ya capturaba la excepción y cae a banca 0.
 
-| Sospecha | Evidencia que la refutó |
-|---|---|
-| `_json_para_script` definido y nunca usado → AUD-003 sin cerrar | se invoca en `html_report.py:926`; el primer `grep` usó un nombre equivocado |
-| `discover_leagues_with_odds` rompe con ids con `_` (`frauen_bundesliga`) | usa `rsplit("_", 1)`: parte por el último separador |
-| La tarea diaria se desplazó de 11:00 a 12:00 | horario de verano de Chile; `StartBoundary 12:00-03:00` mantiene la hora UTC |
-| `train_calibration` degrada a split por filas si falta `group_col` | los tres llamadores construyen `event_id` explícitamente |
-| El backtest evalúa las features de ajuste con partidos futuros | `_prior_games` filtra `d < rd` |
-| `run-tests-on-stop.sh` no limpia el centinela al fallar | correcto: el trabajo sigue pendiente, y `stop_hook_active` evita el bucle |
-| `promote_calibrators` copia el modelo sin validar el sidecar | `calibrator_defect` lo bloquea antes, incluso con `force` |
-| La suite escribe en el árbol `data/` real (detectado en fase 5: 37 ficheros con mtime posterior a la apertura) | Aislación deliberada y **consistente**. De los 37, la mayoría son del `SQP_Capture_Close_Cdev` de las 10:30/11:00 (producción normal, ajena a esta sesión). El resto los escriben los tests `slow` que llaman a `run_league(..., mode="demo")` con el `Settings.load()` real, y caen bajo `data/predictions/demo/` y `data/calibration/demo/`. **Los 11 puntos de lectura de vistas y pipeline usan `glob()` no recursivo, nunca `rglob()`**, así que el subárbol `demo/` es estructuralmente invisible; además esas filas llevan `data_label == "demo_synthetic"` y `bankroll._settled` sólo suma `"real"`. Verificado en `audit/report.py:83`, `html_report.py:591,719`, `calibration/data.py:183`, `cleanup.py:99`, `closing_capture.py:35`, `daily.py:319`, `intraday_scan.py:89`, `revalidation.py:171`, `served_store.py:75,81` |
+**Pruebas:** `tests/test_bankroll.py` (5).
 
 ---
 
-## Auditoría independiente concurrente (FUERA de este alcance)
+## AUD-MED-001 — `DIARIO_COMPLETO.bat` no dejaba rastro en ningún log
 
-Durante esta sesión (mtime **10:58**, sin intervención de esta sesión) un proceso
-externo de Codex reescribió `auditoria-integral-codex.md` con una auditoría nueva
-del **mismo commit** `01993fd`, fechada 2026-09-06. Reporta **tres HIGH y tres
-MEDIUM**, todos `REPRODUCED`, y corrobora la misma línea base (1547 passed, 1
-skipped; ruff y mypy limpios; cobertura 89,64 %).
+Todos sus `echo` iban a la consola, y bajo el Programador de tareas no hay
+consola: el guard de árbol, los marcadores de etapa y las **tres ramas de
+error** se perdían enteros. Por eso la causa raíz del fallo del 2026-09-07 es
+indeterminable.
 
-| ID Codex | Sev. | Asunto |
-|---|---|---|
-| AUD-20260906-01 | HIGH | Corrupción **parcial** del ledger infla la banca (`_exigir_pnl_legible` sólo actúa si NO queda ningún PnL numérico) |
-| AUD-20260906-02 | HIGH | La liquidación puede perder escrituras concurrentes |
-| AUD-20260906-03 | HIGH | El gate cuenta varias líneas del mismo partido como ensayos independientes |
-| AUD-20260906-04 | MEDIUM | El backtest cruza resultados de partidos del mismo día |
-| AUD-20260906-05 | MEDIUM | Actualizar abridores no invalida la caché de features MLB |
-| AUD-20260906-06 | MEDIUM | Offline omite el límite de frescura y permite candidatos live con cuotas vencidas |
+**Corrección.** Subrutina `:log` que escribe en consola **y** en
+`logs\diario_completo.log` (rotado con `rotate_log.cmd`), aplicada al guard, a
+las etapas y a las tres ramas de error, que además vuelcan ahí su `git status` y
+la llamada al centinela.
 
-**No están corregidos: quedan fuera de la aprobación de esta sesión**, que cubría
-los confirmados de *este* informe. Se comprobó que **ninguno colisiona** con los
-parches aplicados:
+La redirección va **delante** del `echo` (`>>fichero echo %~1`): con
+`echo %~1>>fichero`, si el mensaje termina en dígito cmd lo lee como descriptor
+y se lo come del texto — y las líneas del aviso de árbol atrasado terminan en un
+SHA.
 
-- El de offline (`06`) actúa en `odds_api.py:143` (`ttl = inf` en modo offline),
-  no en la línea de `odds_cache.py` que se cambió; con `ttl = inf` la condición
-  de caducidad ni se evalúa, así que el nuevo `max(0.0, …)` no lo altera.
-- El del backtest (`04`) es un defecto del *matcher* y de `adapter.observe`,
-  mecanismo distinto del de AUD-LOW-005; el cambio de features es un no-op sobre
-  la salida de `_prior_games`.
-- Los otros cuatro tocan ficheros que esta sesión no modificó.
+**Pruebas:** `tests/test_run_status.py` (3 de contrato) + banco aislado.
 
-**AUD-20260906-01 es un hallazgo legítimo que esta auditoría no encontró:** se
-leyó `bankroll.py` y se dio por suficiente el guard de `_exigir_pnl_legible`, que
-sólo cubre el fichero **totalmente** ilegible. La corrupción parcial atraviesa el
-`fillna(0.0)` y convierte una pérdida en un movimiento de cero. Recomendación:
-tratarlo como el primer punto del siguiente ciclo.
+---
+
+## AUD-MED-002 — `ServedStore` escribía sin lock
+
+`append_graded` es un read-modify-write que **reemplaza el fichero entero** y
+corría sin exclusión: la misma carrera que Codex reprodujo en `_persist_settled`
+(AUD-20260906-02, HIGH) y que allí se corrigió. Los dos ficheros se escriben en
+el mismo pase de liquidación, y ni `settle_all.py` ni `settle_bets.py` añaden
+exclusión externa.
+
+**Corrección.** `with locked(path)` alrededor de la transacción completa en
+`append_graded` y en `append_served`, leyendo `prior` **dentro** del lock.
+
+**Nota de diseño encontrada al probar:** el lock **no es reentrante**. Un
+intercalado real exige un segundo proceso; llamar al store desde dentro de su
+propia sección crítica aborta con `LockNoAdquiridoError` a los 120 s. Es el
+comportamiento correcto, y la prueba se diseñó en consecuencia: comprueba que el
+`.lock` está tomado **en el instante de la escritura**, que es lo único que
+distingue «toma el lock» de «lo toma demasiado tarde».
+
+**Pruebas:** `tests/test_served_store.py` (4).
+
+---
+
+## AUD-MED-003 — La escritura atómica canónica estaba aplicada en 1 de 6 sitios
+
+`storage/atomic.py` existe por el temporal **único** por proceso (causa raíz
+secundaria de AUD-002) y por el `fsync`. Seis sitios lo reimplementaban a mano
+con `.csv.tmp` fijo. La corrección se había aplicado **en uno**:
+`revalidation.py:407`, con un comentario explicando por qué el temporal a mano
+está mal — y 165 líneas antes, en el mismo módulo y sobre el mismo
+`candidates_<liga>.csv`, seguía el temporal a mano.
+
+**Corregidos los seis:** `revalidation.py:74` y `:239`,
+`prediction_gate.py:408`, `degradation.py:212`, `calibrator.py:830` y `:910`.
+Cinco de ellos no participan en ningún lock.
+
+**Pruebas:** `tests/test_storage.py` (2), una de ellas un contrato de fuente que
+impide que el idioma vuelva (ignorando comentarios: la razón del cambio se
+documenta con esas mismas palabras).
+
+---
+
+## AUD-MED-004 — El guard miraba si el árbol estaba sucio, no si estaba atrasado
+
+Producción ejecuta el árbol de trabajo. El 2026-09-08 este clon iba **8 commits
+por detrás de `origin/main`** sin que nada lo dijera: una sesión de remediación
+entera del 2026-09-07, publicada desde otro clon, con correcciones de código en
+`src/sqp/config.py`, `markets/line_movement.py`, `pipeline/budget.py`,
+`pipeline/probabilities.py`, los hooks y `configs/default.yaml`.
+
+> **Corrección del propio informe.** La fase de diagnóstico dijo «2 commits».
+> Era un dato mal inferido: `git fetch --dry-run` imprime un rango de refs, no
+> un conteo, y sólo inspeccioné los dos commits de cabeza. Al traerlos se contó
+> de verdad: son **8**. El hallazgo no cambia — el árbol estaba atrasado y nada
+> lo señalaba —; la magnitud sí, y a peor.
+
+**Corrección.** Tras el guard de árbol sucio, `DIARIO_COMPLETO.bat` compara
+`HEAD` con `@{u}` y avisa si difieren, indicando el comando para ver qué falta.
+
+- **Avisa, no aborta**: detener el pipeline del dinero por un commit de
+  documentación sería un modo de fallo nuevo y desproporcionado.
+- **Hace `git fetch`**: sin él se compararía contra una referencia obsoleta, que
+  es exactamente el estado que produjo el hallazgo.
+- Acotado con `GIT_HTTP_LOW_SPEED_LIMIT/TIME` para que una red caída no cuelgue
+  el run, y **falla abierto** igual que el guard existente.
+
+**Corrección posterior.** Codex señaló que `GIT_HTTP_LOW_SPEED_LIMIT/TIME`
+acota la velocidad de **transferencia HTTP**, no la espera de un gestor de
+credenciales ni la duración del subproceso: bajo el Programador de tareas, sin
+escritorio, un git que pidiera credenciales habría **bloqueado la liquidación**
+— un aviso consultivo parando el pipeline del dinero. Era correcto. Se añadieron
+`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `GIT_ASKPASS` y un **plazo de
+pared duro** (`WaitForExit` + `Kill`, `SQP_FETCH_TIMEOUT_MS`, 20 s por defecto).
+Medido con un git que se cuelga 120 s y plazo de 8 s: **aborta a los 8,7 s con
+código 124** y continúa; con git real, 0 en 0,9 s.
+
+**Pruebas:** `tests/test_run_status.py` (4 de contrato; la del plazo se
+reescribió — Codex la calificó, con razón, de comprobar sólo que existieran los
+nombres de las variables) + banco aislado (6 casos).
+
+---
+
+## AUD-LOW-001 — NO CORREGIDO
+
+El `crossreview-on-stop.sh` de este árbol revisa sólo `HEAD`. Ya está corregido
+en `origin/main` (`c28ee6a`). **La corrección es traer el commit, no editar el
+fichero**, y un `git pull` es un merge: la skill `audit-remediation` lo excluye
+expresamente de la autorización de corrección. Ver `BACKLOG.md`.
+
+---
+
+## AUD-LOW-002 — Frontmatter alineado con el directorio
+
+`memoria-persistente-pro` → `memoria-persistente`; `mlb-pipeline-inspect` →
+`mlb-pipeline`. Verificado: 0 desajustes en las 35 skills. El harness recargó
+ambas con el nombre corregido durante la sesión.
+
+---
+
+## AUD-INF-001 — NO CORREGIDO (inferido)
+
+Lock caducado sin heartbeat: bajo semántica POSIX, una sección crítica de más de
+`LOCK_STALE_S=300 s` puede ser robada, y el titular original borra después el
+`.lock` del segundo, en cascada. En Windows —el SO de producción— el `unlink`
+falla y degrada a espera, que es correcto. No se corrige porque falta una
+condición necesaria: no hay reproducción POSIX posible en esta máquina y la
+sección crítica más larga medida está en decenas de segundos. Ver `BACKLOG.md`.
+
+---
+
+## Falsos positivos descartados (resumen)
+
+Los seis hallazgos de Codex del 2026-09-06 están **cerrados con pruebas
+discriminantes**; los calibradores live y de staging (16 artefactos
+deserializados) **no tienen defecto estructural**; `pip-audit` está **verde** en
+CI; el routing de modelos valida `OK`; **0 referencias de ruta rotas** en 200+
+ficheros de instrucciones; sin secretos versionados; todas las llamadas HTTP con
+timeout; 0 `datetime.now()` naive. Detalle completo en el informe de sesión.
