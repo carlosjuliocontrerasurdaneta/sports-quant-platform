@@ -5,7 +5,7 @@
   "branch": "main",
   "base_commit": "62108b1",
   "commit_created": true,
-  "pushed": false,
+  "pushed": true,
   "python_version": "3.14.4",
   "platform": "win32",
   "skills": [
@@ -22,8 +22,8 @@
     "modified": 0,
     "untracked": 0,
     "behind_upstream": 0,
-    "ahead_upstream": 8,
-    "note": "arbol limpio y al dia con origin/main. El guard de arbol limpio ya no bloquea DIARIO_COMPLETO.bat."
+    "ahead_upstream": 0,
+    "note": "arbol limpio y sincronizado con origin/main (0 por detras, 0 por delante)."
   },
   "tests_initial": {
     "passed": 1636,
@@ -143,10 +143,10 @@
   "profitability_claimed": false,
   "evidence_note": "Ninguna correccion de esta sesion toca el modelo, los umbrales ni la calibracion. El gate sigue en 0 de 41 cortes autorizados con n_max=186 frente a min_n=300. Una correccion validada arregla un defecto; no acredita ventaja predictiva ni rentabilidad.",
   "commits": {
-    "count": 8,
-    "range": "b638049..ff1cfbc (tras rebase: 8 commits propios sobre origin/main)",
-    "pushed": false,
-    "note": "Rebase sobre origin/main, que iba 8 commits por delante (una sesion de remediacion completa del 2026-09-07 publicada desde otro clon). --ff-only ya no era posible. Unico conflicto: known-issues.md, resuelto conservando AMBOS bloques; los KI de esta sesion se renumeraron a 039..043 para no pisar el KI-038 de aquella. NO se empujo: publicar es una accion de salida que no se pidio."
+    "count": 9,
+    "range": "b638049..6c834e2 (9 commits propios sobre origin/main)",
+    "pushed": true,
+    "note": "Rebase sobre origin/main, que iba 8 commits por delante (una sesion de remediacion completa del 2026-09-07 publicada desde otro clon). --ff-only ya no era posible. Unico conflicto: known-issues.md, resuelto conservando AMBOS bloques; los KI de esta sesion se renumeraron a 039..043 para no pisar el KI-038 de aquella. Empujado a main como 6c834e2 por orden expresa del operador."
   },
   "corrections_to_this_report": [
     {
@@ -163,5 +163,20 @@
       "commit": "ff1cfbc"
     }
   ],
-  "production_pipeline_note": "PRODUCCION SIGUE PARADA desde el 2026-09-06 12:01. La sesion se cerro antes de ejecutar DIARIO_COMPLETO.bat, que consume cuota de pago y escribe datos de produccion. El arbol ya esta limpio y al dia, asi que el guard no bloquea: basta lanzarlo. Ver BACKLOG.md B-1."
+  "production_pipeline_note": "PRODUCCION SIGUE PARADA desde el 2026-09-06 12:01. La sesion se cerro antes de ejecutar DIARIO_COMPLETO.bat, que consume cuota de pago y escribe datos de produccion. El arbol ya esta limpio y al dia, asi que el guard no bloquea: basta lanzarlo. Ver BACKLOG.md B-1.",
+  "tests_final_merged": {
+    "passed": 1724,
+    "failed": 0,
+    "skipped": 1,
+    "total": 1725,
+    "duration_s": 1357.29,
+    "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/audit-merged2 --tb=short",
+    "exit_code": 0,
+    "note": "Sobre el arbol COMBINADO (mis 9 commits mas los 8 del remoto). Termino dos minutos DESPUES del push: el push se hizo con ruff y mypy limpios sobre ese arbol y con la suite aun corriendo, por orden expresa del operador. Verificado a posteriori: verde."
+  },
+  "cross_review_2": {
+    "reviewer": "codex",
+    "findings": 0,
+    "note": "Segunda pasada sobre los cambios del turno del rebase: sin defectos sustantivos. 158 pruebas dirigidas; rotacion de logs y BAT revisados estaticamente, no ejecutados."
+  }
 }

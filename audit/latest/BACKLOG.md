@@ -27,21 +27,18 @@ sistema, y el único que puede mover el gate del 0 de 41 actual.
 
 ---
 
-## B-2 · Publicar los 8 commits locales
+## B-2 · CERRADO · Los commits están publicados
 
-`git push`. Los commits están **guardados en local** pero no publicados, así que
-otro clon puede volver a divergir: exactamente la situación que produjo
-AUD-MED-004. La sesión no empujó porque publicar es una acción de salida que no
-se pidió explícitamente.
+`origin/main` iba **8 commits por delante** (una sesión de remediación completa
+del 2026-09-07 publicada desde otro clon, con cambios en `src/sqp/config.py`,
+`markets/line_movement.py`, `pipeline/budget.py`, `pipeline/probabilities.py`,
+los cuatro hooks `PostToolUse`, `.claude/settings.json` y `configs/default.yaml`).
+Se trajeron con `git rebase` —`--ff-only` ya no era posible— resolviendo el único
+conflicto, `known-issues.md`, conservando ambos bloques y renumerando los KI de
+esta sesión a **039–043** para no pisar el KI-038 de aquella.
 
-Contexto de lo que sí se hizo: `origin/main` iba **8 commits por delante** (una
-sesión de remediación completa del 2026-09-07 publicada desde otro clon, con
-cambios en `src/sqp/config.py`, `markets/line_movement.py`, `pipeline/budget.py`,
-`pipeline/probabilities.py`, los cuatro hooks `PostToolUse`,
-`.claude/settings.json` y `configs/default.yaml`). Se trajeron con `git rebase`
-—`--ff-only` ya no era posible— resolviendo el único conflicto,
-`known-issues.md`, conservando ambos bloques y renumerando los KI de esta sesión
-a **039–043** para no pisar el KI-038 de aquella.
+Los 9 commits de esta sesión se empujaron a `main` como `6c834e2`. Árbol
+sincronizado: 0 por detrás, 0 por delante.
 
 Con eso, **AUD-LOW-001 queda cerrado**: el `crossreview-on-stop.sh` corregido
 (`c28ee6a`) ya está en el árbol que ejecuta producción.
