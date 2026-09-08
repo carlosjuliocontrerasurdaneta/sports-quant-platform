@@ -42,6 +42,7 @@ from sqp.audit.patterns import (conclusions, load_pick_history,
 from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
+from sqp.monitoring.health import RUN_MAX_AGE_DAYS, pipeline_liveness
 from sqp.monitoring.run_status import read_run_status
 from sqp.evaluation.labels import (EN_JUEGO, decision_prob, game_date_local,
                                    local_date, local_today, match_label,
@@ -633,8 +634,29 @@ def _run_alert_banner(root: Path | None = None) -> str:
     El dashboard se abre solo al terminar el run, asi que es donde el operador
     mira de todos modos. Sin esto, un fallo del pipeline solo era visible
     entrando al Programador de tareas (auditoria 2026-07-29, S-1).
+
+    DOS FUENTES, NO UNA (AUD-HIGH-002, auditoria integral 2026-09-08). El
+    centinela lo escribe el propio proceso que falla; si no llega a su rama
+    `:error`, el banner se quedaba vacio sobre un tablero que mostraba picks de
+    hace dos dias sin advertirlo. La comprobacion de liveness no depende de que
+    nadie escriba nada: mira la edad del ultimo artefacto que el run produce.
+    Se evalua PRIMERO porque "no ha corrido" describe mejor la situacion que
+    cualquier etapa concreta, y ademas cubre el caso en que no hay centinela.
     """
-    st = read_run_status(root if root is not None else ROOT)
+    raiz = root if root is not None else ROOT
+    vivo = pipeline_liveness(raiz)
+    if vivo:
+        edad = html.escape(f"{vivo['age_days']:.1f}")
+        art = html.escape(str(vivo["artifact"]))
+        return (
+            '<div class="runalert">'
+            f"<strong>El pipeline diario NO ha generado nada en {edad} dias</strong> "
+            f"(artefacto mas reciente: <code>{art}</code>). "
+            "Los picks mostrados son de un run anterior y pueden no ser "
+            "apostables. Re-ejecutar <code>DIARIO_COMPLETO.bat</code> y revisar "
+            "por que la tarea programada no completo."
+            "</div>")
+    st = read_run_status(raiz)
     if not st or not st.get("failed"):
         return ""
     stage = html.escape(str(st.get("stage", "?")))
@@ -931,6 +953,7 @@ def html_dashboard(predictions_dir: Path | None = None,
 
     page = _TEMPLATE.format(
         run_alert=_run_alert_banner(),
+        max_edad_dias=RUN_MAX_AGE_DAYS,
         coverage=_coverage_note(),
         day=html.escape(day),
         generated=html.escape(ts),
@@ -1015,6 +1038,7 @@ _TEMPLATE = """<!DOCTYPE html>
   {coverage}
 </header>
 {run_alert}
+<div id="stale-alert"></div>
 <nav class="tabs">
   <div class="tab active" data-tab="todos">Picks del Dia</div>
   <div class="tab" data-tab="audit">Auditoria</div>
@@ -1083,6 +1107,46 @@ _TEMPLATE = """<!DOCTYPE html>
 <script>
 const DATA = {data_json};
 const COLS = DATA.columns;
+
+// AVISO DE TABLERO RANCIO, EVALUADO AL ABRIR LA PAGINA.
+//
+// El banner del servidor ({run_alert}) se calcula UNA VEZ, mientras se escribe
+// este HTML, y `report_latest.html` es un fichero estatico que el operador abre
+// desde un bookmark. Si el pipeline deja de correr, la pagina NO se regenera,
+// asi que aquel banner no puede aparecer nunca: justo en la parada que existe
+// para senalar, se queda mudo. Lo senalo la revision cruzada de Codex sobre el
+// arreglo de AUD-HIGH-002, y tenia razon.
+//
+// Esto se evalua en el NAVEGADOR, contra el reloj del que mira, y ademas se
+// reevalua cada minuto para una pestana que quede abierta. Mismo umbral que
+// `sqp.monitoring.health.RUN_MAX_AGE_DAYS`, y la misma redaccion.
+const GENERADO_UTC = "{generated}";
+const MAX_EDAD_DIAS = {max_edad_dias};
+
+function _instanteDeGeneracion() {{
+  // El sello va como YYYYMMDDTHHMMSSZ: se expande a ISO para que Date lo lea.
+  const m = /^(\\d{{4}})(\\d{{2}})(\\d{{2}})T(\\d{{2}})(\\d{{2}})(\\d{{2}})Z$/.exec(GENERADO_UTC);
+  if (!m) return null;
+  const t = Date.parse(`${{m[1]}}-${{m[2]}}-${{m[3]}}T${{m[4]}}:${{m[5]}}:${{m[6]}}Z`);
+  return Number.isNaN(t) ? null : t;
+}}
+
+function pintarAvisoDeFrescura() {{
+  const caja = document.getElementById("stale-alert");
+  if (!caja) return;
+  const t = _instanteDeGeneracion();
+  if (t === null) return;              // sello ilegible: no se inventa una alarma
+  const dias = (Date.now() - t) / 86400000;
+  if (dias <= MAX_EDAD_DIAS) {{ caja.innerHTML = ""; return; }}
+  caja.innerHTML = '<div class="runalert">'
+    + '<strong>Este tablero tiene ' + dias.toFixed(1) + ' dias</strong> y el '
+    + 'pipeline diario no lo ha vuelto a generar. Los picks mostrados son de un '
+    + 'run anterior y pueden no ser apostables. Re-ejecutar '
+    + '<code>DIARIO_COMPLETO.bat</code> y revisar por que la tarea programada '
+    + 'no completo.</div>';
+}}
+pintarAvisoDeFrescura();
+setInterval(pintarAvisoDeFrescura, 60000);
 let rows = DATA.picks.slice();
 let sortKey = "estimated_edge", sortDir = -1;
 let activeSports = new Set();

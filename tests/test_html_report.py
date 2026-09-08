@@ -1,10 +1,17 @@
 """HTML dashboard: three tabs, stats bar, and pick rows from real candidate data."""
 import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from sqp.audit import html_report, patterns
 from sqp.audit.html_report import html_dashboard, open_in_browser
+from sqp.monitoring.health import RUN_MAX_AGE_DAYS
 
 
 def _candidates() -> pd.DataFrame:
@@ -428,3 +435,97 @@ class TestNoSePuedeInyectarMarcadoDesdeLosDatos:
             "los DOS formateadores de texto deben escapar")
         assert 'txt: v => v == null ? "" : v,' not in fuente, (
             "queda un formateador que devuelve el valor sin escapar")
+
+
+# --- El aviso de tablero rancio se evalua AL ABRIR (revision cruzada Codex) ---
+#
+# `_run_alert_banner()` se calcula UNA VEZ, mientras se escribe el HTML, y
+# `report_latest.html` es un fichero estatico que el operador abre desde un
+# bookmark. Si el pipeline deja de correr, la pagina NO se regenera y aquel
+# banner no puede aparecer NUNCA: justo en la parada que existe para senalar, se
+# queda mudo. Lo detecto la revision cruzada de Codex sobre el arreglo de
+# AUD-HIGH-002 (2026-09-08) y era correcto.
+
+_NODE = shutil.which("node")
+
+
+def _pagina(tmp_path):
+    from sqp.audit.html_report import html_dashboard
+    pred, bets = tmp_path / "pred", tmp_path / "bets"
+    pred.mkdir(parents=True, exist_ok=True)
+    bets.mkdir(parents=True, exist_ok=True)
+    return Path(html_dashboard(predictions_dir=pred, bets_dir=bets)).read_text(
+        encoding="utf-8")
+
+
+def test_la_pagina_lleva_su_sello_y_su_umbral(tmp_path):
+    """Sin estos dos datos, el navegador no puede decidir nada por su cuenta."""
+    t = _pagina(tmp_path)
+    assert '<div id="stale-alert"></div>' in t
+    sello = re.search(r'const GENERADO_UTC = "([0-9TZ]+)";', t)
+    umbral = re.search(r"const MAX_EDAD_DIAS = ([0-9.]+);", t)
+    assert sello and re.fullmatch(r"\d{8}T\d{6}Z", sello.group(1))
+    assert umbral and float(umbral.group(1)) == RUN_MAX_AGE_DAYS
+
+
+def test_el_aviso_se_reevalua_solo_en_una_pestana_abierta(tmp_path):
+    t = _pagina(tmp_path)
+    assert "pintarAvisoDeFrescura();" in t
+    assert "setInterval(pintarAvisoDeFrescura, 60000)" in t
+
+
+def _ejecutar_js(pagina: str, ahora_ms: float) -> str:
+    """Ejecuta el bloque de frescura de la pagina con un reloj controlado y
+    devuelve el HTML que deja en el contenedor."""
+    i = pagina.index("const GENERADO_UTC")
+    j = pagina.index("setInterval(pintarAvisoDeFrescura")
+    bloque = pagina[i:j]
+    # El bloque se ejecuta DENTRO de una funcion: ahi `const Date` y
+    # `const document` sombran a los globales sin caer en la zona muerta
+    # temporal que produce declararlos en el mismo ambito que se lee.
+    guion = (
+        "const _Date = Date;\n"
+        "function correr(ahora, caja) {\n"
+        "  const document = {getElementById: () => caja};\n"
+        "  const Date = {now: () => ahora, parse: _Date.parse};\n"
+        + bloque +
+        "\n  return caja.innerHTML;\n}\n"
+        f"console.log(JSON.stringify(correr({ahora_ms!r}, {{innerHTML: ''}})));\n")
+    r = subprocess.run([_NODE, "-e", guion],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout.strip())
+
+
+@pytest.mark.skipif(_NODE is None, reason="node no disponible")
+def test_una_pagina_generada_hoy_no_avisa(tmp_path):
+    t = _pagina(tmp_path)
+    sello = re.search(r'const GENERADO_UTC = "([0-9TZ]+)";', t).group(1)
+    gen = datetime.strptime(sello, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    ahora = (gen + timedelta(hours=1)).timestamp() * 1000
+    assert _ejecutar_js(t, ahora) == ""
+
+
+@pytest.mark.skipif(_NODE is None, reason="node no disponible")
+def test_la_MISMA_pagina_avisa_cuando_pasan_los_dias(tmp_path):
+    """EL caso que el banner del servidor no puede cubrir: el fichero no se
+    vuelve a generar, y aun asi el aviso aparece al abrirlo."""
+    t = _pagina(tmp_path)
+    sello = re.search(r'const GENERADO_UTC = "([0-9TZ]+)";', t).group(1)
+    gen = datetime.strptime(sello, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    ahora = (gen + timedelta(days=2)).timestamp() * 1000
+    salida = _ejecutar_js(t, ahora)
+    assert "runalert" in salida
+    assert "2.0 dias" in salida
+    assert "DIARIO_COMPLETO.bat" in salida
+
+
+@pytest.mark.skipif(_NODE is None, reason="node no disponible")
+def test_el_borde_del_umbral_no_avisa_por_debajo(tmp_path):
+    """Contraprueba: a las 24 h -- run de ayer, el de hoy aun pendiente -- no
+    puede avisar, o avisaria todos los dias."""
+    t = _pagina(tmp_path)
+    sello = re.search(r'const GENERADO_UTC = "([0-9TZ]+)";', t).group(1)
+    gen = datetime.strptime(sello, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    assert _ejecutar_js(t, (gen + timedelta(hours=24)).timestamp() * 1000) == ""
+    assert _ejecutar_js(t, (gen + timedelta(hours=37)).timestamp() * 1000) != ""

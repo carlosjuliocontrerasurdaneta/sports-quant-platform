@@ -169,3 +169,77 @@ def test_a_game_not_yet_played_is_not_counted_as_lost(tmp_path):
     r = generate_health_report(root=tmp_path)
     assert r["served_pending_expired_total"] == {}
     assert r["served_pending_expired"] == {}
+
+
+# --- Liveness del pipeline (AUD-HIGH-002, auditoria integral 2026-09-08) -------
+#
+# El 2026-09-08, con produccion 48 h sin generar un solo pick, este informe decia
+# `WARN, 0 errors`: sus dos alarmas de etapa leian SOLO el centinela
+# `logs/last_run_status.json`, que escribe el propio proceso que falla. La tarea
+# del 2026-09-07 fallo con 0x1 sin llegar a su rama `:error`, asi que no habia
+# centinela que leer y todo quedo en verde.
+
+def _predicciones(root, dias_atras: float):
+    import os
+    import time
+    d = root / "data" / "predictions"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / "predictions_mlb.csv"
+    p.write_text("event_id,home,away\n1,A,B\n", encoding="utf-8")
+    t = time.time() - dias_atras * 86400
+    os.utime(p, (t, t))
+    return p
+
+
+def test_un_pipeline_parado_es_ERROR_aunque_no_haya_centinela(tmp_path):
+    """El caso exacto del 2026-09-07: artefactos viejos y centinela ausente."""
+    from sqp.monitoring.health import pipeline_liveness
+    _predicciones(tmp_path, dias_atras=2.0)
+    assert not (tmp_path / "logs" / "last_run_status.json").exists()
+    v = pipeline_liveness(tmp_path)
+    assert v is not None and v["age_days"] >= 1.5
+    r = generate_health_report(root=tmp_path)
+    assert r["status"] == "ERROR"
+    assert any("NO ha generado nada" in e for e in r["errors"])
+    assert any("DIARIO_COMPLETO.bat" in e for e in r["errors"])
+
+
+def test_un_pipeline_al_dia_no_genera_error_de_liveness(tmp_path):
+    from sqp.monitoring.health import pipeline_liveness
+    _predicciones(tmp_path, dias_atras=0.5)
+    assert pipeline_liveness(tmp_path) is None
+    r = generate_health_report(root=tmp_path)
+    assert not any("NO ha generado nada" in e for e in r["errors"])
+
+
+def test_el_run_de_hoy_todavia_pendiente_no_dispara_la_alarma(tmp_path):
+    """Contraprueba del umbral: a las 11:00, con el run de ayer a las 12:00, el
+    artefacto tiene ~23 h. Alarmar ahi seria alarmar todos los dias."""
+    from sqp.monitoring.health import pipeline_liveness
+    _predicciones(tmp_path, dias_atras=0.98)
+    assert pipeline_liveness(tmp_path) is None
+
+
+def test_sin_artefactos_no_se_declara_parada(tmp_path):
+    """Ausencia total no distingue "nunca ha corrido" de un clon recien hecho, y
+    esa ambiguedad no debe producir una alarma."""
+    from sqp.monitoring.health import pipeline_liveness
+    assert pipeline_liveness(tmp_path) is None
+    r = generate_health_report(root=tmp_path)
+    assert not any("NO ha generado nada" in e for e in r["errors"])
+
+
+def test_manda_el_artefacto_MAS_RECIENTE(tmp_path):
+    """Un `predictions_*` viejo de una liga fuera de temporada no puede declarar
+    parado un pipeline que si esta produciendo."""
+    import os
+    import time
+    from sqp.monitoring.health import pipeline_liveness
+    d = tmp_path / "data" / "predictions"
+    d.mkdir(parents=True, exist_ok=True)
+    for nombre, dias in (("predictions_wnba.csv", 40.0), ("predictions_mlb.csv", 0.2)):
+        p = d / nombre
+        p.write_text("event_id\n1\n", encoding="utf-8")
+        t = time.time() - dias * 86400
+        os.utime(p, (t, t))
+    assert pipeline_liveness(tmp_path) is None

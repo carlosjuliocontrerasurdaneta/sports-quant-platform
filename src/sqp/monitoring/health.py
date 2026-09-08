@@ -30,6 +30,17 @@ SERVED_EXPIRED_DAYS = 3.0
 # ACCIONABLE (una fila que acaba de expirar: el proveedor puede estar roto ahora)
 # de la perdida acumulada. No es un umbral nuevo: es el que ya define el store.
 PENDING_MAX_AGE_DAYS = 7.0
+# Antiguedad maxima del ultimo artefacto que produce el run diario antes de
+# declarar que el pipeline NO esta vivo (AUD-HIGH-002, auditoria integral
+# 2026-09-08).
+#
+# El umbral NO se inventa: sale de la cadencia declarada. `SQP_Diario_Completo_Cdev`
+# corre una vez al dia a las 12:00, asi que en un sistema sano el artefacto mas
+# reciente tiene entre 0 y ~24 h. Si el run de ayer fallo, hoy antes de las 12:00
+# ese artefacto pasa de 24 h y llega hasta ~47 h. La frontera esta por tanto
+# entre 24 h y 47 h, y 36 h es su punto medio: no dispara porque el run de hoy
+# aun no haya llegado, y si dispara como mucho ~12 h despues de perder un run.
+RUN_MAX_AGE_DAYS = 1.5
 # Que BAT re-ejecutar por etapa. Un aviso que no dice como recuperarse manda a
 # buscar, y buscar es justo lo que no se hace cuando el aviso llega solo
 # (AUD-MED-003, 2026-09-06).
@@ -205,6 +216,45 @@ def _served_pending_expired(root: Path) -> tuple[dict[str, int], dict[str, int]]
     return recientes, total
 
 
+def pipeline_liveness(root: Path = ROOT,
+                      max_age_days: float = RUN_MAX_AGE_DAYS) -> dict | None:
+    """El pipeline diario NO ha producido nada en `max_age_days`, o `None`.
+
+    COMPROBACION INDEPENDIENTE DEL CENTINELA (AUD-HIGH-002, auditoria integral
+    2026-09-08, HIGH). Hasta ahora las dos unicas alarmas del proyecto -- este
+    informe y el banner rojo del tablero -- leian SOLO
+    `logs/last_run_status.json`, un fichero que escribe el propio proceso que
+    falla desde la rama `:error` de su BAT. Si el fallo no llega a esa rama, si
+    el interprete no arranca o si el centinela desaparece, todo queda en verde.
+
+    Paso exactamente eso: el 2026-09-07 a las 12:00 `SQP_Diario_Completo_Cdev`
+    fallo con `0x1` sin escribir una linea en ningun log, el centinela no
+    existia, y el 2026-09-08 a las 11:05 -- con produccion 48 h sin generar un
+    solo pick -- el informe seguia diciendo `WARN, 0 errors` y el banner estaba
+    apagado.
+
+    El testigo es `predictions_<liga>.csv` y no `candidates_<liga>.csv` por dos
+    razones: `_finalize` lo escribe SIEMPRE, aunque el run no produzca ningun
+    candidato (los candidates se BORRAN cuando quedan vacios, asi que su ausencia
+    es ambigua), y se escribe ANTES de construir el tablero, de modo que durante
+    un run sano el banner ya ve el sello fresco.
+
+    La AUSENCIA total de artefactos no es un fallo: no distingue "nunca ha
+    corrido" de una instalacion recien clonada, y esa ambiguedad es justo la que
+    no debe producir una alarma. Lo que se vigila es un artefacto VIEJO.
+    """
+    pred = root / "data" / "predictions"
+    edades = [(_age_days(p), p.name) for p in pred.glob("predictions_*.csv")]
+    frescos = [(e, n) for e, n in edades if e is not None]
+    if not frescos:
+        return None
+    edad, nombre = min(frescos)           # el artefacto MAS reciente manda
+    if edad <= max_age_days:
+        return None
+    return {"age_days": edad, "artifact": nombre, "n_artifacts": len(frescos),
+            "max_age_days": max_age_days}
+
+
 def generate_health_report(root: Path = ROOT) -> dict:
     data = root / "data"
     leagues: dict[str, dict] = {}
@@ -263,6 +313,18 @@ def generate_health_report(root: Path = ROOT) -> dict:
             f"{run_status.get('failed_at', 'fecha desconocida')}); "
             f"revisar logs/ y re-ejecutar {_BAT_POR_ETAPA.get(etapa, 'el BAT correspondiente')}")
 
+    # Liveness: independiente del centinela A PROPOSITO. Es ERROR y no aviso
+    # porque significa que el sistema NO esta produciendo su salida principal --
+    # la lista diaria de todos los deportes y mercados --, que es la unica razon
+    # por la que existe (AUD-HIGH-002).
+    liveness = pipeline_liveness(root)
+    if liveness:
+        errors.append(
+            f"el pipeline diario NO ha generado nada en {liveness['age_days']:.1f} "
+            f"dias (artefacto mas reciente: {liveness['artifact']}, umbral "
+            f"{liveness['max_age_days']:.1f}d); re-ejecutar DIARIO_COMPLETO.bat "
+            f"y revisar por que la tarea programada no completo")
+
     served_expired, served_expired_total = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):
         warnings.append(f"{lg}: {n} served row(s) pending beyond the scores "
@@ -305,6 +367,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
         "registry_exists": (data / "models" / "registry.json").exists(),
         "served_pending_expired": served_expired,
         "served_pending_expired_total": served_expired_total,
+        "pipeline_liveness": liveness,
         "status": "ERROR" if errors else ("WARN" if warnings else "OK"),
         "errors": errors,
         "warnings": warnings,
