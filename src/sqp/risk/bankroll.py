@@ -250,7 +250,33 @@ class BankrollLedger:
                 f"{ADJUSTMENTS_FILE} no es parseable ({exc}): el saldo no es "
                 f"verificable.") from exc
         if "amount" not in adj.columns:
-            return 0.0
+            # Fichero VACIO de filas: no hay ningun movimiento que leer mal, y
+            # "sin ajustes" es el estado normal. Cero legitimo.
+            if adj.empty:
+                return 0.0
+            # Con filas y SIN columna `amount` el saldo no es verificable
+            # (AUD-HIGH-003, auditoria integral 2026-09-08, HIGH, REPRODUCIDO).
+            # La guarda de abajo valida el VALOR del importe, pero no validaba
+            # la PRESENCIA de su columna, asi que una cabecera derivada --
+            # `importe`, `Amount`, un espacio de mas, o las columnas desplazadas
+            # por un campo extra -- hacia desaparecer los ajustes en silencio.
+            #
+            # Es exactamente el hueco que `_exigir_pnl_legible` cierra en
+            # `settled_*.csv`, dejado abierto en el OTRO sumando del saldo.
+            # Reproducido: banca 1.000 con una perdida de -100 y una retirada de
+            # -400 da 500; renombrando `amount` a `importe` daba **900**, con la
+            # retirada evaporada. El error va SIEMPRE hacia arriba, porque lo
+            # que se registra aqui son correcciones y retiradas, y de esa cifra
+            # cuelgan el Kelly y el cap de exposicion diaria.
+            #
+            # El fichero se mantiene A MANO, que es justo donde una deriva de
+            # cabecera es plausible; hoy tiene dos filas reales.
+            raise LedgerIntegridadError(
+                f"{ADJUSTMENTS_FILE} tiene {len(adj)} filas pero ninguna columna "
+                f"'amount' (columnas leidas: {list(adj.columns)}). Un ajuste cuyo "
+                f"importe no se puede localizar NO es un ajuste de cero: una "
+                f"retirada que se evapora SUBE la banca. El saldo no es "
+                f"verificable.")
         # Aqui NO hay estado exento: un ajuste sin cantidad no es un ajuste de
         # cero, es un movimiento que no sabemos leer. Codex lo reprodujo con la
         # otra mitad de KI-032: banca 1.000 con una retirada de -400 da 600, y

@@ -434,3 +434,54 @@ class TestElDiagnosticoNoPuedeRomperse:
                                      _row("ERROR", result="loss")])
         with pytest.raises(LedgerIntegridadError, match=r"\[4\]"):
             BankrollLedger(root=tmp_path, initial=1000.0).current_balance()
+
+
+# --- Esquema de los ajustes manuales (AUD-HIGH-003, auditoria 2026-09-08) -----
+#
+# `adjustments_total` validaba el VALOR del importe pero no la PRESENCIA de su
+# columna: con la cabecera derivada devolvia 0.0 en silencio y la retirada
+# desaparecia. Es el hueco que `_exigir_pnl_legible` ya cierra en settled_*.csv,
+# dejado abierto en el otro sumando del saldo. El error va SIEMPRE hacia arriba.
+
+def _ajustes(tmp_path, texto: str):
+    bets = tmp_path / "data" / "bets"
+    bets.mkdir(parents=True, exist_ok=True)
+    (bets / "settled_mlb.csv").write_text(
+        "pnl,data_label,result,stake\n-100,real,loss,100\n", encoding="utf-8")
+    (bets / "bankroll_adjustments.csv").write_text(texto, encoding="utf-8")
+    return BankrollLedger(root=tmp_path, initial=1000.0)
+
+
+def test_una_retirada_con_la_columna_renombrada_no_se_evapora(tmp_path):
+    """Reproducido antes de corregir: daba 900,0 con la retirada desaparecida."""
+    led = _ajustes(tmp_path, "date,importe,kind,note\n2026-01-01,-400,withdrawal,x\n")
+    with pytest.raises(LedgerIntegridadError, match="amount"):
+        led.current_balance()
+
+
+def test_el_esquema_correcto_sigue_sumando(tmp_path):
+    led = _ajustes(tmp_path, "date,amount,kind,note\n2026-01-01,-400,withdrawal,x\n")
+    assert led.adjustments_total() == -400.0
+    assert led.current_balance() == 500.0
+
+
+def test_un_fichero_de_ajustes_sin_filas_es_un_cero_legitimo(tmp_path):
+    """Lo normal es no haber hecho ningun ajuste: eso no puede ser un error."""
+    led = _ajustes(tmp_path, "date,amount,kind,note\n")
+    assert led.adjustments_total() == 0.0
+    assert led.current_balance() == 900.0
+
+
+def test_una_cabecera_desplazada_por_un_campo_de_mas_tampoco_pasa(tmp_path):
+    """Mismo modo de fallo que KI-011, en el fichero de ajustes: pandas toma la
+    primera columna como indice y `amount` deja de existir con ese nombre."""
+    led = _ajustes(tmp_path, "date,amount,kind\n2026-01-01,-400,withdrawal,SOBRA\n")
+    with pytest.raises(LedgerIntegridadError):
+        led.current_balance()
+
+
+def test_el_error_nombra_las_columnas_que_si_encontro(tmp_path):
+    """Un diagnostico que no dice que se leyo manda a adivinar."""
+    led = _ajustes(tmp_path, "date,importe,kind\n2026-01-01,-400,withdrawal\n")
+    with pytest.raises(LedgerIntegridadError, match="importe"):
+        led.current_balance()
