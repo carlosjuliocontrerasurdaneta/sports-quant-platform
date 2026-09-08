@@ -184,3 +184,59 @@ def test_atomic_write_csv_fsyncs_before_replace(tmp_path, monkeypatch):
     assert calls == ["fsync", "replace"]
     assert pd.read_csv(out)["a"].tolist() == [1, 2]
     assert not (tmp_path / "x.csv.tmp").exists()
+
+
+# --- Un solo mecanismo de escritura atomica (AUD-MED-003, auditoria 2026-09-08)
+#
+# `storage/atomic.py` existe por dos razones: un temporal UNICO por proceso y
+# llamada (la causa raiz secundaria de AUD-002: con `.csv.tmp` fijo, dos
+# escritores pueden renombrar el fichero a medio escribir del otro) y el fsync
+# que da durabilidad. Seis sitios lo reimplementaban a mano, y la correccion se
+# habia aplicado en UNO: `revalidation.py:407`, con un comentario explicando por
+# que el temporal a mano esta mal, mientras 165 lineas antes -- en el mismo
+# modulo y sobre el mismo `candidates_<liga>.csv` -- seguia el temporal a mano.
+
+def test_ningun_modulo_reimplementa_la_escritura_atomica_a_mano():
+    """Contrato de fuente: el idioma `with_suffix(".csv.tmp")` no vuelve.
+
+    Se ignoran comentarios y docstrings: la razon del cambio SI se documenta con
+    esas palabras, y prohibir la palabra prohibiria explicar el defecto.
+    """
+    import re
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parents[1] / "src" / "sqp"
+    patron = re.compile(r'with_suffix\(\s*f?["\']\.csv\.tmp["\']')
+    culpables = []
+    for py in sorted(raiz.rglob("*.py")):
+        for n, linea in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            codigo = linea.split("#", 1)[0]
+            if patron.search(codigo):
+                culpables.append(f"{py.relative_to(raiz)}:{n}")
+    assert not culpables, (
+        "escritura atomica reimplementada a mano (usar "
+        "sqp.storage.atomic.atomic_write_csv): " + ", ".join(culpables))
+
+
+def test_el_temporal_de_atomic_write_lleva_el_pid(tmp_path, monkeypatch):
+    """Lo que hace imposible la colision entre dos escritores del mismo destino."""
+    import os
+
+    import pandas as pd
+
+    from sqp.storage.atomic import atomic_write_csv
+    vistos = []
+    original = pd.DataFrame.to_csv
+
+    def espiar(self, path_or_buf=None, *a, **k):
+        if path_or_buf is not None:
+            vistos.append(str(path_or_buf))
+        return original(self, path_or_buf, *a, **k)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", espiar)
+    destino = tmp_path / "x.csv"
+    atomic_write_csv(pd.DataFrame({"a": [1]}), destino)
+    monkeypatch.undo()
+    assert vistos and str(os.getpid()) in vistos[0]
+    assert vistos[0] != str(destino)
+    assert destino.exists()
+    assert not list(tmp_path.glob("*.tmp")), "quedo un temporal sin limpiar"

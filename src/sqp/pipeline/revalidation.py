@@ -71,9 +71,13 @@ def _append_log(rows: list[dict], root: Path,
                                           if c not in prior.columns]
             new = pd.concat([prior.reindex(columns=cols),
                              new.reindex(columns=cols)], ignore_index=True)
-    tmp = path.with_suffix(".csv.tmp")
-    new.to_csv(tmp, index=False)
-    tmp.replace(path)
+    # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
+    # integral 2026-09-08): aporta fsync y un nombre de temporal UNICO por
+    # proceso. El `.csv.tmp` fijo que habia aqui es la colision que AUD-002
+    # senala como causa raiz secundaria, y este log se escribe FUERA del lock
+    # de candidates, asi que dos pases solapados de CAPTURE_CLOSE podian
+    # renombrar el fichero a medio escribir del otro.
+    atomic_write_csv(new, path)
 
 
 def _revoke_row(df: pd.DataFrame, idx: int, flag: str, stamp: str) -> None:
@@ -236,9 +240,14 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
                     df.loc[df.index[idx], "reval_action"] = "keep"
                 changed = True
             if changed:
-                tmp = cf.with_suffix(".csv.tmp")
-                df.to_csv(tmp, index=False)
-                tmp.replace(cf)
+                # Mismo helper que usa `revalidate_pitchers` sobre ESTE MISMO
+                # fichero (AUD-MED-003, auditoria integral 2026-09-08): aquella
+                # correccion se aplico 165 lineas mas abajo y este sitio se
+                # quedo con el temporal a mano, sin fsync. `candidates_*.csv`
+                # guarda los stakes y las revocaciones: un corte de energia
+                # entre el replace y el volcado a disco dejaba el nombre bueno
+                # apuntando a datos incompletos.
+                atomic_write_csv(df, cf)
                 summary["leagues"].append(league)
     _append_log(log_rows, root)
     return summary

@@ -27,6 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.report import graded_in_window, load_all_settled
+from sqp.storage.atomic import atomic_write_csv
 
 DEGRADATION_FILENAME = "degradation_pause.json"
 DEGRADATION_LOG_FILENAME = "degradation_log.csv"
@@ -209,9 +210,9 @@ def append_degradation_log(transitions: list[dict], bets_dir: Path) -> Path | No
             cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
             new = pd.concat([prior.reindex(columns=cols), new.reindex(columns=cols)],
                             ignore_index=True)
-    tmp = path.with_suffix(".csv.tmp")
-    new.to_csv(tmp, index=False)
-    tmp.replace(path)
+    # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
+    # integral 2026-09-08): temporal UNICO por proceso y fsync.
+    atomic_write_csv(new, path)
     return path
 
 

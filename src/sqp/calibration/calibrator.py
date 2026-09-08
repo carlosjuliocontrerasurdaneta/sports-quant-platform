@@ -28,6 +28,7 @@ from sklearn.isotonic import IsotonicRegression
 from sqp.calibration.metrics import (brier_score, calibration_report,
                                      expected_calibration_error)
 from sqp.config import ROOT
+from sqp.storage.atomic import atomic_write_csv
 from sqp.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -827,9 +828,11 @@ def promote_calibrators(keys: list[str] | None = None,
             cols = list(prior.columns) + [c for c in new_df.columns if c not in prior.columns]
             new_df = pd.concat([prior.reindex(columns=cols),
                                 new_df.reindex(columns=cols)], ignore_index=True)
-        tmp = log_path.with_suffix(".csv.tmp")
-        new_df.to_csv(tmp, index=False)
-        tmp.replace(log_path)
+        # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
+        # integral 2026-09-08): temporal UNICO por proceso y fsync. Este es el
+        # log de promocion de calibradores: la traza de que modelo entro en
+        # produccion y cuando.
+        atomic_write_csv(new_df, log_path)
     return promoted
 
 
@@ -907,9 +910,8 @@ def auto_promote_calibrators(results: list[dict], *,
             cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
             new = pd.concat([prior.reindex(columns=cols),
                              new.reindex(columns=cols)], ignore_index=True)
-        tmp = log_path.with_suffix(".csv.tmp")
-        new.to_csv(tmp, index=False)
-        tmp.replace(log_path)
+        # Mismo helper que el otro escritor de este log (AUD-MED-003).
+        atomic_write_csv(new, log_path)
     return {"promoted": promoted, "demoted": demoted,
             "skipped": [k for k, _ in skipped]}
 

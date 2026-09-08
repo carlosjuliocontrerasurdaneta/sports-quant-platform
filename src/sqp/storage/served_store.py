@@ -25,6 +25,7 @@ import pandas as pd
 
 from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
+from sqp.storage.lock import locked
 
 log = get_logger("sqp.served_store")
 
@@ -142,29 +143,38 @@ class ServedStore:
 
     def append_served(self, league: str, rows: list[dict]) -> int:
         """Persist served rows, skipping any (event, market, selection, line)
-        already captured the same run day. Returns rows written."""
+        already captured the same run day. Returns rows written.
+
+        TODA la transaccion corre BAJO EL LOCK del fichero (AUD-MED-002,
+        auditoria integral 2026-09-08). Ver `append_graded` para el razonamiento
+        completo. Aqui el riesgo es menor -- la escritura normal es un `append`,
+        que puede duplicar pero no perder --, pero la rama de reconciliacion de
+        esquema SI reemplaza el fichero entero, y la deduplicacion es un
+        read-modify-write en las dos ramas.
+        """
         if not rows:
             return 0
         df = pd.DataFrame(rows).reindex(columns=COLUMNS)
         p = self.served_path(league)
         self.dir.mkdir(parents=True, exist_ok=True)
-        prior = self._load(p)
-        if not prior.empty and set(KEY_COLS).issubset(prior.columns):
-            have = _serve_keys(prior)
-            keep = [k not in have for k in _keys_in_order(df)]
-            df = df[keep]
-        if df.empty:
-            return 0
-        # Schema-drift guard (KI-011 failure mode): a header that no longer
-        # matches COLUMNS gets reconciled by column union and rewritten aligned;
-        # the normal case stays a cheap append.
-        if p.exists() and _header(p) != COLUMNS:
-            cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
-            combined = pd.concat([prior.reindex(columns=cols), df.reindex(columns=cols)],
-                                 ignore_index=True)
-            _atomic_write_csv(combined, p)
-        else:
-            df.to_csv(p, mode="a", header=not p.exists(), index=False)
+        with locked(p):
+            prior = self._load(p)
+            if not prior.empty and set(KEY_COLS).issubset(prior.columns):
+                have = _serve_keys(prior)
+                keep = [k not in have for k in _keys_in_order(df)]
+                df = df[keep]
+            if df.empty:
+                return 0
+            # Schema-drift guard (KI-011 failure mode): a header that no longer
+            # matches COLUMNS gets reconciled by column union and rewritten aligned;
+            # the normal case stays a cheap append.
+            if p.exists() and _header(p) != COLUMNS:
+                cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
+                combined = pd.concat([prior.reindex(columns=cols), df.reindex(columns=cols)],
+                                     ignore_index=True)
+                _atomic_write_csv(combined, p)
+            else:
+                df.to_csv(p, mode="a", header=not p.exists(), index=False)
         return len(df)
 
     def pending(self, league: str, max_age_days: int = 7,
@@ -190,24 +200,48 @@ class ServedStore:
 
     def append_graded(self, league: str, graded: pd.DataFrame) -> pd.DataFrame:
         """Dedup against prior graded rows and persist (idempotent, atomic).
-        Returns the NEWLY graded rows."""
+        Returns the NEWLY graded rows.
+
+        TODA la transaccion -- leer, deduplicar, combinar y escribir -- corre
+        BAJO EL LOCK del fichero (AUD-MED-002, auditoria integral 2026-09-08).
+        Es la MISMA carrera que Codex reprodujo en `_persist_settled`
+        (AUD-20260906-02, HIGH): un read-modify-write que reemplaza el fichero
+        entero. El temporal unico y `os.replace` impiden ver un fichero a
+        medias, pero no impiden que un escritor sustituya el resultado completo
+        de otro. La correccion de aquel hallazgo se aplico al fichero del dinero
+        (`settled_*.csv`) y no a este, pese a que los dos se escriben en el mismo
+        pase de liquidacion y ninguno de los dos scripts que lo lanzan
+        (`settle_all.py`, `settle_bets.py`) anade exclusion externa.
+        `prior` se lee DENTRO del lock a proposito: leerlo fuera y escribir
+        dentro no arregla nada, porque el estado puede haber cambiado entre
+        ambos.
+
+        Que se pierde si falla: `graded_*.csv` alimenta a los calibradores y al
+        gate de prediccion. No cuesta dinero directo, pero corrompe el recurso
+        mas escaso del sistema -- la muestra independiente que decide si un
+        mercado llega alguna vez a llevar stake.
+
+        La seccion critica no toca la red: es lectura y escritura de un CSV
+        local. Se activa al solapar una liquidacion manual con la programada.
+        """
         if graded.empty:
             return graded
         p = self.graded_path(league)
         self.dir.mkdir(parents=True, exist_ok=True)
-        prior = self._load(p)
-        if not prior.empty and set(KEY_COLS).issubset(prior.columns):
-            have = _serve_keys(prior)
-            graded = graded[[k not in have for k in _keys_in_order(graded)]]
-        if graded.empty:
-            return graded
-        if prior.empty:
-            _atomic_write_csv(graded, p)
-        else:
-            cols = list(prior.columns) + [c for c in graded.columns if c not in prior.columns]
-            combined = pd.concat([prior.reindex(columns=cols),
-                                  graded.reindex(columns=cols)], ignore_index=True)
-            _atomic_write_csv(combined, p)
+        with locked(p):
+            prior = self._load(p)
+            if not prior.empty and set(KEY_COLS).issubset(prior.columns):
+                have = _serve_keys(prior)
+                graded = graded[[k not in have for k in _keys_in_order(graded)]]
+            if graded.empty:
+                return graded
+            if prior.empty:
+                _atomic_write_csv(graded, p)
+            else:
+                cols = list(prior.columns) + [c for c in graded.columns if c not in prior.columns]
+                combined = pd.concat([prior.reindex(columns=cols),
+                                      graded.reindex(columns=cols)], ignore_index=True)
+                _atomic_write_csv(combined, p)
         return graded
 
 

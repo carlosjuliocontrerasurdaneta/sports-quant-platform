@@ -223,3 +223,89 @@ def test_quarantine_failure_does_not_raise(tmp_path, monkeypatch):
     monkeypatch.setattr("pathlib.Path.rename", _boom)
     assert store._load(p).empty      # degrades, does not raise
     assert p.exists()                # left in place for manual repair
+
+
+# --- Exclusion de los escritores (AUD-MED-002, auditoria integral 2026-09-08) --
+#
+# `append_graded` es un read-modify-write que REEMPLAZA el fichero entero, y
+# corria sin lock: la misma carrera que Codex reprodujo en `_persist_settled`
+# (AUD-20260906-02) y que alli se corrigio. Se activa al solapar una liquidacion
+# manual con la programada.
+
+@pytest.mark.parametrize("metodo", ["append_graded", "append_served"])
+def test_la_escritura_ocurre_con_el_lock_del_fichero_TOMADO(tmp_path, monkeypatch,
+                                                            metodo):
+    """La transaccion entera -- leer, deduplicar, combinar y escribir -- corre
+    dentro de la seccion critica.
+
+    Se comprueba en el INSTANTE de la escritura, que es la unica forma de
+    distinguir "toma el lock" de "toma el lock demasiado tarde": leer fuera y
+    escribir dentro no arregla la carrera, porque el estado puede cambiar entre
+    ambos (es la correccion que `revalidation.py` ya habia aplicado y que
+    `_persist_settled` repitió).
+
+    Un intercalado real exige un SEGUNDO PROCESO: el lock no es reentrante y
+    llamar al store desde dentro de su propia seccion critica aborta con
+    `LockNoAdquiridoError` a los 120 s -- comprobado al escribir esta prueba, y
+    es el comportamiento correcto.
+    """
+    import sqp.storage.served_store as ss
+    store = ServedStore(tmp_path)
+    ruta = (store.graded_path("wnba") if metodo == "append_graded"
+            else store.served_path("wnba"))
+    visto = {}
+
+    original = ss._atomic_write_csv
+
+    def espiar(df, out):
+        visto["lock"] = ruta.with_suffix(ruta.suffix + ".lock").exists()
+        original(df, out)
+
+    monkeypatch.setattr(ss, "_atomic_write_csv", espiar)
+    if metodo == "append_graded":
+        store.append_graded("wnba", pd.DataFrame([_row(event_id="evA")])
+                            .reindex(columns=COLUMNS))
+    else:
+        # La rama de reconciliacion de esquema es la que reemplaza el fichero
+        # entero; se fuerza con una cabecera que ya no coincide con COLUMNS.
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        ruta.write_text("event_id,market\nviejo,h2h\n", encoding="utf-8")
+        store.append_served("wnba", [_row(event_id="evA")])
+    monkeypatch.undo()
+    assert visto.get("lock") is True, (
+        f"{metodo} escribio SIN el lock del fichero tomado: vuelve a haber un "
+        f"read-modify-write sin exclusion")
+
+
+def test_append_graded_sigue_siendo_idempotente_bajo_el_lock(tmp_path):
+    store = ServedStore(tmp_path)
+    fila = pd.DataFrame([_row(event_id="evX")]).reindex(columns=COLUMNS)
+    assert len(store.append_graded("wnba", fila)) == 1
+    assert len(store.append_graded("wnba", fila)) == 0
+    assert len(pd.read_csv(store.graded_path("wnba"))) == 1
+
+
+def test_append_served_sigue_siendo_idempotente_bajo_el_lock(tmp_path):
+    store = ServedStore(tmp_path)
+    assert store.append_served("wnba", [_row(event_id="evY")]) == 1
+    assert store.append_served("wnba", [_row(event_id="evY")]) == 0
+    assert len(pd.read_csv(store.served_path("wnba"))) == 1
+
+
+def test_el_lock_se_libera_aunque_la_escritura_falle(tmp_path, monkeypatch):
+    """Un fallo dentro de la seccion critica no puede dejar el candado puesto:
+    el siguiente pase se quedaria esperando hasta agotar el timeout."""
+    import sqp.storage.served_store as ss
+    store = ServedStore(tmp_path)
+    fila = pd.DataFrame([_row(event_id="evZ")]).reindex(columns=COLUMNS)
+
+    def revienta(df, out):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(ss, "_atomic_write_csv", revienta)
+    with pytest.raises(OSError):
+        store.append_graded("wnba", fila)
+    monkeypatch.undo()
+    lock = store.graded_path("wnba")
+    assert not lock.with_suffix(lock.suffix + ".lock").exists()
+    assert len(store.append_graded("wnba", fila)) == 1

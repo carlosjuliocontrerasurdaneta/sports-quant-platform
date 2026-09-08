@@ -80,6 +80,7 @@ import pandas as pd
 from scipy.stats import binomtest
 
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_csv
 
 log = get_logger(__name__)
 
@@ -405,9 +406,11 @@ def _append_latch_log(rows: list[dict], bets_dir: Path) -> Path | None:
                                           if c not in prior.columns]
             new = pd.concat([prior.reindex(columns=cols),
                              new.reindex(columns=cols)], ignore_index=True)
-    tmp = path.with_suffix(".csv.tmp")
-    new.to_csv(tmp, index=False)
-    tmp.replace(path)
+    # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
+    # integral 2026-09-08): temporal UNICO por proceso y fsync. Este modulo no
+    # participa en ningun lock, asi que dos escrituras solapadas del historial
+    # del gate podian renombrar el fichero a medio escribir de la otra.
+    atomic_write_csv(new, path)
     return path
 
 
