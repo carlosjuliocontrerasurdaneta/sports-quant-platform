@@ -4,52 +4,51 @@ Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
 
 ---
 
-## B-1 · URGENTE: producción sigue parada, y estos cambios la bloquean
+## B-1 · URGENTE: producción sigue parada. Un comando.
 
-**Estado: requiere acción del operador. Dos comandos.**
+**Estado: pendiente, requiere al operador.**
 
-El pipeline no genera picks desde el **2026-09-06 12:01**. Esta sesión ha
-corregido la **ceguera** (ahora el informe de salud da `ERROR` y el tablero
-enciende el banner), pero **no ha relanzado el pipeline**: hacerlo consume cuota
-de API de pago y escribe datos de producción, y `audit-remediation` exige para
-eso una aprobación humana separada de la aprobación de la corrección.
-
-Además, el árbol está **sucio** con las correcciones de esta sesión, así que
-`DIARIO_COMPLETO.bat` **abortará en el guard KI-036** hasta que se commiteen.
-El guard funciona: es el comportamiento correcto, no un efecto secundario.
-
-Secuencia para recuperar el servicio:
+El pipeline no genera picks desde el **2026-09-06 12:01**. Esta sesión corrigió
+la **ceguera** (el informe de salud da `ERROR` y el tablero enciende el banner al
+abrirlo) y dejó el árbol **limpio y al día**, así que el guard ya no bloquea:
 
 ```
-git add -A && git commit          # desbloquea el guard de árbol limpio
-DIARIO_COMPLETO.bat               # settle -> run, en ese orden
+DIARIO_COMPLETO.bat
 ```
 
-Después conviene `git pull --ff-only` (ver B-2). Verificación de que el servicio
-volvió: `python scripts/health_check.py` debe dejar de emitir el `ERROR` de
-liveness.
+**No se ejecutó** porque consume cuota de API de pago y escribe datos de
+producción, y la sesión se cerró antes de llegar a ese paso. Verificación de que
+el servicio volvió: `python scripts/health_check.py` debe dejar de emitir el
+`ERROR` de liveness, y `data/predictions/predictions_*.csv` debe traer sello de
+hoy.
+
+Mientras siga parado, no se acumula muestra graduada — el recurso más escaso del
+sistema, y el único que puede mover el gate del 0 de 41 actual.
 
 ---
 
-## B-2 · AUD-LOW-001 · Traer los 2 commits de `origin/main`
+## B-2 · Publicar los 8 commits locales
 
-`origin/main` va por delante en **8 commits**: una sesión de remediación
-completa del 2026-09-07 publicada desde otro clon (AUD-MED-001..003,
-AUD-LOW-001..005 de *aquel* informe, más su KI-038), que toca `src/sqp/config.py`,
-`markets/line_movement.py`, `pipeline/budget.py`, `pipeline/probabilities.py`,
-los cuatro hooks `PostToolUse`, `.claude/settings.json` y `configs/default.yaml`.
-El árbol de producción no los tiene.
+`git push`. Los commits están **guardados en local** pero no publicados, así que
+otro clon puede volver a divergir: exactamente la situación que produjo
+AUD-MED-004. La sesión no empujó porque publicar es una acción de salida que no
+se pidió explícitamente.
 
-**Nota:** la fase de diagnóstico dijo «2 commits». Estaba mal inferido de
-`git fetch --dry-run`, que imprime un rango de refs y no un conteo.
+Contexto de lo que sí se hizo: `origin/main` iba **8 commits por delante** (una
+sesión de remediación completa del 2026-09-07 publicada desde otro clon, con
+cambios en `src/sqp/config.py`, `markets/line_movement.py`, `pipeline/budget.py`,
+`pipeline/probabilities.py`, los cuatro hooks `PostToolUse`,
+`.claude/settings.json` y `configs/default.yaml`). Se trajeron con `git rebase`
+—`--ff-only` ya no era posible— resolviendo el único conflicto,
+`known-issues.md`, conservando ambos bloques y renumerando los KI de esta sesión
+a **039–043** para no pisar el KI-038 de aquella.
 
-**No se aplicó** porque `git pull` es un merge, y la skill `audit-remediation`
-excluye expresamente commits, pushes y merges de la autorización de corrección.
-Editar el hook a mano sería peor: crearía una divergencia con el remoto.
+Con eso, **AUD-LOW-001 queda cerrado**: el `crossreview-on-stop.sh` corregido
+(`c28ee6a`) ya está en el árbol que ejecuta producción.
 
-**Cierre:** `git pull --ff-only` (o `--rebase` si ya hay commits locales), y
-después la suite. Riesgo bajo: avance rápido sobre un árbol que, una vez
-commiteado B-1, no diverge en esos ficheros.
+**Nota de exactitud:** la fase de diagnóstico dijo «2 commits». Estaba mal
+inferido de `git fetch --dry-run`, que imprime un rango de refs y no un conteo.
+Eran 8.
 
 ---
 

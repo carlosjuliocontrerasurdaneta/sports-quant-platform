@@ -4,24 +4,27 @@
   "finished_utc": "2026-09-08T16:05:00Z",
   "branch": "main",
   "base_commit": "62108b1",
-  "commit_created": false,
+  "commit_created": true,
   "pushed": false,
   "python_version": "3.14.4",
   "platform": "win32",
-  "skills": ["full-audit (fases 0-3)", "audit-remediation (fases 4-5)"],
+  "skills": [
+    "full-audit (fases 0-3)",
+    "audit-remediation (fases 4-5)"
+  ],
   "model": "claude-opus-5",
-
   "git_state_initial": {
     "modified": 0,
     "untracked": 0,
     "note": "arbol limpio al abrir. main == origin/main LOCAL (62108b1), pero la referencia remota estaba OBSOLETA: el remoto real iba 2 commits por delante (c28ee6a, 1d987b7), publicados desde otro clon. Ese desfase es el hallazgo AUD-MED-004."
   },
   "git_state_final": {
-    "modified": 24,
-    "untracked": 2,
-    "note": "sin commitear a proposito: la skill audit-remediation prohibe commits sin autorizacion especifica. CONSECUENCIA OPERATIVA: el guard de arbol limpio de DIARIO_COMPLETO.bat abortara el run de manana hasta que se commitee (BACKLOG.md B-1)."
+    "modified": 0,
+    "untracked": 0,
+    "behind_upstream": 0,
+    "ahead_upstream": 8,
+    "note": "arbol limpio y al dia con origin/main. El guard de arbol limpio ya no bloquea DIARIO_COMPLETO.bat."
   },
-
   "tests_initial": {
     "passed": 1636,
     "failed": 0,
@@ -42,21 +45,35 @@
     "delta_tests_added": 35
   },
   "static_gates_final": {
-    "ruff": {"command": "ruff check --no-cache src scripts tests", "exit_code": 0},
-    "mypy": {"command": "mypy --cache-dir=.codex-tmp/mypy src", "exit_code": 0, "files": 98}
+    "ruff": {
+      "command": "ruff check --no-cache src scripts tests",
+      "exit_code": 0
+    },
+    "mypy": {
+      "command": "mypy --cache-dir=.codex-tmp/mypy src",
+      "exit_code": 0,
+      "files": 98
+    }
   },
-
   "findings_addressed": [
-    "AUD-HIGH-001", "AUD-HIGH-002", "AUD-HIGH-003",
-    "AUD-MED-001", "AUD-MED-002", "AUD-MED-003", "AUD-MED-004",
+    "AUD-HIGH-001",
+    "AUD-HIGH-002",
+    "AUD-HIGH-003",
+    "AUD-MED-001",
+    "AUD-MED-002",
+    "AUD-MED-003",
+    "AUD-MED-004",
     "AUD-LOW-002",
-    "CODEX-01", "CODEX-02"
+    "CODEX-01",
+    "CODEX-02",
+    "AUD-LOW-001"
   ],
   "findings_not_addressed": [
-    {"id": "AUD-LOW-001", "reason": "ya corregido en origin/main (c28ee6a); su remedio es un git pull, que es un merge y la skill lo excluye de la autorizacion de correccion"},
-    {"id": "AUD-INF-001", "reason": "INFERIDO, no confirmado: sin reproduccion POSIX posible en win32"}
+    {
+      "id": "AUD-INF-001",
+      "reason": "INFERIDO, no confirmado: sin reproduccion POSIX posible en win32"
+    }
   ],
-
   "files_modified": [
     "DIARIO_COMPLETO.bat",
     "src/sqp/logging_config.py",
@@ -97,7 +114,6 @@
   ],
   "deletions_performed": true,
   "deletions_note": "Las cuatro rutas eliminadas estaban IGNORADAS por git (git ls-files sobre ellas: 0 resultados) y fueron aprobadas como L-1, L-3, L-4 y L-5. L-2 quedo PARCIAL: dos directorios de .codex-tmp tienen ACL denegada a la sesion. Ningun fichero versionado se borro.",
-
   "cross_review": {
     "reviewer": "codex",
     "trigger": ".claude/hooks/crossreview-on-stop.sh",
@@ -108,7 +124,6 @@
     "accepted_and_fixed": 2,
     "note": "Los dos defectos estaban en las CORRECCIONES de esta sesion, no en el codigo preexistente: el banner de liveness solo se evaluaba al generar el HTML estatico, y el git fetch no tenia plazo de pared ni bloqueo de interactividad. Ninguna de las 1666 pruebas, ni ruff, ni mypy los habrian detectado: no son fallos de codigo, son controles que dicen algo distinto de lo que miden."
   },
-
   "authorization_required_actions_taken": [],
   "risk_parameters_changed": false,
   "shadow_mode_changed": false,
@@ -121,12 +136,32 @@
   "production_data_written": false,
   "scheduled_tasks_touched": false,
   "commits_or_merges_performed": false,
-
   "coverage_result": "COMPLETA_CON_EXCLUSIONES_DECLARADAS",
   "final_result": "DEGRADED",
   "final_result_rationale": "Se cumplen (a), (b) y (c) de PASS segun STATES.md: todos los comandos requeridos terminaron con codigo 0 (pytest 1671/0/1, ruff, mypy), las validaciones especificas de cada hallazgo se ejecutaron -- incluidas dos verificaciones sobre el estado REAL de produccion (sqp.log volvio a rotar; health_check paso de WARN a ERROR) -- y los artefactos obligatorios estan escritos y son legibles. Es DEGRADED y no PASS por tres limitaciones acotadas, no criticas y registradas: (1) L-2 quedo parcial por ACL denegada sobre dos directorios de .codex-tmp; (2) AUD-LOW-001 no se corrigio porque su remedio es un git pull, excluido de la autorizacion de correccion; (3) los .bat no los cubre ninguna puerta automatica -- se validaron en un banco git aislado con 6 casos, pero CI no los ejecuta. Ninguna bloquea el objetivo aprobado, y las acciones que requieren aprobacion humana posterior (recuperar el servicio, traer los commits) quedan registradas como siguiente decision, que es lo que STATES.md permite dejar fuera de BLOCKED. NOTA CRITICA NO TECNICA: produccion sigue PARADA desde el 2026-09-06 12:01 y estos cambios la mantienen parada hasta que se commiteen, porque el guard de arbol limpio abortara; la recuperacion son dos comandos del operador (BACKLOG.md B-1).",
-
   "predictive_edge_demonstrated": false,
   "profitability_claimed": false,
-  "evidence_note": "Ninguna correccion de esta sesion toca el modelo, los umbrales ni la calibracion. El gate sigue en 0 de 41 cortes autorizados con n_max=186 frente a min_n=300. Una correccion validada arregla un defecto; no acredita ventaja predictiva ni rentabilidad."
+  "evidence_note": "Ninguna correccion de esta sesion toca el modelo, los umbrales ni la calibracion. El gate sigue en 0 de 41 cortes autorizados con n_max=186 frente a min_n=300. Una correccion validada arregla un defecto; no acredita ventaja predictiva ni rentabilidad.",
+  "commits": {
+    "count": 8,
+    "range": "b638049..ff1cfbc (tras rebase: 8 commits propios sobre origin/main)",
+    "pushed": false,
+    "note": "Rebase sobre origin/main, que iba 8 commits por delante (una sesion de remediacion completa del 2026-09-07 publicada desde otro clon). --ff-only ya no era posible. Unico conflicto: known-issues.md, resuelto conservando AMBOS bloques; los KI de esta sesion se renumeraron a 039..043 para no pisar el KI-038 de aquella. NO se empujo: publicar es una accion de salida que no se pidio."
+  },
+  "corrections_to_this_report": [
+    {
+      "que": "AUD-MED-004 decia que el arbol iba 2 commits por detras",
+      "realidad": "iban 8",
+      "causa": "dato mal inferido de `git fetch --dry-run`, que imprime un rango de refs y no un conteo; solo se inspeccionaron los dos commits de cabeza",
+      "impacto": "el hallazgo no cambia -- el arbol estaba atrasado y nada lo senalaba --; la magnitud si, y a peor. Corregido en FINDINGS.md y BACKLOG.md."
+    }
+  ],
+  "regressions_introduced_and_fixed_in_session": [
+    {
+      "que": "Al pasar de comparar SHA por igualdad a contar HEAD..@{u}, el mensaje del aviso cambio y una de las dos pruebas de contrato se quedo anclada al texto viejo.",
+      "detectado_por": "el hook run-tests-on-stop, no por mi: habia validado el BAT en el banco aislado y no reejecute las pruebas de contrato tras ese ultimo cambio",
+      "commit": "ff1cfbc"
+    }
+  ],
+  "production_pipeline_note": "PRODUCCION SIGUE PARADA desde el 2026-09-06 12:01. La sesion se cerro antes de ejecutar DIARIO_COMPLETO.bat, que consume cuota de pago y escribe datos de produccion. El arbol ya esta limpio y al dia, asi que el guard no bloquea: basta lanzarlo. Ver BACKLOG.md B-1."
 }
