@@ -1,5 +1,5 @@
 ---
-name: memoria-persistente-pro
+name: memoria-persistente
 description: >
   Sistema de memoria persistente del proyecto. Carga contexto al inicio y mantiene
   decisiones, issues, roadmap, arquitectura y resúmenes de sesión. El almacén

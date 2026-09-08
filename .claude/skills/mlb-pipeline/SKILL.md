@@ -1,5 +1,5 @@
 ---
-name: mlb-pipeline-inspect
+name: mlb-pipeline
 description: >
   Inspeccionar la estructura operacional del pipeline MLB (scripts, configs, BATs)
   minimizando consumo de contexto — "cómo funciona el pipeline de béisbol",
