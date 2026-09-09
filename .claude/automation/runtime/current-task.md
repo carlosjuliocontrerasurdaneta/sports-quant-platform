@@ -1,7 +1,7 @@
 # Current Task
 
 Status: closed
-Result: VERIFICADO — pendiente de aprobación para commit
+Result: VERIFICADO y publicado (6cddc4d). Tarea siguiente: KI-047, pruebas de comportamiento del guard de despacho — VERIFICADO, pendiente de aprobación para commit
 Primary loop: `bugfix.md`
 Skills: `bugfix`
 Iteration: 1 / 1

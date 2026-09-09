@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -853,3 +855,166 @@ def test_el_hook_prefiere_lo_no_commiteado_sobre_lo_no_publicado():
     i_unc = next(i for i, ln in enumerate(ejecutable) if "--uncommitted" in ln)
     i_base = next(i for i, ln in enumerate(ejecutable) if "--base" in ln)
     assert i_unc < i_base, "lo no commiteado dejo de tener prioridad"
+
+
+# ---------------------------------------------------------------------------
+# Comportamiento del guard de despacho (`require-dispatch-model.sh`).
+#
+# Es el MECANISMO que aplica toda la politica de modelos: sin el, "delegar por
+# complejidad" no ocurre. Hasta el 2026-09-09 no tuvo NI UNA prueba de lo que
+# HACE. Estaba cubierto por el test de cableado y por el de timeout -- que
+# exista y que este enchufado --, no por lo que decide.
+#
+# Y ya fallo una vez por eso, segun su propio comentario: con
+# `${modelo:-__PARSE_FAIL__}` un `model` AUSENTE (cadena vacia) se confundia con
+# un fallo de parseo y el hook NO BLOQUEABA NUNCA. Sintaxis valida, control
+# inerte. Misma familia que KI-031, KI-035 y el `codex_command` de KI-046: el
+# control existe, esta enchufado y no hace lo que dice.
+#
+# MEDIDO el 2026-09-09 sobre los 60 transcripts del proyecto: 65 despachos
+# reales de `Agent`; 56 sin `model`, TODOS anteriores al cableado del 2026-09-03
+# (commit 2ca864c), y uno posterior -- 2026-09-08T11:16:46Z, `subagent=Explore`,
+# `model` ausente -- que el hook BLOQUEO, registrado como `tool_result` con
+# `is_error=True`. El guard dispara de verdad. Estas pruebas existen para que
+# siga haciendolo.
+#
+# NO SE INVOCA BASH, por la razon que declara la cabecera de
+# `test_hook_targets.py`: `subprocess` en esta maquina resuelve el bash de WSL
+# --sin distro-- y eso ya produjo un diagnostico equivocado el 2026-09-05. Se
+# ejercita el NUCLEO del hook: el `python -c` incrustado que extrae el modelo,
+# EXTRAIDO DEL PROPIO FICHERO y no reescrito aqui, porque una copia derivaria.
+# El despachador de tres lineas que lo envuelve se fija por contrato.
+# ---------------------------------------------------------------------------
+
+
+def _guard() -> str:
+    return (ROOT / ".claude/hooks/require-dispatch-model.sh").read_text(encoding="utf-8")
+
+
+def _parser_del_guard() -> str:
+    """El `python -c "..."` tal cual vive en el hook."""
+    hook = _guard()
+    marca = 'python -c "'
+    assert marca in hook, "el guard dejo de extraer el modelo con python"
+    inicio = hook.index(marca) + len(marca)
+    return hook[inicio:hook.index('"', inicio)]
+
+
+def _modelo_visto_por_el_guard(entrada: str) -> str:
+    """Lo que el hook obtiene en `$modelo` para esa entrada de stdin.
+
+    Se recortan SOLO los saltos finales, que es lo unico que recorta la
+    sustitucion de comandos `$( )` de bash. Un `.strip()` aqui seria un
+    error de medida, no una comodidad: recortaria los espacios que el
+    parser del hook debe recortar por su cuenta, y el test dejaria de ver
+    si `.strip()` sigue en el hook. Comprobado: con `.strip()` en este
+    helper, quitarlo del hook NO ponia el test en rojo.
+    """
+    resultado = subprocess.run(
+        [sys.executable, "-c", _parser_del_guard()],
+        input=entrada, capture_output=True, text=True,
+    )
+    return resultado.stdout.rstrip("\n")
+
+
+def test_el_guard_lee_el_modelo_de_un_despacho_correcto():
+    entrada = '{"tool_name":"Agent","tool_input":{"model":"haiku","prompt":"x"}}'
+
+    assert _modelo_visto_por_el_guard(entrada) == "haiku"
+
+
+def test_el_guard_recorta_los_espacios_del_modelo():
+    """Sin `.strip()`, un `model` de solo espacios pasaria por presente."""
+    assert _modelo_visto_por_el_guard('{"tool_input":{"model":"  fable  "}}') == "fable"
+    assert _modelo_visto_por_el_guard('{"tool_input":{"model":"   "}}') == ""
+
+
+def test_un_model_ausente_produce_cadena_vacia_y_no_un_fallo_de_parseo():
+    """LA REGRESION EXACTA. Ausente y corrupto tienen que ser DISTINGUIBLES:
+    ausente debe bloquear, corrupto debe dejar pasar. Cuando se confundieron, el
+    hook no bloqueo nunca."""
+    for entrada in ('{"tool_name":"Agent","tool_input":{"prompt":"x"}}',
+                    '{"tool_input":{"model":""}}',
+                    '{"tool_input":null}',
+                    '{}'):
+        assert _modelo_visto_por_el_guard(entrada) == "", entrada
+
+
+def test_un_json_corrupto_se_declara_fallo_de_parseo():
+    for entrada in ("no soy json", "", "{roto"):
+        assert _modelo_visto_por_el_guard(entrada) == "__PARSE_FAIL__", entrada
+
+
+def _lineas_ejecutables(texto: str) -> str:
+    """El hook sin comentarios.
+
+    Necesario, y no cosmetico: la cabecera del guard CITA la construccion
+    defectuosa para explicar por que no debe volver -- igual que la docstring de
+    `codex_command` cita el shim de npm (KI-046) --, asi que comprobar sobre el
+    fichero entero empareja en la prosa y el test pasa o falla por lo que dice
+    un comentario en vez de por lo que hace el codigo.
+    """
+    return "\n".join(
+        ln for ln in texto.splitlines() if not ln.lstrip().startswith("#")
+    )
+
+
+def test_el_guard_no_puede_volver_a_confundir_ausente_con_fallo_de_parseo():
+    """La forma `${modelo:-__PARSE_FAIL__}` sustituye tambien la cadena VACIA,
+    que es justo el caso que debe bloquear. Se prohibe la construccion entera."""
+    assert "${modelo:-" not in _lineas_ejecutables(_guard()), (
+        "vuelve el default de bash que hacia indistinguible `model` ausente de "
+        "un fallo de parseo: el guard dejaria de bloquear")
+
+
+def test_un_fallo_de_parseo_deja_pasar_el_despacho():
+    """FALLA ABIERTO a proposito: es un candado de proceso, no un control de
+    seguridad, y un guard roto que paralizase toda la delegacion seria peor."""
+    hook = _guard()
+    linea = next(ln for ln in hook.splitlines() if "__PARSE_FAIL__" in ln and "exit 0" in ln)
+
+    assert "exit 0" in linea, "un fallo de parseo dejaria de fallar abierto"
+
+
+def test_un_despacho_con_modelo_pasa_sin_ruido():
+    hook = _guard()
+
+    assert '[ -n "$modelo" ] && exit 0' in hook, (
+        "el guard dejo de dejar pasar un despacho que SI trae modelo")
+
+
+def test_un_despacho_sin_modelo_bloquea_el_turno():
+    """Contraprueba imprescindible: sin ella, un guard que saliera 0 siempre
+    pasaria todos los tests de arriba y la politica dejaria de aplicarse."""
+    hook = _guard().rstrip()
+
+    assert hook.endswith("exit 2"), "el camino sin modelo ya no bloquea"
+    assert "DESPACHO BLOQUEADO" in hook
+
+
+def test_el_mensaje_de_bloqueo_nombra_los_cuatro_escalones_y_la_regla_de_subir():
+    """El guard no clasifica -- a proposito --, asi que su unica ayuda es el
+    mensaje. Si deja de nombrar los escalones, bloquear no orienta a nadie."""
+    mensaje = _guard().split("DESPACHO BLOQUEADO", 1)[1]
+
+    for escalon in ("haiku", "sonnet", "opus", "fable"):
+        assert escalon in mensaje, f"el mensaje no nombra `{escalon}`"
+
+    assert "Ante la duda entre dos escalones, se sube" in mensaje
+    assert "current-task.md" in mensaje, "no dice donde se registra el escalado"
+
+
+def test_el_guard_sigue_cableado_como_pretooluse_sobre_agent():
+    """Fija la CLASE. El test de cableado solo comprueba que el nombre del script
+    APAREZCA en settings.json: cambiar el evento o el matcher lo dejaria pasando
+    en verde con el guard ya muerto. El matcher filtra por NOMBRE DE HERRAMIENTA
+    y la herramienta se llama `Agent`."""
+    cfg = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    grupos = [g for g in cfg["hooks"].get("PreToolUse", [])
+              if any("require-dispatch-model" in h["command"] for h in g["hooks"])]
+
+    assert len(grupos) == 1, (
+        "el guard de despacho no esta cableado exactamente una vez en PreToolUse")
+    assert grupos[0]["matcher"] == "Agent", (
+        f"el matcher paso a ser {grupos[0]['matcher']!r}: el guard deja de ver "
+        "los despachos, que es como murio KI-023 la primera vez")
