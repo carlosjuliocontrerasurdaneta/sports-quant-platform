@@ -54,6 +54,7 @@ Al día siguiente: `SETTLE_ALL` liquida contra resultados → `settled_<liga>.cs
 
 - Overrides por liga en `configs/leagues/ratings.yaml` (config, no código); borrar el YAML = rollback a defaults de familia.
 - `settled_*.csv` es la **fuente única de verdad** para ROI, banca y calibración; escritura atómica + unión de columnas (auto-sana esquemas viejos).
+- Los ficheros de **estado** (registros de los gates de predicción, CLV y degradación, centinela de fallo del run, registro vivo de métodos de calibración, manifiesto de features, contador de créditos) se escriben con `storage/atomic.atomic_write_json`: temporal **único** por proceso y llamada, `fsync` y `os.replace`. Un nombre de temporal fijo permite que dos escritores del mismo destino se pisen; escribir directo sobre el destino permite verlo truncado, y todos sus lectores tratan «ilegible» como «no hay nada», que es la dirección silenciosa (KI-044). Excepción deliberada: `providers/odds_cache.py`, caché regenerable.
 - El gate de CLV se define en `risk/` sin imports del pipeline (evita ciclo daily → clv → roi_engine → daily); el registro lo escribe la auditoría CLV diaria.
 - Dos capas de exposición: por liga (`max_daily`) + global (`max_total`).
 
