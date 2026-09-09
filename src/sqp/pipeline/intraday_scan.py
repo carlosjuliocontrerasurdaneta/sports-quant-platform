@@ -27,7 +27,7 @@ Reglas:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -99,17 +99,32 @@ def log_intraday_edges(predictions_dir: Path, root: Path, *,
                 & (served["market"].astype(str).isin(SCAN_MARKETS)))
         if not mask.any():
             continue
-        odds = _league_odds(root, league)
+        # El filtro de ventana va ANTES de leer cuotas. Se guarda (fila,
+        # comienzo) y no solo la fila porque `minutes_to_start` necesita ese
+        # mismo instante mas abajo; un walrus dentro de una comprension dejaria
+        # `st` fijado en el ultimo valor evaluado, no en el de cada fila.
+        en_ventana: list[tuple[Any, datetime]] = []
+        for r in served[mask].itertuples():
+            st = _parse_utc(str(getattr(r, "start_time", "")))
+            if st is not None and now < st <= now + timedelta(minutes=window_min):
+                en_ventana.append((r, st))
+        if not en_ventana:
+            continue
+        # Y la lectura se acota a los meses que `_fresh_snapshot` puede aceptar.
+        # Este pase corre cada 30 minutos y solo mira el ultimo snapshot fresco,
+        # pero cargaba el historico ENTERO de la liga -- 810 MB en `data/odds/`
+        # el 2026-09-08 -- para tirar casi todo. Misma causa raiz que en
+        # `revalidate_candidates`.
+        odds = _league_odds(
+            root, league,
+            since=now - timedelta(minutes=float(price_max_age_min)))
         if odds.empty:
             continue
         by_event = {str(eid): eo for eid, eo in odds.groupby("event_id")}
         snap_cache: dict[str, pd.DataFrame] = {}
         picks = _candidate_keys(predictions_dir, league)
         n_league = 0
-        for r in served[mask].itertuples():
-            st = _parse_utc(str(getattr(r, "start_time", "")))
-            if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
-                continue
+        for r, st in en_ventana:
             eid = str(r.event_id)
             if eid not in snap_cache:
                 snap_cache[eid] = _fresh_snapshot(

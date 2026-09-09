@@ -4,7 +4,7 @@ que ya no se generarian (edge < min_edge al precio actual). Bajo shadow es
 medicion pura: revocado vs mantenido se compara luego en CLV/ROI."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
@@ -332,3 +332,97 @@ class TestLaRedYaNoOcurreBajoElLock:
                             window_min=120,
                             fetch_probables=lambda d: llamadas.append(d) or [])
         assert llamadas == [], "no debe consultarse la red sin eventos en ventana"
+
+
+# --- Coste del pase: no leer lo que no se va a mirar ---------------------------
+#
+# Auditoria integral 2026-09-08 (segunda pasada). El pase cargaba el HISTORICO
+# COMPLETO de cuotas de cada liga -- `data/odds/` acumulaba 810 MB el 2026-09-08,
+# y `odds_mlb_202608.csv` son 107 MB y 32,5 s de `read_csv` el solo -- antes de
+# comprobar si alguna fila era siquiera evaluable, y aunque solo va a mirar el
+# ultimo snapshot fresco (<= price_max_age_min). Corre cada 30 min: el pase se
+# comia su propio intervalo y el Programador rechazaba los arranques siguientes,
+# y con ellos la captura de cierre, que es la unica fuente de evidencia del CLV.
+
+class TestCosteDelPase:
+
+    def test_sin_filas_evaluables_no_se_leen_cuotas(self, tmp_path, monkeypatch):
+        """Ninguna fila generada hoy -> ni un byte de data/odds/."""
+        from sqp.pipeline import revalidation as mod
+
+        pred_dir = _write(tmp_path, [_cand_row(generated_at="2026-06-30T15:00:00Z")],
+                          [_odds_row()])
+        monkeypatch.setattr(mod, "_league_odds", lambda *a, **kw: pytest.fail(
+            "se leyeron cuotas sin ninguna fila evaluable"))
+        s = mod.revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=NOW)
+        assert s["evaluated"] == 0 and s["leagues"] == []
+
+    def test_fuera_de_ventana_tampoco_se_leen_cuotas(self, tmp_path, monkeypatch):
+        from sqp.pipeline import revalidation as mod
+
+        pred_dir = _write(tmp_path, [_cand_row()], [_odds_row()],
+                          preds=[{"event_id": "e1", "home": "A", "away": "B",
+                                  "start_time": "2026-07-02T21:00:00Z"}])
+        monkeypatch.setattr(mod, "_league_odds", lambda *a, **kw: pytest.fail(
+            "se leyeron cuotas con el evento fuera de la ventana"))
+        assert mod.revalidate_candidates(pred_dir, tmp_path, min_edge=0.02,
+                                         now=NOW)["evaluated"] == 0
+
+    def test_solo_se_leen_los_meses_que_pueden_tener_capturas_frescas(self, tmp_path):
+        """`_fresh_snapshot` descarta todo lo anterior a price_max_age_min, asi
+        que un mes ANTERIOR al de la marca no puede aportar una sola fila."""
+        from sqp.pipeline.revalidation import _league_odds, _odds_files
+
+        odds_dir = tmp_path / "data" / "odds"
+        odds_dir.mkdir(parents=True)
+        pd.DataFrame([_odds_row(captured_at="2026-05-10T10:00:00Z",
+                                price_decimal=9.99)]).to_csv(
+            odds_dir / "odds_test_202605.csv", index=False)
+        pd.DataFrame([_odds_row()]).to_csv(odds_dir / "odds_test_202607.csv",
+                                           index=False)
+        since = datetime(2026, 7, 1, 18, 30, tzinfo=timezone.utc)
+        assert [f.name for f in _odds_files(tmp_path, "test", since)] == [
+            "odds_test_202607.csv"]
+        assert 9.99 not in set(_league_odds(tmp_path, "test",
+                                            since=since)["price_decimal"])
+        assert len(_league_odds(tmp_path, "test")) == 2   # sin `since`, todo
+
+    def test_un_nombre_que_no_es_mensual_no_se_descarta(self, tmp_path):
+        """Ante un fichero inesperado, la direccion segura es leerlo."""
+        from sqp.pipeline.revalidation import _odds_files
+
+        odds_dir = tmp_path / "data" / "odds"
+        odds_dir.mkdir(parents=True)
+        for nombre in ("odds_test_raro.csv", "odds_test_202605.csv"):
+            pd.DataFrame([_odds_row()]).to_csv(odds_dir / nombre, index=False)
+        nombres = [f.name for f in _odds_files(
+            tmp_path, "test", datetime(2026, 7, 1, tzinfo=timezone.utc))]
+        assert nombres == ["odds_test_raro.csv"]
+
+    def test_la_lectura_se_acota_con_la_frescura_configurada(self, tmp_path,
+                                                             monkeypatch):
+        """El corte que se pasa a `_league_odds` es now - price_max_age_min."""
+        from sqp.pipeline import revalidation as mod
+
+        pred_dir = _write(tmp_path, [_cand_row()], [_odds_row()])
+        vistos: list = []
+        real = mod._league_odds
+        monkeypatch.setattr(mod, "_league_odds",
+                            lambda root, lg, **kw: (vistos.append(kw.get("since")),
+                                                    real(root, lg, **kw))[1])
+        mod.revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=NOW,
+                                  price_max_age_min=45.0)
+        assert vistos == [NOW - timedelta(minutes=45)]
+
+    def test_sin_cuotas_frescas_las_filas_cuentan_como_sin_precio(self, tmp_path):
+        """Los dos caminos hacia "no hay precio" informan igual.
+
+        Antes, una liga SIN ningun fichero de cuotas salia por `odds.empty` y no
+        sumaba nada, mientras que una liga CON ficheros viejos llegaba a
+        `_fresh_snapshot` fila a fila y si sumaba. Misma situacion, dos cifras."""
+        from sqp.pipeline.revalidation import revalidate_candidates as rc
+
+        pred_dir = _write(tmp_path, [_cand_row()], [])      # sin cuotas
+        s = rc(pred_dir, tmp_path, min_edge=0.02, now=NOW)
+        assert s["skipped_no_price"] == 1
+        assert s["evaluated"] == 0 and s["leagues"] == []

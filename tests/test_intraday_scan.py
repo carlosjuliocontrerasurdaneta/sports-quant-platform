@@ -105,3 +105,38 @@ def test_would_generate_uses_min_edge_on_current_price(tmp_path):
     ])
     s = log_intraday_edges(pred, tmp_path, min_edge=0.02, now=NOW)
     assert s["scanned"] == 2 and s["would_generate"] == 1
+
+
+# --- Coste del pase -----------------------------------------------------------
+#
+# Auditoria integral 2026-09-08 (segunda pasada), misma causa raiz que en
+# `revalidate_candidates`: el observatorio corre cada 30 min y solo mira el
+# ultimo snapshot fresco, pero cargaba el historico ENTERO de cuotas de la liga
+# antes de comprobar si alguna fila servida caia en la ventana.
+
+def test_sin_filas_en_ventana_no_se_leen_cuotas(tmp_path, monkeypatch):
+    from sqp.pipeline import intraday_scan as mod
+
+    fila = _served("h2h", "A", "")
+    fila["start_time"] = "2026-07-20T23:00:00Z"          # 7 h por delante
+    pred = _setup(tmp_path, [fila], [_odds_row("h2h", "A", "")])
+    monkeypatch.setattr(mod, "_league_odds", lambda *a, **kw: (_ for _ in ()).throw(
+        AssertionError("se leyeron cuotas sin ninguna fila en ventana")))
+    out = mod.log_intraday_edges(pred, tmp_path, min_edge=0.02, now=NOW)
+    assert out["scanned"] == 0 and out["leagues"] == []
+
+
+def test_la_lectura_se_acota_con_la_frescura_configurada(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from sqp.pipeline import intraday_scan as mod
+
+    pred = _setup(tmp_path, [_served("h2h", "A", "")], [_odds_row("h2h", "A", "")])
+    vistos: list = []
+    real = mod._league_odds
+    monkeypatch.setattr(mod, "_league_odds",
+                        lambda root, lg, **kw: (vistos.append(kw.get("since")),
+                                                real(root, lg, **kw))[1])
+    mod.log_intraday_edges(pred, tmp_path, min_edge=0.02, now=NOW,
+                           price_max_age_min=45.0)
+    assert vistos == [NOW - timedelta(minutes=45)]

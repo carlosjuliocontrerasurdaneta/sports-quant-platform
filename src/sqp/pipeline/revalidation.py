@@ -27,7 +27,7 @@ pase re-valida el PRECIO, no re-estima el modelo.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -119,8 +119,45 @@ def _start_times(predictions_dir: Path, league: str) -> dict[str, str]:
     return {str(r.event_id): str(r.start_time) for r in preds.itertuples()}
 
 
-def _league_odds(root: Path, league: str) -> pd.DataFrame:
+def _odds_files(root: Path, league: str,
+                since: datetime | None) -> list[Path]:
+    """Ficheros mensuales de cuotas de la liga que PUEDEN contener filas con
+    ``captured_at >= since``.
+
+    `OddsStore` particiona por mes (``odds_<liga>_<YYYYMM>.csv``), asi que un
+    fichero cuyo mes es ANTERIOR al de `since` no puede aportar ni una fila al
+    rango pedido. Un nombre que no encaje con el patron mensual NO se descarta:
+    ante un fichero inesperado, la direccion segura es leerlo.
+    """
     files = sorted((root / "data" / "odds").glob(f"odds_{league}_*.csv"))
+    if since is None:
+        return files
+    suelo = since.strftime("%Y%m")
+    vivos = []
+    for f in files:
+        mes = f.stem.rsplit("_", 1)[-1]
+        if len(mes) == 6 and mes.isdigit() and mes < suelo:
+            continue
+        vivos.append(f)
+    return vivos
+
+
+def _league_odds(root: Path, league: str, *,
+                 since: datetime | None = None) -> pd.DataFrame:
+    """Cuotas de la liga. Con `since`, solo los meses que pueden contener
+    capturas posteriores a esa marca.
+
+    El parametro existe porque los dos consumidores de 30 minutos
+    -- revalidacion y observatorio intradia -- solo usan `_fresh_snapshot`, que
+    descarta todo lo anterior a `price_max_age_min` (90 min por defecto). Leian
+    aun asi el HISTORICO COMPLETO: medido el 2026-09-08, `odds_mlb_202608.csv`
+    son 107 MB y 32,5 s de `read_csv` el solo, y `data/odds/` acumula 810 MB.
+    Ese coste se pagaba 48 veces al dia para tirar el 99 % de lo leido, crecia
+    cada mes, y desbordaba el intervalo de la propia tarea: el Programador
+    rechazaba los arranques siguientes (0x800710E0) y con ellos la captura de
+    cierre, que es la unica fuente de evidencia del gate de CLV.
+    """
+    files = _odds_files(root, league, since)
     if not files:
         return pd.DataFrame()
     return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
@@ -156,6 +193,38 @@ def _prob_basis(row) -> float | None:
     return float(est) if pd.notna(est) else None
 
 
+def _filas_evaluables(df: pd.DataFrame, starts: dict[str, str], *,
+                      today: str, now: datetime,
+                      window_min: int) -> list[tuple[int, Any]]:
+    """(indice posicional, fila) de los picks que este pase debe re-valorar.
+
+    Recoge las cuatro exclusiones que NO dependen del precio, para poder
+    aplicarlas antes de cargar cuotas. Se extraen a una funcion en vez de
+    duplicarse para que el filtro previo y el bucle no puedan divergir: el bucle
+    itera exactamente sobre lo que devuelve esta funcion.
+
+    - solo filas generadas HOY (scoping por dia del pipeline);
+    - un `revoke` es FINAL y no se re-evalua;
+    - los picks del modo precision se seleccionan por probabilidad, no por edge:
+      revocarlos por edge los eliminaria siempre (su guard propio es el de
+      abridor, en `revalidate_pitchers`);
+    - solo eventos que comienzan en (now, now+window_min].
+    """
+    fuera: list[tuple[int, Any]] = []
+    for idx, r in enumerate(df.itertuples()):
+        if str(getattr(r, "generated_at", ""))[:10] != today:
+            continue
+        if str(getattr(r, "reval_action", "")) == "revoke":
+            continue
+        if "accuracy_mode" in str(getattr(r, "flags", "")):
+            continue
+        st = _parse_utc(starts.get(str(r.event_id), ""))
+        if st is None or not (now < st <= now + timedelta(minutes=window_min)):
+            continue
+        fuera.append((idx, r))
+    return fuera
+
+
 def revalidate_candidates(predictions_dir: Path, root: Path, *,
                           min_edge: float,
                           window_min: int = DEFAULT_WINDOW_MIN,
@@ -181,28 +250,35 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
             if df.empty or "event_id" not in df.columns:
                 continue
             starts = _start_times(Path(predictions_dir), league)
-            odds = _league_odds(root, league)
+            df = _prepare_reval_columns(df)
+            # El filtro va ANTES de leer cuotas, no despues. Estas cuatro
+            # condiciones no miran el precio, asi que una liga sin ninguna fila
+            # que las pase no necesita que se lea un solo byte de `data/odds/`
+            # -- y ese es el caso normal: con produccion parada, los pases del
+            # 2026-09-08 tardaban 5 min 37 s cada 30 min para evaluar CERO
+            # filas. Mismo principio que
+            # `test_sin_eventos_en_ventana_no_se_consulta_la_red` ya exige para
+            # la red en `revalidate_pitchers`.
+            evaluables = _filas_evaluables(df, starts, today=today, now=now,
+                                           window_min=window_min)
+            if not evaluables:
+                continue
+            odds = _league_odds(
+                root, league,
+                since=now - timedelta(minutes=float(price_max_age_min)))
             if odds.empty:
+                # Sin cuotas en el rango fresco, ninguna fila evaluable puede
+                # re-valorarse: es exactamente "sin precio", y el contador tiene
+                # que decirlo. Antes esta rama solo se alcanzaba cuando la liga
+                # no tenia NINGUN fichero de cuotas, y entonces callaba; el caso
+                # simetrico -- ficheros, pero todos viejos -- si contaba, porque
+                # se llegaba a `_fresh_snapshot` fila a fila. Dos caminos para la
+                # misma situacion que informaban distinto.
+                summary["skipped_no_price"] += len(evaluables)
                 continue
             by_event = {str(eid): eo for eid, eo in odds.groupby("event_id")}
             changed = False
-            df = _prepare_reval_columns(df)
-            for idx, r in enumerate(df.itertuples()):
-                gen = str(getattr(r, "generated_at", ""))[:10]
-                if gen != today:
-                    continue
-                if str(getattr(r, "reval_action", "")) == "revoke":
-                    continue                       # final: nunca se deshace
-                if "accuracy_mode" in str(getattr(r, "flags", "")):
-                    # Pick del modo precision: seleccionado por probabilidad, no
-                    # por edge; un favorito suele tener edge negativo al precio
-                    # vigente y la revocacion por edge lo eliminaria siempre. El
-                    # guard de cambio de abridor (que si invalida la probabilidad)
-                    # vive aparte en revalidate_pitchers y sigue aplicando.
-                    continue
-                st = _parse_utc(starts.get(str(r.event_id), ""))
-                if st is None or not (now < st <= now + pd.Timedelta(minutes=window_min)):
-                    continue
+            for idx, r in evaluables:
                 snap = _fresh_snapshot(by_event.get(str(r.event_id), pd.DataFrame()),
                                        now, price_max_age_min)
                 if snap.empty:
