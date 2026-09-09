@@ -14,6 +14,7 @@ import pytest
 
 from sqp.config import ROOT
 from sqp.monitoring.run_status import (STATUS_FILENAME, clear_run_status,
+                                       stage_path,
                                        read_run_status, record_run_failure)
 
 
@@ -21,7 +22,7 @@ from sqp.monitoring.run_status import (STATUS_FILENAME, clear_run_status,
 
 def test_record_failure_writes_sentinel(tmp_path):
     record_run_failure(tmp_path, stage="run", exit_code=1)
-    assert (tmp_path / "logs" / STATUS_FILENAME).exists()
+    assert stage_path(tmp_path, "run").exists()
 
 
 def test_sentinel_captures_stage_and_exit_code(tmp_path):
@@ -41,11 +42,14 @@ def test_sentinel_records_utc_timestamp(tmp_path):
 
 
 def test_sentinel_is_valid_json(tmp_path):
-    """El centinela se indexa POR ETAPA desde 2026-08-31 (A-02): sobrescribir el
-    fichero entero borraba el fallo de la otra etapa."""
+    """Desde B-7 (2026-09-09) cada etapa tiene su PROPIO fichero, con la entrada
+    plana dentro. Antes se indexaban por etapa dentro de un unico JSON, y antes
+    de A-02 (2026-08-31) ni eso: sobrescribir el fichero entero borraba el fallo
+    de la otra etapa."""
     record_run_failure(tmp_path, stage="run", exit_code=1)
-    raw = (tmp_path / "logs" / STATUS_FILENAME).read_text(encoding="utf-8")
-    assert json.loads(raw)["stages"]["run"]["failed"] is True
+    raw = stage_path(tmp_path, "run").read_text(encoding="utf-8")
+    assert json.loads(raw)["failed"] is True
+    assert json.loads(raw)["stage"] == "run"
 
 
 def test_record_failure_creates_logs_dir_when_missing(tmp_path):
@@ -199,9 +203,9 @@ def test_dashboard_banner_escapes_its_content(tmp_path):
     """El centinela es un archivo del disco: su contenido no se inyecta crudo."""
     from sqp.audit.html_report import _run_alert_banner
     record_run_failure(tmp_path, stage="run", exit_code=1)
-    p = tmp_path / "logs" / STATUS_FILENAME
+    p = stage_path(tmp_path, "run")
     data = json.loads(p.read_text(encoding="utf-8"))
-    data["stages"]["run"]["stage"] = "<script>alert(1)</script>"
+    data["stage"] = "<script>alert(1)</script>"
     p.write_text(json.dumps(data), encoding="utf-8")
     banner = _run_alert_banner(tmp_path)
     assert "<script>" not in banner
@@ -534,8 +538,10 @@ def test_una_escritura_truncada_no_deja_el_centinela_ilegible(tmp_path,
 
     real = _Path.write_text
 
+    destinos = {stage_path(tmp_path, e).name for e in ("settle", "run")}
+
     def trunca(self, data, *a, **kw):
-        if self.name == STATUS_FILENAME:
+        if self.name in destinos:
             real(self, str(data)[: len(str(data)) // 2], *a, **kw)
             raise RuntimeError("corte a mitad de volcado")
         return real(self, data, *a, **kw)
@@ -544,9 +550,9 @@ def test_una_escritura_truncada_no_deja_el_centinela_ilegible(tmp_path,
     record_run_failure(tmp_path, stage="settle", exit_code=3)
     record_run_failure(tmp_path, stage="run", exit_code=1)
 
-    datos = json.loads((tmp_path / "logs" / STATUS_FILENAME).read_text(
-        encoding="utf-8"))
-    assert set(datos["stages"]) == {"settle", "run"}
+    for etapa in ("settle", "run"):
+        assert json.loads(stage_path(tmp_path, etapa).read_text(
+            encoding="utf-8"))["stage"] == etapa
     assert read_run_status(tmp_path) is not None
 
 
@@ -557,9 +563,12 @@ def test_el_centinela_nunca_se_escribe_directamente_sobre_el_destino(tmp_path,
     from pathlib import Path as _Path
 
     real = _Path.write_text
+    # Los destinos REALES tras B-7. Comprobar el nombre del fichero unico
+    # anterior dejaria la prueba vacia: ya nadie escribe ahi.
+    destinos = {stage_path(tmp_path, e).name for e in ("run", "settle")}
 
     def espia(self, *a, **kw):
-        assert self.name != STATUS_FILENAME, (
+        assert self.name not in destinos, (
             f"escritura directa sobre el destino {self.name}")
         return real(self, *a, **kw)
 
@@ -568,3 +577,137 @@ def test_el_centinela_nunca_se_escribe_directamente_sobre_el_destino(tmp_path,
     record_run_failure(tmp_path, stage="settle", exit_code=2)
     clear_run_status(tmp_path, "run")
     assert read_run_status(tmp_path)["stage"] == "settle"
+
+
+# --- B-7: un fichero por etapa ------------------------------------------------
+#
+# Orden del operador, 2026-09-09. `record_run_failure` y `clear_run_status`
+# hacian read-modify-write sobre un unico JSON, y con cinco tareas programadas
+# que pueden solaparse dos procesos intercalados perdian la etapa del otro:
+# borrar en silencio una alarma vigente, que es justo lo que este centinela
+# existe para impedir. La salida no arbitra entre lock y no-lock: elimina la
+# seccion critica.
+
+def test_un_proceso_intercalado_no_borra_la_alarma_del_otro(tmp_path):
+    """La carrera de B-7, reproducida.
+
+    Un segundo proceso registra `settle` DESPUES de que el primero haya decidido
+    lo que va a escribir y ANTES de que lo escriba. Con el fichero unico, el
+    primero persistia la foto que leyo -- sin `settle` -- y la alarma del segundo
+    desaparecia. Con un fichero por etapa no hay foto que persistir."""
+    from sqp.monitoring import run_status as mod
+
+    real = mod.atomic_write_json
+    interpuesto: list = []
+
+    def otro_proceso(payload, out, **kw):
+        if not interpuesto:                       # solo en la primera escritura
+            interpuesto.append(out)
+            mod.record_run_failure(tmp_path, stage="settle", exit_code=3)
+        return real(payload, out, **kw)
+
+    mod.atomic_write_json = otro_proceso
+    try:
+        mod.record_run_failure(tmp_path, stage="run", exit_code=1)
+    finally:
+        mod.atomic_write_json = real
+
+    st = read_run_status(tmp_path)
+    assert st is not None
+    assert set(st["stages"]) == {"settle", "run"}, (
+        "la alarma del proceso intercalado se perdio")
+    assert st["stage"] == "settle", "con las dos rotas manda la liquidacion"
+
+
+def test_registrar_una_etapa_no_lee_las_demas(tmp_path):
+    """La propiedad estructural de la que sale lo anterior: sin lectura previa
+    no hay read-modify-write que perder."""
+    from sqp.monitoring import run_status as mod
+
+    record_run_failure(tmp_path, stage="settle", exit_code=3)
+    leidos: list = []
+    real = mod._leer_json
+
+    def espia(p):
+        leidos.append(p.name)
+        return real(p)
+
+    mod._leer_json = espia
+    try:
+        record_run_failure(tmp_path, stage="run", exit_code=1)
+    finally:
+        mod._leer_json = real
+    assert leidos == [], f"se leyeron centinelas ajenos: {leidos}"
+
+
+def test_limpiar_una_etapa_no_lee_ni_reescribe_las_demas(tmp_path):
+    record_run_failure(tmp_path, stage="settle", exit_code=3)
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+    antes = stage_path(tmp_path, "settle").read_bytes()
+
+    assert clear_run_status(tmp_path, "run") is True
+
+    assert not stage_path(tmp_path, "run").exists()
+    assert stage_path(tmp_path, "settle").read_bytes() == antes, (
+        "limpiar una etapa reescribio el fichero de otra")
+
+
+# --- B-7: el nombre de etapa es ahora parte de una ruta -----------------------
+
+@pytest.mark.parametrize("malo", ["../../evil", "run/../..", "RUN", "con espacio",
+                                  "", "a" * 41, "run.json"])
+def test_una_etapa_con_nombre_invalido_se_rechaza(tmp_path, malo):
+    """Antes el nombre viajaba DENTRO del JSON y daba igual. Ahora nombra un
+    fichero, asi que un `../..` escribiria fuera de `logs/`. Es el riesgo que
+    introduce el cambio de disposicion, cerrado en el mismo sitio."""
+    with pytest.raises(ValueError):
+        record_run_failure(tmp_path, stage=malo, exit_code=1)
+    assert read_run_status(tmp_path) is None
+    assert not (tmp_path / "evil.json").exists()
+
+
+# --- B-7: migracion del centinela anterior ------------------------------------
+
+def test_el_centinela_anterior_se_reparte_y_no_pierde_avisos(tmp_path):
+    """Al actualizar puede haber un centinela vigente en el formato viejo. Si la
+    migracion lo perdiera, la actualizacion APAGARIA una alarma real."""
+    logs = tmp_path / "logs"
+    logs.mkdir(parents=True)
+    (logs / STATUS_FILENAME).write_text(json.dumps({"stages": {
+        "settle": {"failed": True, "stage": "settle", "exit_code": 3,
+                   "failed_at": "2026-09-01T12:00:00Z"},
+        "backfill": {"failed": True, "stage": "backfill", "exit_code": 1,
+                     "failed_at": "2026-09-01T09:00:00Z"},
+    }}), encoding="utf-8")
+
+    # Se ve ANTES de migrar: la lectura une las dos fuentes.
+    assert set(read_run_status(tmp_path)["stages"]) == {"settle", "backfill"}
+
+    record_run_failure(tmp_path, stage="run", exit_code=1)   # dispara la migracion
+
+    assert not (logs / STATUS_FILENAME).exists(), "el legado no se retiro"
+    for etapa in ("settle", "backfill", "run"):
+        assert stage_path(tmp_path, etapa).exists()
+    st = read_run_status(tmp_path)
+    assert set(st["stages"]) == {"settle", "backfill", "run"}
+    assert st["stage"] == "settle"
+
+
+def test_ante_la_misma_etapa_manda_el_formato_vigente(tmp_path):
+    record_run_failure(tmp_path, stage="run", exit_code=7)
+    logs = tmp_path / "logs"
+    (logs / STATUS_FILENAME).write_text(json.dumps({"stages": {
+        "run": {"failed": True, "stage": "run", "exit_code": 99,
+                "failed_at": "2020-01-01T00:00:00Z"}}}), encoding="utf-8")
+    assert read_run_status(tmp_path)["exit_code"] == 7
+
+
+def test_limpiar_una_etapa_que_solo_estaba_en_el_legado(tmp_path):
+    logs = tmp_path / "logs"
+    logs.mkdir(parents=True)
+    (logs / STATUS_FILENAME).write_text(json.dumps({"stages": {
+        "backfill": {"failed": True, "stage": "backfill", "exit_code": 1,
+                     "failed_at": "2026-09-01T09:00:00Z"}}}), encoding="utf-8")
+    assert clear_run_status(tmp_path, "backfill") is True
+    assert read_run_status(tmp_path) is None
+    assert not (logs / STATUS_FILENAME).exists()

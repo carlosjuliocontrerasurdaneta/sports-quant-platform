@@ -121,7 +121,7 @@ Los ítems B-1 a B-6 de arriba siguen vigentes tal cual. Lo que sigue es lo que
 esta segunda pasada deja abierto. Los hallazgos que sí se corrigieron están en
 `.claude/memory/known-issues.md`, KI-044.
 
-## B-7 · Decisión del operador: ¿lock en el centinela de fallo?
+## B-7 · CERRADO · Un fichero por etapa: la sección crítica ya no existe
 
 `record_run_failure` y `clear_run_status` (`src/sqp/monitoring/run_status.py`)
 hacen **read-modify-write sin exclusión** sobre `logs/run_status.json`. Cinco
@@ -133,19 +133,40 @@ La regla del proyecto desde AUD-002 es "no se entra sin exclusión". Aquí choca
 con algo peor: si `locked()` agota su espera, `record_run_failure` **aborta y el
 fallo no se registra**. Perder un fallo siempre es peor que perderlo raramente.
 
-**No se implementa.** Es una elección entre dos modos de fallo y le corresponde
-al operador. Opciones, por si sirve: (a) lock con `except LockNoAdquiridoError`
-en `scripts/run_status.py` que escriba igualmente y lo diga en el log —degrada,
-que es lo que AUD-002 prohíbe, pero aquí la dirección segura es la contraria—;
-(b) lock estricto asumiendo el aborto; (c) un fichero por etapa, que elimina el
-read-modify-write de raíz y es probablemente la respuesta correcta, a costa de
-cambiar el formato del centinela y sus lectores.
+**Resuelto el 2026-09-09 por orden del operador: opción (c).** No arbitra entre
+los dos modos de fallo —lock que puede abortar el registro, o degradación que
+AUD-002 prohíbe—: **elimina la sección crítica**. Cada etapa vive en
+`logs/run_status/<etapa>.json`, así que escribir una no requiere leer las demás
+y dos procesos concurrentes no comparten destino. No hay lock porque ya no hay
+nada que serializar.
 
-- **Archivos**: `src/sqp/monitoring/run_status.py`, `scripts/run_status.py`.
-- **Riesgo de no hacer nada**: bajo pero real; el peor caso es una alarma
-  perdida, que es exactamente lo que este centinela existe para impedir.
-- **Validación**: una prueba de intercalado con dos procesos (el lock no es
-  reentrante, así que un solo proceso no reproduce la carrera).
+**La carrera era real, y está reproducida.** Con el algoritmo anterior, un
+segundo proceso que registra `settle` entre la lectura y la escritura del
+primero desaparecía: sobrevivía sólo `run`. Con un fichero por etapa sobreviven
+las dos. La reproducción corrió sobre directorios temporales.
+
+Efecto colateral que conviene nombrar: la protección de **A-02** —que un fallo
+de `settle` sobreviva a un fallo posterior de `run` y a su limpieza— deja de ser
+una precaución escrita en el código y pasa a ser una propiedad de la
+disposición. Son ficheros distintos.
+
+**Lo que el cambio introducía y se cerró en el mismo commit**: el nombre de
+etapa pasa a formar parte de una *ruta* —antes viajaba dentro del JSON—, así que
+un `../../algo` escribiría fuera de `logs/`. Validado contra `[a-z0-9_]{1,40}`,
+con 7 casos de prueba.
+
+**Migración sin pérdida**: un centinela vigente en el formato anterior se
+reparte en ficheros por etapa la primera vez que se registra o se limpia algo, y
+sólo entonces se retira el fichero viejo. El orden importa: si el proceso muere
+en medio, la lectura une las dos fuentes y no se pierde ningún aviso.
+
+13 pruebas nuevas. Verificado además el camino operativo real sobre el árbol de
+producción: dos etapas independientes registradas, limpieza selectiva de una
+—la otra intacta, byte a byte— y estado final limpio.
+
+- **Archivos**: `src/sqp/monitoring/run_status.py`, `src/sqp/monitoring/health.py`,
+  `tests/test_run_status.py`. `scripts/run_status.py` y los BAT **no cambian**:
+  la interfaz de línea de comandos es la misma.
 
 ## B-8 · `SQP_Validate_OOS_Cdev` lleva fallado desde el 2026-09-01
 

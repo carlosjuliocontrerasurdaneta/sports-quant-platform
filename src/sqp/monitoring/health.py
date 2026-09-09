@@ -223,9 +223,10 @@ def pipeline_liveness(root: Path = ROOT,
 
     COMPROBACION INDEPENDIENTE DEL CENTINELA (AUD-HIGH-002, auditoria integral
     2026-09-08, HIGH). Hasta ahora las dos unicas alarmas del proyecto -- este
-    informe y el banner rojo del tablero -- leian SOLO
-    `logs/last_run_status.json`, un fichero que escribe el propio proceso que
-    falla desde la rama `:error` de su BAT. Si el fallo no llega a esa rama, si
+    informe y el banner rojo del tablero -- leian SOLO el centinela
+    (`logs/run_status/<etapa>.json` desde B-7; antes el fichero unico
+    `logs/last_run_status.json`), que escribe el propio proceso que falla desde
+    la rama `:error` de su BAT. Si el fallo no llega a esa rama, si
     el interprete no arranca o si el centinela desaparece, todo queda en verde.
 
     Paso exactamente eso: el 2026-09-07 a las 12:00 `SQP_Diario_Completo_Cdev`
