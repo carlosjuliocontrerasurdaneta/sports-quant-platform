@@ -260,9 +260,10 @@ def generate_health_report(root: Path = ROOT) -> dict:
     data = root / "data"
     leagues: dict[str, dict] = {}
     warnings: list[str] = []
+    features_stale: dict[str, float] = {}
     # Missing artifacts are ERRORS (the pipeline cannot produce estimates
-    # without them); staleness and grading backlogs are WARNINGS. The split
-    # gives scripts/health_check.py a meaningful exit code (audit 2026-07-24, M-1).
+    # without them); grading backlogs are WARNINGS. The split gives
+    # scripts/health_check.py a meaningful exit code (audit 2026-07-24, M-1).
     errors: list[str] = []
 
     for lg in ML_LEAGUES:
@@ -293,7 +294,13 @@ def generate_health_report(root: Path = ROOT) -> dict:
         if features_rows in (None, 0):
             errors.append(f"{lg}: feature dataset missing/empty (run scripts/build_features.py)")
         elif features_age_days is not None and features_age_days > STALE_FEATURES_DAYS:
-            warnings.append(f"{lg}: features stale ({features_age_days}d)")
+            # INFO, no WARNING (B-9, orden del operador 2026-09-09). Ver el
+            # bloque agregado tras el bucle: quien refrescaba estos datasets era
+            # `SQP_Refresh_ML_Cdev`, retirada por orden del operador el
+            # 2026-08-29, y el artefacto no tiene consumidor en el camino de
+            # picks. Un aviso sin dueno posible, encendido cada dia, entrena a
+            # ignorar los que si lo tienen.
+            features_stale[lg] = features_age_days
         if not moneyline_exists:
             errors.append(f"{lg}: no moneyline model (run scripts/train_models.py)")
 
@@ -347,6 +354,39 @@ def generate_health_report(root: Path = ROOT) -> dict:
     for h in huerfanas:
         warnings.append(f"calibrador registrado sin artefacto en disco: {h}")
 
+    # Caducidad de los datasets de features: INFORMATIVO, no aviso (B-9, orden
+    # del operador 2026-09-09).
+    #
+    # No es una excepcion de conveniencia, es una consecuencia de dos hechos
+    # verificables. (1) Quien mantenia frescos estos datasets era la tarea
+    # semanal `SQP_Refresh_ML_Cdev`, RETIRADA por orden del operador el
+    # 2026-08-29 (AUD-LOW-003): desde entonces `REFRESH_ML.bat` es manual y
+    # nadie prometio frescura. (2) `storage.feature_store` no tiene ningun
+    # consumidor en el camino que genera picks -- solo lo importan
+    # `evaluation/compare.py`, `scripts/build_features.py` y
+    # `scripts/train_models.py` --, asi que su antiguedad no afecta a ninguna
+    # probabilidad servida ni a ningun stake.
+    #
+    # Eran CUATRO de los seis avisos del informe, encendidos desde hacia 15 dias
+    # y sin accion posible. Un control que grita todos los dias por algo que
+    # nadie puede arreglar no anade senal: se la quita a los otros dos.
+    #
+    # LO QUE NO SE HACE: silenciarlo. La cifra sigue por liga en
+    # `leagues[lg]["features_age_days"]`, se agrega en `features_stale` del
+    # informe y se registra aqui, asi que sigue siendo auditable y su tendencia
+    # visible. Y si la rama ML volviera a conectarse al camino de picks, el
+    # hecho (2) dejaria de ser cierto y esto tendria que volver a ser aviso: lo
+    # fija `test_el_camino_de_picks_no_depende_del_feature_store`, que falla si
+    # esa dependencia aparece.
+    if features_stale:
+        log.info("Datasets de features caducados (> %.0fd): %s. INFORMATIVO: la "
+                 "tarea que los refrescaba se retiro el 2026-08-29 por orden del "
+                 "operador y el artefacto no tiene consumidor en el camino de "
+                 "picks; se recoge para seguimiento, no para accion.",
+                 STALE_FEATURES_DAYS,
+                 ", ".join(f"{lg}={edad:.1f}d"
+                           for lg, edad in sorted(features_stale.items())))
+
     # Inventario por liga SERVIDA. Informativo: `ML_LEAGUES` es el universo de
     # mantenimiento ML y es fijo, mientras que lo que se sirve es dinamico; el
     # 2026-09-01 los dos conjuntos se cruzaban en una sola liga (`mlb`).
@@ -366,6 +406,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
         "served_without_calibration": sin_calib,
         "orphan_calibration_entries": huerfanas,
         "registry_exists": (data / "models" / "registry.json").exists(),
+        "features_stale": features_stale,
         "served_pending_expired": served_expired,
         "served_pending_expired_total": served_expired_total,
         "pipeline_liveness": liveness,

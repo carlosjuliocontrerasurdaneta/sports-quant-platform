@@ -178,7 +178,7 @@ Lo que deja abierto y lo que acota:
 - **Acción**: reproducir y corregir, o forzar una ejecución manual antes del
   2026-10-01.
 
-## B-9 · Aviso permanente sin dueño: «features stale»
+## B-9 · CERRADO · El aviso sin dueño es ahora informativo
 
 El informe de salud emite `WARN: <liga>: features stale (15.5d)` para mlb, nba,
 nfl y nhl —**4 de sus 6 avisos**— en cada ejecución. Pero el refresco de esas
@@ -192,12 +192,30 @@ registrada, ya no tiene quien lo refresque **ni consumidor en el camino del
 dinero**. Un aviso que lleva 15 días encendido y que nadie puede accionar
 entrena a ignorar los otros dos.
 
-**No se toca**: qué debe ver el operador en su tablero es decisión suya, y
-silenciar un aviso mal hecho esconde problemas reales. Opciones: degradarlo a
-INFO mientras la rama ML esté desconectada, o que el mensaje diga que el
-refresco es manual por decisión y no afecta a los picks.
+**Resuelto el 2026-09-09 por orden del operador: degradado a INFO.**
 
-- **Archivos**: `src/sqp/monitoring/health.py` (`STALE_FEATURES_DAYS`).
+Medido sobre producción: el informe pasó de **5 avisos a 1**. Los cuatro
+degradados salen ahora en una sola línea informativa que dice la cifra *y* el
+motivo — «la tarea que los refrescaba se retiró el 2026-08-29 por orden del
+operador y el artefacto no tiene consumidor en el camino de picks». El aviso que
+queda (`mls`, 49 filas pendientes) sí es accionable.
+
+**No es un silenciamiento.** La antigüedad se conserva por liga en
+`leagues[<lg>]["features_age_days"]` y agregada en la clave nueva
+`features_stale` del informe, así que sigue siendo auditable y su tendencia
+visible.
+
+**Y la degradación está atada al hecho que la justifica**, no a una preferencia:
+`test_el_camino_de_picks_no_depende_del_feature_store` recorre el grafo de
+imports desde `pipeline/daily.py` —38 módulos— y falla el día que
+`storage/feature_store` reaparezca en el camino de picks, porque ese día la
+caducidad vuelve a ser accionable y el aviso tiene que volver a WARNING. El
+detector no es vacío: la misma búsqueda partiendo de `evaluation/compare.py` sí
+encuentra la dependencia.
+
+4 pruebas nuevas, 3 de ellas verificadas discriminantes contra el árbol previo.
+
+- **Archivos**: `src/sqp/monitoring/health.py`, `tests/test_health.py`.
 
 ## No es backlog: dos observaciones
 

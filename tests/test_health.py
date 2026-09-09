@@ -243,3 +243,110 @@ def test_manda_el_artefacto_MAS_RECIENTE(tmp_path):
         t = time.time() - dias * 86400
         os.utime(p, (t, t))
     assert pipeline_liveness(tmp_path) is None
+
+
+# --- B-9: la caducidad de features es INFORMATIVA, no un aviso ----------------
+#
+# Orden del operador, 2026-09-09. Eran CUATRO de los seis avisos del informe,
+# encendidos desde hacia 15 dias, y ninguno tenia accion posible: la tarea que
+# refrescaba esos datasets (`SQP_Refresh_ML_Cdev`) se retiro el 2026-08-29 y el
+# artefacto no tiene consumidor en el camino de picks. Un control que grita
+# todos los dias por algo que nadie puede arreglar le quita senal a los que si.
+
+def _liga_completa(data, lg, *, edad_dias: float | None = None):
+    """Artefactos minimos para que `lg` no genere ERRORES."""
+    import os
+    import time
+
+    for sub in ("historical", "features", "models"):
+        (data / sub).mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"date": ["2024-01-01"], "home": ["A"], "away": ["B"],
+                  "game_id": ["1"], "home_score": [1], "away_score": [0]}
+                 ).to_csv(data / "historical" / f"results_{lg}.csv", index=False)
+    feats = data / "features" / f"{lg}_training_dataset.csv"
+    pd.DataFrame({"home_win": [1, 0]}).to_csv(feats, index=False)
+    (data / "models" / f"{lg}_moneyline_model.joblib").write_bytes(b"x")
+    if edad_dias is not None:
+        viejo = time.time() - edad_dias * 86400
+        os.utime(feats, (viejo, viejo))
+    return feats
+
+
+def test_features_caducadas_no_generan_aviso(tmp_path):
+    data = tmp_path / "data"
+    for lg in ML_LEAGUES:
+        _liga_completa(data, lg, edad_dias=40.0)
+
+    r = generate_health_report(root=tmp_path)
+
+    assert not any("features stale" in w for w in r["warnings"]), (
+        f"la caducidad de features volvio a ser aviso: {r['warnings']}")
+    assert r["status"] == "OK", (
+        f"sin otros hallazgos el informe tiene que salir OK: {r}")
+
+
+def test_la_cifra_sigue_siendo_auditable(tmp_path):
+    """Degradar a INFO no es silenciar: la antiguedad se conserva por liga y
+    agregada, para que su tendencia siga siendo visible."""
+    data = tmp_path / "data"
+    for lg in ML_LEAGUES:
+        _liga_completa(data, lg, edad_dias=40.0)
+
+    r = generate_health_report(root=tmp_path)
+
+    assert set(r["features_stale"]) == set(ML_LEAGUES)
+    for lg in ML_LEAGUES:
+        assert r["features_stale"][lg] > 14.0
+        assert r["leagues"][lg]["features_age_days"] > 14.0
+
+
+def test_features_frescas_no_aparecen_en_el_agregado(tmp_path):
+    data = tmp_path / "data"
+    for lg in ML_LEAGUES:
+        _liga_completa(data, lg)          # recien escritas
+    r = generate_health_report(root=tmp_path)
+    assert r["features_stale"] == {}
+
+
+def test_el_camino_de_picks_no_depende_del_feature_store():
+    """El hecho que JUSTIFICA la degradacion, fijado como contrato.
+
+    La caducidad puede ser informativa porque el artefacto no influye en ninguna
+    probabilidad servida ni en ningun stake. Si la rama ML volviera a engancharse
+    al camino de picks, esa premisa deja de ser cierta y el aviso tiene que
+    volver a ser WARNING. Esta prueba falla el dia que eso pase, en vez de dejar
+    una degradacion silenciosa apoyada en una premisa caducada."""
+    import ast
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "src" / "sqp"
+    # Modulos que produce/consume el run diario de picks, transitivamente por lo
+    # que importan de `sqp`. Se parte de la orquestacion por liga.
+    pendientes, vistos = ["pipeline/daily.py"], set()
+    culpables = []
+    while pendientes:
+        rel = pendientes.pop()
+        if rel in vistos:
+            continue
+        vistos.add(rel)
+        f = raiz / rel
+        if not f.exists():
+            continue
+        arbol = ast.parse(f.read_text(encoding="utf-8"))
+        for nodo in ast.walk(arbol):
+            mod = None
+            if isinstance(nodo, ast.ImportFrom) and nodo.module:
+                mod = nodo.module
+            elif isinstance(nodo, ast.Import):
+                mod = nodo.names[0].name
+            if not mod or not mod.startswith("sqp."):
+                continue
+            if mod == "sqp.storage.feature_store":
+                culpables.append(rel)
+            pendientes.append(mod[len("sqp."):].replace(".", "/") + ".py")
+
+    assert not culpables, (
+        "`sqp.storage.feature_store` volvio al camino de picks (via "
+        f"{sorted(set(culpables))}). La caducidad de features vuelve a ser "
+        "accionable: `generate_health_report` tiene que devolverla a WARNING "
+        "(ver B-9).")
