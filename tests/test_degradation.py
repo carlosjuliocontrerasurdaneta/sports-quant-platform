@@ -148,3 +148,13 @@ def test_settings_degradation_defaults_and_validation():
     s.degradation_roi_resume = -0.15  # histeresis invertida: invalida
     with pytest.raises(ValueError, match="DEGRADATION_ROI_RESUME"):
         s.validate()
+
+
+def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
+    """AUD-2026-09-08b: temporal de nombre fijo `degradation.json.tmp`. Misma
+    causa raiz que en el gate de CLV y en el de prediccion."""
+    ajeno = tmp_path / f"{DEGRADATION_FILENAME}.tmp"
+    ajeno.write_text("AJENO A MEDIO ESCRIBIR", encoding="utf-8")
+    write_degradation_registry({"mlb|h2h": {"paused": True}}, tmp_path)
+    assert ajeno.read_text(encoding="utf-8") == "AJENO A MEDIO ESCRIBIR"
+    assert load_degradation_registry(tmp_path)["mlb|h2h"]["paused"] is True

@@ -5,7 +5,6 @@ only; load_closing_odds / clv_analysis already use the latest pre-commence one.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,7 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_json
 from sqp.storage.lock import locked
 
 log = get_logger("sqp.closing_capture")
@@ -81,9 +81,9 @@ def add_spent(odds_dir: Path, day: str, credits: int) -> int:
     p.parent.mkdir(parents=True, exist_ok=True)
     with locked(p):
         total = spent_today(odds_dir, day) + max(0, int(credits))
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_text(str(total))
-        os.replace(tmp, p)
+        # `atomic_write_json` da el temporal unico y el fsync; el contador es un
+        # entero, que es JSON valido y se relee igual con `int(...)`.
+        atomic_write_json(total, p)
     return total
 
 

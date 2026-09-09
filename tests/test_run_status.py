@@ -511,3 +511,60 @@ def test_sin_upstream_la_comprobacion_se_salta_sin_fallar():
     no es "esta atrasado"."""
     t = _diario()
     assert "if not defined SQP_UPSTREAM" in t
+
+
+# --- Atomicidad del centinela -------------------------------------------------
+#
+# Auditoria integral 2026-09-08 (segunda pasada). El centinela se escribia con
+# `write_text` DIRECTO sobre el destino, sin temporal ni reemplazo atomico. Es
+# el unico mecanismo por el que un fallo de cualquier BAT llega al health check
+# y al banner del tablero: si el proceso muere a mitad del volcado, queda JSON
+# truncado, `_read_stages` lo declara ilegible y devuelve {} -- el fallo recien
+# registrado DESAPARECE, y el sistema vuelve a verde con la averia dentro.
+
+def test_una_escritura_truncada_no_deja_el_centinela_ilegible(tmp_path,
+                                                              monkeypatch):
+    """Simula el corte a mitad del volcado sobre el nombre BUENO.
+
+    Con `write_text` directo eso dejaba JSON truncado: `_read_stages` lo declara
+    ilegible, devuelve {} y el fallo recien registrado desaparece. Escribiendo
+    en un temporal y reemplazando, el destino nunca esta a medias -- por eso
+    aqui ni siquiera se llega a truncar nada."""
+    from pathlib import Path as _Path
+
+    real = _Path.write_text
+
+    def trunca(self, data, *a, **kw):
+        if self.name == STATUS_FILENAME:
+            real(self, str(data)[: len(str(data)) // 2], *a, **kw)
+            raise RuntimeError("corte a mitad de volcado")
+        return real(self, data, *a, **kw)
+
+    monkeypatch.setattr(_Path, "write_text", trunca)
+    record_run_failure(tmp_path, stage="settle", exit_code=3)
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+
+    datos = json.loads((tmp_path / "logs" / STATUS_FILENAME).read_text(
+        encoding="utf-8"))
+    assert set(datos["stages"]) == {"settle", "run"}
+    assert read_run_status(tmp_path) is not None
+
+
+def test_el_centinela_nunca_se_escribe_directamente_sobre_el_destino(tmp_path,
+                                                                    monkeypatch):
+    """Contrato, no implementacion: escribir sobre el nombre bueno es lo que
+    permite verlo a medias. Cualquier regreso a `write_text` rompe esto."""
+    from pathlib import Path as _Path
+
+    real = _Path.write_text
+
+    def espia(self, *a, **kw):
+        assert self.name != STATUS_FILENAME, (
+            f"escritura directa sobre el destino {self.name}")
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(_Path, "write_text", espia)
+    record_run_failure(tmp_path, stage="run", exit_code=1)
+    record_run_failure(tmp_path, stage="settle", exit_code=2)
+    clear_run_status(tmp_path, "run")
+    assert read_run_status(tmp_path)["stage"] == "settle"

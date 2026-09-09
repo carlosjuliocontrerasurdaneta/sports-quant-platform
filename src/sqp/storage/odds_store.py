@@ -7,12 +7,12 @@ out-of-sample dataset for realized-ROI and CLV validation (plan block A).
 """
 from __future__ import annotations
 import csv
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.domain.models import EventOdds
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_csv
 # Dos procesos escriben este store: el run diario (11:00) y la captura de
 # cierre horaria (:30). Si el run sigue vivo cuando dispara la captura, dos
 # appends simultaneos intercalarian filas, y la ruta de reconciliacion de
@@ -62,12 +62,11 @@ class OddsStore:
                 cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
                 combined = pd.concat([prior.reindex(columns=cols), df.reindex(columns=cols)],
                                      ignore_index=True)
-                tmp = p.with_suffix(p.suffix + ".tmp")
-                try:
-                    combined.to_csv(tmp, index=False)
-                    os.replace(tmp, p)
-                finally:
-                    tmp.unlink(missing_ok=True)  # no-op tras un replace exitoso
+                # Helper canonico: temporal UNICO y fsync. El temporal fijo
+                # `.csv.tmp` que habia aqui es el ultimo resto del patron de
+                # AUD-002 sobre un fichero que solo se reconstruye volviendo a
+                # pagar cuota de API.
+                atomic_write_csv(combined, p)
             else:
                 df.to_csv(p, mode="a", header=not p.exists(), index=False)
         return len(df)

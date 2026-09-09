@@ -99,3 +99,19 @@ def test_sin_cuota_vencida_no_cambia_ninguna_precedencia_anterior():
     assert _zero_stake_flag(False, False, True) == "shadow_mode"
     assert _zero_stake_flag(False, False, False, prediction_blocked=True) == "prediction_gate"
     assert _zero_stake_flag(False, False, False) is None
+
+
+def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
+    """AUD-2026-09-08b. El registro se escribia con un temporal de nombre FIJO
+    (`clv_gate.json.tmp`) y sin fsync: dos escritores del mismo destino
+    compartian temporal, uno renombraba el fichero a medio escribir del otro y
+    `os.replace` daba atomicidad sobre datos ya corruptos. Este fichero es la
+    allow-list que autoriza stake REAL, y no pasa por ningun lock.
+
+    Se comprueba por su efecto observable: un temporal ajeno en vuelo sigue
+    donde estaba y con su contenido."""
+    ajeno = tmp_path / f"{CLV_GATE_FILENAME}.tmp"
+    ajeno.write_text("AJENO A MEDIO ESCRIBIR", encoding="utf-8")
+    write_clv_gate(_segments(), tmp_path, min_n=30)
+    assert ajeno.exists() and ajeno.read_text(encoding="utf-8") == "AJENO A MEDIO ESCRIBIR"
+    assert load_clv_gate(tmp_path)["mlb|totals"]["allowed"] is True

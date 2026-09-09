@@ -80,7 +80,7 @@ import pandas as pd
 from scipy.stats import binomtest
 
 from sqp.logging_config import get_logger
-from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.atomic import atomic_write_csv, atomic_write_json
 
 log = get_logger(__name__)
 
@@ -417,10 +417,11 @@ def _append_latch_log(rows: list[dict], bets_dir: Path) -> Path | None:
 def _write_payload(payload: dict, bets_dir: Path) -> Path:
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / PREDICTION_GATE_FILENAME
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True),
-                   encoding="utf-8")
-    tmp.replace(path)
+    # Mismo helper canonico que el historial CSV de tres lineas mas arriba: el
+    # comentario de AUD-MED-003 razonaba la colision de temporales y el fsync, y
+    # esta funcion -- en el MISMO modulo -- se quedo con el temporal fijo. Aqui
+    # perder la escritura no solo deniega: borra el PESTILLO del pre-registro.
+    atomic_write_json(payload, path)
     return path
 
 

@@ -18,6 +18,7 @@ from sqp.config import ROOT
 from sqp.logging_config import get_logger
 from sqp.monitoring.run_status import read_run_status
 from sqp.storage.served_store import KEY_COLS, ServedStore
+from sqp.storage.atomic import atomic_write_json
 
 log = get_logger(__name__)
 
@@ -375,7 +376,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
 
     out = data / "output" / "pipeline_health.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(report, out, sort_keys=False, ensure_ascii=False)
     log.info("Health report: %s (%d errors, %d warnings)",
              report["status"], len(errors), len(warnings))
     return report

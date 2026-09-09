@@ -19,7 +19,7 @@ from sqp.features import builders as _builders_module
 from sqp.features.builders import CONFIGS, build_team_rolling_dataset
 from sqp.features.common import write_state_csv
 from sqp.logging_config import get_logger
-from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.atomic import atomic_write_csv, atomic_write_json
 from sqp.storage.results_store import ResultsStore
 from sqp.storage.starters import StartersStore
 
@@ -202,13 +202,16 @@ def build_training_dataset(league: str, force: bool = False, root: Path = ROOT) 
     _write_state()
 
     _manifest_path(root, league).parent.mkdir(parents=True, exist_ok=True)
-    _manifest_path(root, league).write_text(json.dumps({
+    # El dataset de arriba ya se escribe con el helper atomico; el manifiesto
+    # que lo CERTIFICA no lo hacia. Truncado, la validacion de frescura fuerza
+    # una reconstruccion completa que es justo el coste que este modulo evita.
+    atomic_write_json({
         "source_hash": _source_hash(root, league),
         "builder_fingerprint": builder_fingerprint(league),
         "rows": len(out),
         "min_date": str(out["date"].min()) if len(out) else None,
         "max_date": str(out["date"].max()) if len(out) else None,
-    }, indent=2, ensure_ascii=False), encoding="utf-8")
+    }, _manifest_path(root, league), sort_keys=False, ensure_ascii=False)
 
     log.info("[%s] feature dataset: %d rows, %d cols", league, len(out), len(out.columns))
     return out

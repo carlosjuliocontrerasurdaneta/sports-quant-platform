@@ -5,6 +5,7 @@ por daily.py::_finalize sin cobertura directa.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -240,3 +241,87 @@ def test_el_temporal_de_atomic_write_lleva_el_pid(tmp_path, monkeypatch):
     assert vistos[0] != str(destino)
     assert destino.exists()
     assert not list(tmp_path.glob("*.tmp")), "quedo un temporal sin limpiar"
+
+
+# --- atomic_write_json --------------------------------------------------------
+#
+# Auditoria integral 2026-09-08 (segunda pasada). Los ficheros de ESTADO del
+# sistema son JSON -- registro del prediction gate, gate de CLV, degradacion,
+# centinela de fallo del run, contador de creditos -- y ninguno usaba el helper
+# canonico: unos con temporal de nombre FIJO y sin fsync, el centinela sin
+# temporal siquiera. Es el defecto de AUD-002/AUD-MED-003 replicado en JSON,
+# sobre los ficheros que deciden si se apuesta dinero real y si suena la alarma.
+
+def test_atomic_write_json_roundtrip(tmp_path):
+    from sqp.storage.atomic import atomic_write_json
+    out = tmp_path / "estado.json"
+    atomic_write_json({"markets": {"mlb|h2h": {"allowed": True}}}, out)
+    assert json.loads(out.read_text(encoding="utf-8")) == {
+        "markets": {"mlb|h2h": {"allowed": True}}}
+
+
+def test_atomic_write_json_no_deja_temporal(tmp_path):
+    from sqp.storage.atomic import atomic_write_json
+    out = tmp_path / "estado.json"
+    atomic_write_json({"a": 1}, out)
+    assert [p.name for p in tmp_path.iterdir()] == ["estado.json"]
+
+
+def test_atomic_write_json_usa_temporal_unico(tmp_path, monkeypatch):
+    """Con el nombre fijo `.json.tmp` dos escritores del mismo destino
+    compartian temporal, y `os.replace` daba atomicidad sobre datos ya
+    corruptos. Estos ficheros no pasan por ningun lock."""
+    import os as os_mod
+
+    from sqp.storage.atomic import atomic_write_json
+
+    vistos: list[str] = []
+    real = os_mod.replace
+    monkeypatch.setattr(os_mod, "replace",
+                        lambda a, b: (vistos.append(Path(a).name), real(a, b))[1])
+    out = tmp_path / "estado.json"
+    atomic_write_json({"a": 1}, out)
+    atomic_write_json({"a": 2}, out)
+    assert len(vistos) == 2 and vistos[0] != vistos[1], vistos
+    assert all(n.endswith(".tmp") for n in vistos)
+
+
+def test_atomic_write_json_fsync_antes_del_replace(tmp_path, monkeypatch):
+    """`os.replace` da atomicidad, no durabilidad. Se afirma el ORDEN."""
+    import os as os_mod
+
+    from sqp.storage.atomic import atomic_write_json
+
+    calls: list[str] = []
+    real_fsync, real_replace = os_mod.fsync, os_mod.replace
+    monkeypatch.setattr(os_mod, "fsync",
+                        lambda fd: (calls.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(os_mod, "replace",
+                        lambda a, b: (calls.append("replace"), real_replace(a, b))[1])
+    out = tmp_path / "estado.json"
+    atomic_write_json({"a": 1}, out)
+    assert calls == ["fsync", "replace"]
+
+
+def test_atomic_write_json_no_pisa_el_destino_si_falla_a_mitad(tmp_path,
+                                                              monkeypatch):
+    """Un fallo a mitad de escritura deja el fichero ANTERIOR intacto.
+
+    Es la propiedad que el centinela necesita: con `write_text` directo sobre el
+    destino, morir a mitad deja JSON truncado, el lector lo declara ilegible y
+    el fallo registrado desaparece."""
+    import json as json_mod
+
+    from sqp.storage import atomic as atomic_mod
+
+    out = tmp_path / "estado.json"
+    atomic_mod.atomic_write_json({"version": "buena"}, out)
+
+    def revienta(*a, **kw):
+        raise RuntimeError("disco lleno a mitad de volcado")
+
+    monkeypatch.setattr(atomic_mod.json, "dumps", revienta)
+    with pytest.raises(RuntimeError):
+        atomic_mod.atomic_write_json({"version": "mala"}, out)
+    assert json_mod.loads(out.read_text(encoding="utf-8")) == {"version": "buena"}
+    assert [p.name for p in tmp_path.iterdir()] == ["estado.json"]

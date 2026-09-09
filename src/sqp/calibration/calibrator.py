@@ -28,7 +28,7 @@ from sklearn.isotonic import IsotonicRegression
 from sqp.calibration.metrics import (brier_score, calibration_report,
                                      expected_calibration_error)
 from sqp.config import ROOT
-from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.atomic import atomic_write_csv, atomic_write_json
 from sqp.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -312,8 +312,8 @@ def _staging_meta_path(key: str):
 def _write_staging_meta(key: str, *, n_val: int, n_val_events: int) -> None:
     path = _staging_meta_path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"n_val": n_val, "n_val_events": n_val_events}),
-                    encoding="utf-8")
+    atomic_write_json({"n_val": n_val, "n_val_events": n_val_events}, path,
+                      indent=None, sort_keys=False)
 
 
 def _load_staging_meta(key: str) -> dict | None:
@@ -382,7 +382,11 @@ def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> 
         reg[key] = method
     path = _method_registry_path(staging=staging)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(reg, indent=2, sort_keys=True), encoding="utf-8")
+    # Escritura atomica (AUD-2026-09-08b): este es el registro VIVO que respalda
+    # `method="auto"`. Truncado, `_load_method_registry` devuelve {} y el
+    # pipeline pasa a servir probabilidades SIN CALIBRAR, en silencio y en la
+    # direccion que no es segura.
+    atomic_write_json(reg, path)
 
 
 class BetaCalibrator:

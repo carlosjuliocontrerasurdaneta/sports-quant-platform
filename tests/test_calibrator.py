@@ -795,3 +795,31 @@ def test_auto_promote_log_records_a_rejection_not_a_promotion(tmp_path, monkeypa
     assert not any(a == "promoted" for a in acciones)
     assert any(str(a).startswith("rejected:") for a in acciones)
     assert any("colapsado" in str(a) for a in acciones)
+
+
+def test_el_registro_de_metodos_sobrevive_a_una_escritura_truncada(tmp_path,
+                                                                   monkeypatch):
+    """AUD-2026-09-08b. `_set_best_method` escribia `calibration_methods.json`
+    con `write_text` DIRECTO sobre el destino. Es el registro VIVO que respalda
+    `method="auto"`: truncado, `_load_method_registry` devuelve {} y el pipeline
+    pasa a servir probabilidades SIN CALIBRAR -- degradacion silenciosa y en la
+    direccion que no es segura. Con temporal + reemplazo el destino nunca queda
+    a medias."""
+    from pathlib import Path as _Path
+
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    cal._set_best_method("mlb_h2h", "isotonic")
+
+    real = _Path.write_text
+
+    def trunca(self, data, *a, **kw):
+        if self.name == "calibration_methods.json":
+            real(self, str(data)[: len(str(data)) // 2], *a, **kw)
+            raise RuntimeError("corte a mitad de volcado")
+        return real(self, data, *a, **kw)
+
+    monkeypatch.setattr(_Path, "write_text", trunca)
+    cal._set_best_method("nba_totals", "beta")
+
+    assert cal._load_method_registry() == {"mlb_h2h": "isotonic",
+                                           "nba_totals": "beta"}

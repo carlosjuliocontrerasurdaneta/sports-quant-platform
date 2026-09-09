@@ -719,3 +719,22 @@ def test_the_registry_records_how_alpha_was_split(tmp_path):
     assert payload["family_alpha"] == 0.05
     assert payload["k_bonferroni"] == 41
     assert payload["alpha"] == pytest.approx(0.05 / 41)
+
+
+def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
+    """AUD-2026-09-08b. `_write_payload` conservaba el temporal de nombre fijo
+    `prediction_gate.json.tmp` tres lineas por debajo del comentario que, en
+    ESTE MISMO modulo, razona por que el historial CSV no puede usarlo.
+
+    Aqui perder la escritura no solo deniega (que seria la direccion segura):
+    el registro previo es de donde `_apply_latch` recupera el PESTILLO del
+    pre-registro, memoria que no se reconstruye volviendo a medir."""
+    from sqp.risk.prediction_gate import PREDICTION_GATE_FILENAME
+
+    ajeno = tmp_path / f"{PREDICTION_GATE_FILENAME}.tmp"
+    ajeno.write_text("AJENO A MEDIO ESCRIBIR", encoding="utf-8")
+    write_prediction_gate(_rows(10, 5, p_model=0.6, p_market=0.5, price=2.0),
+                          tmp_path)
+    assert ajeno.read_text(encoding="utf-8") == "AJENO A MEDIO ESCRIBIR"
+    assert isinstance(load_prediction_gate(tmp_path), dict)
+    json.loads((tmp_path / PREDICTION_GATE_FILENAME).read_text(encoding="utf-8"))

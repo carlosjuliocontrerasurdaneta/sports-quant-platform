@@ -26,6 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from sqp.calibration.metrics import calibration_report
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_json
 
 log = get_logger(__name__)
 
@@ -85,7 +86,7 @@ def _register(root: Path, entry: dict) -> None:
             log.warning("registry.json ilegible; respaldado en %s y reiniciado", backup.name)
             reg = []
     reg.append(entry)
-    path.write_text(json.dumps(reg, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(reg, path, sort_keys=False, ensure_ascii=False)
 
 
 def _persist(root: Path, model, features: list[str], sport: str, name: str,

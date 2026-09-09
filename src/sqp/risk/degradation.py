@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.report import graded_in_window, load_all_settled
-from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.atomic import atomic_write_csv, atomic_write_json
 
 DEGRADATION_FILENAME = "degradation_pause.json"
 DEGRADATION_LOG_FILENAME = "degradation_log.csv"
@@ -163,9 +163,7 @@ def write_degradation_registry(markets: dict[str, dict], bets_dir: Path,
                "params": params or {}, "markets": markets}
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / DEGRADATION_FILENAME
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_json(payload, path)   # temporal UNICO + fsync (AUD-002 en JSON)
     return path
 
 

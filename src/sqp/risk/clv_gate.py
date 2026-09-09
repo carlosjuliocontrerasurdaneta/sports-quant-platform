@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from sqp.storage.atomic import atomic_write_json
+
 CLV_GATE_FILENAME = "clv_gate.json"
 # Minimo de apuestas liquidadas emparejadas a un cierre capturado por (liga,
 # mercado). Con menos muestra, el signo de la mediana es ruido: deny.
@@ -61,9 +63,9 @@ def write_clv_gate(segments: pd.DataFrame, bets_dir: Path,
                "min_n": int(min_n), "markets": markets}
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / CLV_GATE_FILENAME
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    # Helper canonico (temporal UNICO + fsync). El temporal de nombre fijo
+    # `.json.tmp` que habia aqui es la colision de AUD-002 en su version JSON.
+    atomic_write_json(payload, path)
     return path
 
 

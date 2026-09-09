@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqp.logging_config import get_logger
+from sqp.storage.atomic import atomic_write_json
 
 log = get_logger("sqp.run_status")
 
@@ -60,7 +61,12 @@ def record_run_failure(root: Path, stage: str, exit_code: int) -> Path:
     # docstring de `clear_run_status` dice que no debe pasar.
     stages = dict(_read_stages(root))
     stages[stage] = entry
-    out.write_text(json.dumps({"stages": stages}, indent=2), encoding="utf-8")
+    # Escritura ATOMICA (AUD-2026-09-08b): esto era un `write_text` directo
+    # sobre el destino. Si el proceso muere a mitad, el centinela queda como
+    # JSON truncado, `_read_stages` lo declara ilegible y devuelve {} -- es
+    # decir, EL FALLO QUE ACABA DE REGISTRARSE DESAPARECE. Justo el modo de
+    # averia que este centinela existe para impedir.
+    atomic_write_json({"stages": stages}, out, sort_keys=False)
     log.error("Run diario FALLIDO en la etapa '%s' (exit %s); centinela -> %s",
               stage, exit_code, out)
     return out
@@ -118,7 +124,7 @@ def clear_run_status(root: Path, stage: str | None = None) -> bool:
     del stages[stage]
     if stages:
         # Sobrevive el fallo de la otra etapa, que es el punto de `--only-stage`.
-        p.write_text(json.dumps({"stages": stages}, indent=2), encoding="utf-8")
+        atomic_write_json({"stages": stages}, p, sort_keys=False)
     else:
         p.unlink(missing_ok=True)
     return True
