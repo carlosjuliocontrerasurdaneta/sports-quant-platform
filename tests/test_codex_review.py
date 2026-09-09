@@ -1762,3 +1762,146 @@ def test_a_pass_blaming_the_interpreter_is_not_clean(
 
     assert code != 0
     assert read_review(output, "CODEX").status is ReviewStatus.EXECUTION_FAILED
+
+
+# ---------------------------------------------------------------------------
+# Resolucion del binario de Codex.
+#
+# `codex_command` NO TENIA NI UN TEST: los de arriba lo sortean con monkeypatch.
+# Por eso pudo divergir del hook durante un mes sin que nada enrojeciera -- el
+# lanzador fijaba `%APPDATA%\npm\codex.cmd` y `crossreview-on-stop.sh` resuelve
+# `codex` por PATH, que en esta maquina son instalaciones y versiones distintas
+# (0.147.0 contra 0.153.4). Las dos mitades de la misma integracion revisando
+# con revisores distintos, y el fallo es ASIMETRICO: si el shim de npm se
+# desinstala, la Forma 2 revienta y la Forma 3 sigue en pie sin senal alguna.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(os.name != "nt", reason="el shim de npm solo existe en Windows")
+def test_codex_command_prefers_path_over_the_npm_shim_on_this_machine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """El caso exacto del defecto: los dos instalados, y hay que elegir el del PATH."""
+    en_path = tmp_path / "path" / "codex.exe"
+    en_path.parent.mkdir(parents=True)
+    en_path.touch()
+
+    shim = tmp_path / "npm" / "codex.cmd"
+    shim.parent.mkdir(parents=True)
+    shim.touch()
+
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: str(en_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    assert codex_review.codex_command() == en_path
+
+
+def test_codex_command_resolves_through_path_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PATH es la via del hook, asi que es la via del lanzador. En las dos plataformas."""
+    en_path = tmp_path / "codex"
+    en_path.touch()
+
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: str(en_path))
+
+    assert codex_review.codex_command(windows=True) == en_path
+    assert codex_review.codex_command(windows=False) == en_path
+
+
+def test_codex_command_falls_back_to_the_npm_shim_when_path_has_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """El shim no se retira: hay maquinas donde es la unica instalacion."""
+    shim = tmp_path / "npm" / "codex.cmd"
+    shim.parent.mkdir(parents=True)
+    shim.touch()
+
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: None)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    assert codex_review.codex_command(windows=True) == shim
+
+
+def test_codex_command_ignores_the_npm_shim_away_from_windows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    shim = tmp_path / "npm" / "codex.cmd"
+    shim.parent.mkdir(parents=True)
+    shim.touch()
+
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: None)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    with pytest.raises(FileNotFoundError):
+        codex_review.codex_command(windows=False)
+
+
+def test_codex_command_names_every_place_it_looked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Un `no lo encuentro` sin decir DONDE busco deja al operador a ciegas."""
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: None)
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    with pytest.raises(FileNotFoundError) as error:
+        codex_review.codex_command(windows=True)
+
+    mensaje = str(error.value)
+
+    assert "PATH" in mensaje
+    assert str(tmp_path / "npm" / "codex.cmd") in mensaje
+
+
+def test_codex_command_survives_a_missing_appdata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Sin APPDATA pero con codex en el PATH la revision debe poder correr igual.
+
+    Antes se lanzaba `RuntimeError` ANTES de mirar el PATH, asi que un entorno
+    sin esa variable no podia revisar aunque tuviera Codex instalado.
+    """
+    en_path = tmp_path / "codex"
+    en_path.touch()
+
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.setattr(codex_review.shutil, "which", lambda nombre: str(en_path))
+
+    assert codex_review.codex_command(windows=True) == en_path
+
+
+def test_the_hook_and_the_launcher_resolve_codex_the_same_way() -> None:
+    """Fija la CLASE: ninguna de las dos mitades puede volver a fijar una ruta.
+
+    Este es el test que faltaba. No comprueba un binario concreto -- comprueba
+    que las dos vias usan el MISMO mecanismo de resolucion, que es lo unico que
+    impide que vuelvan a separarse.
+    """
+    hook = (
+        Path(__file__).resolve().parents[1]
+        / ".claude"
+        / "hooks"
+        / "crossreview-on-stop.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "command -v codex" in hook, "el hook dejo de resolver por PATH"
+
+    for fijado in ("AppData", "codex.cmd", "codex.exe"):
+        assert fijado not in hook, f"el hook fija una ruta de Codex: {fijado}"
+
+    lanzador = (
+        Path(__file__).resolve().parents[1] / "scripts" / "ai" / "codex_review.py"
+    ).read_text(encoding="utf-8")
+    resolucion = lanzador[lanzador.index("def codex_command"):]
+    resolucion = resolucion[: resolucion.index("\n\n\n")]
+
+    assert 'shutil.which("codex")' in resolucion, "el lanzador dejo de mirar el PATH"
+
+    # Contra la EXPRESION, no contra la prosa: la docstring nombra el shim al
+    # explicar por que ya no manda, y buscar la palabra suelta emparejaba ahi.
+    shim = 'Path(appdata) / "npm"'
+
+    assert shim in resolucion, "el shim de npm desaparecio; era el respaldo"
+    assert resolucion.index('shutil.which("codex")') < resolucion.index(shim), (
+        "el shim de npm vuelve a tener prioridad sobre el PATH"
+    )

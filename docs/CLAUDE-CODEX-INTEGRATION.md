@@ -103,10 +103,16 @@ cruzada NO se ejecutó» —, **no bloquea** (`exit 0`, porque el modelo no pued
 arreglar una cuota agotada) y **repone el centinela**: la revisión queda
 aplazada al turno siguiente, nunca saltada en silencio.
 
-**Qué binario usa.** El `codex` del `PATH`. Ojo: **no es el mismo** que fija la
-Forma 2, que apunta por ruta absoluta a `%APPDATA%\npm\codex.cmd`. Hoy son
-versiones distintas, así que un fallo de instalación puede romper una vía y
-dejar la otra en pie sin que nada lo señale.
+**Qué binario usa.** El `codex` del `PATH`, vía `command -v codex` — y desde el
+2026-09-09 **la Forma 2 resuelve por la misma vía**. No siempre fue así: el
+lanzador fijaba `%APPDATA%\npm\codex.cmd` y las dos mitades de la integración llevaban un mes
+revisando con instalaciones distintas (`0.147.0` contra `0.153.4`). El fallo era
+asimétrico —desinstalar el shim de npm rompía la Forma 2 y dejaba la Forma 3 en
+pie, así que la integración *parecía* viva con la mitad muerta— y sobrevivió
+porque `codex_command()` no tenía ni una prueba. Hoy el shim sigue siendo el
+respaldo cuando el `PATH` no da nada, pero ya no manda, y un test lee **los dos
+ficheros** para que ninguna de las dos mitades pueda volver a fijar una ruta.
+Ver `KI-046`.
 
 **Historial, porque la lección importa.** Esta forma estuvo **rota durante meses
 sin que nadie lo supiera**: los patrones emparejaban con barra normal y en

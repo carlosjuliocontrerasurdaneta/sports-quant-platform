@@ -337,25 +337,51 @@ def build_prompt(
     )
 
 
-def codex_command() -> Path:
-    if os.name == "nt":
+def codex_command(windows: bool | None = None) -> Path:
+    r"""Resolve the Codex CLI the way `crossreview-on-stop.sh` already does.
+
+    PATH FIRST, deliberately. The hook runs `command -v codex`; pinning
+    `%APPDATA%\npm\codex.cmd` here is how the two halves of the same
+    integration ended up a version apart -- 0.147.0 for the launcher against
+    0.153.4 for the hook -- for a month, with nothing going red. The pin was
+    never a decision: it dates from 2026-08-13, when npm was the only install
+    on this machine, and the native installer arrived on 2026-09-04.
+
+    The failure that pin creates is ASYMMETRIC, which is why it stayed hidden:
+    uninstalling the npm shim breaks Form 2 with a FileNotFoundError while
+    Form 3 keeps working, so the integration looks alive while half of it is
+    dead. The shim is kept as a FALLBACK -- a workspace where it is the only
+    install must still review -- but it can no longer outrank PATH.
+    """
+    if windows is None:
+        windows = os.name == "nt"
+
+    on_path = shutil.which("codex")
+
+    if on_path:
+        return Path(on_path)
+
+    looked = ["`codex` on PATH"]
+
+    if windows:
         appdata = os.environ.get("APPDATA")
 
-        if not appdata:
-            raise RuntimeError(
-                "APPDATA environment variable is unavailable."
-            )
+        if appdata:
+            shim = Path(appdata) / "npm" / "codex.cmd"
 
-        codex = Path(appdata) / "npm" / "codex.cmd"
+            if shim.exists():
+                return shim
 
-        if not codex.exists():
-            raise FileNotFoundError(
-                f"Codex npm CLI was not found at: {codex}"
-            )
+            looked.append(str(shim))
+        else:
+            # No es motivo para abortar por si solo: sin APPDATA pero con Codex
+            # en el PATH la revision corre igual, y antes esto lanzaba ANTES de
+            # mirar el PATH.
+            looked.append("the npm shim (APPDATA is unavailable)")
 
-        return codex
-
-    return Path("codex")
+    raise FileNotFoundError(
+        "The Codex CLI was not found. Looked for: " + ", ".join(looked) + "."
+    )
 
 
 EXIT_CODES = {
