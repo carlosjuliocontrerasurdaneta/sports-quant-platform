@@ -11,12 +11,31 @@ Analizar únicamente:
 - BATs y scripts llamados por ellos (`run_all.py`, `settle_all.py`)
 - Logs más recientes (solo el final del archivo): `logs\run_diario.log`, `logs\settle_all.log`, `logs\backfill.log`
 
-Nunca inspeccionar:
+Nunca **volcar a contexto**:
 
 - `data/`
 - `historical/`
 - `exports/`
 - Modelos no relacionados con la ejecución del día
+
+**Matiz que esta prohibición necesita** (auditoría del sistema de skills,
+2026-09-08, H05). La prohibición es sobre **cargar datasets en contexto**, no
+sobre verificarlos. Redactada como prohibición absoluta era incumplible junto
+con los propios loops de esta skill: `quant/01` exige comprobar que
+`predictions_<liga>.csv` es legible y no trae duplicados, y `quant/03` exige la
+reconciliación contra `settled_<liga>.csv`. Un control que exige verificar lo
+que prohíbe mirar deja al agente bloqueado o declarando un PASS que no midió.
+
+Rige el mismo criterio que el `CLAUDE.md` de la raíz, que es la autoridad:
+**los escaneos programáticos de datasets completos están permitidos cuando son
+necesarios, siempre que a contexto vuelvan solo agregados, esquemas, muestras o
+hallazgos.** Es decir:
+
+- **Revisión ligera** (el modo por defecto de esta skill): BAT, scripts y la
+  cola de los logs. No se toca `data/`.
+- **Ejecución de un loop de validación**: se permite comprobación programática
+  acotada de los artefactos que el loop nombra — conteos, duplicados, esquema,
+  legibilidad, sellos temporales—, devolviendo cifras, nunca filas.
 
 Entregar:
 
