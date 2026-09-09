@@ -275,12 +275,12 @@ corrección. Las dos salidas son legítimas y excluyentes:
   paquete pasa a ser opcional. Más simple, pero pierde el `MANIFEST.json` como
   ancla de baseline y trazabilidad.
 
-Hallazgo H04 de `analisis-skills-codex.md`. Mi recomendación es **(b)** con el
+Hallazgo H04 de `audit/analisis-skills-codex.md`. Mi recomendación es **(b)** con el
 `MANIFEST.json` degradado a opcional-pero-recomendado, pero es tuya.
 
 ## B-11 · Tres defectos en el paquete vendorizado Superpowers
 
-`analisis-skills-codex.md` confirma tres MEDIUM que viven en
+`audit/analisis-skills-codex.md` confirma tres MEDIUM que viven en
 `.claude/skills/superpowers-main/`, **paquete de terceros**. Un parche local se
 pierde en la siguiente actualización, así que **no los toco**:
 
@@ -297,9 +297,21 @@ pierde en la siguiente actualización, así que **no los toco**:
 Salidas posibles: fijar la versión del paquete y llevar el parche aguas arriba,
 o documentar la desviación en una nota propia que sobreviva a la actualización.
 
-## Nota sobre `analisis-skills-codex.md`
+## Nota sobre `audit/analisis-skills-codex.md`
 
-El informe está **sin versionar** (217 KB, 1.775 líneas, 2026-09-08 22:11). Es la
-base de evidencia de KI-045 y de estos dos ítems, así que tiene valor permanente:
-**debería commitearse**. No lo hago yo — es un entregable de Codex por encargo
-del operador, y la regla vigente es no tocar sus informes sin autorización.
+Versionado el 2026-09-08 por autorización expresa del operador (217 KB, 1.775
+líneas) y **archivado en `audit/` el 2026-09-09**, junto con
+`audit/auditoria-integral-codex.md`.
+
+El operador los había sacado del proyecto a `C:\dev\3`, donde guarda sus
+ficheros propios (`NOTAS.md`). El instinto de no dejarlos sueltos en la raíz era
+correcto; sacarlos del repositorio no, y la razón es concreta: **cuatro ficheros
+versionados los citan por nombre** —KI-038 y KI-045 en `known-issues.md`, B-10 y
+B-11 aquí, y dos entradas de bitácora—. Una cita que apunta fuera del control de
+versiones es una afirmación que no se puede verificar, que es justo el modo de
+fallo que este repositorio lleva meses documentando. Además quedaban sin
+historial ni copia remota, a un borrado accidental de desaparecer.
+
+`audit/` es donde este repositorio archiva informes desde el principio
+(`audit/FINAL-AUDIT.md`, `audit/model_vs_market_*.md`, `audit/latest/`). Sigue
+vigente la regla de siempre: **son entregables de Codex; no se editan.**
