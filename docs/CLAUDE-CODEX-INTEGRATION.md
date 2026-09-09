@@ -6,7 +6,18 @@
 
 Claude y Codex son dos instancias de modelos distintos que actúan como **revisores independientes** del mismo cambio de código. El sistema garantiza que ninguno puede aprobar un cambio sin que el otro lo haya revisado sobre exactamente el mismo árbol de trabajo.
 
-La integración NO es Claude llamando a Codex para que implemente código (eso es el flujo Opus→Codex manual). La integración formal es el **Cross Review Protocol V2** (`scripts/ai/`): dos revisores, dos veredictos, un consenso.
+Hay **tres formas**, y solo una de ellas se activa sin que nadie la invoque:
+
+| # | Forma | Se activa |
+|---|---|---|
+| 1 | Flujo manual de implementación (Opus→Codex) | Cuando tú lo pides |
+| 2 | Cross Review Protocol V2 (`scripts/ai/`) | `/cross-review` |
+| 3 | **Centinela automático** (`.claude/hooks/`) | **Sola**, al tocar código de riesgo |
+
+La Forma 1 es Claude usando a Codex como implementador. Las Formas 2 y 3 son lo
+contrario: Codex revisando a Claude. La Forma 3 es la que protege el código del
+dinero en el día a día, y es la única que no depende de que alguien se acuerde
+de invocarla.
 
 ---
 
@@ -46,7 +57,73 @@ Claude revisa el diff  +  Codex revisa el mismo diff  →  consenso JSON
 
 **Cuándo usarlo:** cambios de riesgo medio-alto — nuevos modelos, cambios de calibración, modificaciones al pipeline de predicción.
 
-**Cómo invocarlo:** `/cross-review` o el skill `cross-review`.
+**Cómo invocarlo:** `/cross-review`, definido en `.claude/commands/cross-review.md`. No es un skill.
+
+---
+
+## Forma 3: Centinela automático (la única que se activa sola)
+
+```
+tocas código de riesgo  →  se arma el centinela  →  al cerrar el turno Codex
+revisa el diff  →  su veredicto vuelve al modelo y bloquea el cierre
+```
+
+Nadie la invoca. Vive en `.claude/settings.json` → `hooks` y consta de dos piezas:
+
+| Hook | Evento | Qué hace |
+|---|---|---|
+| `.claude/hooks/mark-crossreview-pending.sh` | `PostToolUse`, matcher `Edit\|Write\|Bash` | Si el fichero tocado cae en el ámbito vigilado, deja el centinela `.claude/.crossreview-pending` |
+| `.claude/hooks/crossreview-on-stop.sh` | `Stop` (sin matcher, timeout 600 s) | Si el centinela existe, ejecuta `codex review` y devuelve `exit 2`: el turno no puede cerrarse hasta atender o **refutar** cada hallazgo |
+
+**Ámbito vigilado — deliberadamente estrecho:** `configs/`, `src/sqp/risk/` y
+`src/sqp/calibration/`. Es el código donde un error cuesta dinero. A diferencia
+de `mark-tests-pending`, este hook **no** usa la red de seguridad `--with-git`:
+sobre-disparar tests es gratis, sobre-disparar una revisión de pago no lo es.
+Solo se atiende a lo que el comando **nombra**.
+
+**Qué revisa.** El hook corre en el `Stop`, y para entonces el trabajo del turno
+puede estar ya commiteado. El alcance se elige en cascada:
+
+1. `--uncommitted` si queda algo sin commitear **dentro del ámbito vigilado**;
+2. si no, `--base <upstream>` — los commits por delante del upstream, es decir
+   lo que todavía no ha pasado por ninguna puerta;
+3. si no hay upstream (rama local nueva, clon sin remoto), `--commit HEAD`.
+
+Las instrucciones del revisor **no viajan en el prompt**: viven en `AGENTS.md`,
+que Codex carga solo. Los selectores de alcance y el `[PROMPT]` posicional son
+mutuamente excluyentes en la CLI, y duplicar las instrucciones es justo la
+deriva entre copias que este repositorio lleva meses pagando.
+
+**Distingue hallazgos de fallos de entorno.** `codex review` puede salir con
+código 0 habiendo abortado, así que se comprueban las dos vías: el código de
+salida y los patrones conocidos (`usage limit`, `Review was interrupted`,
+`failed to refresh available models`, rate limit, 401, `ECONNREFUSED`). Ante un
+fallo de entorno el aviso lleva un encabezado **distinto** — «la revisión
+cruzada NO se ejecutó» —, **no bloquea** (`exit 0`, porque el modelo no puede
+arreglar una cuota agotada) y **repone el centinela**: la revisión queda
+aplazada al turno siguiente, nunca saltada en silencio.
+
+**Qué binario usa.** El `codex` del `PATH`. Ojo: **no es el mismo** que fija la
+Forma 2, que apunta por ruta absoluta a `%APPDATA%\npm\codex.cmd`. Hoy son
+versiones distintas, así que un fallo de instalación puede romper una vía y
+dejar la otra en pie sin que nada lo señale.
+
+**Historial, porque la lección importa.** Esta forma estuvo **rota durante meses
+sin que nadie lo supiera**: los patrones emparejaban con barra normal y en
+Windows el harness entrega la ruta con contrabarra, así que no disparaba nunca
+(`KI-031`, resuelto el 2026-09-05). Debajo escondía una invocación inválida que
+tampoco se había ejecutado jamás. Después vino que un fallo de infraestructura
+se presentara bajo el encabezado de hallazgos (`KI-035`, 2026-09-06) y que el
+matcher filtrara por nombre de herramienta, de modo que editar con `sed` o un
+heredoc no armaba nada (`AUD-MED-002`, 2026-09-07). Un `PASS` es peor que no
+ejecutar la revisión: se lee como «revisado y limpio».
+
+**Está funcionando.** Primer disparo automático confirmado el 2026-09-06 sobre
+un turno que editó `src/sqp/calibration/`. El 2026-09-08 encontró que el banner
+de frescura del tablero solo se evaluaba al generar el HTML —y `report_latest.html`
+es estático, así que el aviso no podía aparecer nunca justo en la parada que
+existe para señalar—. La mitad de aquel arreglo era decorativa, y lo dijo Codex,
+no Claude.
 
 ---
 
@@ -71,7 +148,8 @@ Claude revisa el diff  +  Codex revisa el mismo diff  →  consenso JSON
 |---|---|
 | Implementar un feature planificado | Forma 1 (Opus→Codex) |
 | Corregir un bug menor | Claude solo (Sonnet) |
-| Cambio en calibración o modelo | Forma 2 (Cross Review) |
+| Tocar `configs/`, `src/sqp/risk/` o `src/sqp/calibration/` | Forma 3 — automática, no hay nada que hacer |
+| Cambio en calibración o modelo | Forma 2 (Cross Review); la Forma 3 se dispara además sola |
 | Auditoría completa del sistema | `/full-audit` con subagentes especializados |
 | Incidente en producción | Skill `quant-incident` → aprobación humana |
 

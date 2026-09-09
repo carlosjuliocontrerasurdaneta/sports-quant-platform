@@ -1,7 +1,7 @@
 ---
 tags: [operacion, scheduler, sqp]
 creada: 2026-07-08
-actualizada: 2026-07-14
+actualizada: 2026-09-09
 ---
 
 # Automatización y operación
@@ -34,6 +34,14 @@ Producción vive en `C:\dev\3\sports-quant-platform` (repunte del scheduler 2026
 - Ligas fuera de temporada se omiten con WARNING (chequeo `/sports`, gratis); key inválido = ERROR.
 - Guard de presupuesto de The Odds API en el run live; el gasto de créditos históricos siempre se autoriza a mano.
 - Tests: `PYTHONPATH=src pytest tests/ -q`. CI en GitHub Actions (ruff + pytest, 3.11/3.12/3.13 + windows, pip-audit bloqueante).
+
+## Revisión cruzada automática (Codex)
+
+- Dos hooks en `.claude/settings.json`: `mark-crossreview-pending.sh` (`PostToolUse`, matcher `Edit|Write|Bash`) arma el centinela `.claude/.crossreview-pending`; `crossreview-on-stop.sh` (`Stop`) ejecuta `codex review` y devuelve `exit 2` — el turno no cierra hasta atender o **refutar** cada hallazgo.
+- Ámbito vigilado, estrecho a propósito: `configs/`, `src/sqp/risk/`, `src/sqp/calibration/`. **Cada disparo es una llamada de pago**, por eso este hook no usa la red `--with-git` que sí usa `mark-tests-pending`.
+- Alcance en cascada: `--uncommitted` (si queda algo sin commitear en el ámbito) → `--base <upstream>` → `--commit HEAD`. Las instrucciones del revisor viven en `AGENTS.md`, que Codex carga solo.
+- Un fallo de entorno (cuota, 401, review interrumpida) **no** se presenta como hallazgos: encabezado distinto, `exit 0` y centinela repuesto para reintentarlo. Ver `KI-035`.
+- Es la **Forma 3** de `docs/CLAUDE-CODEX-INTEGRATION.md`, la única que se activa sola. Las otras dos (flujo manual Opus→Codex y `/cross-review`) requieren invocación.
 
 ## Grafo de conocimiento del código (graphify)
 
