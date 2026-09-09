@@ -154,9 +154,25 @@ cambiar el formato del centinela y sus lectores.
 (AUD-MED-003), *después* del fallo, así que ese `0x1` nunca llegó a ninguna capa
 de monitorización y **su causa raíz sigue sin diagnosticar**.
 
-Esta sesión lanzó `python scripts/validate_oos.py` para reproducirlo; el
-resultado se anota abajo cuando termine. Es la puerta que vigila que los
-parámetros por liga sigan generalizando: un mes ciega esa comprobación.
+**Reproducción ejecutada: NO falla.** `python scripts/validate_oos.py`, el
+comando exacto del BAT, terminó con **exit 0** tras **1 h 40 min** de CPU:
+*«32 liga(s) validada(s) de 33; 0 sin cuotas, 1 sin resultados, 0 con error»*.
+Así que el defecto **no está en el camino normal del script** con los datos de
+hoy.
+
+Lo que deja abierto y lo que acota:
+
+- La causa del `0x1` del 2026-09-01 sigue **sin diagnosticar**, y ahora sabemos
+  que no es un fallo determinista del script.
+- Candidatos que la reproducción no descarta: el paso `model_vs_market_report.py`
+  (best-effort, no bloqueante, así que no explicaría un `0x1`), una interrupción
+  del entorno, o que la máquina se suspendiera a mitad.
+- **Dato nuevo y accionable por sí mismo: el job mensual dura más de hora y
+  media.** Una ventana así es superficie de fallo por sí misma, y ninguna alarma
+  vigila su duración.
+- El centinela de la etapa `validate_oos` existe desde el 2026-09-06, así que el
+  próximo fallo **sí** llegará al health check. Queda como incógnita, no como
+  tarea ciega.
 
 - **Archivos**: `scripts/validate_oos.py`, `VALIDATE_OOS.bat`.
 - **Acción**: reproducir y corregir, o forzar una ejecución manual antes del
