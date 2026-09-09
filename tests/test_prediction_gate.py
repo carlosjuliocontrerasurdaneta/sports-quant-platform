@@ -738,3 +738,70 @@ def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
     assert ajeno.read_text(encoding="utf-8") == "AJENO A MEDIO ESCRIBIR"
     assert isinstance(load_prediction_gate(tmp_path), dict)
     json.loads((tmp_path / PREDICTION_GATE_FILENAME).read_text(encoding="utf-8"))
+
+
+# --- El umbral no se cita de memoria ------------------------------------------
+#
+# Revision cruzada de Codex, 2026-09-09. El reparto Bonferroni del 2026-09-04
+# movio el umbral POR MERCADO de 0,05 a 0,05/41 = 0,00122, pero TRES documentos
+# seguian afirmando 0,05: el docstring de `scripts/gate_status.py` --- que es lo
+# que un operador ejecuta para consultar el gate ---, el comentario del bloque en
+# `configs/default.yaml`, y despues una skill operativa que copio el valor de
+# ahi. El codigo siempre importo la constante; solo mentia el texto, y un texto
+# que miente sobre un umbral produce recomendaciones de stake real equivocadas:
+# un p-valor de 0,01 suena "significativo" y el gate lo RECHAZA.
+#
+# Esta prueba existe para que el numero no pueda volver a quedarse atras: si
+# alguien re-reparte el alpha, estos ficheros fallan hasta actualizarse.
+
+_DOCUMENTOS_QUE_CITAN_EL_UMBRAL = (
+    "scripts/gate_status.py",
+    "configs/default.yaml",
+    ".claude/skills/clv-shadow-exit/SKILL.md",
+)
+
+
+def test_ningun_documento_presenta_el_alpha_de_familia_como_umbral_por_mercado():
+    import re
+    from pathlib import Path
+
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          PREDICTION_GATE_FAMILY_ALPHA,
+                                          PREDICTION_GATE_K)
+
+    raiz = Path(__file__).resolve().parents[1]
+    fraccion = f"{PREDICTION_GATE_FAMILY_ALPHA:g}/{PREDICTION_GATE_K}"
+    variantes = {fraccion, fraccion.replace(".", ",")}
+    # El umbral vigente, con la precision con la que se escribe en prosa.
+    variantes |= {f"{PREDICTION_GATE_ALPHA:.5f}".rstrip("0"),
+                  f"{PREDICTION_GATE_ALPHA:.5f}".rstrip("0").replace(".", ",")}
+    prohibido = re.compile(r"\bp\s*<\s*0[.,]05\b", re.I)
+
+    for rel in _DOCUMENTOS_QUE_CITAN_EL_UMBRAL:
+        texto = (raiz / rel).read_text(encoding="utf-8")
+        assert any(v in texto for v in variantes), (
+            f"{rel} documenta el prediction gate pero no nombra el umbral por "
+            f"mercado vigente ({fraccion} = {PREDICTION_GATE_ALPHA:.5f}). Si el "
+            f"alpha se re-reparte, el documento tiene que decirlo.")
+        malo = prohibido.search(texto)
+        assert malo is None, (
+            f"{rel} presenta el alpha de FAMILIA como si fuera el umbral por "
+            f"mercado: {malo.group(0)!r}. El de familia es "
+            f"{PREDICTION_GATE_FAMILY_ALPHA}; el que decide un mercado es "
+            f"{PREDICTION_GATE_ALPHA:.5f}.")
+
+
+def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
+    """La discriminacion exacta que pedia la revision: n suficiente, EV positivo
+    y un p-valor que el alpha de familia aprobaba y el repartido rechaza."""
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA, evaluate_markets
+
+    # 165/300 -> p ~ 0,0416: por debajo de 0,05 y muy por encima de 0,00122.
+    fila = evaluate_markets(_rows(165, 135, p_model=0.62, p_market=0.50,
+                                  price=2.10)).iloc[0]
+    assert fila["n"] == 300
+    assert fila["ev_flat"] > 0, "premisa: el EV a stake plano es positivo"
+    assert fila["p_value"] < 0.05, "premisa: al alpha de familia esto pasaba"
+    assert fila["p_value"] > PREDICTION_GATE_ALPHA, "premisa: al repartido, no"
+    assert fila["allowed"] is False or fila["allowed"] == False  # noqa: E712
+    assert fila["reason"] == "no_bate_al_mercado"

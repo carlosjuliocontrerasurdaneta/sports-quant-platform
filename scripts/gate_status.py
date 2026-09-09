@@ -2,7 +2,13 @@
 
 Condiciones del gate (src/sqp/risk/prediction_gate.py):
   1. n >= PREDICTION_GATE_MIN_N (300)
-  2. binomtest(wins, n, 0.5, alternative='greater').pvalue < PREDICTION_GATE_ALPHA (0.05)
+  2. binomtest(wins, n, 0.5, alternative='greater').pvalue < PREDICTION_GATE_ALPHA
+     OJO: PREDICTION_GATE_ALPHA NO es 0,05. Desde el pre-registro del 2026-09-04
+     el alpha de familia (0,05) se reparte por Bonferroni sobre K=41 cortes:
+     el umbral POR MERCADO es 0,05/41 = 0,00122. Este docstring decia 0.05 y
+     es de donde una sesion posterior copio el valor caducado a una skill
+     operativa (revision cruzada de Codex, 2026-09-09). El codigo siempre
+     importo la constante; solo mentia el texto.
   3. mean(EV) > 0
 
 Uso:

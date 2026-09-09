@@ -47,8 +47,15 @@ stake real.
   stake real solo si cumple LAS DOS condiciones, sobre muestra FUERA DE MUESTRA
   (solo `game_date` posterior al pre-registro): (1) su modelo puro bate al
   mercado evento a evento — test de signo pareado, unilateral, empates
-  excluidos, `n >= PREDICTION_GATE_MIN_N` (300) y `p < PREDICTION_GATE_ALPHA`
-  (0,05); y (2) su EV a stake plano es positivo. Constantes en
+  excluidos, `n >= PREDICTION_GATE_MIN_N` (300) y `p < PREDICTION_GATE_ALPHA`;
+  y (2) su EV a stake plano es positivo. **`PREDICTION_GATE_ALPHA` NO es 0,05**:
+  desde el pre-registro del 2026-09-04 el alpha de FAMILIA (0,05) se reparte por
+  Bonferroni sobre `PREDICTION_GATE_K = 41` cortes, asi que el umbral POR MERCADO
+  es `0,05/41 = 0,00122`. Con K=41 a 0,05 la probabilidad de al menos un falso
+  positivo, si los 41 fueran nulos, seria del 87,8 %: una puerta que el ruido abre
+  con esa probabilidad no es una puerta. **Leer la constante, no citarla de
+  memoria**: un p-valor de 0,01 tiene sufijo de "significativo" y el gate lo
+  RECHAZA. Constantes en
   `src/sqp/risk/prediction_gate.py`; registro `data/bets/prediction_gate.json`,
   reescrito por `scripts/update_prediction_gate.py`. Default-deny.
   Consulta rápida del estado: `python scripts/gate_status.py`.

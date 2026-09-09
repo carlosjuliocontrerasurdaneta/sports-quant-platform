@@ -242,7 +242,11 @@ clv_gate:
 # Prediction gate (ENABLED 2026-08-16): SUSTITUYE al de CLV como regla de salida
 # rectora. Un (liga, mercado) lleva stake real solo si cumple LAS DOS:
 #   1. Su modelo PURO bate al mercado evento a evento -- test de signo pareado,
-#      unilateral, empates excluidos, n >= 300 no empatadas y p < 0.05.
+#      unilateral, empates excluidos, n >= 300 no empatadas y
+#      p < PREDICTION_GATE_ALPHA. Ese alpha NO es 0,05: desde el pre-registro
+#      del 2026-09-04 el de FAMILIA (0,05) se reparte por Bonferroni sobre
+#      K = 41 cortes, asi que el umbral POR MERCADO es 0,05/41 = 0,00122.
+#      Este comentario decia 0.05 desde antes de aquel reparto.
 #   2. Su EV a stake plano es positivo (acertar mas que el precio no basta si el
 #      margen no cubre el vig -- leccion de pick_mode accuracy a cuotas 1.07).
 # FUERA DE MUESTRA: solo cuentan filas con game_date posterior al pre-registro
