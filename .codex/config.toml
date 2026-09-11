@@ -1,0 +1,7 @@
+# Sports Quant Platform: independent Codex review model.
+#
+# This applies to Codex review sessions. Normal Codex usage is not globally
+# forced to Astra; scripts/ai/codex_review.py pins Astra explicitly for the
+# non-interactive cross-review launcher.
+
+review_model = "gpt-6-astra"

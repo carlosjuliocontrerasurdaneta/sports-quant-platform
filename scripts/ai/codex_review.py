@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / ".claude" / "reviews" / "runtime" / "codex-review.md"
 REVIEWER = "CODEX"
 
+# GPT-6 Astra is the independent reviewer for SQP. Keep this explicit: the
+# review must never silently inherit a weaker/default Codex model.
+ASTRA_MODEL = "gpt-6-astra"
+
 #: Workspace-local scratch tree for the reviewer's temporary files and caches.
 SCRATCH = ".codex-tmp"
 
@@ -397,7 +401,7 @@ EXIT_CODES = {
 
 
 def main() -> int:
-    command = "codex exec -"
+    command = f"codex exec --model {ASTRA_MODEL} -"
     started = time.monotonic()
 
     try:
@@ -426,7 +430,6 @@ def main() -> int:
 
     try:
         codex = codex_command()
-        command = f"{codex} exec -"
 
         # SIN `shell=True` (AUD-MED-017, auditoria integral 2026-09-10).
         # `shell=(os.name == "nt")` estaba aqui solo para poder lanzar el shim
@@ -440,9 +443,10 @@ def main() -> int:
         # decir: la ruta de instalacion de una CLI se convertia en codigo.
         # Ahora el lanzador de .cmd se pide EXPLICITAMENTE y solo cuando hace
         # falta, con la ruta como argumento y no como texto de linea de comando.
-        _argv = [str(codex), "exec", "-"]
+        _argv = [str(codex), "exec", "--model", ASTRA_MODEL, "-"]
         if os.name == "nt" and str(codex).lower().endswith((".cmd", ".bat")):
             _argv = [os.environ.get("COMSPEC", "cmd.exe"), "/c", *_argv]
+        command = " ".join(_argv)
         result = subprocess.run(
             _argv,
             input=build_prompt(interpreter, scratch=scratch),
