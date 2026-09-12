@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-09-12]] — Graphify no tiene plugin oficial de Claude Code: es el paquete `graphifyy` + skill; vendorizada en `.claude/skills/graphify/` para que sobreviva a sesiones remotas.
 - [[Bitácora/2026-09-09]] — diagnóstico de la integración Claude↔Codex: las tres vías operativas, la Forma 3 (centinela automático) documentada por fin; divergencia de binarios y PAT en claro fuera del repo.
 - [[Bitácora/2026-08-04]] — auditoría y remediación integrada de `.claude`: routing, Fable 5, estados, permisos, health check y promoción humana por defecto.
 - [[Bitácora/2026-08-02]] — auditoría integral, cierre de filas servidas pendientes y observatorio intradía v2.
