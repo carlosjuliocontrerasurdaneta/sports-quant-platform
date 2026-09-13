@@ -11,7 +11,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Auditoría integral 2026-09-13
 
 - [x] 2026-09-13 — Auditoría integral (fases 0–3) y remediación (4–5): 2 HIGH, 7 MEDIUM, 4 LOW corregidos salvo lo que exige al operador; repositorio Git reconstituido en producción, rama `prod/remediacion-20260913`. Ver [[Bitácora/2026-09-13]] y `audit/latest/`.
-- [ ] **Operador**: pasar las 5 tareas `SQP_*` a «ejecutar aunque el usuario no haya iniciado sesión» (AUD-HIGH-002; 4 de 7 días sin run).
+- [ ] **Operador** (el clasificador de permisos bloquea `Set-ScheduledTask` desde la sesión): `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\set_tasks_unattended.ps1` — pasa las 4 tareas del pipeline a S4U (sin contraseña) + WakeToRun; `-WhatIf` para ver, `-Revert` para deshacer (AUD-HIGH-002; 4 de 7 días sin run).
 - [x] 2026-09-13 — `VALIDATE_OOS.bat` ejecutado a mano (B-01): **exit 0**, 19 min, marcador modelo-vs-mercado en `audit/model_vs_market_20260913.md` (agregado: mercado mejor en Brier, IC95 [+0,0088, +0,0164]; 0 cortes con ventaja). Centinela limpio.
 - [x] 2026-09-13 — `wnba_totals_calibration_iso.joblib` movido a `data/models/retired/` (colapsado; `calibrate_probability('wnba','totals')` sigue siendo no-op).
 - [ ] **Operador**: mergear el PR #3 (`prod/remediacion-20260913` → `main`, CI verde en las 5 patas): `gh pr merge 3 --merge`. El clasificador de permisos de la sesión bloquea el merge.
