@@ -20,6 +20,31 @@
 param([switch]$WhatIf, [switch]$Revert)
 
 $ErrorActionPreference = 'Stop'
+
+# AUTO-ELEVACION. Cambiar el LogonType de una tarea a S4U exige un proceso
+# elevado aunque la cuenta sea administradora: sin UAC, Windows responde
+# "Acceso denegado" en las cuatro (observado el 2026-09-13 desde una consola
+# normal). Si no estamos elevados, se relanza el mismo script con -Verb RunAs
+# (salta el UAC), se espera y se devuelve SU codigo de salida. -WhatIf no
+# necesita elevacion.
+$esAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $esAdmin -and -not $WhatIf) {
+    $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"'))
+    if ($Revert) { $args += '-Revert' }
+    Write-Output '[info] Sin elevacion: se relanza como administrador (acepta el UAC).'
+    try {
+        $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Verb RunAs -Wait -PassThru
+    } catch {
+        Write-Output ("[ERROR] no se pudo elevar (UAC cancelado?): {0}" -f $_.Exception.Message)
+        exit 1
+    }
+    Write-Output ("[info] proceso elevado terminado con codigo {0}. Comprueba el estado:" -f $p.ExitCode)
+    foreach ($n in 'SQP_Diario_Completo_Cdev', 'SQP_Capture_Close_Cdev', 'SQP_Backfill_Cdev', 'SQP_Validate_OOS_Cdev') {
+        $r = Get-ScheduledTask -TaskName $n
+        Write-Output ("  {0}: LogonType={1}; WakeToRun={2}" -f $n, $r.Principal.LogonType, $r.Settings.WakeToRun)
+    }
+    exit $p.ExitCode
+}
 $tareas = 'SQP_Diario_Completo_Cdev', 'SQP_Capture_Close_Cdev', 'SQP_Backfill_Cdev', 'SQP_Validate_OOS_Cdev'
 $logon = if ($Revert) { 'Interactive' } else { 'S4U' }
 $wake = -not $Revert
@@ -51,6 +76,8 @@ foreach ($n in $tareas) {
 }
 if ($fallos -gt 0) {
     Write-Output ("[ERROR] {0} tarea(s) NO quedaron en el estado pedido. Nada que celebrar." -f $fallos)
+    if ($esAdmin -and -not $WhatIf) { try { Read-Host 'Pulsa Enter para cerrar' | Out-Null } catch {} }
     exit 1
 }
+if ($esAdmin -and -not $WhatIf) { try { Read-Host 'Hecho. Pulsa Enter para cerrar' | Out-Null } catch {} }
 exit 0
