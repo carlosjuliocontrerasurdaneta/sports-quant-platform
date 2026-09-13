@@ -417,3 +417,19 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Archivos modificados:** `.mcp.json`, `Obsidian/Bitácora/2026-09-12.md`, `.claude/memory/session-summaries.md`, `.claude/memory/project-decisions.md`, `graphify-out/*` (ignorado). No hay repositorio git en `C:\dev\3\sports-quant-platform`: nada que commitear.
 
 **Cierre definitivo (segundo cierre, misma sesión):** el operador delegó la elección; se midió la hipótesis abierta y se aplicaron las dos pendientes. VERIFICADO el 2026-09-12 (medido con copia previa): `graphify update .` CONSERVA la capa semántica (787 nodos semánticos, 0 perdidos, 0 títulos AST de `.md` reintroducidos, +3 aristas de `.mcp.json`) pero RE-CLUSTERIZA (477 comunidades frente a 472) y renombra por hub: solo 147 de 472 etiquetas curadas sobreviven. Tras un `update .`, restaurar etiquetas e informe desde `graphify-out/2026-09-12/` o asumir nombres por hub. Grafo curado restaurado (6.098 · 12.575 · 472, etiquetas intactas) y `graph.html` regenerado. Entrada global del MCP retirada y `SKILL.md.bak` borrado; `claude mcp list` → `graphify: graphify-mcp` (proyecto, pendiente de aprobación). Copias de seguridad en `graphify-out/2026-09-12/`.
+
+## 2026-09-13 — Auditoría integral (fases 0–5), repositorio reconstituido y tareas desatendidas
+
+**Trabajo realizado:** `full-audit` sobre el árbol de producción y `audit-remediation` con autorización expresa. 2 HIGH, 7 MEDIUM, 4 LOW confirmados y corregidos; informe en `audit/latest/` (ronda 09-10 preservada en `audit/audit-20260910/`).
+
+**Hallazgos que dominan:** (1) producción era un árbol sin `.git`, divergente de `main@a401f06` en 94+41 ficheros — el remoto SÍ era consultable con `gh` (CI verde para otro código); (2) sin run 4 de 7 días, en silencio (tareas «Solo interactivo» + `open_dashboard.ps1` se omitía justo con reporte viejo); (3) revalidación ciega tras las 00:00Z (2/115 vs 195/369); (4) líneas de cuarto graduadas como enteras; (5) 150/730 unidades listadas sin veredicto en el ledger (refresco antes del partido + guard M2 sólo `stake>0`); (6) memoria con `min_n=100` vs código 300; (7) hooks armados por comandos de sólo lectura.
+
+**Cambios:** repositorio reconstituido in situ (`git init`+`fetch`+`read-tree`), PR #3 mergeado, `main` = producción (`6281c03`); `_dia_run_vigente`; `half_win`/`half_loss`; `superseded_candidates`; guard M2 sobre toda fila real + fallback histórico de tenis; `:lista` en ambas rutas del BAT (simulado con stubs); `_es_escritura` en hooks; `open_dashboard.ps1` con liveness y aviso; poda de huérfanos, retención ampliada, carga condicional de cuotas. Revisión `fable` de los cambios de contrato del ledger: 0 defectos. Codex: 1 hallazgo (script de tareas no propagaba errores) atendido.
+
+**Operación:** `VALIDATE_OOS.bat` en verde tras 12 días en rojo (`audit/model_vs_market_20260913.md`: mercado mejor en Brier agregado, IC95 [+0,0088, +0,0164]); las 4 tareas del pipeline en S4U + WakeToRun (exige elevación aunque la cuenta sea admin → el script se auto-eleva con UAC); calibrador colapsado retirado; MCP graphify habilitado; decisión registrada: el ledger histórico no se regradúa.
+
+**Lecciones:** un control NO_VERIFICABLE debe decir qué falta exactamente («falta .git» escondía que `gh` bastaba); pegar `settings.json` a mano lo rompió dos veces y con JSON inválido Claude Code ignora TODO el fichero, hooks y `deny` incluidos; el clasificador del modo automático bloquea merges de PRs que tocan `.claude/` y la auto-edición de `settings.json` — lo hace el operador.
+
+**Validación final:** ruff/mypy limpios; fast 1787 passed; slow 224 passed, 1 skipped. Resultado del loop: DEGRADED → cerrado como PASS operativo tras las acciones del operador (merge + S4U); queda por observar la primera captura desatendida (18:30) y el run de mañana.
+
+**Archivos modificados:** ver `audit/latest/CHANGES.md` y `MANIFEST.json`. Todo commiteado y pusheado en `main`.
