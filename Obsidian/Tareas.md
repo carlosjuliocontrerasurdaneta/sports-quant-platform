@@ -11,10 +11,10 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Auditoría integral 2026-09-13
 
 - [x] 2026-09-13 — Auditoría integral (fases 0–3) y remediación (4–5): 2 HIGH, 7 MEDIUM, 4 LOW corregidos salvo lo que exige al operador; repositorio Git reconstituido en producción, rama `prod/remediacion-20260913`. Ver [[Bitácora/2026-09-13]] y `audit/latest/`.
-- [ ] **Operador** (el clasificador de permisos bloquea `Set-ScheduledTask` desde la sesión): `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\set_tasks_unattended.ps1` — pasa las 4 tareas del pipeline a S4U (sin contraseña) + WakeToRun; `-WhatIf` para ver, `-Revert` para deshacer (AUD-HIGH-002; 4 de 7 días sin run).
+- [x] 2026-09-13 — Las 4 tareas del pipeline pasan a **S4U + WakeToRun** con `scripts\set_tasks_unattended.ps1` (auto-elevación UAC; el operador aceptó el aviso). `SQP_Dashboard_Cdev` sigue interactiva a propósito. Primera prueba real: captura de las 18:30 del 13-09 (AUD-HIGH-002 cerrado).
 - [x] 2026-09-13 — `VALIDATE_OOS.bat` ejecutado a mano (B-01): **exit 0**, 19 min, marcador modelo-vs-mercado en `audit/model_vs_market_20260913.md` (agregado: mercado mejor en Brier, IC95 [+0,0088, +0,0164]; 0 cortes con ventaja). Centinela limpio.
 - [x] 2026-09-13 — `wnba_totals_calibration_iso.joblib` movido a `data/models/retired/` (colapsado; `calibrate_probability('wnba','totals')` sigue siendo no-op).
-- [ ] **Operador**: mergear el PR #3 (`prod/remediacion-20260913` → `main`, CI verde en las 5 patas): `gh pr merge 3 --merge`. El clasificador de permisos de la sesión bloquea el merge.
+- [x] 2026-09-13 — PR #3 mergeado en `main` (`c2cc9f1`); producción sigue `main` desde `d87d547`.
 
 
 - [x] Optimizar cálculo, validar parámetros y entregar modo independiente con freeze y matemáticas de push/cuartos. 1929 pruebas aprobadas, 2 omitidas; instalación probada en extracción nueva. Sin commit publicado. Ver [[Bitácora/2026-09-10]].
