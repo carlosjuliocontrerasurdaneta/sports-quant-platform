@@ -211,19 +211,28 @@ paused_markets: {}
 # decision): while true, picks were selected exactly as in real mode but
 # recorded with stake 0, flagged "shadow_mode".
 #
-# Lifting it does NOT by itself put money at risk: the per-market CLV gate below
-# is layered UNDER shadow and is default-deny, so every market whose registry
-# entry is missing or `allowed: false` still gets stake 0 -- now flagged
-# "clv_gate" instead of "shadow_mode". As of 2026-08-16 EVERY entry in
-# data/bets/clv_gate.json is allowed: false, so the effective stake is still 0
-# across the board. The gate is now the single, visible, binding barrier.
+# Lifting it does NOT by itself put money at risk, pero la barrera que lo impide
+# NO es la que decia este bloque hasta el 2026-09-10 (auditoria integral,
+# AUD-MED-003). Decia que el gate de CLV era "the single, visible, binding
+# barrier"; es FALSO desde que `clv_gate.enabled` esta en false unas lineas mas
+# abajo: con el gate apagado, `daily.run_league` ni siquiera carga su registro
+# (`clv_gate = None`) y por tanto no bloquea nada.
 #
-# CONSEQUENCE TO KNOW: with shadow off, a market becomes stakeable
-# AUTOMATICALLY as soon as the daily CLV audit writes `allowed: true` for it
-# (median CLV > 0 over >= clv_gate.min_n settled bets matched to a captured
-# close). No further human approval is required at that point. To keep approval
-# manual, set clv_gate.enabled: false and curate the registry by hand, or set
-# shadow_mode back to true.
+# LA BARRERA VINCULANTE ES `prediction_gate` (enabled: true, default-deny), tal
+# como declara el codigo en `sqp/pipeline/daily.py::_zero_stake_flag`:
+# "prediction_gate es la BINDING exit rule desde 2026-08-16; el de CLV se sigue
+# calculando como evidencia pero ya no decide". Sin registro, sin entrada o con
+# evidencia corta -> stake 0, flag "prediction_gate".
+#
+# CONSECUENCIA A SABER: con shadow apagado, un mercado pasa a llevar stake real
+# AUTOMATICAMENTE en cuanto `scripts/update_prediction_gate.py` escriba
+# `allowed: true` para el (modelo puro que bate al mercado en test de signo
+# pareado fuera de muestra, n >= 300 y p < 0,00122 --- que es el umbral POR
+# MERCADO, el de familia 0,05 repartido por Bonferroni sobre K = 41 cortes ---,
+# Y EV a stake plano positivo).
+# No hace falta una aprobacion humana adicional en ese punto. Para mantener la
+# aprobacion manual: `prediction_gate.enabled: false` y curar el registro a mano,
+# o volver a poner shadow_mode en true.
 # Env var SHADOW_MODE (when set) wins over this key.
 shadow_mode: false
 # CLV gate per (league, market) (ENABLED 2026-07-08): allow-list layered UNDER

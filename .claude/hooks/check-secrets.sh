@@ -23,7 +23,17 @@ ficheros=$(printf '%s' "$input" | python "$proyecto/.claude/hooks/_targets.py" -
 #   4. tokens con prefijo reconocible, sin necesidad de nombre de variable
 _names='(API_KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)'
 _patron="(${_names}[A-Z0-9_]*[[:space:]]*=[[:space:]]*[\"'][^\"']{8,}[\"'])|(${_names}[A-Z0-9_]*[[:space:]]*=[[:space:]]*[^[:space:]\"';#]{8,})|(${_names}[A-Z0-9_]*[[:space:]]*:[[:space:]]*[^[:space:]\"'#]{8,})|(sk-[A-Za-z0-9_-]{20,})|(Bearer[[:space:]]+[A-Za-z0-9._-]{20,})"
-_ruido='os\.environ|getenv|dotenv|environ\.get|\$\{|\$env:|%[A-Za-z_]+%|\bexample\b|placeholder|changeme|dummy|your_|xxx|<[A-Za-z_]+>'
+# El vocabulario de marcadores incluye los ESPAÑOLES (auditoria integral
+# 2026-09-10). La lista solo cubria los ingleses (`your_`, `placeholder`,
+# `dummy`, `changeme`, `xxx`) sobre un repositorio cuya documentacion es
+# española, asi que el hook se disparaba sobre su propia plantilla de
+# instalacion -- `IMPLEMENTACION.md:125`, `ODDS_API_KEY=TU_CLAVE`, 8 caracteres,
+# justo en el umbral del patron 2. Reproducido tres veces durante esa auditoria,
+# bloqueando lecturas legitimas. Este repositorio repite que "una alarma que
+# suena sin motivo es una alarma que se aprende a ignorar"
+# (DIARIO_COMPLETO.bat); un detector de secretos que grita sobre su propio
+# ejemplo es el primer candidato a que lo desconecten.
+_ruido='os\.environ|getenv|dotenv|environ\.get|\$\{|\$env:|%[A-Za-z_]+%|\bexample\b|placeholder|changeme|dummy|your_|xxx|<[A-Za-z_]+>|[Tt][Uu]_[A-Za-z_]+|<[A-Z_]+>'
 encontrado=""
 while IFS= read -r file; do
   [ -z "$file" ] && continue

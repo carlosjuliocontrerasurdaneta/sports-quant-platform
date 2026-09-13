@@ -9,6 +9,8 @@ ni uno de los 1086 tests.
 Los desenlaces salen del marcador, así que este arnés no necesita histórico de
 cuotas: se evalúa contra líneas fijas de referencia.
 """
+import math
+
 import pytest
 from sqp.backtesting.engine import walk_forward_backtest
 
@@ -36,7 +38,15 @@ def test_default_call_reports_no_market_breakdown():
     out = walk_forward_backtest(_hockey_rows(), "nhl", "hockey", warmup=60)
     assert out["markets"] == {}
     assert out["n_games_evaluated"] > 0
-    assert out["brier_score"] == pytest.approx(out["brier_score"])  # finito
+    # AUD-MED-016 (auditoria integral 2026-09-10): esto era
+    # `out["brier_score"] == pytest.approx(out["brier_score"])  # finito`, que NO
+    # comprueba finitud. Medido: 0.25 -> True, nan -> False, +inf -> True,
+    # -inf -> True. Solo cazaba NaN; los infinitos, que es lo que el comentario
+    # prometia detectar, pasaban limpios.
+    assert math.isfinite(out["brier_score"])
+    # Y un Brier fuera de [0, 1] no es un Brier: acota el rango, no solo la
+    # finitud.
+    assert 0.0 <= out["brier_score"] <= 1.0
 
 
 def test_totals_outcome_matches_the_scoreboard():

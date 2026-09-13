@@ -1,6 +1,6 @@
 ---
 name: clv-shadow-exit
-description: Use this skill to run or review the CLV audit and the real-stake eligibility of a (league, market) — "evaluar CLV", "¿salimos del shadow mode?", CLV gate status, beat-close rate, or whether any market qualifies for real stake. Encodes the freshness filter and BOTH gates: prediction_gate is the governing exit rule since 2026-08-16 and clv_gate is currently disabled, so the verdict is derived from the effective configuration, never assumed.
+description: "Use this skill to run or review the CLV audit and the real-stake eligibility of a (league, market) — \"evaluar CLV\", \"¿salimos del shadow mode?\", CLV gate status, beat-close rate, or whether any market qualifies for real stake. Encodes the freshness filter and BOTH gates: prediction_gate is the governing exit rule since 2026-08-16 and clv_gate is currently disabled, so the verdict is derived from the effective configuration, never assumed."
 ---
 
 # CLV & Shadow Exit

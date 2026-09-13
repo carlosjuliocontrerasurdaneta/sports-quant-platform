@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.backtesting.roi_engine import load_closing_odds, realized_roi_backtest
+from sqp.backtesting.tuning import temporal_cutoff
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
 from sqp.pipeline.daily import _league_meta
@@ -41,11 +42,10 @@ log = get_logger("sqp.oos_pitcher")
 LEAGUE = "mlb"
 
 
+# Delegado a la implementacion canonica (AUD-MED-018): este cuerpo estaba
+# duplicado byte a byte en los dos scripts OOS, sin test y sin version en src/.
 def _cutoff(results: list[dict], test_frac: float, test_start: str | None) -> str:
-    if test_start:
-        return test_start
-    i = max(0, min(len(results) - 1, int(len(results) * (1.0 - test_frac))))
-    return str(results[i].get("date", ""))[:10]
+    return temporal_cutoff(results, test_frac, test_start)
 
 
 def _run(label: str, results, odds, base_params: dict, overrides: dict,

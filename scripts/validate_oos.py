@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.backtesting.engine import walk_forward_backtest
+from sqp.backtesting.tuning import temporal_cutoff
 from sqp.backtesting.roi_engine import (discover_leagues_with_odds,
                                         load_closing_odds, realized_roi_backtest)
 from sqp.backtesting.tuning import tune_dc_rho, tune_home_advantage
@@ -52,11 +53,10 @@ HOME_ADV_GRID = (0.0, 15.0, 30.0, 45.0, 60.0)
 TILT_FAMILIES = {"baseball", "hockey", "soccer"}
 
 
+# Delegado a la implementacion canonica (AUD-MED-018): este cuerpo estaba
+# duplicado byte a byte en los dos scripts OOS, sin test y sin version en src/.
 def _cutoff(results: list[dict], test_frac: float, test_start: str | None) -> str:
-    if test_start:
-        return test_start
-    i = max(0, min(len(results) - 1, int(len(results) * (1.0 - test_frac))))
-    return str(results[i].get("date", ""))[:10]
+    return temporal_cutoff(results, test_frac, test_start)
 
 
 def _tune_tilt(train: list[dict], league: str, family: str, base: dict,
@@ -249,9 +249,8 @@ def _validar_liga(league: str, odds: dict, settings, args) -> bool:
     if family == "tennis":
         # Tennis Elo is tour-wide and neutral: no tilt / home-adv / dc_rho to
         # freeze. Score the captured tournament odds under the configured params.
-        if not results:
-            log.warning("[%s] no tour results stored; run backfill_tennis_results.py.",
-                        league)
+        # (El guard `if not results` que vivia aqui era inalcanzable: el de
+        # arriba ya devuelve False sin resultados; AUD-LOW-004, 2026-09-13.)
         _run("tennis (tour-wide player Elo)", results, odds, league, family,
              meta.get("league_params"), settings, args.warmup, cutoff)
         return True

@@ -1,6 +1,6 @@
 ---
 name: feature-engineer
-description: Use this agent to design or audit pregame features with temporal correctness: rolling windows on past games only, timestamp availability, and explicit missing-value handling.
+description: "Use this agent to design or audit pregame features with temporal correctness: rolling windows on past games only, timestamp availability, and explicit missing-value handling."
 model: opus
 ---
 

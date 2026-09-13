@@ -1,6 +1,6 @@
 ---
 name: ml-engineer
-description: Use this agent for model training and evaluation: target definition, baselines, temporal splits, metrics, reproducibility, and model persistence.
+description: "Use this agent for model training and evaluation: target definition, baselines, temporal splits, metrics, reproducibility, and model persistence."
 model: opus
 ---
 

@@ -23,12 +23,11 @@ import argparse
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from sqp.calibration.calibrator import (_load_method_registry, _model_path,
-                                        promote_calibrators)
+from sqp.calibration.calibrator import (_load_calibrator, _load_method_registry,
+                                        _model_path, promote_calibrators)
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.promote_calibration")
@@ -43,7 +42,15 @@ def _preview(key: str, method: str) -> str:
     path = _model_path(key, name, staging=True) if name else None
     if path is None or not path.exists():
         return "  (no staged model file)"
-    model = joblib.load(str(path))
+    # Se carga por `_load_calibrator`, que VERIFICA el digest sha256 del sidecar
+    # (auditoria integral 2026-09-10). Antes se hacia `joblib.load` directo: la
+    # PREVISUALIZACION del dry-run -- el paso que existe precisamente para
+    # inspeccionar un artefacto antes de confiar en el -- era la unica ruta al
+    # `.joblib` que se saltaba la comprobacion, mientras `promote_calibrators`
+    # si pasa por ella. Y `joblib.load` es deserializacion de pickle.
+    model = _load_calibrator(str(path))
+    if model is None:
+        return "  (staged model FAILED integrity check: not previewed)"
     cal = np.clip(model.predict(np.asarray(_GRID, dtype=float)), 0.01, 0.99)
     return "  " + "  ".join(f"{p:.2f}->{c:.2f}" for p, c in zip(_GRID, cal))
 

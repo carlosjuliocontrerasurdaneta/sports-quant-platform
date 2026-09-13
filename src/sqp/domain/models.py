@@ -64,6 +64,22 @@ class BetCandidate:
     kelly_stake_pct: float
     stake: float
     data_label: str
+    # Identidad de los dos equipos del evento. Existe por una razon de
+    # LIQUIDACION, no de informe (AUD-MED-001, auditoria integral 2026-09-10):
+    # `settle._grade` tiene una guarda que devuelve "void" cuando la seleccion no
+    # casa con NINGUNO de los dos equipos -- la defensa contra FABRICAR un
+    # resultado --, pero esa guarda solo actua `if row.get("away")`. Los picks se
+    # escribian desde `BetCandidate.__dict__`, que no traia `away`, asi que la
+    # guarda estaba INERTE justo en la ruta del dinero, mientras SI actuaba en el
+    # stream servido (stake 0) y en el backtest de ROI. Reproducido: con el local
+    # ganando 1-0 y la seleccion escrita de otra forma, el grading daba
+    # `loss / pnl -20`; con la columna presente, `void / 0`.
+    #
+    # Default "" para compatibilidad hacia atras: un `candidates_*.csv` antiguo
+    # sin estas columnas se sigue leyendo, y la guarda se comporta como antes
+    # (se salta) en vez de romper la liquidacion del historico.
+    home: str = ""
+    away: str = ""
     model_probability: float = float("nan")  # raw model prob before market shrink
     # Probability actually used for edge/stake when calibration is enabled. Equals
     # estimated_probability when calibration is off or no model exists. The

@@ -59,7 +59,8 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.evaluation.labels import (EN_JUEGO, game_date_local, local_today,
-                                   match_label, picks_vigentes_unicos)
+                                   cargar_stream_servido, match_label,
+                                   picks_vigentes_unicos)
 from sqp.logging_config import consola_utf8
 
 # `generado` va al final por la misma razon que en el dashboard: al filtrar por
@@ -88,17 +89,11 @@ def load_served(cal_dir: Path, *, solo_vigentes: bool = True) -> pd.DataFrame:
     filas y el criterio de vigencia deja 1.000 picks. Esa manana, con el run
     partido, la diferencia era de 12 ligas enteras.
     """
-    frames = []
-    for f in sorted(cal_dir.glob("served_*.csv")):
-        try:
-            d = pd.read_csv(f)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            continue
-        if not d.empty:
-            frames.append(d)
-    if not frames:
+    # Cargador CANONICO (AUD-MED-008): este bucle estaba triplicado y ya habia
+    # divergido en el manejo de errores. Ver `labels.cargar_stream_servido`.
+    df = cargar_stream_servido(cal_dir)
+    if df.empty:
         return pd.DataFrame()
-    df = pd.concat(frames, ignore_index=True)
     return picks_vigentes_unicos(df) if solo_vigentes else df
 
 

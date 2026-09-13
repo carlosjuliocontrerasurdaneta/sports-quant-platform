@@ -89,3 +89,52 @@ def test_register_corrupt_registry_backed_up_not_silently_discarded(tmp_path, ca
     import json as _json
     assert _json.loads(reg_path.read_text(encoding="utf-8")) == [
         {"sport": "nba", "model": "moneyline"}]
+
+
+def test_el_entrenamiento_escribe_el_sidecar_sha256(tmp_path):
+    """AUD-MED-012 (auditoria integral 2026-09-10).
+
+    `ml_predict._check_hash` comprobaba el digest desde siempre, pero `_persist`
+    NUNCA escribia el sidecar: `grep sha256 src/sqp/models/` solo devolvia las
+    lineas del propio comprobador. La verificacion salia por su `return` de la
+    segunda linea, asi que ni el aviso podia emitirse. Un control que no puede
+    dispararse no protege de nada."""
+    df = _synthetic_dataset()
+    ml_train.train_moneyline(df, "nba", root=tmp_path)
+    art = tmp_path / "data" / "models" / "nba_moneyline_model.joblib"
+    sidecar = art.with_suffix(art.suffix + ".sha256")
+    assert sidecar.exists(), "el entrenamiento no dejo sidecar: _check_hash es inerte"
+    import hashlib
+    assert sidecar.read_text(encoding="utf-8").strip() == \
+        hashlib.sha256(art.read_bytes()).hexdigest()
+
+
+def test_un_artefacto_alterado_no_se_deserializa(tmp_path):
+    """El otro cargador de artefactos del proyecto ya decidio esto el 2026-09-06.
+
+    `calibration/calibrator` devuelve None y sirve en crudo ante un digest que no
+    cuadra, con esta razon: *"un control cuyo veredicto no cambia lo que pasa
+    despues no es un control"*. `ml_predict` conservaba literalmente la cadena
+    "loading anyway" que aquella correccion elimino, y al otro lado hay
+    `joblib.load`, es decir deserializacion de pickle."""
+    df = _synthetic_dataset()
+    ml_train.train_moneyline(df, "nba", root=tmp_path)
+    art = tmp_path / "data" / "models" / "nba_moneyline_model.joblib"
+
+    # Sano: carga sin rechistar.
+    ml_predict._load(tmp_path, "nba", "moneyline")
+
+    # Alterado: se niega, y lo dice.
+    art.write_bytes(art.read_bytes() + b"\x00manipulado")
+    with pytest.raises(ValueError, match="integridad joblib FALLIDA"):
+        ml_predict._load(tmp_path, "nba", "moneyline")
+
+
+def test_un_artefacto_legado_sin_sidecar_sigue_cargando(tmp_path):
+    """Contraprueba: los `.joblib` entrenados antes de que `_persist` escribiera
+    el sidecar no lo tienen, y romper su carga seria una regresion."""
+    df = _synthetic_dataset()
+    ml_train.train_moneyline(df, "nba", root=tmp_path)
+    art = tmp_path / "data" / "models" / "nba_moneyline_model.joblib"
+    art.with_suffix(art.suffix + ".sha256").unlink()
+    ml_predict._load(tmp_path, "nba", "moneyline")   # no debe lanzar

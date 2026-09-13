@@ -98,6 +98,26 @@ def test_out_of_season_zero_stake_rows_are_pruned_once_settled(tmp_path):
     assert not (preds / "candidates_nba.csv").exists()
 
 
+def test_orphan_predictions_of_inactive_league_are_pruned(tmp_path):
+    """AUD-LOW-001 (auditoria integral 2026-09-13): sin candidates_ la liga no
+    entraba en la poda y su predictions_ quedaba para siempre (10 ficheros de
+    torneos de julio-agosto seguian en data/predictions/)."""
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    pd.DataFrame([{"event_id": "e1", "home": "A", "away": "B",
+                   "generated_at": "2026-07-29T07:00:00+00:00"}]).to_csv(
+        preds / "predictions_tennis_atp_halle_open.csv", index=False)
+    # Liga ACTIVA sin candidates: se conserva (el run la refresca).
+    pd.DataFrame([{"event_id": "e2", "home": "C", "away": "D",
+                   "generated_at": "2026-09-12T15:00:00+00:00"}]).to_csv(
+        preds / "predictions_nba.csv", index=False)
+    pruned = prune_stale_candidates(preds, bets, active_leagues=["nba"])
+    assert pruned == ["tennis_atp_halle_open"]
+    assert not (preds / "predictions_tennis_atp_halle_open.csv").exists()
+    assert (preds / "archive" / "predictions_tennis_atp_halle_open_2026-07-29.csv").exists()
+    assert (preds / "predictions_nba.csv").exists()
+
+
 def test_pruned_files_are_archived_before_deletion(tmp_path):
     """An out-of-season league is never overwritten again, so the daily run's
     pre-overwrite archive never fires for it: the prune must archive itself or
@@ -163,12 +183,25 @@ def test_scaled_pick_with_flag_still_counts(tmp_path):
     assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {"mlb": 1}
 
 
-def test_demo_and_zero_stake_picks_are_ignored(tmp_path):
+def test_demo_picks_are_ignored_but_zero_stake_real_picks_count(tmp_path):
+    """AUD-MED-004 (auditoria integral 2026-09-13): liquidable no es apostable.
+    `settle_candidates` gradua TODAS las filas, stake 0 incluido, asi que un
+    pick real a stake 0 (gate, pausa, shadow) comenzado y sin liquidar es un
+    pick que la sobrescritura volveria no graduable. Solo el demo se ignora."""
     preds, bets = tmp_path / "p", tmp_path / "b"
     preds.mkdir(); bets.mkdir()
     demo = _cand_row(event_id="e1"); demo["data_label"] = "demo_synthetic"
     zero = _cand_row(event_id="e2", stake=0.0, flags="market_paused")
     _write_with_times(preds, "mlb", [demo, zero], [_PAST, _PAST])
+    assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {"mlb": 1}
+
+
+def test_zero_stake_pick_already_settled_does_not_count(tmp_path):
+    preds, bets = tmp_path / "p", tmp_path / "b"
+    preds.mkdir(); bets.mkdir()
+    zero = _cand_row(event_id="e2", stake=0.0, flags="prediction_gate")
+    _write_with_times(preds, "mlb", [zero], [_PAST])
+    _settle(bets, "mlb", [zero])
     assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {}
 
 
@@ -227,16 +260,51 @@ def test_purge_deletes_only_old_allowlisted_artifacts(tmp_path):
 
     out = purge_old_artifacts(tmp_path, days=90, now=now)
 
-    assert out == {"archive": 1, "clv_reports": 1, "closing_credits": 1}
+    assert out == {"archive": 1, "clv_reports": 1, "closing_credits": 1,
+                   "reports": 0, "picks_ranked": 0, "settlement_audits": 0,
+                   "segment_diagnostics": 0}
     assert not old_a.exists() and not old_r.exists() and not old_c.exists()
     assert new_a.exists() and new_r.exists()
     assert settled.exists() and gate.exists() and raw.exists()
 
 
+def test_purge_covers_reports_audits_and_segments_but_never_latest(tmp_path):
+    """AUD-LOW-002 (auditoria integral 2026-09-13): report_*.html crecia
+    +1,2 MB/dia (81 ficheros, 36 MB) y audit_/segment_diagnostics_ sin techo."""
+    from datetime import datetime, timezone
+    from sqp.pipeline.cleanup import purge_old_artifacts
+    now = datetime(2026, 7, 12, tzinfo=timezone.utc)
+    pred = tmp_path / "data" / "predictions"
+    bets = tmp_path / "data" / "bets"
+    old_html = _touch(pred / "report_20260301.html")
+    old_md = _touch(pred / "report_20260301.md")
+    new_html = _touch(pred / "report_20260710.html")
+    old_picks = _touch(pred / "picks_ranked_20260301.md")
+    old_audit = _touch(bets / "audit_20260301.md")
+    old_seg = _touch(bets / "segment_diagnostics_20260301.md")
+    # Vistas vivas: sin fecha en el nombre y con "latest"; intocables.
+    latest = _touch(pred / "report_latest.html")
+    seg_latest = _touch(bets / "segment_diagnostics_latest.csv")
+    # Fuera de la allowlist aunque lleven fecha: intocables.
+    gate_log = _touch(bets / "prediction_gate_latch_log.csv", "x\n")
+    cands = _touch(pred / "candidates_mlb.csv", "event_id\n")
+
+    out = purge_old_artifacts(tmp_path, days=90, now=now)
+
+    assert out["reports"] == 2 and out["picks_ranked"] == 1
+    assert out["settlement_audits"] == 1 and out["segment_diagnostics"] == 1
+    for f in (old_html, old_md, old_picks, old_audit, old_seg):
+        assert not f.exists()
+    for f in (new_html, latest, seg_latest, gate_log, cands):
+        assert f.exists()
+
+
 def test_purge_missing_dirs_is_noop(tmp_path):
     from sqp.pipeline.cleanup import purge_old_artifacts
-    assert purge_old_artifacts(tmp_path, days=90) == {
-        "archive": 0, "clv_reports": 0, "closing_credits": 0}
+    out = purge_old_artifacts(tmp_path, days=90)
+    assert set(out) == {"archive", "clv_reports", "closing_credits", "reports",
+                        "picks_ranked", "settlement_audits", "segment_diagnostics"}
+    assert not any(out.values())
 
 
 def test_purge_falls_back_to_mtime_when_name_has_no_date(tmp_path):

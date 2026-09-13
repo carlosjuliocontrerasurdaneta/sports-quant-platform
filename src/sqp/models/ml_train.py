@@ -11,6 +11,7 @@ This produces estimated probabilities, not certainties.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,11 +90,34 @@ def _register(root: Path, entry: dict) -> None:
     atomic_write_json(reg, path, sort_keys=False, ensure_ascii=False)
 
 
+def _escribir_sidecar_sha256(path: Path) -> Path:
+    """Escribe `<artefacto>.sha256` junto al `.joblib` recien volcado.
+
+    Misma convencion que `calibration/calibrator._write_hash`, para que los dos
+    cargadores de artefactos del proyecto compartan formato y un mismo arreglo
+    valga para ambos (AUD-MED-012).
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    sidecar.write_text(h.hexdigest(), encoding="utf-8")
+    return sidecar
+
+
 def _persist(root: Path, model, features: list[str], sport: str, name: str,
              metrics: dict) -> Path:
     _models_dir(root).mkdir(parents=True, exist_ok=True)
     path = _models_dir(root) / f"{sport}_{name}_model.joblib"
     joblib.dump({"model": model, "features": features}, str(path))
+    # SIDECAR sha256 (AUD-MED-012, auditoria integral 2026-09-10). `ml_predict.
+    # _check_hash` lo comprueba desde siempre, pero NADIE lo escribia: `grep
+    # sha256 src/sqp/models/` solo devolvia las lineas del propio comprobador.
+    # Es decir, la verificacion salia por su `return` de la segunda linea y ni el
+    # aviso podia emitirse. Un control que no puede dispararse nunca no protege
+    # de nada, y lo que hay al otro lado es `joblib.load`, o sea pickle.
+    _escribir_sidecar_sha256(path)
     # Ruta RELATIVA a la raiz del proyecto: la absoluta no sobrevive a mover la
     # carpeta ni a otra maquina, y el registro acumulaba entradas apuntando a dos
     # ubicaciones anteriores -- 32 de 68 el 2026-08-28 (auditoria AUD-LOW-004).

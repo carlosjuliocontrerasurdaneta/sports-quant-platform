@@ -11,6 +11,7 @@ set PYTHONPATH=src
 REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
 REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 if not exist logs mkdir logs
@@ -19,11 +20,11 @@ echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\backfill.log
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) === >> logs\backfill.log
 "%SQP_PYTHON%" scripts\backfill_results.py --days 14 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 REM Tenis: store por tour (results_atp/wta), no por torneo; sin esto los Elo de
 REM tenis corren con forma vieja (causa #1 de la sobreconfianza del 2026-07-04).
 "%SQP_PYTHON%" scripts\backfill_tennis_results.py --tours atp wta --days 14 >> logs\backfill.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 REM Purga semanal de artefactos regenerables (>90 dias): archive/, clv_*.md,
 REM .closing_credits_*. Best-effort a proposito: un fallo de la purga no debe

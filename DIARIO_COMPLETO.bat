@@ -15,6 +15,7 @@ setlocal
 cd /d %~dp0
 REM Mismo interprete fijo que los BAT que encadena (auditoria 2026-07-24, M-5).
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 REM RASTRO PROPIO (AUD-MED-001, auditoria integral 2026-09-08). Este BAT no
@@ -62,7 +63,7 @@ if defined SQP_SKIP_TREE_GUARD (
     goto :tree_ok
 )
 git rev-parse --git-dir >nul 2>&1
-if errorlevel 1 (
+if %ERRORLEVEL% neq 0 (
     REM Falla ABIERTO a proposito: "no se puede comprobar" no es "esta sucio", y
     REM detener el pipeline del dinero porque falte git seria un modo de fallo
     REM nuevo que nadie pidio. Se avisa fuerte y se continua.
@@ -121,10 +122,18 @@ if not defined SQP_UPSTREAM (
     goto :tree_ok
 )
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process git -ArgumentList 'fetch','--quiet' -WorkingDirectory '%CD%' -NoNewWindow -PassThru; if (-not $p.WaitForExit(%SQP_FETCH_TIMEOUT_MS%)) { try { $p.Kill() } catch {}; exit 124 }; exit $p.ExitCode" >nul 2>&1
-if errorlevel 124 (
+REM Comparacion EXACTA, no `if errorlevel N` (que significa ">= N"). El 124 lo
+REM inventa el powershell de arriba para decir "mate al fetch por plazo"; git
+REM devuelve 128 en casi todos sus fatales, incluido el que provocan a proposito
+REM los tres candados anti-interactivos de mas arriba (sin credenciales:
+REM "could not read Username" -> 128). Con ">=", 128 entraba por la rama del
+REM plazo y mandaba a diagnosticar la red cuando el problema eran las
+REM credenciales (auditoria integral 2026-09-10).
+set "SQP_FETCH_RC=%ERRORLEVEL%"
+if "%SQP_FETCH_RC%"=="124" (
     call :log "[AVISO] git fetch excedio su plazo de %SQP_FETCH_TIMEOUT_MS% ms y se ABORTO; se continua. La comparacion usa la referencia remota local, que puede estar obsoleta."
-) else if errorlevel 1 (
-    call :log "[AVISO] git fetch fallo: la comparacion usa la referencia remota local, que puede estar obsoleta."
+) else if not "%SQP_FETCH_RC%"=="0" (
+    call :log "[AVISO] git fetch fallo con codigo %SQP_FETCH_RC%: la comparacion usa la referencia remota local, que puede estar obsoleta."
 )
 REM SE CUENTA LO QUE FALTA, NO SE COMPARAN SHA. La primera version comparaba
 REM `HEAD` con `@{u}` por igualdad, y eso confunde dos situaciones opuestas:
@@ -155,13 +164,13 @@ call :log "[AVISO] Revisar con: git log --oneline HEAD..%SQP_UPSTREAM%"
 call :log "[AVISO] Se CONTINUA: esto avisa, no aborta."
 :tree_ok
 
-call :log "[1/2] Liquidando picks del dia anterior..."
+call :log "[1/3] Liquidando picks del dia anterior..."
 call "%~dp0SETTLE_ALL.bat"
-if errorlevel 1 goto :error_settle
+if %ERRORLEVEL% neq 0 goto :error_settle
 
-call :log "[2/2] Ejecutando run diario multi-liga..."
+call :log "[2/3] Ejecutando run diario multi-liga..."
 call "%~dp0RUN_DIARIO_ALL.bat"
-if errorlevel 1 goto :error_run
+if %ERRORLEVEL% neq 0 goto :error_run
 
 REM [3/3] REGLA FUNDAMENTAL (operador 2026-08-26, SACROSANTA E INAMOVIBLE):
 REM "generar picks para todos los deportes y mercados, priorizando aquellos con
@@ -170,35 +179,7 @@ REM escribir: la lista COMPLETA y la de margen positivo. Solo LEEN el stream
 REM servido -- no generan nada, no tocan stakes ni gates, no gastan cuota.
 REM BEST-EFFORT a proposito: son vistas, y no deben poder tumbar el flujo que ya
 REM produjo los picks y el reporte.
-call :log "[3/3] Generando la lista diaria de picks..."
-set PYTHONPATH=src
-"%SQP_PYTHON%" scripts\daily_picks.py --top 0 >> logs\run_diario.log 2>&1
-if errorlevel 1 echo [AVISO] daily_picks.py fallo (no bloqueante) >> logs\run_diario.log
-
-REM Segunda vista: solo las lineas cuya probabilidad estimada supera su punto de
-REM equilibrio (margen = prob_est - 1/precio > 0). NO es una lista de apuestas:
-REM sigue sin llevar stake. Los margenes mas grandes concentran el riesgo -- ocho
-REM de los diez mayores del 2026-08-26 eran ncaaf/brasileirao con handicaps de
-REM +31/+38.5, justo el perfil que el cap de plausibilidad marca y que rinde
-REM -22.6% frente al -5.6% de lo que el cap deja pasar.
-"%SQP_PYTHON%" scripts\daily_picks.py --min-margin 0 --top 0 --out data\predictions\picks_margen_positivo.md >> logs\run_diario.log 2>&1
-if errorlevel 1 echo [AVISO] daily_picks --min-margin fallo (no bloqueante) >> logs\run_diario.log
-
-REM Tercera vista: el CRITERIO DEL OPERADOR (2026-08-26) -- probabilidad >= 0.60
-REM Y ROI esperado > 0. Es la lista corta del dia: 8 de 105 partidos el
-REM 2026-08-26. Nota: `--min-roi 0` y `--min-margin 0` son el MISMO filtro
-REM (p*cuota-1 > 0 <=> p > 1/cuota); se usa la forma de ROI porque es como el
-REM operador lo pidio. Sigue sin llevar stake.
-"%SQP_PYTHON%" scripts\daily_picks.py --min-prob 0.60 --min-roi 0 --top 0 --out data\predictions\picks_seleccion.md >> logs\run_diario.log 2>&1
-if errorlevel 1 echo [AVISO] daily_picks --min-prob/--min-roi fallo (no bloqueante) >> logs\run_diario.log
-
-REM Cuarta vista: clasificacion del TIPSTER (AGENTS Tipster.md) -- tiers
-REM A/B/C/NO BET con cuota justa, EV, edge sobre el mercado sin vig y aviso de
-REM correlacion. DETERMINISTA a proposito: un agente LLM no puede dispararse
-REM desde el Programador de tareas, vive dentro de una sesion de Claude. El
-REM dashboard resalta los A en verde y los B en ambar.
-"%SQP_PYTHON%" scripts\tipster_report.py >> logs\run_diario.log 2>&1
-if errorlevel 1 echo [AVISO] tipster_report.py fallo (no bloqueante) >> logs\run_diario.log
+call :lista
 
 REM Run correcto: limpia el centinela de las DOS etapas que este bat arregla,
 REM una por una (auditoria 2026-07-29, S-1).
@@ -214,6 +195,7 @@ REM siguiente. Encontrado al implementar KI-036, el mismo dia que se creo.
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage settle
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage run
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage guard_arbol
+call :salud
 
 call :log "=== DIARIO COMPLETO: OK ==="
 
@@ -245,6 +227,65 @@ echo %~1
 >>logs\diario_completo.log echo %~1
 goto :eof
 
+REM Informe de salud. Se llama desde la ruta correcta Y desde las TRES rutas de
+REM error (AUD-HIGH-003, auditoria integral 2026-09-10).
+REM
+REM Antes no lo producia NADA de forma automatica: `generate_health_report` solo
+REM lo invoca scripts\health_check.py, y a ese solo lo invocaba REFRESH_ML.bat,
+REM que es MANUAL desde el 2026-08-29 y no tiene tarea programada. Las 5 tareas
+REM `SQP_*` de esta maquina no lo ejecutan ninguna. El otro consumidor del
+REM centinela -- el banner del dashboard -- se renderiza DENTRO de run_all.py, o
+REM sea que si el run aborta no se regenera y el operador sigue viendo el HTML
+REM de ayer, sin banner rojo. Resultado: un fallo persistente no producia aviso
+REM nunca. Asi es como `validate_oos` llevaba 9 dias fallado sin que nadie lo
+REM viera.
+REM
+REM Va en las rutas de error precisamente porque es cuando MAS hace falta, y
+REM BEST-EFFORT: el informe de salud no puede cambiar el codigo de salida del
+REM run ni tumbarlo. Cada llamador pone su `exit /b` explicito despues.
+:salud
+"%SQP_PYTHON%" scripts\health_check.py >> logs\diario_completo.log 2>&1
+if %ERRORLEVEL% neq 0 call :log "[AVISO] health_check.py reporta ERROR o no pudo ejecutarse; revisa logs\diario_completo.log y data\output\pipeline_health.json."
+goto :eof
+
+:lista
+REM Subrutina (AUD-MED-005, auditoria integral 2026-09-13): antes vivia
+REM inline en la ruta correcta y NUNCA se ejecutaba si UNA liga fallaba en
+REM run_all -- exit 1 -> :error_run antes de [3/3] -- aunque las otras 20+
+REM ligas ya estuvieran escritas y el tablero HTML ya existiera. La REGLA
+REM FUNDAMENTAL exige la lista SIEMPRE y COMPLETA, asi que ahora la llaman
+REM las dos rutas: la correcta y :error_run. Sigue siendo best-effort.
+call :log "[3/3] Generando la lista diaria de picks..."
+set PYTHONPATH=src
+"%SQP_PYTHON%" scripts\daily_picks.py --top 0 >> logs\run_diario.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] daily_picks.py fallo (no bloqueante) >> logs\run_diario.log
+
+REM Segunda vista: solo las lineas cuya probabilidad estimada supera su punto de
+REM equilibrio (margen = prob_est - 1/precio > 0). NO es una lista de apuestas:
+REM sigue sin llevar stake. Los margenes mas grandes concentran el riesgo -- ocho
+REM de los diez mayores del 2026-08-26 eran ncaaf/brasileirao con handicaps de
+REM +31/+38.5, justo el perfil que el cap de plausibilidad marca y que rinde
+REM -22.6% frente al -5.6% de lo que el cap deja pasar.
+"%SQP_PYTHON%" scripts\daily_picks.py --min-margin 0 --top 0 --out data\predictions\picks_margen_positivo.md >> logs\run_diario.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] daily_picks --min-margin fallo (no bloqueante) >> logs\run_diario.log
+
+REM Tercera vista: el CRITERIO DEL OPERADOR (2026-08-26) -- probabilidad >= 0.60
+REM Y ROI esperado > 0. Es la lista corta del dia: 8 de 105 partidos el
+REM 2026-08-26. Nota: `--min-roi 0` y `--min-margin 0` son el MISMO filtro
+REM (p*cuota-1 > 0 <=> p > 1/cuota); se usa la forma de ROI porque es como el
+REM operador lo pidio. Sigue sin llevar stake.
+"%SQP_PYTHON%" scripts\daily_picks.py --min-prob 0.60 --min-roi 0 --top 0 --out data\predictions\picks_seleccion.md >> logs\run_diario.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] daily_picks --min-prob/--min-roi fallo (no bloqueante) >> logs\run_diario.log
+
+REM Cuarta vista: clasificacion del TIPSTER (AGENTS Tipster.md) -- tiers
+REM A/B/C/NO BET con cuota justa, EV, edge sobre el mercado sin vig y aviso de
+REM correlacion. DETERMINISTA a proposito: un agente LLM no puede dispararse
+REM desde el Programador de tareas, vive dentro de una sesion de Claude. El
+REM dashboard resalta los A en verde y los B en ambar.
+"%SQP_PYTHON%" scripts\tipster_report.py >> logs\run_diario.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] tipster_report.py fallo (no bloqueante) >> logs\run_diario.log
+goto :eof
+
 :error_arbol
 call :log "*** ABORTADO ANTES DE LIQUIDAR: hay cambios SIN COMMITEAR en codigo que  ***"
 call :log "*** produccion ejecuta (src\, scripts\, configs\ o *.bat).               ***"
@@ -254,6 +295,7 @@ call :log "***     set SQP_SKIP_TREE_GUARD=1                                    
 git status --porcelain -- src scripts configs *.bat >> logs\diario_completo.log 2>&1
 git status --porcelain -- src scripts configs *.bat
 "%SQP_PYTHON%" scripts\run_status.py --fail --stage guard_arbol --exit-code 1 >> logs\diario_completo.log 2>&1
+call :salud
 endlocal
 exit /b 1
 
@@ -261,6 +303,7 @@ exit /b 1
 call :log "*** ERROR EN LA LIQUIDACION: se ABORTA el run diario para no perder picks. ***"
 call :log "*** Revisa logs\settle_all.log, corrige y vuelve a ejecutar este bat.      ***"
 "%SQP_PYTHON%" scripts\run_status.py --fail --stage settle --exit-code 1 >> logs\diario_completo.log 2>&1
+call :salud
 endlocal
 exit /b 1
 
@@ -268,5 +311,8 @@ exit /b 1
 call :log "*** ERROR EN EL RUN DIARIO (la liquidacion si termino). ***"
 call :log "*** Revisa logs\run_diario.log.                         ***"
 "%SQP_PYTHON%" scripts\run_status.py --fail --stage run --exit-code 1 >> logs\diario_completo.log 2>&1
+REM La lista diaria se genera IGUAL con lo que si se escribio (AUD-MED-005).
+call :lista
+call :salud
 endlocal
 exit /b 1

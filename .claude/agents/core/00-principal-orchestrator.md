@@ -1,6 +1,6 @@
 ---
 name: principal-orchestrator
-description: Use this agent to coordinate multi-specialist work: decompose complex tasks, route to the right specialists, resolve conflicting findings, and consolidate a final recommendation with validation evidence. Invoke for full audits, large refactors, or any task spanning multiple domains.
+description: "Use this agent to coordinate multi-specialist work: decompose complex tasks, route to the right specialists, resolve conflicting findings, and consolidate a final recommendation with validation evidence. Invoke for full audits, large refactors, or any task spanning multiple domains."
 model: opus
 ---
 

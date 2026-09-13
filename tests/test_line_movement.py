@@ -161,3 +161,35 @@ def test_concatena_todos_los_meses_de_la_liga_y_solo_esa(tmp_path):
     df = load_league_odds("mlb", tmp_path)
     assert len(df) == 2
     assert sorted(df["price_decimal"]) == [1.90, 2.00]
+
+
+# --- AUD-LOW-003 (auditoria integral 2026-09-13): no cargar lo que no se usa ----
+
+def _run_league_demo_con(monkeypatch, *, movement, velocity):
+    """Ejecuta run_league en demo y devuelve cuantas veces se llamo a
+    load_league_odds. Los coeficientes se fijan explicitamente."""
+    from sqp.config import Settings
+    from sqp.markets import line_movement as lm
+    from sqp.pipeline import daily
+    llamadas: list = []
+    original = lm.load_league_odds
+
+    def espia(league, odds_dir):
+        llamadas.append(league)
+        return original(league, odds_dir)
+    monkeypatch.setattr(lm, "load_league_odds", espia)
+    settings = Settings.load()
+    settings.risk.line_movement_penalty = movement
+    settings.risk.line_velocity_penalty = velocity
+    daily.run_league("nba", settings, mode="demo")
+    return len(llamadas)
+
+
+def test_con_los_coeficientes_a_cero_no_se_carga_el_historico_de_cuotas(monkeypatch):
+    """Medido el 2026-09-13: mlb = 241 MB, 1,59 M filas, 9,1 s y 342 MB de RAM
+    por run para un termino multiplicado por cero."""
+    assert _run_league_demo_con(monkeypatch, movement=0.0, velocity=0.0) == 0
+
+
+def test_con_un_coeficiente_activo_se_carga_como_siempre(monkeypatch):
+    assert _run_league_demo_con(monkeypatch, movement=0.0, velocity=0.5) == 1

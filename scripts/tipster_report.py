@@ -23,6 +23,7 @@ import pandas as pd
 
 from sqp.config import ROOT, Settings
 from sqp.evaluation.labels import (game_date_local, local_today,
+                                   cargar_stream_servido,
                                    picks_vigentes_unicos)
 from sqp.evaluation.tipster import tipster_summary, tipster_table
 from sqp.logging_config import consola_utf8
@@ -52,17 +53,11 @@ def cargar_stream(cal_dir: Path, *, solo_vigentes: bool = True) -> pd.DataFrame:
     (`picks_vigentes_unicos`): filtrar por dia de GENERACION escondia picks
     todavia apostables porque otra liga se sirvio despues (KI-027).
     """
-    frames = []
-    for f in sorted(cal_dir.glob("served_*.csv")):
-        try:
-            d = pd.read_csv(f)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            continue
-        if not d.empty:
-            frames.append(d)
-    if not frames:
+    # Cargador CANONICO (AUD-MED-008): este bucle estaba triplicado y ya habia
+    # divergido en el manejo de errores. Ver `labels.cargar_stream_servido`.
+    df = cargar_stream_servido(cal_dir)
+    if df.empty:
         return pd.DataFrame()
-    df = pd.concat(frames, ignore_index=True)
     return picks_vigentes_unicos(df) if solo_vigentes else df
 
 

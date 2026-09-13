@@ -21,17 +21,18 @@ set PYTHONPATH=src
 REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
 REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 if not exist logs mkdir logs
 
 call scripts\rotate_log.cmd logs\calibration_review.log
 echo === REVISION CALIBRACION MLB h2h (%DATE% %TIME%) === >> logs\calibration_review.log
 "%SQP_PYTHON%" scripts\train_calibration.py >> logs\calibration_review.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 echo --- promote_calibration DRY-RUN (staging vs live) --- >> logs\calibration_review.log
 "%SQP_PYTHON%" scripts\promote_calibration.py >> logs\calibration_review.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 REM Abrir el dashboard para inspeccionar la pestana Auditoria (ROI realizado por mercado).
 REM Solo en sesion interactiva: bajo el Programador de tareas (SESSIONNAME vacio)

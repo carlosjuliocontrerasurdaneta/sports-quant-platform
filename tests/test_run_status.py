@@ -500,14 +500,113 @@ def test_el_fetch_no_puede_bloquear_el_pipeline():
     # 3. Y al agotarse se MATA el proceso, no se deja huerfano.
     assert "$p.Kill()" in t
     # 4. Falla ABIERTO: el codigo del plazo se avisa y se continua.
-    i = t.index("if errorlevel 124")
+    #
+    # La comparacion debe ser EXACTA. Hasta el 2026-09-10 era `if errorlevel 124`,
+    # que en cmd significa ">= 124", asi que el 128 de git -- su codigo en casi
+    # todos los fatales, incluido el "could not read Username" que provocan los
+    # tres candados anti-interactivos de este mismo bloque -- entraba por la rama
+    # del PLAZO. El aviso mandaba a mirar la red teniendo un problema de
+    # credenciales (auditoria integral 2026-09-10).
+    assert "if errorlevel 124" not in t, (
+        "`if errorlevel 124` es '>= 124': vuelve a confundir el 128 de git con "
+        "el 124 del plazo")
+    i = t.index('if "%SQP_FETCH_RC%"=="124"')
     bloque = t[i:t.index(":tree_ok", i)]
     assert "se continua" in bloque
     assert "goto :error" not in bloque
+    # Y la rama de fallo generico tiene que seguir cubriendo CUALQUIER codigo
+    # distinto de 0, no solo los positivos.
+    assert 'if not "%SQP_FETCH_RC%"=="0"' in bloque
     # Los limites de velocidad se conservan: abortan una transferencia
     # estancada DENTRO del plazo, que sigue siendo util.
     assert "GIT_HTTP_LOW_SPEED_LIMIT" in t
     assert "GIT_HTTP_LOW_SPEED_TIME" in t
+
+
+def test_la_lista_diaria_se_genera_tambien_cuando_una_liga_falla():
+    """AUD-MED-005 (auditoria integral 2026-09-13).
+
+    `run_all.py` devuelve 1 si UNA liga lanza excepcion; RUN_DIARIO_ALL sale
+    con 1 y DIARIO_COMPLETO saltaba a :error_run ANTES de [3/3], asi que
+    `daily_picks.py` x3 y `tipster_report.py` -- marcados "no bloqueante" --
+    no se ejecutaban nunca en ese caso, con las otras 20+ ligas ya escritas y
+    el tablero HTML ya construido. La REGLA FUNDAMENTAL exige la lista SIEMPRE
+    y COMPLETA: ahora vive en la subrutina :lista y la llaman las dos rutas."""
+    t = _diario()
+    assert ":lista" in t and "daily_picks.py" in t and "tipster_report.py" in t
+    # Definicion + llamada en la ruta correcta + llamada en :error_run.
+    assert t.count("call :lista") >= 2, "la lista solo se genera en una ruta"
+    i = t.index(":error_run")
+    bloque = t[i:i + t[i:].index("exit /b 1")]
+    assert "call :lista" in bloque, (
+        ":error_run termina sin generar la lista diaria: un fallo parcial "
+        "suprime el producto principal de las ligas que si se generaron")
+    # La subrutina contiene las cuatro vistas, no una copia parcial.
+    j = t.index("\n:lista")   # el LABEL, no el "call :lista"
+    sub = t[j:j + t[j:].index("goto :eof")]
+    assert sub.count("scripts\\daily_picks.py") == 3 and "tipster_report.py" in sub
+
+
+def test_el_informe_de_salud_tiene_productor_automatico_tambien_al_fallar():
+    """AUD-HIGH-003 (auditoria integral 2026-09-10).
+
+    `generate_health_report` solo lo invoca scripts\\health_check.py, y a ese
+    solo lo invocaba REFRESH_ML.bat -- MANUAL desde el 2026-08-29 y sin tarea
+    programada. Ninguna de las 5 tareas `SQP_*` de la maquina lo ejecutaba, y el
+    otro consumidor del centinela (el banner del dashboard) se renderiza DENTRO
+    de run_all.py: si el run aborta, no se regenera y no hay banner rojo. Un
+    fallo persistente no producia aviso NUNCA.
+
+    Se exige en las CUATRO salidas, no solo en la buena: es al fallar cuando el
+    informe hace falta."""
+    t = _diario()
+    assert "health_check.py" in t, "el run diario no produce el informe de salud"
+    # La definicion de la subrutina mas una llamada por cada salida.
+    assert t.count("call :salud") >= 4, (
+        "el informe de salud no cubre las cuatro salidas (ok + guard + settle + run)")
+    for etiqueta in (":error_arbol", ":error_settle", ":error_run"):
+        i = t.index(etiqueta)
+        bloque = t[i:i + t[i:].index("exit /b 1")]
+        assert "call :salud" in bloque, (
+            f"{etiqueta} termina sin producir informe de salud: es justo la "
+            "rama en la que el operador se queda sin senal")
+
+
+def test_ningun_bat_detecta_fallos_con_if_errorlevel_1():
+    """Cierra la CLASE de AUD-HIGH-001 (auditoria integral 2026-09-10).
+
+    `if errorlevel 1` significa ">= 1" en cmd.exe, asi que NO dispara con un
+    codigo de salida NEGATIVO. Reproducido: un proceso que termina con
+    0xC000013A (`-1073741510`, terminacion anomala -- documentada como ocurrida
+    en produccion en RUN_DIARIO_ALL.bat, REFRESH_ML.bat y este mismo fichero)
+    atravesaba entero `if errorlevel 1`.
+
+    Lo que costaba: en DIARIO_COMPLETO un crash de SETTLE_ALL no saltaba a
+    `:error_settle`, se ejecutaba RUN_DIARIO_ALL y se sobrescribian
+    `candidates_*.csv` SIN liquidar -- el invariante "settlement antes de
+    generacion" roto por la via mas silenciosa posible. Y peor: la linea
+    siguiente al chequeo limpia el centinela, asi que el fallo apagaba su propia
+    alarma.
+
+    Se enumera el disco y se exige encontrar BATs: una lista fija se apagaria
+    justo cuando alguien anadiera el BAT numero once."""
+    bats = sorted((ROOT).glob("*.bat"))
+    assert bats, "no se encontro ningun .bat en la raiz: el candado se apagaria solo"
+    ofensores = []
+    for p in bats:
+        for n, linea in enumerate(
+                p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            codigo = linea.strip()
+            # Los REM son prosa: este mismo fichero explica la trampa citandola,
+            # y un candado que se dispara con su propia documentacion es ruido.
+            if codigo.lower().startswith("rem "):
+                continue
+            if "if errorlevel" in codigo.lower():
+                ofensores.append(f"{p.name}:{n}: {codigo}")
+    assert ofensores == [], (
+        "`if errorlevel N` es '>= N' y no ve los codigos negativos; usar "
+        "`if %ERRORLEVEL% neq 0` (o comparacion exacta):\n  "
+        + "\n  ".join(ofensores))
 
 
 def test_sin_upstream_la_comprobacion_se_salta_sin_fallar():

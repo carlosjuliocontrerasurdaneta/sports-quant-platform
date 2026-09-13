@@ -77,7 +77,13 @@ def load_clv_gate(bets_dir: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        markets = json.loads(path.read_text(encoding="utf-8")).get("markets")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # `.get` sobre un JSON cuya RAIZ no es un objeto (p.ej. `[1,2]` o `3`)
+        # lanza AttributeError, que el `except` de abajo no atrapaba: un registro
+        # corrupto tumbaba el run en vez de degradar a default-deny, que es justo
+        # lo contrario de lo que este cargador promete (auditoria integral
+        # 2026-09-10). Se comprueba el tipo antes de tocarlo.
+        markets = payload.get("markets") if isinstance(payload, dict) else None
     except (OSError, json.JSONDecodeError):
         return {}
     return markets if isinstance(markets, dict) else {}

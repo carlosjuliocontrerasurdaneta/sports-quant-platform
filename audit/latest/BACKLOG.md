@@ -1,317 +1,47 @@
-# Backlog — Auditoría 2026-09-08
-
-Lo que no se corrigió, por qué, y qué hace falta para cerrarlo.
-
----
-
-## B-1 · URGENTE: producción sigue parada. Un comando.
-
-**Estado: pendiente, requiere al operador.**
-
-El pipeline no genera picks desde el **2026-09-06 12:01**. Esta sesión corrigió
-la **ceguera** (el informe de salud da `ERROR` y el tablero enciende el banner al
-abrirlo) y dejó el árbol **limpio y al día**, así que el guard ya no bloquea:
-
-```
-DIARIO_COMPLETO.bat
-```
-
-**No se ejecutó** porque consume cuota de API de pago y escribe datos de
-producción, y la sesión se cerró antes de llegar a ese paso. Verificación de que
-el servicio volvió: `python scripts/health_check.py` debe dejar de emitir el
-`ERROR` de liveness, y `data/predictions/predictions_*.csv` debe traer sello de
-hoy.
-
-Mientras siga parado, no se acumula muestra graduada — el recurso más escaso del
-sistema, y el único que puede mover el gate del 0 de 41 actual.
-
----
-
-## B-2 · CERRADO · Los commits están publicados
-
-`origin/main` iba **8 commits por delante** (una sesión de remediación completa
-del 2026-09-07 publicada desde otro clon, con cambios en `src/sqp/config.py`,
-`markets/line_movement.py`, `pipeline/budget.py`, `pipeline/probabilities.py`,
-los cuatro hooks `PostToolUse`, `.claude/settings.json` y `configs/default.yaml`).
-Se trajeron con `git rebase` —`--ff-only` ya no era posible— resolviendo el único
-conflicto, `known-issues.md`, conservando ambos bloques y renumerando los KI de
-esta sesión a **039–043** para no pisar el KI-038 de aquella.
-
-Los 9 commits de esta sesión se empujaron a `main` como `6c834e2`. Árbol
-sincronizado: 0 por detrás, 0 por delante.
-
-Con eso, **AUD-LOW-001 queda cerrado**: el `crossreview-on-stop.sh` corregido
-(`c28ee6a`) ya está en el árbol que ejecuta producción.
-
-**Nota de exactitud:** la fase de diagnóstico dijo «2 commits». Estaba mal
-inferido de `git fetch --dry-run`, que imprime un rango de refs y no un conteo.
-Eran 8.
-
----
-
-## B-3 · AUD-INF-001 · Lock caducado sin heartbeat (POSIX)
-
-`storage/lock.py` nunca refresca el `mtime` del `.lock`. Bajo semántica POSIX,
-una sección crítica de más de `LOCK_STALE_S = 300 s` puede ser robada por un
-segundo proceso, y al salir el primero borra el `.lock` del segundo, en cascada.
-En Windows —el SO de producción— el `unlink` falla con `WinError 32` y degrada a
-espera, que es el comportamiento correcto y ya está probado.
-
-**No se corrigió**: es `INFERIDO`, no confirmado, y la skill prohíbe corregir
-sobre inferencias.
-
-**Qué falta para cerrarlo:** (1) medir el tiempo real **dentro** del `with
-locked()` de `revalidate_candidates` —no de la función completa, que en
-`capture_close.log` va de 38 s a 99 s—; (2) una reproducción en Linux con un
-titular que duerma 301 s. Si la medición deja margen suficiente, la resolución
-correcta puede ser documentar que no aplica, no añadir un heartbeat.
-
----
-
-## B-4 · L-2 · Residuo de `.codex-tmp` con ACL denegada
-
-Dos directorios `run-20260809T*` no se pudieron borrar: sus subdirectorios
-`pytest/test_*` fueron creados por un proceso con otra ACL y esta sesión no
-puede enumerarlos ni eliminarlos (`Permission denied`). Es la misma limitación
-que la fase de diagnóstico ya declaró `NO_VERIFICABLE`.
-
-**Cierre:** borrado manual por el operador con permisos suficientes, o
-`takeown`/`icacls` sobre `.codex-tmp`. Impacto: ~21 MB de scratch ignorado.
-No urgente.
-
----
-
-## B-5 · Causa raíz del fallo del 2026-09-07: irrecuperable
-
-`DIARIO_COMPLETO.bat` no escribía en ningún log, así que la evidencia de aquel
-`0x1` se perdió en una consola inexistente. **AUD-MED-001 impide que vuelva a
-pasar, no recupera lo perdido.** Lo que sí se acotó: `settle_all.log` no tiene
-cabecera del 2026-09-07, y `SETTLE_ALL.bat` escribe la suya como primera acción,
-así que el aborto ocurrió **antes o durante** el `call SETTLE_ALL.bat`.
-
-Queda **abierto como incógnita**, no como tarea: si vuelve a ocurrir, el nuevo
-`logs\diario_completo.log` lo dirá.
-
----
-
-## B-6 · Cobertura de ramas y `.bat` en CI
-
-Ninguna de las puertas cubre los `.bat`. Esta sesión los validó en un banco git
-aislado (5 casos) y con pruebas de contrato sobre el texto, pero **CI no los
-ejecuta** y no puede hacerlo (corre en Linux salvo una pata Windows que sólo
-lanza pytest). Mejora posible, no urgente: un test que ejecute
-`DIARIO_COMPLETO.bat` con stubs en la pata Windows del CI.
-
----
-
-## No es backlog: es el estado de la evidencia
-
-El gate sigue en **0 de 41 cortes autorizados**, con `n_max = 186` contra
-`min_n = 300`. La parada de 48 h ha detenido la acumulación de esa muestra, que
-es el recurso más escaso del sistema. Ninguna corrección de esta sesión cambia
-la conclusión de la octava medición (2026-09-07): sin ventaja predictiva
-demostrada, ROI OOS −23,71 %, ROI realizado −15,26 %,
-`corr(edge declarado, PnL) = −0,105`.
-
----
-
-# Añadido por la SEGUNDA auditoría integral del 2026-09-08
-
-Los ítems B-1 a B-6 de arriba siguen vigentes tal cual. Lo que sigue es lo que
-esta segunda pasada deja abierto. Los hallazgos que sí se corrigieron están en
-`.claude/memory/known-issues.md`, KI-044.
-
-## B-7 · CERRADO · Un fichero por etapa: la sección crítica ya no existe
-
-`record_run_failure` y `clear_run_status` (`src/sqp/monitoring/run_status.py`)
-hacen **read-modify-write sin exclusión** sobre `logs/run_status.json`. Cinco
-tareas programadas pueden solaparse —`CAPTURE_CLOSE` cada 30 min contra
-`DIARIO_COMPLETO` a las 12:00—, y un intercalado pierde la etapa del otro: una
-alarma vigente se borra en silencio.
-
-La regla del proyecto desde AUD-002 es "no se entra sin exclusión". Aquí choca
-con algo peor: si `locked()` agota su espera, `record_run_failure` **aborta y el
-fallo no se registra**. Perder un fallo siempre es peor que perderlo raramente.
-
-**Resuelto el 2026-09-09 por orden del operador: opción (c).** No arbitra entre
-los dos modos de fallo —lock que puede abortar el registro, o degradación que
-AUD-002 prohíbe—: **elimina la sección crítica**. Cada etapa vive en
-`logs/run_status/<etapa>.json`, así que escribir una no requiere leer las demás
-y dos procesos concurrentes no comparten destino. No hay lock porque ya no hay
-nada que serializar.
-
-**La carrera era real, y está reproducida.** Con el algoritmo anterior, un
-segundo proceso que registra `settle` entre la lectura y la escritura del
-primero desaparecía: sobrevivía sólo `run`. Con un fichero por etapa sobreviven
-las dos. La reproducción corrió sobre directorios temporales.
-
-Efecto colateral que conviene nombrar: la protección de **A-02** —que un fallo
-de `settle` sobreviva a un fallo posterior de `run` y a su limpieza— deja de ser
-una precaución escrita en el código y pasa a ser una propiedad de la
-disposición. Son ficheros distintos.
-
-**Lo que el cambio introducía y se cerró en el mismo commit**: el nombre de
-etapa pasa a formar parte de una *ruta* —antes viajaba dentro del JSON—, así que
-un `../../algo` escribiría fuera de `logs/`. Validado contra `[a-z0-9_]{1,40}`,
-con 7 casos de prueba.
-
-**Migración sin pérdida**: un centinela vigente en el formato anterior se
-reparte en ficheros por etapa la primera vez que se registra o se limpia algo, y
-sólo entonces se retira el fichero viejo. El orden importa: si el proceso muere
-en medio, la lectura une las dos fuentes y no se pierde ningún aviso.
-
-13 pruebas nuevas. Verificado además el camino operativo real sobre el árbol de
-producción: dos etapas independientes registradas, limpieza selectiva de una
-—la otra intacta, byte a byte— y estado final limpio.
-
-- **Archivos**: `src/sqp/monitoring/run_status.py`, `src/sqp/monitoring/health.py`,
-  `tests/test_run_status.py`. `scripts/run_status.py` y los BAT **no cambian**:
-  la interfaz de línea de comandos es la misma.
-
-## B-8 · `SQP_Validate_OOS_Cdev` lleva fallado desde el 2026-09-01
-
-`LastTaskResult = 0x1` el 2026-09-01, y es **mensual**: el próximo intento es el
-2026-10-01. El centinela de la etapa `validate_oos` se añadió el 2026-09-06
-(AUD-MED-003), *después* del fallo, así que ese `0x1` nunca llegó a ninguna capa
-de monitorización y **su causa raíz sigue sin diagnosticar**.
-
-**Reproducción ejecutada: NO falla.** `python scripts/validate_oos.py`, el
-comando exacto del BAT, terminó con **exit 0** tras **1 h 40 min** de CPU:
-*«32 liga(s) validada(s) de 33; 0 sin cuotas, 1 sin resultados, 0 con error»*.
-Así que el defecto **no está en el camino normal del script** con los datos de
-hoy.
-
-Lo que deja abierto y lo que acota:
-
-- La causa del `0x1` del 2026-09-01 sigue **sin diagnosticar**, y ahora sabemos
-  que no es un fallo determinista del script.
-- Candidatos que la reproducción no descarta: el paso `model_vs_market_report.py`
-  (best-effort, no bloqueante, así que no explicaría un `0x1`), una interrupción
-  del entorno, o que la máquina se suspendiera a mitad.
-- **Dato nuevo y accionable por sí mismo: el job mensual dura más de hora y
-  media.** Una ventana así es superficie de fallo por sí misma, y ninguna alarma
-  vigila su duración.
-- El centinela de la etapa `validate_oos` existe desde el 2026-09-06, así que el
-  próximo fallo **sí** llegará al health check. Queda como incógnita, no como
-  tarea ciega.
-
-- **Archivos**: `scripts/validate_oos.py`, `VALIDATE_OOS.bat`.
-- **Acción**: reproducir y corregir, o forzar una ejecución manual antes del
-  2026-10-01.
-
-## B-9 · CERRADO · El aviso sin dueño es ahora informativo
-
-El informe de salud emite `WARN: <liga>: features stale (15.5d)` para mlb, nba,
-nfl y nhl —**4 de sus 6 avisos**— en cada ejecución. Pero el refresco de esas
-features lo hacía `SQP_Refresh_ML_Cdev`, **retirada por orden del operador el
-2026-08-29** (AUD-LOW-003) porque la inferencia ML no tiene ningún llamador en
-el camino de picks: `feature_store` solo lo importan `evaluation/compare.py`,
-`scripts/build_features.py` y `scripts/train_models.py`.
-
-Es decir: el control avisa de la caducidad de un artefacto que, por decisión
-registrada, ya no tiene quien lo refresque **ni consumidor en el camino del
-dinero**. Un aviso que lleva 15 días encendido y que nadie puede accionar
-entrena a ignorar los otros dos.
-
-**Resuelto el 2026-09-09 por orden del operador: degradado a INFO.**
-
-Medido sobre producción: el informe pasó de **5 avisos a 1**. Los cuatro
-degradados salen ahora en una sola línea informativa que dice la cifra *y* el
-motivo — «la tarea que los refrescaba se retiró el 2026-08-29 por orden del
-operador y el artefacto no tiene consumidor en el camino de picks». El aviso que
-queda (`mls`, 49 filas pendientes) sí es accionable.
-
-**No es un silenciamiento.** La antigüedad se conserva por liga en
-`leagues[<lg>]["features_age_days"]` y agregada en la clave nueva
-`features_stale` del informe, así que sigue siendo auditable y su tendencia
-visible.
-
-**Y la degradación está atada al hecho que la justifica**, no a una preferencia:
-`test_el_camino_de_picks_no_depende_del_feature_store` recorre el grafo de
-imports desde `pipeline/daily.py` —38 módulos— y falla el día que
-`storage/feature_store` reaparezca en el camino de picks, porque ese día la
-caducidad vuelve a ser accionable y el aviso tiene que volver a WARNING. El
-detector no es vacío: la misma búsqueda partiendo de `evaluation/compare.py` sí
-encuentra la dependencia.
-
-4 pruebas nuevas, 3 de ellas verificadas discriminantes contra el árbol previo.
-
-- **Archivos**: `src/sqp/monitoring/health.py`, `tests/test_health.py`.
-
-## No es backlog: dos observaciones
-
-- **`pip-audit` corre en las 4 patas de la matriz** auditando el mismo
-  `requirements.lock`, que no depende de la versión de Python. Es redundante,
-  **y aun así se deja como está**: reducir una puerta de seguridad de cuatro
-  entornos a uno para ahorrar minutos de CI es un mal cambio aunque el análisis
-  diga que el resultado es idéntico.
-- **`data/odds/` son 810 MB en CSV mensuales** y crecen. Las correcciones de
-  KI-044 quitan el 76 % de la lectura y la evitan del todo cuando no hay
-  trabajo, pero el mes en curso —147 MB— se sigue leyendo entero cuando sí lo
-  hay. La solución de fondo (partición diaria, o Parquet con predicado sobre
-  `captured_at`) es un cambio de contrato de un artefacto persistido: requiere
-  decisión explícita y una migración, no una optimización de paso.
-
-## B-10 · Decisión de contrato: `full-audit` → `audit-remediation`
-
-`audit-remediation` exige como **requisito de entrada** un paquete en
-`audit/latest/` —`FINDINGS.md`, `BACKLOG.md`, IDs resueltos, y lee
-`MANIFEST.json`/`tests_initial`—. `full-audit` **no produce ese paquete ni lo
-menciona** en ninguna de sus nueve referencias, incluida `reporting.md`, que
-define el informe consolidado sin nombrar rutas ni esquema.
-
-Consecuencia: una auditoría entregada como informe único cumple `full-audit` y
-**bloquea** a `audit-remediation` por falta de un paquete que nadie le pidió al
-productor. Lo viví en esta sesión: entregué el informe en conversación y añadí
-al backlog existente en vez de sobrescribir el paquete del turno anterior.
-
-**No lo corrijo**: elegir qué lado cambia es una decisión de contrato, no una
-corrección. Las dos salidas son legítimas y excluyentes:
-
-- **(a)** `full-audit` emite el paquete cuando el usuario autorice escribirlo.
-  Choca con que las fases 0–3 son de **solo lectura**, y obligar a crear ficheros
-  en un diagnóstico es justamente lo que esa restricción existe para impedir.
-- **(b)** `audit-remediation` acepta un informe único con IDs aprobados, y el
-  paquete pasa a ser opcional. Más simple, pero pierde el `MANIFEST.json` como
-  ancla de baseline y trazabilidad.
-
-Hallazgo H04 de `audit/analisis-skills-codex.md`. Mi recomendación es **(b)** con el
-`MANIFEST.json` degradado a opcional-pero-recomendado, pero es tuya.
-
-## B-11 · Tres defectos en el paquete vendorizado Superpowers
-
-`audit/analisis-skills-codex.md` confirma tres MEDIUM que viven en
-`.claude/skills/superpowers-main/`, **paquete de terceros**. Un parche local se
-pierde en la siguiente actualización, así que **no los toco**:
-
-- **H07 · `requesting-code-review`**: la plantilla compara `BASE_SHA..HEAD_SHA`
-  derivando BASE de `HEAD~1`, así que en una tarea de varios commits el primero
-  queda fuera del diff y una revisión parcial se presenta como revisión de la
-  feature completa. El propio `subagent-driven-development` prohíbe `HEAD~1`
-  precisamente por esto.
-- **H08 · `finishing-a-development-branch`**: pierde el worktree original antes
-  de ejecutar el cleanup.
-- **H09 · `subagent-driven-development`**: el ledger no identifica el plan, así
-  que puede omitir tareas de una ejecución distinta.
-
-Salidas posibles: fijar la versión del paquete y llevar el parche aguas arriba,
-o documentar la desviación en una nota propia que sobreviva a la actualización.
-
-## Nota sobre `audit/analisis-skills-codex.md`
-
-Versionado el 2026-09-08 por autorización expresa del operador (217 KB, 1.775
-líneas) y **archivado en `audit/` el 2026-09-09**, junto con
-`audit/auditoria-integral-codex.md`.
-
-El operador los había sacado del proyecto a `C:\dev\3`, donde guarda sus
-ficheros propios (`NOTAS.md`). El instinto de no dejarlos sueltos en la raíz era
-correcto; sacarlos del repositorio no, y la razón es concreta: **cuatro ficheros
-versionados los citan por nombre** —KI-038 y KI-045 en `known-issues.md`, B-10 y
-B-11 aquí, y dos entradas de bitácora—. Una cita que apunta fuera del control de
-versiones es una afirmación que no se puede verificar, que es justo el modo de
-fallo que este repositorio lleva meses documentando. Además quedaban sin
-historial ni copia remota, a un borrado accidental de desaparecer.
-
-`audit/` es donde este repositorio archiva informes desde el principio
-(`audit/FINAL-AUDIT.md`, `audit/model_vs_market_*.md`, `audit/latest/`). Sigue
-vigente la regla de siempre: **son entregables de Codex; no se editan.**
+# Plan priorizado de corrección — Auditoría integral 2026-09-13
+
+Nada de esto se ejecuta sin aprobación explícita e identificada por ID, grupo o
+alcance inequívoco (`audit-remediation`). Orden según
+`references/validation-remediation.md`: CRITICAL → HIGH → seguridad/integridad
+→ operacional → MEDIUM → tests → LOW → deuda → limpieza → opcionales.
+
+| # | IDs | Acción mínima | Ficheros previstos | Dependencias | Riesgo | Pruebas requeridas | Criterio de aceptación |
+|---|---|---|---|---|---|---|---|
+| 1 | AUD-HIGH-001 | Reconstituir el repositorio en el directorio de producción: `git init` · `remote add origin` · `fetch` · `reset --mixed origin/main` (nunca `checkout`/`--hard`) · commit «snapshot producción 2026-09-13» en rama `prod/remediacion-20260910` · push · PR. **`git reset` está en la lista `deny`: lo ejecuta el operador o lo autoriza expresamente.** | ninguno del código; crea `.git/` | `.gitignore` vigente (verificado) | operar mal Git sobre producción | `git status` sin rutas de `data/`, `logs/`, `.env`; suite en la rama; CI verde en el PR | `main` (o el PR) contiene byte a byte el árbol que ejecutan las tareas; `DIARIO_COMPLETO.bat` deja de avisar «git no disponible» |
+| 2 | AUD-HIGH-002 (parte técnica) | `open_dashboard.ps1`: no omitir cuando el reporte no es de hoy — abrirlo con aviso o abrir una página «SIN RUN HOY»; invocar `health_check.py` (liveness) al logon | `scripts/open_dashboard.ps1`, `src/sqp/monitoring/health.py` (mensaje de liveness) | ninguna | bajo | humo del `.ps1` con `report_latest.html` de ayer; test de `pipeline_liveness` con artefacto viejo | un día sin run produce una señal visible al iniciar sesión |
+| 2b | AUD-HIGH-002 (decisión) | Cambiar las 5 tareas a «ejecutar aunque el usuario no haya iniciado sesión» | Programador de tareas | **orden expresa del operador** (regla: no tocar el Programador) | medio (credenciales de la tarea) | `Get-ScheduledTask` muestra `LogonType` ≠ Interactive; run del día siguiente | — |
+| 3 | AUD-MED-004 | `unsettled_completed_picks`: contar toda fila `data_label == real` (no sólo `stake > 0`); `_settle_tennis`: graduar candidates también contra `history_scores_map` | `src/sqp/pipeline/cleanup.py`, `src/sqp/settlement/runner.py`, tests | ninguna | el run puede omitir una liga más veces (por diseño) | test: pick stake 0 comenzado sin liquidar → `at_risk`; test tenis con resultado sólo en histórico → graduado | 0 unidades «listadas el día del partido y nunca liquidadas» en la próxima ventana |
+| 4 | AUD-MED-003 | **Decisión de política** (aprobación explícita): (a) liquidar también los picks archivados no supervivientes con flag `superseded`, o (b) restringir la lista publicada al día del partido | `settlement/runner.py` (+ lectura de `archive/`), `daily.py`, docs | AUD-MED-004 | medio: cambia el contenido del ledger (contrato de artefacto persistido → escalón `fable`) | escenario D / D+1 / partido D+1 | tasa de unidades listadas sin veredicto → 0 % |
+| 5 | AUD-MED-001 | Scoping de revalidación por «run más reciente del fichero» o antigüedad ≤ 36 h, en `_filas_evaluables` y `revalidate_pitchers`; ajustar `test_skips_out_of_window_stale_price_and_old_rows` | `src/sqp/pipeline/revalidation.py`, `tests/test_revalidation.py` | ninguna | bajo (sólo revoca) | test evento 01:00Z con generación ayer 15:00Z → evaluado; test fichero rancio con generación más reciente → excluido | cobertura de `reval_action` en eventos `game_date = día+1` comparable a la de mismo día |
+| 6 | AUD-MED-002 | `_grade`: medias victorias/derrotas para líneas de cuarto vía `settlement_math.split_asian_line`; definir `result ∈ {half_win, half_loss}` y `pnl` = ±0,5; decidir tratamiento aguas abajo (`_usable` del gate, calibración, `realized_roi`, `degradation`) | `src/sqp/settlement/settle.py`, consumidores listados, tests | **cambio de contrato del ledger → aprobación explícita, escalón `fable`** | medio | casos ±0,25/±0,75 con margen 0/±1; re-graduación de las 22 filas como verificación (sin reescribir sin aprobación) | la fila `Universidad de Chile −0,75` se gradúa `half_win` |
+| 7 | AUD-MED-005 | Ejecutar `[3/3]` (daily_picks ×3, tipster) también en `:error_run`, conservando exit 1 y centinela | `DIARIO_COMPLETO.bat`, `tests/test_run_status.py` (candado) | ninguna | bajo | candado BAT: `daily_picks.py` presente tras `:error_run` | un fallo de una liga no suprime la lista de las demás |
+| 8 | AUD-MED-006 | Registrar en `project-decisions.md` la decisión vigente (`min_n = 300`) y marcar superada la del 2026-08-19; espejo en `session-summaries.md` | `.claude/memory/project-decisions.md`, `.claude/memory/session-summaries.md` | confirmar con el operador si recuerda la reversión | nulo | opcional: candado literal en `test_claude_system_contract.py` | memoria y código coinciden |
+| 9 | AUD-MED-007 / AUD-INF-001 | `_targets.py`: fuente 2 sólo con operadores de escritura; `crossreview-on-stop.sh`: salir con aviso sin repositorio Git | `.claude/hooks/_targets.py`, `.claude/hooks/crossreview-on-stop.sh`, tests de hooks | tras #1 la sub-parte INFERIDA desaparece | perder una escritura no reconocida (mitigado por `--with-git`) | `cat x.py` → sin objetivo; `sed -i x.py` → objetivo; `echo > x.py` → objetivo | una sesión de sólo lectura no arma centinelas |
+| 10 | AUD-LOW-003 | `load_league_odds` acotado a `since = now − horizonte` (reutilizar `_odds_files`) o saltar con coeficientes 0 | `src/sqp/markets/line_movement.py`, `daily.py`, tests | ninguna | bajo (término inerte) | test de acotado por mes | carga de mlb < 1 s |
+| 11 | AUD-LOW-001 | Segunda pasada de poda para `predictions_*` huérfanos de ligas inactivas (archivar + borrar) | `src/sqp/pipeline/cleanup.py`, tests | ninguna | bajo (archiva antes) | test liga inactiva sin candidates → predictions archivado y retirado | `data/predictions/` sin ficheros de torneos terminados |
+| 12 | AUD-LOW-002 | Añadir familias regenerables al allowlist de `purge_old_artifacts` (90 días), preservando `*_latest.*` | `src/sqp/pipeline/cleanup.py`, tests | ninguna | bajo | test por familia | crecimiento acotado |
+| 13 | AUD-LOW-004 (1,2,4,5) | Docstrings «hourly», etiquetas `[n/3]`, nota sobre `disabledMcpjsonServers`, rama muerta de `validate_oos.py` | `scripts/capture_closing_odds.py`, `src/sqp/pipeline/revalidation.py`, `DIARIO_COMPLETO.bat`, `.claude/CLAUDE.md` o `settings.local.json`, `scripts/validate_oos.py` | ninguna | nulo | ruff/mypy | — |
+| 14 | AUD-LOW-004 (3) | Retirar `data/models/wnba_totals_calibration_iso.joblib` a `data/models/retired/` | 1 fichero de datos | **aprobación expresa (dato de modelo)** | nulo (inerte) | `apply_calibration` sin cambio | — |
+
+## Limpieza y racionalización
+
+| ID | Ruta | Categoría | Evidencia | Tamaño | Reemplazo / fuente canónica | Riesgo | Decisión propuesta | Validación |
+|---|---|---|---|---|---|---|---|---|
+| CL-01 | `data/predictions/predictions_tennis_{atp_halle_open,atp_queens_club_champ,wta_bad_homburg_open,wta_german_open,wta_wimbledon,wta_washington_open,atp_cincinnati_open,wta_cincinnati_open}.csv`, `predictions_uwcl.csv`, `predictions_frauen_bundesliga.csv` | OBSOLETO_REEMPLAZADO (torneos terminados, sin `candidates_`) | consumidores leen por liga concreta; `prune_stale_candidates` nunca los alcanza | 10 ficheros, < 10 KB | `archive/` (copiar antes) | nulo | PROPONER_ELIMINACIÓN vía #11 (archivando) | `pytest tests/test_cleanup*.py`; run diario sin avisos |
+| CL-02 | `data/models/wnba_totals_calibration_iso.joblib` | OBSOLETO_REEMPLAZADO (degradado, sin entrada en registro) | `structural_defect` = colapsado; registro live sin `wnba_totals` | 1 fichero | ninguno (mercado se sirve en crudo) | nulo | PROPONER_ELIMINACIÓN (mover a `retired/`) — requiere aprobación de dato | `apply_calibration('wnba_totals')` sigue no-op |
+| CL-03 | `data/predictions/report_2026*.html/.md`, `data/bets/audit_2026*.md`, `segment_diagnostics_2026*.md`, `picks_ranked_2026*.md` > 90 días | GENERADO_RECONSTRUIBLE | regenerables desde ledger/served; sin consumidores salvo `*_latest` | 36 MB (html) | `report_latest.html`, `segment_diagnostics_latest.csv` | bajo | CONSERVAR hoy; retención automática vía #12 | purga en seco (`--dry-run` si se añade) |
+| CL-04 | `data/cache/odds/*.json` | GENERADO_RECONSTRUIBLE | TTL 1.200 s; 267 entradas de hasta meses | 24 MB | la red (coste en créditos si se refetch en ventana) | bajo | CONSERVAR; purgar > 7 días vía #12 | — |
+| CL-05 | `OPTIMIZATION.diff`, `BUILD_INFO.json` | GENERADO_RECONSTRUIBLE una vez commiteado (#1) | diff ya aplicado; hashes del paquete | 163 KB | historial Git tras #1 | nulo | CONSERVAR hasta #1; después mover a `audit/optimization-20260910/` | — |
+| CL-06 | `audit/latest/{CHANGES.md,CLAUDE_CODE_REVIEW.md,QUANT_REVIEW.md,POST-REMEDIATION-HASHES.json}` | copia histórica (ciclos 09-06/09-10) | preservados en `audit/audit-20260910/` | 90 KB | `audit/audit-20260910/` | nulo | CONSERVAR (no se borra durante la auditoría; `audit-remediation` reescribe `CHANGES.md`) | — |
+| CL-07 | `AGENTS Tipster.md` ↔ `.claude/agents/tipster.md` (B-06) | REDUNDANTE_CONFIRMADO (cabecera declara canónica) | 5 referencias por nombre | 16 KB | `.claude/agents/tipster.md` | referencias rotas | CONSERVAR hasta #1 (sin Git no es reversible) | grep de referencias tras consolidar |
+
+## Heredado del backlog anterior (2026-09-10)
+
+- **B-01** Cerrar el ciclo de `VALIDATE_OOS` (rc 1 del 01-09; próxima 01-10): sigue pendiente del operador (`! cmd /c VALIDATE_OOS.bat`).
+- **B-02** Pin de acciones de CI a SHA: sigue abierto (red).
+- **B-03** Estado del CI: **resuelto en parte** — es verificable (`gh`) y está verde, pero para `a401f06`; se subsume en AUD-HIGH-001.
+- **B-04** Cobertura en 3.14: sin cambio.
+- **B-05** `archive/` como única copia con caducidad 90 días: sin cambio; AUD-MED-003 le da un uso nuevo (fuente de liquidación de picks refrescados).
+- **B-06** `AGENTS Tipster.md`: sin cambio (CL-07).
+- **B-07** Tareas «Solo interactivo»: **ahora medido** (4/7 días sin run) → AUD-HIGH-002.
+- **B-08** `record_run_failure` sin lock: sin cambio.

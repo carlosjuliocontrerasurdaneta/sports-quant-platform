@@ -7,13 +7,14 @@ REM ORDEN IMPORTANTE: ejecutar ANTES que RUN_DIARIO_ALL.bat cada dia. El run
 REM diario SOBRESCRIBE data\predictions\candidates_*.csv; un pick no liquidado
 REM antes de esa sobrescritura se pierde. En produccion NO se agenda este bat
 REM por separado: DIARIO_COMPLETO.bat (tarea SQP_Diario_Completo_Cdev, diaria
-REM 11:00) encadena SETTLE -> RUN en ese orden.
+REM 12:00) encadena SETTLE -> RUN en ese orden.
 setlocal
 cd /d %~dp0
 set PYTHONPATH=src
 REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
 REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 set ODDS_API_REGIONS=us
 
@@ -23,7 +24,7 @@ echo === SQP - SETTLE ALL + AUDITORIA (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\settle_all.log
 echo === SQP - SETTLE ALL + AUDITORIA (%DATE% %TIME%) === >> logs\settle_all.log
 "%SQP_PYTHON%" scripts\settle_all.py --days-from 3 >> logs\settle_all.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 REM Liquidacion correcta: limpia el centinela SOLO si el fallo registrado era de
 REM esta etapa. Un fallo del run diario sigue avisando hasta que el run vuelva a

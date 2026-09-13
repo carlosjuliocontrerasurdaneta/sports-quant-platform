@@ -1,0 +1,1914 @@
+diff --git a/.gitignore b/.gitignore
+index 1f07a47..beaa775 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -74,4 +74,6 @@ graphify-out/
+ # Temporary AI cross-review outputs
+ .claude/reviews/runtime/
+ # Scratch tree the Codex reviewer writes its temp files and caches into
+-.codex-tmp/
+\ No newline at end of file
++.codex-tmp/
++.venv/
++outputs/
+diff --git "a/Obsidian/Bit\303\241cora.md" "b/Obsidian/Bit\303\241cora.md"
+index 8d62761..ee6b57d 100644
+--- "a/Obsidian/Bit\303\241cora.md"
++++ "b/Obsidian/Bit\303\241cora.md"
+@@ -1,7 +1,7 @@
+ ---
+ tags: [bitacora, moc, sqp]
+ creada: 2026-07-08
+-actualizada: 2026-09-09
++actualizada: 2026-09-10
+ ---
+ 
+ # Bitácora — índice
+@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
+ 
+ ## Entradas
+ 
++- [[Bitácora/2026-09-10]] — PMF vectorizada, validación de parámetros, pricing independiente con freeze, instalación portable y paquete local probado. Sin cambios a riesgo ni publicación GitHub.
+ - [[Bitácora/2026-09-09]] — diagnóstico de la integración Claude↔Codex: las tres vías operativas, la Forma 3 (centinela automático) documentada por fin; divergencia de binarios y PAT en claro fuera del repo.
+ - [[Bitácora/2026-08-04]] — auditoría y remediación integrada de `.claude`: routing, Fable 5, estados, permisos, health check y promoción humana por defecto.
+ - [[Bitácora/2026-08-02]] — auditoría integral, cierre de filas servidas pendientes y observatorio intradía v2.
+diff --git a/Obsidian/Tareas.md b/Obsidian/Tareas.md
+index 312f297..cbf8222 100644
+--- a/Obsidian/Tareas.md
++++ b/Obsidian/Tareas.md
+@@ -1,13 +1,19 @@
+ ---
+ tags: [tareas, sqp]
+ creada: 2026-07-08
+-actualizada: 2026-08-25
++actualizada: 2026-09-10
+ ---
+ 
+ # Tareas
+ 
+ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
+ 
++## Entrega local 2026-09-10
++
++- [x] Optimizar cálculo, validar parámetros y entregar modo independiente con freeze y matemáticas de push/cuartos. 1929 pruebas aprobadas, 2 omitidas; instalación probada en extracción nueva. Sin commit publicado. Ver [[Bitácora/2026-09-10]].
++- [ ] Verificar integración del paquete con el entorno Windows y los datos privados del operador. No ejecutado en esta sesión.
++- [ ] Evaluar históricamente cualquier cambio predictivo futuro con datos as-of. Esta optimización no acredita mayor rentabilidad o calibración.
++
+ ## En curso (fase shadow — el sistema trabaja solo)
+ 
+ - [x] 2026-08-02 — ~~Liquidar las 87 filas servidas pendientes~~ RESUELTO (commit `ea969a3`): fallback de graduación desde `data/historical/` + void de filas rancias (política stale_void portada al stream servido). Health check WARN → OK. Ver [[Bitácora/2026-08-02]].
+diff --git a/README.md b/README.md
+index 393b92c..de5f141 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,10 @@
+ # Sports Quant Platform (SQP)
+ 
++**Paquete de optimización local, 2026-09-10:** instalación y ejecución en
++[`IMPLEMENTACION.md`](IMPLEMENTACION.md). Incluye cálculo de distribuciones
++vectorizado y un modo independiente opcional con freeze, push y líneas asiáticas.
++El pipeline diario mantiene sus modelos, configuración y controles de riesgo.
++
+ Plataforma cuantitativa profesional, modular, auditable y calibrada estadísticamente
+ que produce **probabilidades estimadas** para tres mercados — moneyline (1X2 en fútbol),
+ spread/handicap y totals (over/under) — sobre un núcleo único compartido y adaptadores
+@@ -18,9 +23,9 @@ por familia de deporte.
+ |---|---|---|
+ | Basketball | NBA, WNBA, NCAAB, WNCAAB | Margen ~ Normal(μ, σ) |
+ | American Football | NFL, NCAAF | Margen ~ Normal(μ, σ) |
+-| Baseball | MLB | Poisson por equipo (carreras) |
++| Baseball | MLB | Binomial negativa por equipo (carreras); Poisson como alternativa |
+ | Hockey | NHL | Poisson por equipo (goles), empates→OT 50/50 |
+-| Soccer | 12 ligas preconfiguradas (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, Liga MX, MLS, Brasileirão, Chile, Frauen-Bundesliga, UWCL) + extensible por YAML | Poisson por equipo, 3 vías (1X2), ajuste Dixon-Coles |
++| Soccer | 11 ligas preconfiguradas (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, Liga MX, MLS, Brasileirão, Chile, UWCL) + extensible por YAML | Poisson por equipo, 3 vías (1X2), ajuste Dixon-Coles |
+ | Tennis | ATP/WTA cuadros principales | Elo jugador-vs-jugador; solo ganador del partido por ahora |
+ 
+ - **Agregar una liga de fútbol** = una entrada en `configs/leagues/soccer.yaml`.
+@@ -61,11 +66,14 @@ YAML por liga / defaults de código): ver [`docs/CONFIG-PRECEDENCE.md`](docs/CON
+ ## Instalación
+ 
+ ```bash
+-pip install -e ".[dev]"
+-cp .env.example .env       # poner ODDS_API_KEY para modo live
+-pytest -q
++python scripts/setup_local.py --verify
+ ```
+ 
++En Windows también puede ejecutarse `INSTALL_LOCAL.bat`. La instalación crea
++`.venv`, usa `requirements.lock` y ejecuta validaciones. No crea `.env` ni
++ejecuta trabajos live. La configuración e integración con una instalación
++existente están explicadas en [`IMPLEMENTACION.md`](IMPLEMENTACION.md).
++
+ ## Ejecución
+ 
+ 
+@@ -193,4 +201,3 @@ ajustes y riesgos específicos que guían la evolución de cada adaptador.
+ 5. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
+ 6. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
+    key numbers con cautela.
+-
+diff --git a/src/sqp/models/distributions.py b/src/sqp/models/distributions.py
+index 70cb113..0bf2b7d 100644
+--- a/src/sqp/models/distributions.py
++++ b/src/sqp/models/distributions.py
+@@ -7,11 +7,24 @@ Every function returns *estimated probabilities*.
+ """
+ from __future__ import annotations
+ import math
++from numbers import Integral
+ 
+ import numpy as np
+ from scipy.stats import nbinom, norm, poisson
+ 
+ 
++def _finite(name: str, value: float) -> None:
++    if not math.isfinite(value):
++        raise ValueError(f"{name} must be finite, got {value}")
++
++
++def _normal_parameters(mean: float, sigma: float) -> None:
++    _finite("mean", mean)
++    _finite("sigma", sigma)
++    if sigma <= 0:
++        raise ValueError(f"sigma must be positive, got {sigma}")
++
++
+ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | None):
+     """P(home wins) and P(home covers `spread_line`) under margin ~ N(mu, sigma).
+ 
+@@ -19,6 +32,9 @@ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | Non
+     Continuity-corrected at 0.5 around pushes is intentionally omitted for
+     half-point lines; integer lines return push-excluded probabilities.
+     """
++    _normal_parameters(mu_margin, sigma)
++    if spread_line is not None:
++        _finite("spread_line", spread_line)
+     p_home_win = 1.0 - norm.cdf(0.0, loc=mu_margin, scale=sigma)
+     out = {"home_win": p_home_win, "away_win": 1.0 - p_home_win}
+     if spread_line is not None:
+@@ -37,6 +53,8 @@ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | Non
+ def normal_total_probs(mu_total: float, sigma: float, total_line: float | None):
+     if total_line is None:
+         return {}
++    _normal_parameters(mu_total, sigma)
++    _finite("total_line", total_line)
+     if float(total_line).is_integer():
+         p_over = 1.0 - norm.cdf(total_line + 0.5, mu_total, sigma)
+         p_push = norm.cdf(total_line + 0.5, mu_total, sigma) - norm.cdf(total_line - 0.5, mu_total, sigma)
+@@ -76,9 +94,19 @@ def score_pmf(lam: float, max_goals: int = 15, k: float | None = None) -> list[f
+ 
+     `k=None` devuelve Poisson puro: hockey y futbol quedan byte-identicos.
+     """
++    _finite("lam", lam)
++    if lam < 0:
++        raise ValueError(f"lam must be non-negative, got {lam}")
++    if isinstance(max_goals, bool) or not isinstance(max_goals, Integral) or max_goals < 0:
++        raise ValueError("max_goals must be a non-negative integer")
++    if k is not None:
++        _finite("k", k)
++    # One vectorized SciPy call instead of one dispatch per score. Keep the
++    # list return type and the existing k<=0 Poisson fallback for compatibility.
++    scores = np.arange(max_goals + 1)
+     if k is None or k <= 0:
+-        return [poisson.pmf(i, lam) for i in range(max_goals + 1)]
+-    return [nbinom.pmf(i, k, k / (k + lam)) for i in range(max_goals + 1)]
++        return poisson.pmf(scores, lam).tolist()
++    return nbinom.pmf(scores, k, k / (k + lam)).tolist()
+ 
+ 
+ SCORE_RHO_MAX = 0.15
+@@ -184,6 +212,11 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
+     dc_rho which only touches the i,j<=1 corner; see `_joint_grid`. Default 0.0
+     reproduces independence byte for byte.
+     """
++    _finite("dc_rho", dc_rho)
++    if spread_line is not None:
++        _finite("spread_line", spread_line)
++    if total_line is not None:
++        _finite("total_line", total_line)
+     p_home = score_pmf(lam_home, max_goals, dispersion_k)
+     p_away = score_pmf(lam_away, max_goals, dispersion_k)
+     joint = _joint_grid(p_home, p_away, score_rho)
+@@ -207,6 +240,8 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
+                 if t > total_line: over += p
+                 elif t == total_line: total_push += p
+     mass = win + draw + loss  # normalize truncated grid mass
++    if not math.isfinite(mass) or mass <= 0:
++        raise ValueError("score grid has no finite positive mass; check rates and max_goals")
+     win, draw, loss = win / mass, draw / mass, loss / mass
+     cover, push = cover / mass, push / mass
+     over, total_push = over / mass, total_push / mass
+diff --git a/tests/audit/test_history_loader.py b/tests/audit/test_history_loader.py
+index 9e8bc7f..7f108bc 100644
+--- a/tests/audit/test_history_loader.py
++++ b/tests/audit/test_history_loader.py
+@@ -29,7 +29,8 @@ def test_load_history_unions_closed_and_open(tmp_path):
+     closed = h[h["is_closed"]].iloc[0]
+     assert closed["home"] == "NYY" and closed["fecha"] == "2026-06-24" and closed["result"] == "win"
+     open_row = h[~h["is_closed"]].iloc[0]
+-    assert open_row["home"] == "LAD" and open_row["fecha"] == "2026-06-26" and open_row["result"] == ""
++    local_date = datetime.fromisoformat("2026-06-26T20:00:00+00:00").astimezone().date().isoformat()
++    assert open_row["home"] == "LAD" and open_row["fecha"] == local_date and open_row["result"] == ""
+ 
+ 
+ def test_open_picks_without_stake_still_appear(tmp_path):
+diff --git a/tests/test_daily_picks.py b/tests/test_daily_picks.py
+index 96b970b..ada83dd 100644
+--- a/tests/test_daily_picks.py
++++ b/tests/test_daily_picks.py
+@@ -407,7 +407,9 @@ class TestFiltroPorFechaDelPartido:
+         ])
+ 
+     def test_filtra_por_fecha_del_partido_no_de_generacion(self):
+-        out = daily_picks.rank_picks(self._dias(), game_date="2026-08-26")
++        from datetime import datetime
++        local_date = datetime.fromisoformat("2026-08-26T18:00:00+00:00").astimezone().date().isoformat()
++        out = daily_picks.rank_picks(self._dias(), game_date=local_date)
+         assert list(out["seleccion"]) == ["HOY"]
+ 
+     def test_sin_filtro_devuelve_todo_el_horizonte(self):
+@@ -421,12 +423,14 @@ class TestFiltroPorFechaDelPartido:
+         assert set(out["liga"]) == {"epl"}
+ 
+     def test_los_tres_filtros_componen(self):
++        from datetime import datetime
++        local_date = datetime.fromisoformat("2026-08-26T18:00:00+00:00").astimezone().date().isoformat()
+         out = daily_picks.rank_picks(_served([
+             {"league": "mlb", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
+             {"league": "mlb", "market": "totals", "start_time": "2026-08-26T18:00:00Z"},
+             {"league": "epl", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
+             {"league": "mlb", "market": "h2h", "start_time": "2026-08-29T18:00:00Z"},
+-        ]), league="mlb", market="h2h", game_date="2026-08-26")
++        ]), league="mlb", market="h2h", game_date=local_date)
+         assert len(out) == 1
+ 
+ 
+diff --git a/tests/test_dashboard_todos_picks.py b/tests/test_dashboard_todos_picks.py
+index e04057d..c75c727 100644
+--- a/tests/test_dashboard_todos_picks.py
++++ b/tests/test_dashboard_todos_picks.py
+@@ -11,6 +11,8 @@ entregable invisible no es un entregable.
+ """
+ from __future__ import annotations
+ 
++from datetime import datetime
++
+ import pandas as pd
+ 
+ from sqp.audit.html_report import _todos_records, html_dashboard
+@@ -60,7 +62,8 @@ class TestTodosLosPicks:
+         fallo que el operador detecto el 2026-08-26."""
+         r = _todos_records(_served(tmp_path, [
+             {"start_time": "2026-08-29T18:00:00Z"}]))[0]
+-        assert r["fecha"] == "2026-08-29"
++        expected = datetime.fromisoformat("2026-08-29T18:00:00+00:00").astimezone().date().isoformat()
++        assert r["fecha"] == expected
+ 
+ 
+ class TestEstaEnElDashboard:
+diff --git a/DEMO_INDEPENDENT.bat b/DEMO_INDEPENDENT.bat
+new file mode 100644
+index 0000000..46a8bce
+--- /dev/null
++++ b/DEMO_INDEPENDENT.bat
+@@ -0,0 +1,9 @@
++@echo off
++setlocal
++cd /d "%~dp0"
++if not exist ".venv\Scripts\python.exe" (
++  echo Run INSTALL_LOCAL.bat first.
++  exit /b 1
++)
++".venv\Scripts\python.exe" scripts\price_independent.py --model examples\independent_model.json --quotes examples\independent_quotes.json --as-of 2026-09-10T12:00:00Z --max-quote-age-min 90
++exit /b %errorlevel%
+diff --git a/IMPLEMENTACION.md b/IMPLEMENTACION.md
+new file mode 100644
+index 0000000..168aee2
+--- /dev/null
++++ b/IMPLEMENTACION.md
+@@ -0,0 +1,146 @@
++# Sports Quant Platform — paquete optimizado
++
++Paquete local preparado el 10 de septiembre de 2026 sobre el commit
++`a401f0644417036f22a13d866c9a56dae2cdc324` del
++[repositorio de Carlos Contreras](https://github.com/carlosjuliocontrerasurdaneta/sports-quant-platform/tree/a401f0644417036f22a13d866c9a56dae2cdc324).
++No es una publicación nueva en GitHub: contiene cambios locales y un parche
++para integrarlos. `BUILD_INFO.json` identifica y verifica los archivos incluidos.
++
++## 1. Instalar en Windows
++
++Requisitos: Python 3.11 o posterior, Git y acceso a Internet para descargar las
++dependencias. Las pruebas de integración de herramientas también utilizan Bash;
++en Windows forma parte de Git for Windows. Esta entrega se validó en Linux con
++Python 3.12.14; la ejecución de los BAT en Windows no se verificó aquí.
++
++1. Extrae el ZIP en una carpeta nueva, por ejemplo `C:\SQP-Optimizado`.
++2. Abre esa carpeta y ejecuta `INSTALL_LOCAL.bat` desde una consola.
++3. El instalador crea `.venv`, instala con las versiones de `requirements.lock`
++   y ejecuta comprobación de dependencias, Ruff, MyPy y pytest.
++4. Una ejecución correcta termina con `READY`. Si devuelve `SETUP FAILED`, el
++   mensaje identifica la etapa que falló; no se ejecuta ningún trabajo diario.
++
++Comando equivalente desde la carpeta extraída:
++
++```bat
++py -3 scripts\setup_local.py --verify
++```
++
++El entorno virtual se crea en esta carpeta. No hay rutas ligadas al usuario de
++la instalación anterior, ni cambios en Python global. El instalador no copia
++credenciales, no crea `.env` y no configura tareas programadas.
++
++## 2. Ejecutar la demostración independiente
++
++En Windows:
++
++```bat
++DEMO_INDEPENDENT.bat
++```
++
++O directamente:
++
++```bat
++.venv\Scripts\python.exe scripts\price_independent.py --model examples\independent_model.json --quotes examples\independent_quotes.json --as-of 2026-09-10T12:00:00Z --max-quote-age-min 90
++```
++
++La demostración usa un partido y precios **sintéticos**, identificados dentro de
++los JSON. No consulta Internet ni gasta créditos de una API. Su reloj fijo hace
++que sea reproducible aunque se ejecute otro día. `--as-of` está prohibido para
++entradas etiquetadas `user_supplied`.
++
++La consola muestra una carpeta nueva bajo `outputs/` con:
++
++- `model_freeze.json`: parámetros, fuentes declaradas, corte temporal, versión,
++  identificador SHA-256 y probabilidades estimadas, guardados antes de abrir cuotas.
++- `report.json`: modelo y comparación posterior, con cinco estados de liquidación,
++  cuota justa, EV por unidad, no-vig cuando existe contraparte compatible y edge en pp.
++
++Puede omitirse `--quotes` y `--max-quote-age-min`: se obtiene un modelo sin mercado,
++con `market: null`; no se inventan edge, cuotas ni EV. Cada ejecución crea una
++carpeta distinta. Un `--output-dir` que ya exista se rechaza para preservar el informe.
++
++## 3. Linux o macOS
++
++Desde la carpeta extraída:
++
++```bash
++python3 scripts/setup_local.py --verify
++.venv/bin/python scripts/price_independent.py --model examples/independent_model.json --quotes examples/independent_quotes.json --as-of 2026-09-10T12:00:00Z --max-quote-age-min 90
++```
++
++Para volver a validar sin reinstalar:
++
++```bash
++python3 scripts/setup_local.py --check-only
++```
++
++## 4. Datos propios
++
++La especificación completa está en [`docs/INDEPENDENT-PRICING.md`](docs/INDEPENDENT-PRICING.md).
++Los JSON de ejemplo muestran el formato. Para datos propios, `data_label` debe ser
++`user_supplied`, los timestamps deben incluir zona horaria, y el evento debe seguir
++en pregame. Se omite `--as-of` para usar la hora real.
++
++**Este modo recibe parámetros deportivos ya estimados.** No descarga automáticamente
++wRC+, xFIP, ORtg, EPA, porteros ni lesiones, y no entrena un modelo a partir del
++PROMPT 191. La confianza se identifica como `UNVALIDATED` hasta que exista evidencia
++histórica. Las fuentes declaradas por el usuario no equivalen a verificación externa.
++
++Los modelos de conteo nuevos son de tiempo reglamentario: no inventan overtime,
++shootout ni reparto de empates para un moneyline de MLB/NHL a partido completo.
++La implementación antigua del pipeline conserva sus convenciones existentes.
++
++## 5. Integrar en tu repositorio existente
++
++El ZIP incluye `OPTIMIZATION.diff`, con los cambios de código, pruebas y documentos.
++El parche está construido contra el commit base indicado arriba. La instalación
++actual puede contener cambios posteriores que requieran integración manual.
++
++Desde tu checkout, `git status --short` permite identificar tus cambios antes de
++aplicar el parche. En una rama de trabajo que conserve tu configuración y tus datos:
++
++```bash
++git apply --check /ruta/al/OPTIMIZATION.diff
++git apply /ruta/al/OPTIMIZATION.diff
++python scripts/setup_local.py --verify
++```
++
++La primera orden verifica si el parche encaja; no modifica archivos. Si falla,
++el parche no puede aplicarse directamente a ese árbol. Esta entrega no sustituye
++ni reconstruye tus datos privados, calibradores, históricos o ledger de banca.
++
++El guard existente de `DIARIO_COMPLETO.bat` bloquea código operativo con cambios
++sin registrar en Git. Este paquete no desactiva ese guard: la integración del
++parche debe quedar validada y registrada en tu flujo de Git antes de operar el diario.
++
++## 6. Pipeline diario existente
++
++Los scripts originales siguen incluidos. La operación utiliza tu clave válida de
++The Odds API, configuración y datos propios. El ZIP no contiene esos datos ni
++una clave operativa. En una instalación nueva, `.env` puede contener únicamente
++la clave necesaria, sin copiar valores de riesgo del ejemplo sobre tus parámetros:
++
++```dotenv
++ODDS_API_KEY=TU_CLAVE
++```
++
++Para usar el nuevo entorno virtual con los BAT originales, la consola de Windows
++permite indicar el intérprete que esos scripts ya admiten:
++
++```bat
++set "SQP_PYTHON=%CD%\.venv\Scripts\python.exe"
++DIARIO_COMPLETO.bat
++```
++
++Este último comando **es operación live**: consulta proveedores y escribe datos.
++No forma parte del instalador ni de la demostración y no se ejecutó durante esta
++entrega. El orden existente se mantiene: liquidación primero, generación después.
++No se garantiza un resultado rentable ni que tu máquina ya tenga datos/calibradores
++suficientes para habilitar apuestas; los gates existentes siguen decidiéndolo.
++
++## 7. Qué se verificó
++
++Resultados y limitaciones en [`audit/optimization-20260910/VALIDATION.md`](audit/optimization-20260910/VALIDATION.md).
++Cambios e invariantes en [`audit/optimization-20260910/CHANGES.md`](audit/optimization-20260910/CHANGES.md).
++El benchmark reproducible está en `scripts/benchmark_distributions.py`.
+diff --git a/INSTALL_LOCAL.bat b/INSTALL_LOCAL.bat
+new file mode 100644
+index 0000000..a409aeb
+--- /dev/null
++++ b/INSTALL_LOCAL.bat
+@@ -0,0 +1,10 @@
++@echo off
++setlocal
++cd /d "%~dp0"
++where py >nul 2>nul
++if errorlevel 1 goto :python
++py -3 scripts\setup_local.py --verify
++exit /b %errorlevel%
++:python
++python scripts\setup_local.py --verify
++exit /b %errorlevel%
+diff --git "a/Obsidian/Bit\303\241cora/2026-09-10.md" "b/Obsidian/Bit\303\241cora/2026-09-10.md"
+new file mode 100644
+index 0000000..4263060
+--- /dev/null
++++ "b/Obsidian/Bit\303\241cora/2026-09-10.md"
+@@ -0,0 +1,29 @@
++# 2026-09-10 — Optimización local y pricing independiente
++
++Solicitud del operador: optimizar el repositorio y entregarlo descargable e
++implementable. Se trabajó sobre `a401f0644417036f22a13d866c9a56dae2cdc324`.
++No se publicaron commits, no se desplegó y no se operaron APIs ni banca.
++
++Se vectorizó la PMF con paridad exacta sobre las pruebas comparadas; se añadieron
++guardas para parámetros no finitos y rejillas inválidas. Benchmark de distribución:
++6.09× MLB, 4.22× NHL, 5.80× soccer en Linux/Python 3.12.14. No es una medición
++de red ni de rentabilidad. Cuatro expectativas de tests de fecha local se hicieron
++portables entre zonas horarias, sin cambiar el comportamiento del dashboard.
++
++El modo nuevo `scripts/price_independent.py` trabaja con entradas deportivas
++externas explícitas: guarda el freeze antes de leer cuotas y expone win/push/loss,
++medias liquidaciones, precio justo, EV y no-vig emparejado. No es la implementación
++íntegra de PROMPT 191 ni un nuevo modelo entrenado. Su confianza se declara
++UNVALIDATED; no asigna stake y no modifica el pipeline diario.
++
++Validación: 1929 pruebas aprobadas, 2 omitidas; Ruff y MyPy verdes. Instalación
++desde una extracción nueva: pip check, Ruff, MyPy y la misma suite aprobados.
++Windows no se ejecutó: los BAT nuevos solo tienen validación de contrato.
++
++Documentación: `IMPLEMENTACION.md`, `docs/INDEPENDENT-PRICING.md` y
++`audit/optimization-20260910/`. El ZIP añade manifest de hashes y parche aplicable
++al commit base. Ver [[Conocimiento/Pricing independiente - contrato 2026-09-10]].
++
++Pendiente de evidencia externa: integración con el estado privado del operador,
++ejecución Windows y validación predictiva con datos históricos as-of. Ningún
++parámetro de modelo, riesgo, calibración o gate se alteró para mejorar una cifra.
+diff --git a/Obsidian/Conocimiento/Pricing independiente - contrato 2026-09-10.md b/Obsidian/Conocimiento/Pricing independiente - contrato 2026-09-10.md
+new file mode 100644
+index 0000000..d32705b
+--- /dev/null
++++ b/Obsidian/Conocimiento/Pricing independiente - contrato 2026-09-10.md	
+@@ -0,0 +1,20 @@
++# Pricing independiente — contrato 2026-09-10
++
++El nuevo modo es opcional y offline. Una copia inmutable de los parámetros
++deportivos, su versión y procedencia declarada produce un modelo antes de leer
++precios. El freeze se persiste y queda identificado por SHA-256.
++
++El mismo modelo admite distintas líneas posteriores; cambiar la cuota no cambia
++las probabilidades. Los pushes devuelven stake, los cuartos se dividen entre
++líneas adyacentes y EV se calcula como retorno esperado por unidad. No-vig exige
++contrapartes del mismo book, mercado, línea normalizada, instante y fuente.
++
++El motor recibe medias/sigmas o tasas ya estimadas; no obtiene por sí mismo
++estadísticas avanzadas ni demuestra calibración. Count modela tiempo reglamentario;
++no inventa OT. Normal usa corrección de continuidad para pushes y no proporciona
++una distribución conjunta de marcadores. El output no asigna dinero.
++
++Esto no cambia la política vigente que combina modelo y mercado en el diario.
++No reemplaza los gates ni el ledger. Detalles técnicos en
++`docs/INDEPENDENT-PRICING.md`; evidencia y límites en
++`audit/optimization-20260910/VALIDATION.md`. Sesión: [[Bitácora/2026-09-10]].
+diff --git a/audit/optimization-20260910/CHANGES.md b/audit/optimization-20260910/CHANGES.md
+new file mode 100644
+index 0000000..8fec54e
+--- /dev/null
++++ b/audit/optimization-20260910/CHANGES.md
+@@ -0,0 +1,34 @@
++# Cambios — optimización local 2026-09-10
++
++Base: `a401f0644417036f22a13d866c9a56dae2cdc324`. Autorización: solicitud explícita
++del usuario de optimizar el repositorio y entregar un paquete implementable.
++Alcance: optimización técnica comprobable y modo independiente opcional; no
++despliegue, no publicación GitHub y no recalibración especulativa.
++
++| ID | Evidencia y severidad | Cambio |
++|---|---|---|
++| SQP-MEDIUM-001 | REPRODUCED, confianza alta. `normal_margin_probs(NaN,12,-3.5)` y sigma=0 devolvían NaN; `score_pmf(-1)` también. `dc_rho=NaN` suprimía celdas y daba cifras finitas engañosas. | Guardas finitas, tasa no negativa, sigma positivo, tamaño entero de rejilla y masa positiva. Pruebas con parámetros inválidos. |
++| SQP-MEDIUM-002 | REPRODUCED, confianza alta. Cuatro pruebas de fechas fallaban con TZ=Asia/Jakarta porque comparaban la fecha local de servicio con una fecha UTC fija. | Expectativas calculadas desde la hora del partido en la zona local. Conservan la detección de usar fecha de generación y los filtros por liga/mercado. No se cambia el código de fechas de producción. |
++| SQP-PERF-001 | MEASURED. Cada llamada a score_pmf hacía una llamada SciPy por marcador. | Una llamada vectorizada y retorno list compatible. La acumulación conjunta original permanece. Pruebas de igualdad exacta Poisson/NB, rho, Dixon-Coles y líneas enteras/medias; benchmark emparejado. |
++| SQP-FEATURE-001 | Brecha funcional, no incidente atribuido a producción. | Modo offline con modelo inmutable, freeze persistido antes de abrir cuotas, hashes, trazabilidad, settlement de cinco estados, EV con devolución y cuartos exactos, no-vig emparejado y salida sin stake. |
++| SQP-OPS-001 | STATICALLY_VERIFIED: los BAT originales tienen una ruta Python específica de una máquina. | Instalador nuevo portable, `.venv` y constraints del lock; demostración sin API. Se utiliza el override existente SQP_PYTHON para operar scripts originales, sin cambiar esos scripts. |
++
++Los casos válidos del modelo vigente conservan sus resultados en las pruebas de
++equivalencia; la nueva validación convierte entradas inválidas en errores explícitos.
++No se cambiaron configuración, K de Elo, shrinkage al mercado, calibradores,
++parámetros deportivos, Kelly, gates, datos históricos ni contratos CSV del diario.
++El módulo de settlement nuevo es independiente del ledger original.
++
++Las tolerancias nuevas son controles numéricos o de recursos del modo offline,
++declarados en su contrato. No son umbrales predictivos ajustados sobre resultados.
++Los 90 minutos de la demo son un argumento explícito que coincide con la política
++de revalidation del commit base, no un cambio a esa política.
++
++Se corrige README para describir binomial negativa MLB y 11 ligas de fútbol,
++tal como figuran en registry/configs. Se incorporan instrucciones, ejemplos
++sintéticos, pruebas y benchmark. Los informes de auditorías anteriores se conservan.
++No se ejecutó un hook de autoformato ni se aplicaron cambios cosméticos masivos.
++
++Quedan fuera del alcance acreditado: rentabilidad, mejora de calibración, funcionamiento
++del equipo Windows del usuario, disponibilidad de APIs privadas y copia de su estado
++productivo. No existe evidencia nueva para cerrar esos puntos.
+diff --git a/audit/optimization-20260910/PACKAGE-CHECK.md b/audit/optimization-20260910/PACKAGE-CHECK.md
+new file mode 100644
+index 0000000..bf7e038
+--- /dev/null
++++ b/audit/optimization-20260910/PACKAGE-CHECK.md
+@@ -0,0 +1,46 @@
++# Comprobación del paquete
++
++Ejecutada por Codex el 2026-09-10 en una extracción nueva del ZIP, fuera del
++checkout de desarrollo. La carpeta extraída no contenía entorno virtual ni `.git`.
++
++Comando utilizado desde la extracción:
++
++```bash
++python3 scripts/setup_local.py --verify
++```
++
++Resultado real: **exit 0**, mensaje final `READY`.
++
++| Etapa | Resultado |
++|---|---|
++| Creación de `.venv` | Completada con Python 3.12.14 |
++| Instalación editable mediante pip y constraints | Completada desde `requirements.lock` |
++| `pip check` | No broken requirements found |
++| Ruff | All checks passed |
++| MyPy | Sin errores en 101 archivos fuente |
++| Pytest sobre archivos extraídos | 1929 aprobadas, 2 omitidas; 41.95 s; exit 0 |
++
++Omisiones preexistentes, sin añadir skips nuevos:
++
++- `tests/test_codex_review.py:1780`: el shim de npm solo existe en Windows.
++- `tests/test_review_v2.py:228`: severity es un enum cerrado, no texto libre.
++
++También se verificó que `OPTIMIZATION.diff` pasa `git apply --check` sobre una
++copia limpia del commit base. La integridad ZIP se comprobó mediante CRC.
++`BUILD_INFO.json` contiene hashes SHA-256 para todos los archivos fuente y el parche.
++
++Pruebas de fechas adicionales con `TZ=UTC`: 57 aprobadas, exit 0. La suite completa
++también pasó con `TZ=Asia/Jakarta`, la zona del proceso de prueba original.
++
++La demostración independiente utiliza cuatro cuotas sintéticas: se verificó que
++el modelo persistido coincide con el modelo del informe, que las cuatro filas
++tienen contrapartes compatibles, que no hay rechazos y que todos los stakes son cero.
++
++No se ejecutó Windows/cmd.exe. El instalador Python y la demostración CLI se
++ejecutaron realmente en Linux; los BAT se verificaron por contrato estático.
++No se distribuyen `.git`, `.venv`, cachés de pruebas, `.env` operativo ni estado
++privado. `requirements.lock` se conserva byte a byte respecto del commit base.
++
++Las incorporaciones posteriores a la prueba de extracción son registros de esta
++validación y notas de la sesión; se verifica que el código, BAT y configuración
++del ZIP final coincidan con los probados.
+diff --git a/audit/optimization-20260910/VALIDATION.md b/audit/optimization-20260910/VALIDATION.md
+new file mode 100644
+index 0000000..c20c758
+--- /dev/null
++++ b/audit/optimization-20260910/VALIDATION.md
+@@ -0,0 +1,64 @@
++# Validación — 10 de septiembre de 2026
++
++Autor: Codex, ejecución local sobre el código entregado. Base pública:
++`a401f0644417036f22a13d866c9a56dae2cdc324`.
++Entorno: Linux x86_64, Python 3.12.14, NumPy 2.4.4, SciPy 1.17.1.
++Dependencias instaladas desde `pyproject.toml` usando `requirements.lock` como constraints.
++
++## Línea base y resultado
++
++| Comprobación | Resultado | Exit |
++|---|---|---|
++| Primera invocación pytest | Error de entorno: faltaba el directorio padre `.codex-tmp`; se creó y se repitió. No se atribuye al repositorio. | 1 |
++| Suite base con directorio correcto | 1774 aprobadas, 4 fallos de fechas por TZ=Asia/Jakarta, 2 omitidas | 1 |
++| Ruff base | Sin errores | 0 |
++| MyPy base | Sin errores, 98 archivos fuente | 0 |
++| Regresión de distribuciones + settlement | 122 aprobadas | 0 |
++| Pricing independiente y pruebas de fechas adyacentes | 115 aprobadas | 0 |
++| Suite completa final | 1929 aprobadas, 2 omitidas, 42.39 s | 0 |
++| Ruff final | Sin errores | 0 |
++| MyPy final | Sin errores, 101 archivos fuente | 0 |
++
++Los fallos temporales base se reproducen con eventos a las 18:00Z/20:00Z, que
++caen el día siguiente en Asia/Jakarta. Las pruebas corregidas usan la fecha local
++derivada del inicio del evento y siguen distinguiéndola de su generación.
++
++Comandos equivalentes (sustituir `python` por el de `.venv`):
++
++```bash
++python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/final-suite
++python -m ruff check src scripts tests
++python -m mypy src
++python scripts/benchmark_distributions.py --number 300 --repeats 5
++```
++
++Crear `.codex-tmp` antes de pytest directo; el instalador lo hace automáticamente.
++
++## Rendimiento medido
++
++Benchmark emparejado: se sustituye exclusivamente score_pmf por las llamadas
++escalares SciPy anteriores. Se conservan parámetros y agregación. Mediana de cinco
++repeticiones de 300 eventos por modelo. Se exige igualdad exacta del diccionario
++de probabilidades antes de reportar tiempos.
++
++| Caso | Escalar, ms/evento | Vectorizado, ms/evento | Aceleración |
++|---|---:|---:|---:|
++| MLB: NB k=3.8, max_score=25 | 1.44328644 | 0.23717480 | 6.0853× |
++| NHL: Poisson, rho=-0.06, max_score=15 | 1.29288047 | 0.30623145 | 4.2219× |
++| Soccer: Poisson, DC=-0.1, max_score=10 | 0.67488532 | 0.11634880 | 5.8005× |
++
++Estos tiempos miden solamente `poisson_match_probs` en este entorno. No son una
++medición de la duración completa del pipeline, red, backtest o Windows. La
++aceleración se calcula como mediana escalar / mediana vectorizada.
++
++## Límites de la verificación
++
++No se ejecutaron APIs deportivas/mercado, liquidaciones reales, programación de
++tareas ni promociones de modelos. No se reconstruyó el dataset privado del
++proyecto ni se midieron Brier, CLV o ROI nuevos. No se probó la matriz completa
++de Python 3.11–3.14. Los BAT nuevos tienen pruebas de contrato estático; no hubo
++ejecución de cmd.exe en este entorno Linux. Un pytest verde no sustituye esas
++validaciones operativas ni demuestra rentabilidad.
++
++La validación de instalación desde el archivo extraído se registra en
++`PACKAGE-CHECK.md` de esta misma carpeta.
+diff --git a/docs/INDEPENDENT-PRICING.md b/docs/INDEPENDENT-PRICING.md
+new file mode 100644
+index 0000000..67e0edc
+--- /dev/null
++++ b/docs/INDEPENDENT-PRICING.md
+@@ -0,0 +1,101 @@
++# Pricing independiente: contrato v1
++
++Módulos: `sqp.models.independent`, `sqp.markets.settlement_math` y
++`sqp.markets.independent`. Entrada CLI: `scripts/price_independent.py`.
++Modo opcional de análisis local, sin conexión con selección, riesgo o ledger.
++
++## Secuencia y trazabilidad
++
++1. Leer exclusivamente el JSON deportivo; rechazar campos ajenos al esquema.
++2. Exigir `fuente.as_of <= sporting_as_of <= ahora < event.starts_at`.
++3. Construir distribución y comprobar masa/probabilidades.
++4. Congelar una copia inmutable y guardar `model_freeze.json`.
++5. Leer el JSON de cuotas; evaluar líneas sobre esa misma distribución.
++6. Guardar el informe. Las filas de mercado inválidas se identifican individualmente.
++
++La huella incluye versión del algoritmo, timestamp, JSON deportivo canónico y
++rejilla calculada cuando existe. No es una firma criptográfica ni acredita la
++calidad de las fuentes. Cambiar entradas requiere un nuevo modelo y carpeta de
++auditoría; `model_version` permite distinguir actualizaciones deportivas.
++
++## JSON deportivo
++
++Campos obligatorios: `schema_version: 1`, `event`, `sporting_as_of`, `model_version`
++(entero positivo), `data_label` (`demo_synthetic` o `user_supplied`), `sources`
++y `distribution`. Cada fuente requiere `source` y `as_of`.
++
++`event` requiere `event_id`, `league`, `home`, `away`, `starts_at` y `period`
++(`regulation` o `full_game`). Los timestamps usan ISO 8601 con zona horaria.
++Las entradas son estimaciones externas; el módulo no atribuye calibración propia.
++
++| Distribución | Parámetros | Alcance |
++|---|---|---|
++| `count` | `expected_home`, `expected_away`; opcionales `max_score=60`, `dispersion_k`, `dc_rho=0`, `max_tail_mass=1e-6` | Poisson; binomial negativa si k>0; ajuste Dixon-Coles opcional. Solo `regulation`. |
++| `normal` | `expected_home`, `expected_away`, `margin_sigma`, `total_sigma` | Aproximaciones marginales de margen y total; moneyline de dos vías sin empate. |
++
++Las tasas deben ser no negativas; los sigmas y k, positivos. Se rechazan NaN e
++infinitos. `max_score` tiene límite de recursos 512. `max_tail_mass` es una
++tolerancia numérica explícita: si la cola omitida la excede, se pide aumentar la
++rejilla; no se normaliza silenciosamente una truncación grande. La masa registrada
++es anterior al ajuste Dixon-Coles. No se estima la dependencia entre equipos en
++este modo. La normal no es una distribución conjunta de marcadores y sus pushes
++enteros son aproximaciones mediante corrección de continuidad.
++
++## Mercados y líneas
++
++| `market` | `side` | `line` |
++|---|---|---|
++| `moneyline_3way` | `home`, `draw`, `away` | `null`; solo modelo count |
++| `moneyline_2way` | `home`, `away` | `null`; solo normal, convención sin empate |
++| `spread` | `home`, `away` | Handicap de la selección: home −1 equivale a away +1 como contraparte |
++| `total` | `over`, `under` | Misma línea para las dos selecciones |
++
++Se aceptan líneas enteras, medias y cuartos, nunca redondeos silenciosos de otras
++líneas. En −0.25 se reparte media unidad en −0.5 y media en 0. Los cinco estados
++son mutuamente excluyentes: `full_win`, `half_win`, `push`, `half_loss`, `full_loss`.
++
++Sea `W = P(full_win) + 0.5 P(half_win)` y
++`L = P(full_loss) + 0.5 P(half_loss)`:
++
++- `EV_por_unidad = W × (Decimal − 1) − L`.
++- `fair_decimal = 1 + L/W`, cuando W>0.
++- `decision_probability = W/(W+L)`, cuando hay alguna parte de stake resuelta.
++- `ROI_esperado_porcentaje = 100 × EV_por_unidad`.
++
++Sin medias liquidaciones, la probabilidad de decisión es `P_win/(P_win+P_loss)`.
++En cuartos es su equivalente ponderado por stake, identificado en `edge_basis`.
++No equivale a la probabilidad bruta de ganar completamente. Si todo es push, la
++probabilidad condicionada y el precio justo son `null`, y EV es cero.
++Si no hay masa ganadora, no existe un precio justo finito y se usa `null`.
++
++## Cuotas posteriores al freeze
++
++El JSON requiere `schema_version: 1` y `quotes`. Cada fila requiere `event_id`,
++`period`, `market`, `side`, `line`, `price_decimal`, `bookmaker`, `timestamp` y
++`source`. El evento y período deben coincidir con el modelo.
++
++`--max-quote-age-min` debe declararse explícitamente. La política del pipeline
++original está en `configs/default.yaml: revalidation.price_max_age_min` (90 en el
++commit base); se admite reproducirla pasando 90. Se rechazan fechas futuras,
++precios caducados, cuotas no finitas o <=1 y mercados incompatibles.
++
++No-vig proporcional utiliza exclusivamente contrapartes de la misma casa,
++mercado, línea normalizada, instante exacto y fuente. Exige dos lados o los tres
++del 1X2. No mezcla proveedores para completar un mercado. Una sola cuota permite
++calcular EV, pero deja `market_no_vig_probability` y `probability_edge_pp` en null.
++Duplicados de una selección vuelven ambiguo el grupo y no se elige un precio
++silenciosamente. `MarketDataQuality` no cambia las probabilidades deportivas.
++
++`probability_edge_pp = 100 × (decision_probability − no_vig_probability)`.
++`positive_ev_scenarios` lista índices de escenarios con EV>0, ordenados por EV,
++excluyendo duplicados ambiguos. Los precios son suministrados, sin verificación
++externa: el informe no los presenta como apuestas ejecutables verificadas.
++
++## Límites frente a PROMPT 191
++
++Se implementan aquí independencia de lectura, freeze auditable, fórmulas de
++liquidación, precio justo, separación edge/EV y validación temporal de entradas.
++No se implementan todas las reglas del PROMPT 191: faltan adquisición deportiva
++avanzada, reconstrucción automática de datos históricos as-of, modelos de OT,
++entrenamiento/calibración por deporte y acceso garantizado a fuentes de mercado.
++No se proclaman Monte Carlo, CLV realizado ni ventajas predictivas no calculadas.
+diff --git a/examples/independent_model.json b/examples/independent_model.json
+new file mode 100644
+index 0000000..ac13f55
+--- /dev/null
++++ b/examples/independent_model.json
+@@ -0,0 +1,23 @@
++{
++  "schema_version": 1,
++  "event": {
++    "event_id": "DEMO-NOT-A-REAL-EVENT",
++    "league": "synthetic_soccer",
++    "home": "Synthetic Home",
++    "away": "Synthetic Away",
++    "starts_at": "2026-09-10T20:00:00Z",
++    "period": "regulation"
++  },
++  "sporting_as_of": "2026-09-10T11:00:00Z",
++  "model_version": 1,
++  "data_label": "demo_synthetic",
++  "sources": [{"source": "Synthetic test fixture; no real sporting evidence", "as_of": "2026-09-10T11:00:00Z"}],
++  "distribution": {
++    "kind": "count",
++    "expected_home": 1.6,
++    "expected_away": 1.1,
++    "max_score": 30,
++    "dc_rho": 0.0,
++    "max_tail_mass": 0.000001
++  }
++}
+diff --git a/examples/independent_quotes.json b/examples/independent_quotes.json
+new file mode 100644
+index 0000000..c22ef1c
+--- /dev/null
++++ b/examples/independent_quotes.json
+@@ -0,0 +1,9 @@
++{
++  "schema_version": 1,
++  "quotes": [
++    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"spread","side":"home","line":-0.25,"price_decimal":1.95,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
++    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"spread","side":"away","line":0.25,"price_decimal":1.95,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
++    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"total","side":"over","line":3.0,"price_decimal":2.2,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
++    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"total","side":"under","line":3.0,"price_decimal":1.8,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"}
++  ]
++}
+diff --git a/scripts/benchmark_distributions.py b/scripts/benchmark_distributions.py
+new file mode 100644
+index 0000000..c7d8965
+--- /dev/null
++++ b/scripts/benchmark_distributions.py
+@@ -0,0 +1,61 @@
++"""Paired benchmark against the pre-optimization scalar SciPy dispatch.
++
++Same model, parameters and aggregation; only PMF evaluation is swapped. This
++measures distribution computation, NOT full pipeline or predictive accuracy.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import platform
++import statistics
++import sys
++import timeit
++from pathlib import Path
++from unittest.mock import patch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
++
++import numpy as np
++import scipy
++from scipy.stats import nbinom, poisson
++
++from sqp.models import distributions as d
++
++
++def scalar_pmf(lam, max_goals=15, k=None):
++    if k is None or k <= 0:
++        return [poisson.pmf(i, lam) for i in range(max_goals + 1)]
++    return [nbinom.pmf(i, k, k / (k + lam)) for i in range(max_goals + 1)]
++
++
++def benchmark(number: int = 300, repeats: int = 5) -> dict:
++    if number <= 0 or repeats <= 0:
++        raise ValueError("number and repeats must be positive")
++    output = {}
++    for name, means, options in [
++        ("MLB", (4.6, 4.3), dict(max_goals=25, dispersion_k=3.8)),
++        ("NHL", (2.9, 2.8), dict(max_goals=15, score_rho=-0.06)),
++        ("soccer", (1.6, 1.1), dict(max_goals=10, three_way=True, dc_rho=-0.1)),
++    ]:
++        def run(): return d.poisson_match_probs(*means, -1.5, 6.0, **options)
++        optimized = run()
++        with patch.object(d, "score_pmf", scalar_pmf):
++            baseline = run()
++            old_ms = statistics.median(timeit.repeat(run, number=number, repeat=repeats)) * 1000 / number
++        new_ms = statistics.median(timeit.repeat(run, number=number, repeat=repeats)) * 1000 / number
++        if baseline != optimized:
++            raise AssertionError(f"{name}: optimization changed model output")
++        output[name] = {"scalar_ms_per_event": old_ms, "vectorized_ms_per_event": new_ms,
++                        "speedup": old_ms / new_ms, "exact_probability_parity": True}
++    return {"python": platform.python_version(), "platform": platform.platform(),
++            "numpy": np.__version__, "scipy": scipy.__version__,
++            "events_per_repeat": number, "repeats": repeats, "results": output}
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--number", type=int, default=300)
++    parser.add_argument("--repeats", type=int, default=5)
++    args = parser.parse_args()
++    print(json.dumps(benchmark(args.number, args.repeats), indent=2))
+diff --git a/scripts/price_independent.py b/scripts/price_independent.py
+new file mode 100644
+index 0000000..df3f8cd
+--- /dev/null
++++ b/scripts/price_independent.py
+@@ -0,0 +1,82 @@
++"""Freeze an offline sporting model before opening the optional market file.
++
++No network, credentials, bankroll, production CSV or scheduler access.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
++
++from sqp.markets.independent import compare_quotes
++from sqp.models.independent import freeze_model, timestamp
++
++
++def _load(path: Path) -> dict:
++    def pairs(items):
++        result = {}
++        for key, value in items:
++            if key in result:
++                raise ValueError(f"duplicate JSON key: {key}")
++            result[key] = value
++        return result
++
++    def reject_constant(value):
++        raise ValueError(f"non-finite JSON value: {value}")
++
++    with path.open(encoding="utf-8") as handle:
++        result = json.load(handle, object_pairs_hook=pairs, parse_constant=reject_constant)
++    if not isinstance(result, dict):
++        raise ValueError("input must be a JSON object")
++    return result
++
++
++def _save_new(path: Path, payload: dict) -> None:
++    encoded = json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("x", encoding="utf-8") as handle:
++        handle.write(encoded)
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--model", type=Path, required=True)
++    parser.add_argument("--quotes", type=Path)
++    parser.add_argument("--output-dir", type=Path,
++                        help="new audit directory; defaults to a unique directory under outputs/")
++    parser.add_argument("--max-quote-age-min", type=float,
++                        help="required with quotes; e.g. 90 to match the current production age policy")
++    parser.add_argument("--as-of", help="fixed clock for demo_synthetic only, never user_supplied")
++    args = parser.parse_args(argv)
++    try:
++        if args.quotes and args.max_quote_age_min is None:
++            raise ValueError("--max-quote-age-min is required with --quotes")
++        spec = _load(args.model)
++        if args.as_of and spec.get("data_label") != "demo_synthetic":
++            raise ValueError("--as-of is allowed only for explicitly synthetic demonstrations")
++        now = timestamp(args.as_of) if args.as_of else datetime.now(timezone.utc)
++        model = freeze_model(spec, now=now)
++        output_dir = args.output_dir or Path("outputs") / datetime.now(timezone.utc).strftime("independent-%Y%m%dT%H%M%S%fZ")
++        # Exclusive create prevents accidentally replacing a prior audit run.
++        output_dir.mkdir(parents=True, exist_ok=False)
++        frozen = model.report()
++        _save_new(output_dir / "model_freeze.json", frozen)
++        # The first access to market content is physically AFTER persisted freeze.
++        market = None
++        if args.quotes:
++            market = compare_quotes(model, _load(args.quotes), max_age_minutes=args.max_quote_age_min,
++                                    now=now if args.as_of else datetime.now(timezone.utc))
++        _save_new(output_dir / "report.json", {"model": frozen, "market": market})
++        print(f"MODEL_FREEZE {model.model_id}\nReport: {output_dir / 'report.json'}")
++        return 0
++    except (ValueError, TypeError, KeyError, OSError) as exc:
++        print(f"NOT PRICED: {exc}", file=sys.stderr)
++        return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/scripts/setup_local.py b/scripts/setup_local.py
+new file mode 100644
+index 0000000..8d06d90
+--- /dev/null
++++ b/scripts/setup_local.py
+@@ -0,0 +1,65 @@
++"""Portable, isolated installation. Never creates .env or runs production jobs."""
++from __future__ import annotations
++
++import argparse
++import os
++import subprocess
++import sys
++import uuid
++import venv
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def environment_python(root: Path, *, windows: bool | None = None) -> Path:
++    windows = os.name == "nt" if windows is None else windows
++    return root / ".venv" / ("Scripts/python.exe" if windows else "bin/python")
++
++
++def verification_commands(root: Path, python: Path) -> list[list[str]]:
++    temporary = root / ".codex-tmp" / f"install-{uuid.uuid4().hex}"
++    return [
++        [str(python), "-m", "pip", "check"],
++        [str(python), "-m", "ruff", "check", "src", "scripts", "tests"],
++        [str(python), "-m", "mypy", "src", "--cache-dir", str(root / ".codex-tmp" / "mypy")],
++        [str(python), "-m", "pytest", "-q", "-ra", "-p", "no:cacheprovider", f"--basetemp={temporary}"],
++    ]
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--verify", action="store_true", help="run full offline tests after installation")
++    parser.add_argument("--check-only", action="store_true", help="validate an existing .venv; no installation")
++    args = parser.parse_args(argv)
++    if sys.version_info < (3, 11):
++        print("Python 3.11+ is required (this bundle was tested on 3.12).", file=sys.stderr)
++        return 2
++    python = environment_python(ROOT)
++    try:
++        if args.check_only:
++            if not python.is_file():
++                raise ValueError("No .venv found. Run setup_local.py --verify first.")
++        else:
++            target = ROOT / ".venv"
++            if target.exists() and not (target / "pyvenv.cfg").is_file():
++                raise ValueError("Existing .venv is not a virtual environment; refusing to overwrite it.")
++            if not target.exists():
++                venv.EnvBuilder(with_pip=True).create(target)
++            subprocess.run([str(python), "-m", "pip", "install", "-e", ".[dev]", "-c", "requirements.lock"],
++                           cwd=ROOT, check=True)
++        if args.verify or args.check_only:
++            (ROOT / ".codex-tmp").mkdir(exist_ok=True)
++            env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
++            for command in verification_commands(ROOT, python):
++                print("VALIDATE:", " ".join(command), flush=True)
++                subprocess.run(command, cwd=ROOT, env=env, check=True)
++        print("READY: isolated environment prepared. No credentials, bankroll or live jobs changed.")
++        return 0
++    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
++        print(f"SETUP FAILED: {exc}", file=sys.stderr)
++        return 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/src/sqp/markets/independent.py b/src/sqp/markets/independent.py
+new file mode 100644
+index 0000000..75d60f1
+--- /dev/null
++++ b/src/sqp/markets/independent.py
+@@ -0,0 +1,93 @@
++"""Post-freeze comparison against caller-supplied, timestamped quotes."""
++from __future__ import annotations
++
++from collections import defaultdict
++from datetime import datetime, timezone
++
++from sqp.markets.odds import is_usable_price
++from sqp.markets.settlement_math import proportional_no_vig
++from sqp.models.independent import FrozenScoreModel, finite_number, strict_fields, timestamp
++
++
++def compare_quotes(
++    model: FrozenScoreModel, payload: dict, *, max_age_minutes: float,
++    now: datetime | None = None,
++) -> dict:
++    now = now or datetime.now(timezone.utc)
++    event = model.spec["event"]
++    if now.tzinfo is None or not timestamp(model.frozen_at) <= now < timestamp(event["starts_at"]):
++        raise ValueError("market evaluation must be after freeze and before the event")
++    finite_number(max_age_minutes, "max_age_minutes", positive=True)
++    strict_fields(payload, {"schema_version", "quotes"})
++    if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
++        raise ValueError("unsupported quote schema_version")
++    if not isinstance(payload["quotes"], list):
++        raise ValueError("quotes must be a list")
++    rows: list[dict] = []
++    rejected: list[dict] = []
++    groups: dict[tuple, list[dict]] = defaultdict(list)
++    for index, quote in enumerate(payload["quotes"]):
++        try:
++            strict_fields(quote, {"event_id", "period", "market", "side", "line", "price_decimal",
++                                  "bookmaker", "timestamp", "source"})
++            for key in ("event_id", "period", "market", "side", "bookmaker", "timestamp", "source"):
++                if not isinstance(quote[key], str) or not quote[key].strip():
++                    raise ValueError(f"{key} must be a non-empty string")
++            if quote["event_id"] != event["event_id"] or quote["period"] != event["period"]:
++                raise ValueError("event or settlement period does not match the frozen model")
++            age = (now - timestamp(quote["timestamp"])).total_seconds() / 60
++            if not 0 <= age <= max_age_minutes:
++                raise ValueError("quote is future-dated or stale under the supplied age policy")
++            price = finite_number(quote["price_decimal"], "price_decimal")
++            if not is_usable_price(price):
++                raise ValueError("decimal price must exceed one")
++            line = quote["line"]
++            if line is not None: line = finite_number(line, "line")
++            p = model.price(quote["market"], quote["side"], line)
++            row = {
++                "quote_index": index, **quote, "model_id": model.model_id,
++                "settlement": p.report(price), "raw_implied_probability": 1 / price,
++                "market_no_vig_probability": None, "overround": None,
++                "probability_edge_pp": None, "market_data_quality": "LOW",
++                "no_vig_status": "INCOMPLETE", "stake": 0.0,
++                "edge_basis": "stake_weighted_decision" if p.half_win or p.half_loss else "conditional_on_decision",
++            }
++            # Away handicap has the opposite sign to the home handicap. Totals
++            # use the same line on both sides. Never mix books, times or sources.
++            group_line = -line if quote["market"] == "spread" and quote["side"] == "away" and line is not None else line
++            group_key = (quote["bookmaker"], quote["market"], group_line,
++                         timestamp(quote["timestamp"]).isoformat(), quote["source"])
++            groups[group_key].append(row)
++            rows.append(row)
++        except (ValueError, TypeError, KeyError) as exc:
++            rejected.append({"quote_index": index, "reason": str(exc)})
++    for group in groups.values():
++        market = group[0]["market"]
++        expected = {"home", "draw", "away"} if market == "moneyline_3way" else (
++            {"over", "under"} if market == "total" else {"home", "away"})
++        sides = [row["side"] for row in group]
++        if len(sides) != len(set(sides)):
++            for row in group: row["no_vig_status"] = "AMBIGUOUS_DUPLICATE"
++            continue
++        if set(sides) != expected:
++            continue
++        fair, hold = proportional_no_vig({r["side"]: r["price_decimal"] for r in group})
++        for row in group:
++            market_p = fair[row["side"]]
++            model_p = row["settlement"]["decision_probability"]
++            row.update({
++                "market_no_vig_probability": market_p, "overround": hold,
++                "probability_edge_pp": None if model_p is None else 100 * (model_p - market_p),
++                "market_data_quality": "MEDIUM", "no_vig_status": "COMPLETE_MATCHED",
++            })
++    ranked = sorted(
++        (r for r in rows if r["settlement"]["ev_per_unit"] > 0 and r["no_vig_status"] != "AMBIGUOUS_DUPLICATE"),
++        key=lambda r: (-r["settlement"]["ev_per_unit"], r["quote_index"]),
++    )
++    return {
++        "model_id": model.model_id, "evaluated_at": now.astimezone(timezone.utc).isoformat(),
++        "quote_max_age_minutes": max_age_minutes, "quotes": rows, "rejected_quotes": rejected,
++        "positive_ev_scenarios": [r["quote_index"] for r in ranked],
++        "realized_clv": None, "stake": 0.0,
++        "warning": "Offline scenarios using supplied prices, not independently verified executable betting opportunities.",
++    }
+diff --git a/src/sqp/markets/settlement_math.py b/src/sqp/markets/settlement_math.py
+new file mode 100644
+index 0000000..ac1f8ee
+--- /dev/null
++++ b/src/sqp/markets/settlement_math.py
+@@ -0,0 +1,95 @@
++"""Unit-stake pricing, including pushes and exact Asian quarter lines.
++
++This research API does not change the legacy ledger/settlement contract.
++Probabilities describe five mutually exclusive settlement states, not stakes.
++"""
++from __future__ import annotations
++
++import math
++from dataclasses import asdict, dataclass
++
++from sqp.markets.odds import is_usable_price
++
++
++@dataclass(frozen=True)
++class SettlementProbabilities:
++    full_win: float
++    half_win: float = 0.0
++    push: float = 0.0
++    half_loss: float = 0.0
++    full_loss: float = 0.0
++
++    def __post_init__(self) -> None:
++        values = tuple(asdict(self).values())
++        if any(not math.isfinite(p) or p < 0 or p > 1 for p in values):
++            raise ValueError("settlement probabilities must be finite and in [0, 1]")
++        if not math.isclose(math.fsum(values), 1.0, abs_tol=1e-10, rel_tol=0):
++            raise ValueError("settlement probabilities must sum to one")
++
++    @property
++    def win_units(self) -> float:
++        return self.full_win + 0.5 * self.half_win
++
++    @property
++    def loss_units(self) -> float:
++        return self.full_loss + 0.5 * self.half_loss
++
++    @property
++    def decision_probability(self) -> float | None:
++        """pW/(pW+pL); stake-weighted equivalent for quarter lines.
++
++        None when every stake is returned. This is not raw P(full win).
++        """
++        resolved = self.win_units + self.loss_units
++        return self.win_units / resolved if resolved else None
++
++    @property
++    def fair_decimal(self) -> float | None:
++        # None is JSON-safe: with no winning mass there is no unique finite
++        # fair price (all-push), or no finite fair price at all (loss mass >0).
++        return 1.0 + self.loss_units / self.win_units if self.win_units else None
++
++    def expected_value(self, decimal: float) -> float:
++        if not is_usable_price(decimal):
++            raise ValueError("decimal odds must be finite and > 1")
++        return self.win_units * (decimal - 1.0) - self.loss_units
++
++    def report(self, decimal: float | None = None) -> dict:
++        return {
++            **asdict(self),
++            "decision_probability": self.decision_probability,
++            "fair_decimal": self.fair_decimal,
++            "ev_per_unit": None if decimal is None else self.expected_value(decimal),
++        }
++
++
++def split_asian_line(line: float) -> tuple[float, float]:
++    """Side-oriented line; -0.25 -> (-0.5, 0), -0.75 -> (-1, -0.5)."""
++    if not math.isfinite(line) or not float(line * 4).is_integer():
++        raise ValueError("line must be a finite multiple of 0.25")
++    return math.floor(line * 2) / 2, math.ceil(line * 2) / 2
++
++
++def combine_adjacent_lines(
++    first: tuple[float, float, float], second: tuple[float, float, float],
++) -> SettlementProbabilities:
++    """Combine (win,push,loss) on identical or adjacent half-point lines.
++
++    The outcomes are nested functions of the SAME integer-valued score. Their
++    differing win/loss masses become half wins/losses; never assume independence.
++    """
++    w1, p1, l1 = first
++    w2, p2, l2 = second
++    return SettlementProbabilities(
++        full_win=min(w1, w2), half_win=abs(w1 - w2), push=min(p1, p2),
++        half_loss=abs(l1 - l2), full_loss=min(l1, l2),
++    )
++
++
++def proportional_no_vig(prices: dict[str, float]) -> tuple[dict[str, float], float]:
++    """Caller must supply a complete, matched two/three-way market."""
++    if len(prices) not in (2, 3) or any(not is_usable_price(p) for p in prices.values()):
++        raise ValueError("a complete market requires two or three valid decimal prices")
++    raw = {side: 1.0 / price for side, price in prices.items()}
++    total = math.fsum(raw.values())
++    return {side: p / total for side, p in raw.items()}, total - 1.0
+diff --git a/src/sqp/models/independent.py b/src/sqp/models/independent.py
+new file mode 100644
+index 0000000..630d0bb
+--- /dev/null
++++ b/src/sqp/models/independent.py
+@@ -0,0 +1,228 @@
++"""Opt-in offline model freeze; never imports odds providers, risk or live state.
++
++Inputs are externally estimated sporting parameters, NOT trained here. A freeze
++proves which inputs this engine used; it cannot certify their upstream origin.
++Count models price regulation three-way moneylines. No OT/tie redistribution is
++invented. Normal moneylines explicitly assume a two-way, no-draw settlement.
++"""
++from __future__ import annotations
++
++import hashlib
++import json
++import math
++from dataclasses import dataclass, field
++from datetime import datetime, timezone
++from typing import Any
++
++import numpy as np
++from scipy.stats import norm
++
++from sqp.markets.settlement_math import (
++    SettlementProbabilities, combine_adjacent_lines, split_asian_line,
++)
++from sqp.models.distributions import _dixon_coles_tau, score_pmf
++
++
++def timestamp(value: str) -> datetime:
++    try:
++        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
++    except (ValueError, AttributeError) as exc:
++        raise ValueError("timestamp must be ISO 8601 with a timezone") from exc
++    if result.tzinfo is None:
++        raise ValueError("timestamp must include a timezone")
++    return result.astimezone(timezone.utc)
++
++
++def strict_fields(value: Any, required: set[str], optional: set[str] | None = None) -> None:
++    if not isinstance(value, dict):
++        raise ValueError("expected a JSON object")
++    missing = required - value.keys()
++    extra = value.keys() - required - (optional or set())
++    if missing or extra:
++        raise ValueError(f"invalid fields: missing={sorted(missing)}, unexpected={sorted(extra)}")
++
++
++def finite_number(value: Any, name: str, positive: bool = False) -> float:
++    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
++        raise ValueError(f"{name} must be a finite number")
++    if positive and value <= 0:
++        raise ValueError(f"{name} must be positive")
++    return float(value)
++
++
++def canonical_json(value: Any) -> str:
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
++
++
++@dataclass(frozen=True)
++class FrozenScoreModel:
++    model_id: str
++    frozen_at: str
++    _spec_json: str = field(repr=False)
++    _grid_bytes: bytes = field(repr=False)
++    retained_mass: float
++
++    @property
++    def spec(self) -> dict:
++        # Never expose a mutable reference into the frozen model.
++        return json.loads(self._spec_json)
++
++    def price(self, market: str, side: str, line: float | None = None) -> SettlementProbabilities:
++        dist = self.spec["distribution"]
++        kind = dist["kind"]
++        if market in {"moneyline_2way", "moneyline_3way"}:
++            if line is not None:
++                raise ValueError("moneyline has no line")
++            if market == "moneyline_2way" and kind == "normal":
++                if side not in {"home", "away"}:
++                    raise ValueError("two-way moneyline side must be home or away")
++                p = float(norm.sf(0, dist["expected_home"] - dist["expected_away"], dist["margin_sigma"]))
++                if side == "away": p = 1 - p
++            elif market == "moneyline_3way" and kind == "count":
++                grid = self._grid()
++                home, away = np.indices(grid.shape)
++                masks = {"home": home > away, "draw": home == away, "away": home < away}
++                if side not in masks:
++                    raise ValueError("three-way moneyline side must be home, draw or away")
++                p = float(grid[masks[side]].sum())
++            else:
++                raise ValueError("unsupported moneyline convention; no OT/tie model is inferred")
++            return SettlementProbabilities(full_win=p, full_loss=1 - p)
++        if market not in {"spread", "total"} or line is None:
++            raise ValueError("spread/total requires a line")
++        if side not in ({"home", "away"} if market == "spread" else {"over", "under"}):
++            raise ValueError("side is incompatible with market")
++        first, second = split_asian_line(line)
++        return combine_adjacent_lines(
++            self._single_line(market, side, first), self._single_line(market, side, second),
++        )
++
++    def _grid(self) -> np.ndarray:
++        size = self.spec["distribution"].get("max_score", 60) + 1
++        return np.frombuffer(self._grid_bytes, dtype=np.float64).reshape(size, size)
++
++    def _single_line(self, market: str, side: str, line: float) -> tuple[float, float, float]:
++        d = self.spec["distribution"]
++        if d["kind"] == "count":
++            grid = self._grid()
++            home, away = np.indices(grid.shape)
++            score = home - away if market == "spread" else home + away
++            if market == "spread":
++                value = (score if side == "home" else -score) + line
++            else:
++                value = score - line if side == "over" else line - score
++            return float(grid[value > 0].sum()), float(grid[value == 0].sum()), float(grid[value < 0].sum())
++        if market == "spread":
++            mean = d["expected_home"] - d["expected_away"]
++            if side == "away": mean = -mean
++            sigma, threshold = d["margin_sigma"], -line
++        else:
++            mean = d["expected_home"] + d["expected_away"]
++            sigma, threshold = d["total_sigma"], line
++        delta = 0.5 if float(threshold).is_integer() else 0.0
++        win = float(norm.sf(threshold + delta, mean, sigma))
++        loss = float(norm.cdf(threshold - delta, mean, sigma))
++        push = max(0.0, 1.0 - win - loss) if delta else 0.0
++        return (loss, push, win) if market == "total" and side == "under" else (win, push, loss)
++
++    def report(self) -> dict:
++        spec = self.spec
++        count = spec["distribution"]["kind"] == "count"
++        market = "moneyline_3way" if count else "moneyline_2way"
++        sides = ["home", "draw", "away"] if count else ["home", "away"]
++        return {
++            "schema_version": 1, "model_id": self.model_id, "model_freeze": True,
++            "frozen_at": self.frozen_at, "input": spec, "retained_grid_mass": self.retained_mass,
++            "model_mode": "ANALYTIC_OFFLINE", "model_confidence": "UNVALIDATED",
++            "market_used_by_this_engine_to_generate_model": False,
++            "moneyline_convention": market,
++            "moneyline": {side: self.price(market, side).report() for side in sides},
++            "limitations": [
++                "Sporting inputs supplied by caller; upstream provenance is not independently verified.",
++                "No historical calibration or predictive advantage established by this run.",
++                "Count model has independent marginals plus optional Dixon-Coles; no OT/empty-net model."
++                if count else "Normal margin/total approximation; integer pushes use continuity correction; no joint-score simulation.",
++                "No bet sizing, no production ledger writes, no realized CLV.",
++            ],
++        }
++
++
++def freeze_model(spec: dict, *, now: datetime | None = None) -> FrozenScoreModel:
++    """Validate and freeze before the caller opens any market file."""
++    now = now or datetime.now(timezone.utc)
++    if now.tzinfo is None:
++        raise ValueError("now must include a timezone")
++    strict_fields(spec, {"schema_version", "event", "sporting_as_of", "model_version",
++                         "data_label", "sources", "distribution"})
++    if type(spec["schema_version"]) is not int or spec["schema_version"] != 1:
++        raise ValueError("unsupported schema_version")
++    if type(spec["model_version"]) is not int or spec["model_version"] < 1:
++        raise ValueError("model_version must be a positive integer")
++    if spec["data_label"] not in {"demo_synthetic", "user_supplied"}:
++        raise ValueError("data_label must be demo_synthetic or user_supplied")
++    event = spec["event"]
++    strict_fields(event, {"event_id", "league", "home", "away", "starts_at", "period"})
++    if any(not isinstance(v, str) or not v.strip() for v in event.values()):
++        raise ValueError("event values must be non-empty strings")
++    if event["home"] == event["away"]:
++        raise ValueError("home and away must differ")
++    if event["period"] not in {"regulation", "full_game"}:
++        raise ValueError("period must be regulation or full_game")
++    starts = timestamp(event["starts_at"])
++    cutoff = timestamp(spec["sporting_as_of"])
++    if not cutoff <= now < starts:
++        raise ValueError("pregame invariant requires sporting_as_of <= now < starts_at")
++    if not isinstance(spec["sources"], list) or not spec["sources"]:
++        raise ValueError("at least one sporting source is required")
++    for source in spec["sources"]:
++        strict_fields(source, {"source", "as_of"})
++        if not isinstance(source["source"], str) or not source["source"].strip():
++            raise ValueError("source must be a non-empty identifier")
++        if timestamp(source["as_of"]) > cutoff:
++            raise ValueError("source contains information after sporting_as_of")
++    d = spec["distribution"]
++    base = {"kind", "expected_home", "expected_away"}
++    if not isinstance(d, dict) or d.get("kind") not in {"normal", "count"}:
++        raise ValueError("distribution kind must be normal or count")
++    for key in ("expected_home", "expected_away"):
++        if finite_number(d.get(key), key) < 0:
++            raise ValueError("expected scores cannot be negative")
++    finite_number(d["expected_home"] + d["expected_away"], "expected_total")
++    grid_bytes, retained = b"", 1.0
++    if d["kind"] == "normal":
++        strict_fields(d, base | {"margin_sigma", "total_sigma"})
++        for key in ("margin_sigma", "total_sigma"):
++            finite_number(d[key], key, positive=True)
++    else:
++        strict_fields(d, base, {"max_score", "dispersion_k", "dc_rho", "max_tail_mass"})
++        if event["period"] != "regulation":
++            raise ValueError("count model supports regulation only; no overtime model supplied")
++        maximum = d.get("max_score", 60)
++        if type(maximum) is not int or not 1 <= maximum <= 512:
++            raise ValueError("max_score must be an integer in [1,512] (resource bound)")
++        k = d.get("dispersion_k")
++        if k is not None: finite_number(k, "dispersion_k", positive=True)
++        rho = finite_number(d.get("dc_rho", 0), "dc_rho")
++        tolerance = finite_number(d.get("max_tail_mass", 1e-6), "max_tail_mass", positive=True)
++        if tolerance >= 1:
++            raise ValueError("max_tail_mass must be below one")
++        ph = score_pmf(d["expected_home"], maximum, k)
++        pa = score_pmf(d["expected_away"], maximum, k)
++        grid = np.outer(ph, pa)
++        retained = float(grid.sum())
++        if retained <= 0 or 1 - retained > tolerance:
++            raise ValueError("truncated grid exceeds max_tail_mass; increase max_score")
++        for i in (0, 1):
++            for j in (0, 1):
++                tau = _dixon_coles_tau(i, j, d["expected_home"], d["expected_away"], rho)
++                if not math.isfinite(tau) or tau < 0:
++                    raise ValueError("Dixon-Coles correction would produce negative/invalid mass")
++                grid[i, j] *= tau
++        mass = float(grid.sum())
++        if not math.isfinite(mass) or mass <= 0:
++            raise ValueError("score grid has no positive finite mass")
++        grid_bytes = (grid / mass).astype(np.float64).tobytes()
++    encoded = canonical_json(spec)
++    frozen_at = now.astimezone(timezone.utc).isoformat()
++    fingerprint = hashlib.sha256(("independent-v1\n" + frozen_at + "\n" + encoded).encode() + grid_bytes).hexdigest()
++    return FrozenScoreModel(fingerprint, frozen_at, encoded, grid_bytes, retained)
+diff --git a/tests/test_distribution_validation.py b/tests/test_distribution_validation.py
+new file mode 100644
+index 0000000..9789c0a
+--- /dev/null
++++ b/tests/test_distribution_validation.py
+@@ -0,0 +1,69 @@
++"""Reject invalid inputs and prove vectorization preserves valid probabilities."""
++import math
++
++import pytest
++from scipy.stats import nbinom, poisson
++
++from sqp.models import distributions as d
++
++
++@pytest.mark.parametrize("mean,sigma", [(math.nan, 12), (3, 0), (3, -1), (3, math.inf)])
++def test_normal_rejects_invalid_parameters(mean, sigma):
++    with pytest.raises(ValueError):
++        d.normal_margin_probs(mean, sigma, -3.5)
++    with pytest.raises(ValueError):
++        d.normal_total_probs(mean, sigma, 200.5)
++
++
++@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
++def test_nonfinite_lines_and_dc_are_rejected(value):
++    for call in (
++        lambda: d.normal_margin_probs(3, 12, value),
++        lambda: d.normal_total_probs(200, 20, value),
++        lambda: d.poisson_match_probs(2, 1, value, None),
++        lambda: d.poisson_match_probs(2, 1, None, value),
++        lambda: d.poisson_match_probs(2, 1, None, None, dc_rho=value),
++        lambda: d.score_pmf(2, k=value),
++    ):
++        with pytest.raises(ValueError):
++            call()
++
++
++@pytest.mark.parametrize("lam", [-1, math.nan, math.inf, -math.inf])
++def test_invalid_rate_rejected(lam):
++    with pytest.raises(ValueError):
++        d.score_pmf(lam)
++
++
++@pytest.mark.parametrize("maximum", [-1, 2.5, True])
++def test_invalid_grid_size_rejected(maximum):
++    with pytest.raises(ValueError):
++        d.score_pmf(2, maximum)
++
++
++def test_underflow_grid_rejected_with_diagnostic():
++    with pytest.raises(ValueError, match="grid has no finite positive mass"):
++        d.poisson_match_probs(1e6, 1e6, None, None)
++
++
++def _scalar_pmf(lam, max_goals=15, k=None):
++    if k is None or k <= 0:
++        return [poisson.pmf(i, lam) for i in range(max_goals + 1)]
++    return [nbinom.pmf(i, k, k / (k + lam)) for i in range(max_goals + 1)]
++
++
++@pytest.mark.parametrize("lam", [0, 0.1, 1.6, 3.1, 4.8, 9.5])
++@pytest.mark.parametrize("k", [None, -1, 0, 3.8, 1000])
++def test_vectorized_pmf_matches_original_scalar_calls(lam, k):
++    assert d.score_pmf(lam, 25, k) == _scalar_pmf(lam, 25, k)
++
++
++@pytest.mark.parametrize("k", [None, 3.8])
++@pytest.mark.parametrize("rho", [0, -0.06])
++@pytest.mark.parametrize("dc", [0, -0.1])
++@pytest.mark.parametrize("line", [-1.5, 0, 1])
++def test_full_probabilities_keep_scalar_baseline(monkeypatch, k, rho, dc, line):
++    kwargs = dict(max_goals=25, dispersion_k=k, score_rho=rho, dc_rho=dc, three_way=True)
++    optimized = d.poisson_match_probs(3.2, 2.9, line, 6.0, **kwargs)
++    monkeypatch.setattr(d, "score_pmf", _scalar_pmf)
++    assert optimized == d.poisson_match_probs(3.2, 2.9, line, 6.0, **kwargs)
+diff --git a/tests/test_independent_pricing.py b/tests/test_independent_pricing.py
+new file mode 100644
+index 0000000..a3e2e13
+--- /dev/null
++++ b/tests/test_independent_pricing.py
+@@ -0,0 +1,215 @@
++from __future__ import annotations
++
++import copy
++import importlib.util
++import json
++from dataclasses import FrozenInstanceError
++from datetime import timedelta
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++from sqp.markets.independent import compare_quotes
++from sqp.models.distributions import normal_margin_probs, normal_total_probs, poisson_match_probs
++from sqp.models.independent import freeze_model, timestamp
++
++ROOT = Path(__file__).resolve().parents[1]
++NOW = timestamp("2026-09-10T12:00:00Z")
++
++
++@pytest.fixture
++def spec():
++    return json.loads((ROOT / "examples/independent_model.json").read_text())
++
++
++@pytest.fixture
++def quotes():
++    return json.loads((ROOT / "examples/independent_quotes.json").read_text())
++
++
++def test_freeze_is_immutable_and_does_not_alias_caller(spec):
++    frozen = freeze_model(spec, now=NOW)
++    report = frozen.report()
++    spec["distribution"]["expected_home"] = 20
++    exposed = frozen.spec
++    exposed["distribution"]["expected_away"] = 30
++    assert frozen.report() == report
++    with pytest.raises(FrozenInstanceError): frozen.model_id = "changed"
++    with pytest.raises(ValueError): frozen._grid()[0, 0] = 2
++
++
++def test_fingerprint_deterministic_and_versions_change_it(spec):
++    one = freeze_model(spec, now=NOW)
++    assert one.model_id == freeze_model(copy.deepcopy(spec), now=NOW).model_id
++    spec["model_version"] += 1
++    assert one.model_id != freeze_model(spec, now=NOW).model_id
++
++
++@pytest.mark.parametrize("field,value", [("moneyline", 1.9), ("spread", -3), ("market", {}),
++                                        ("implied_probability", 0.55)])
++def test_market_fields_forbidden_in_sporting_model(spec, field, value):
++    spec[field] = value
++    with pytest.raises(ValueError, match="unexpected"):
++        freeze_model(spec, now=NOW)
++
++
++@pytest.mark.parametrize("mutate", [
++    lambda s: s.update(sporting_as_of="2026-09-10T13:00:00Z"),
++    lambda s: s["sources"][0].update(as_of="2026-09-10T11:01:00Z"),
++    lambda s: s["event"].update(starts_at="2026-09-10T12:00:00Z"),
++    lambda s: s["event"].update(starts_at="2026-09-10T20:00:00"),
++    lambda s: s["event"].update(period="full_game"),
++    lambda s: s["distribution"].update(dc_rho=-2),
++    lambda s: s["distribution"].update(max_score=1),
++    lambda s: s["distribution"].update(expected_home=float("nan")),
++    lambda s: s["distribution"].update(expected_home=True),
++    lambda s: s["distribution"].update(dispersion_k=-1),
++    lambda s: s["distribution"].update(max_score=1000000),
++    lambda s: s.update(sources=[]),
++])
++def test_invalid_or_future_model_rejected(spec, mutate):
++    mutate(spec)
++    with pytest.raises(ValueError): freeze_model(spec, now=NOW)
++
++
++@pytest.mark.parametrize("kind", ["count", "normal"])
++@pytest.mark.parametrize("line", [-1.75, -1, -0.75, -0.25, 0, 0.25, 0.75, 1, 1.75, 3.25])
++def test_all_settlement_states_conserve_mass_and_opposites_balance(spec, kind, line):
++    if kind == "normal":
++        spec["distribution"] = dict(kind="normal", expected_home=110, expected_away=106,
++                                    margin_sigma=13, total_sigma=22)
++        spec["event"]["period"] = "full_game"
++    model = freeze_model(spec, now=NOW)
++    for market, side_a, side_b, line_b in [("spread", "home", "away", -line), ("total", "over", "under", line)]:
++        a = model.price(market, side_a, line)
++        b = model.price(market, side_b, line_b)
++        assert a.expected_value(2) + b.expected_value(2) == pytest.approx(0, abs=1e-12)
++        if a.fair_decimal is not None and a.fair_decimal > 1:
++            assert a.expected_value(a.fair_decimal) == pytest.approx(0, abs=1e-12)
++
++
++def test_count_probabilities_match_legacy_but_keep_push(spec):
++    model = freeze_model(spec, now=NOW)
++    old = poisson_match_probs(1.6, 1.1, 0, 3, three_way=True, max_goals=30)
++    assert model.price("moneyline_3way", "draw").full_win == pytest.approx(old["draw"])
++    assert model.price("spread", "home", 0).decision_probability == pytest.approx(old["home_cover"])
++    p = model.price("total", "over", 3)
++    assert p.push > 0
++    assert p.decision_probability == pytest.approx(old["over"])
++    assert p.expected_value(2) != pytest.approx(old["over"] * 2 - 1)
++    with pytest.raises(ValueError): model.price("moneyline_2way", "home")
++
++
++def test_normal_matches_legacy_and_declares_no_draw_convention(spec):
++    spec["distribution"] = dict(kind="normal", expected_home=112, expected_away=108,
++                                margin_sigma=13, total_sigma=22)
++    spec["event"]["period"] = "full_game"
++    model = freeze_model(spec, now=NOW)
++    old = normal_margin_probs(4, 13, -3)
++    assert model.price("moneyline_2way", "home").full_win == pytest.approx(old["home_win"])
++    assert model.price("spread", "home", -3).decision_probability == pytest.approx(old["home_cover"])
++    assert model.price("total", "under", 220).decision_probability == pytest.approx(normal_total_probs(220, 22, 220)["under"])
++    with pytest.raises(ValueError): model.price("moneyline_3way", "draw")
++
++
++def test_quarter_ev_equals_direct_net_returns_over_same_score_grid(spec):
++    model = freeze_model(spec, now=NOW)
++    grid = model._grid()
++    h, a = np.indices(grid.shape)
++    for line in [-1.75, -0.75, -0.25, 0.25, 0.75, 1.75]:
++        lo, hi = np.floor(line * 2) / 2, np.ceil(line * 2) / 2
++        returns = sum(np.where(h - a + part > 0, 0.95, np.where(h - a + part == 0, 0, -1)) / 2 for part in (lo, hi))
++        assert model.price("spread", "home", line).expected_value(1.95) == pytest.approx(float((grid * returns).sum()))
++
++
++def test_market_comparison_cannot_change_frozen_model(spec, quotes):
++    model = freeze_model(spec, now=NOW)
++    before = model.report()
++    result = compare_quotes(model, quotes, now=NOW, max_age_minutes=90)
++    for row in result["quotes"]:
++        assert row["no_vig_status"] == "COMPLETE_MATCHED"
++        assert row["probability_edge_pp"] == pytest.approx(100 * (row["settlement"]["decision_probability"] - row["market_no_vig_probability"]))
++        assert row["stake"] == 0
++    quotes["quotes"][0]["price_decimal"] = 10
++    compare_quotes(model, quotes, now=NOW, max_age_minutes=90)
++    assert model.report() == before
++
++
++@pytest.mark.parametrize("field,value", [("bookmaker", "OTHER"), ("source", "OTHER"),
++                                        ("timestamp", "2026-09-10T11:58:00Z"), ("line", 0.75)])
++def test_no_vig_never_mixes_counterparts(spec, quotes, field, value):
++    quotes["quotes"] = quotes["quotes"][:2]
++    quotes["quotes"][1][field] = value
++    rows = compare_quotes(freeze_model(spec, now=NOW), quotes, now=NOW, max_age_minutes=90)["quotes"]
++    assert all(r["market_no_vig_probability"] is None for r in rows)
++    assert all(r["settlement"]["ev_per_unit"] is not None for r in rows)
++
++
++@pytest.mark.parametrize("changes", [{"event_id": "wrong"}, {"period": "full_game"},
++                                      {"timestamp": "2026-09-10T12:01:00Z"},
++                                      {"timestamp": "2026-09-10T09:00:00Z"},
++                                      {"price_decimal": float("nan")}, {"price_decimal": 1}, {"line": 0.1}])
++def test_bad_quote_rejected_without_dropping_valid_quotes(spec, quotes, changes):
++    quotes["quotes"][0].update(changes)
++    result = compare_quotes(freeze_model(spec, now=NOW), quotes, now=NOW, max_age_minutes=90)
++    assert len(result["rejected_quotes"]) == 1
++    assert len(result["quotes"]) == 3
++
++
++def test_duplicates_are_ambiguous_not_silently_selected(spec, quotes):
++    quotes["quotes"].append(copy.deepcopy(quotes["quotes"][0]))
++    result = compare_quotes(freeze_model(spec, now=NOW), quotes, now=NOW, max_age_minutes=90)
++    assert result["quotes"][0]["no_vig_status"] == "AMBIGUOUS_DUPLICATE"
++    assert result["quotes"][0]["market_no_vig_probability"] is None
++
++
++def test_no_market_and_no_decision_are_not_fabricated(spec):
++    spec["distribution"].update(expected_home=0, expected_away=0)
++    p = freeze_model(spec, now=NOW).price("total", "over", 0)
++    assert p.push == 1 and p.decision_probability is None
++
++
++def _cli():
++    spec = importlib.util.spec_from_file_location("independent_cli_test", ROOT / "scripts/price_independent.py")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_cli_persists_freeze_before_opening_market_and_never_overwrites(tmp_path, monkeypatch):
++    cli = _cli()
++    out = tmp_path / "audit"
++    args = ["--model", str(ROOT / "examples/independent_model.json"), "--quotes",
++            str(ROOT / "examples/independent_quotes.json"), "--output-dir", str(out),
++            "--as-of", NOW.isoformat(), "--max-quote-age-min", "90"]
++    original = cli._load
++    reads = []
++    def spy(path):
++        reads.append(path)
++        if "quotes" in path.name:
++            assert (out / "model_freeze.json").is_file()
++        return original(path)
++    monkeypatch.setattr(cli, "_load", spy)
++    assert cli.main(args) == 0
++    content = (out / "report.json").read_bytes()
++    assert len(reads) == 2
++    assert cli.main(args) == 2
++    assert (out / "report.json").read_bytes() == content
++
++
++def test_cli_no_market_is_valid_and_missing_market_keeps_freeze(tmp_path):
++    cli = _cli()
++    args = ["--model", str(ROOT / "examples/independent_model.json"), "--as-of", NOW.isoformat()]
++    out = tmp_path / "alone"
++    assert cli.main(args + ["--output-dir", str(out)]) == 0
++    assert json.loads((out / "report.json").read_text())["market"] is None
++    failed = tmp_path / "missing"
++    assert cli.main(args + ["--output-dir", str(failed), "--quotes", str(tmp_path / "absent.json"), "--max-quote-age-min", "90"]) == 2
++    assert (failed / "model_freeze.json").is_file()
++
++
++def test_no_postgame_or_prefreeze_comparison(spec, quotes):
++    model = freeze_model(spec, now=NOW)
++    for now in (NOW - timedelta(seconds=1), timestamp(spec["event"]["starts_at"])):
++        with pytest.raises(ValueError): compare_quotes(model, quotes, now=now, max_age_minutes=90)
+diff --git a/tests/test_portable_setup.py b/tests/test_portable_setup.py
+new file mode 100644
+index 0000000..20224f8
+--- /dev/null
++++ b/tests/test_portable_setup.py
+@@ -0,0 +1,62 @@
++import importlib.util
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def _setup():
++    spec = importlib.util.spec_from_file_location("setup_local_test", ROOT / "scripts/setup_local.py")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_interpreter_is_portable_and_local(tmp_path):
++    setup = _setup()
++    assert setup.environment_python(tmp_path, windows=True) == tmp_path / ".venv/Scripts/python.exe"
++    assert setup.environment_python(tmp_path, windows=False) == tmp_path / ".venv/bin/python"
++
++
++def test_validation_is_offline_and_uses_isolated_temp_dir(tmp_path):
++    setup = _setup()
++    python = setup.environment_python(tmp_path)
++    commands = setup.verification_commands(tmp_path, python)
++    assert [cmd[2] for cmd in commands] == ["pip", "ruff", "mypy", "pytest"]
++    assert all(cmd[0] == str(python) for cmd in commands)
++    assert str(tmp_path / ".codex-tmp") in commands[-1][-1]
++    assert "--mode" not in str(commands) and "install" not in commands[0]
++
++
++def test_installer_check_only_does_not_install_or_change_credentials(tmp_path, monkeypatch):
++    setup = _setup()
++    monkeypatch.setattr(setup, "ROOT", tmp_path)
++    python = setup.environment_python(tmp_path)
++    python.parent.mkdir(parents=True)
++    python.touch()
++    secret = tmp_path / ".env"
++    secret.write_text("UNCHANGED=test-fixture")
++    commands = []
++    monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: commands.append(command))
++    assert setup.main(["--check-only"]) == 0
++    assert len(commands) == 4
++    assert all("install" not in cmd for cmd in commands)
++    assert secret.read_text() == "UNCHANGED=test-fixture"
++
++
++def test_setup_refuses_to_replace_unrelated_directory(tmp_path, monkeypatch):
++    setup = _setup()
++    monkeypatch.setattr(setup, "ROOT", tmp_path)
++    (tmp_path / ".venv").mkdir()
++    (tmp_path / ".venv/user-file").write_text("keep")
++    assert setup.main([]) == 1
++    assert (tmp_path / ".venv/user-file").read_text() == "keep"
++
++
++def test_windows_launchers_do_not_schedule_or_launch_live_jobs():
++    install = (ROOT / "INSTALL_LOCAL.bat").read_text()
++    demo = (ROOT / "DEMO_INDEPENDENT.bat").read_text()
++    assert 'cd /d "%~dp0"' in install and 'cd /d "%~dp0"' in demo
++    assert "setup_local.py --verify" in install
++    assert '.venv\\Scripts\\python.exe' in demo
++    for text in (install, demo):
++        assert "Richard" not in text and "schtasks" not in text and "--mode live" not in text
+diff --git a/tests/test_settlement_math.py b/tests/test_settlement_math.py
+new file mode 100644
+index 0000000..9ad8488
+--- /dev/null
++++ b/tests/test_settlement_math.py
+@@ -0,0 +1,59 @@
++import math
++
++import pytest
++
++from sqp.markets.settlement_math import (
++    SettlementProbabilities, combine_adjacent_lines, proportional_no_vig, split_asian_line,
++)
++
++
++def test_push_is_refund_not_loss_and_fair_price_zeroes_ev():
++    p = SettlementProbabilities(full_win=0.5, push=0.2, full_loss=0.3)
++    assert p.decision_probability == pytest.approx(0.625)
++    assert p.fair_decimal == pytest.approx(1.6)
++    assert p.expected_value(2) == pytest.approx(0.2)
++    assert p.expected_value(p.fair_decimal) == pytest.approx(0)
++
++
++def test_asian_quarter_uses_half_stakes_not_halfline_approximation():
++    # Home -0.25: draw loses half, win wins all. p(win,draw,loss)=.5,.2,.3.
++    p = combine_adjacent_lines((0.5, 0, 0.5), (0.5, 0.2, 0.3))
++    assert p == SettlementProbabilities(0.5, half_loss=0.2, full_loss=0.3)
++    assert p.expected_value(2) == pytest.approx(0.1)
++    other = combine_adjacent_lines((0.3, 0.2, 0.5), (0.5, 0, 0.5))
++    assert other.half_win == pytest.approx(0.2)
++    assert p.expected_value(2) + other.expected_value(2) == pytest.approx(0)
++
++
++@pytest.mark.parametrize("line,expected", [(-0.25, (-0.5, 0)), (-0.75, (-1, -0.5)),
++                                            (2.25, (2, 2.5)), (0, (0, 0)), (2.5, (2.5, 2.5))])
++def test_split_line(line, expected):
++    assert split_asian_line(float(line)) == expected
++
++
++@pytest.mark.parametrize("line", [0.1, math.nan, math.inf])
++def test_bad_lines_rejected(line):
++    with pytest.raises(ValueError): split_asian_line(line)
++
++
++def test_all_push_has_no_fabricated_conditional_probability_or_price():
++    p = SettlementProbabilities(0, push=1)
++    assert p.decision_probability is None and p.fair_decimal is None
++    assert p.expected_value(2) == 0
++
++
++@pytest.mark.parametrize("values", [(0.7, 0.4), (math.nan, 0.5), (-0.1, 1.1)])
++def test_invalid_probability_rejected(values):
++    with pytest.raises(ValueError): SettlementProbabilities(values[0], full_loss=values[1])
++
++
++def test_complete_no_vig_only():
++    probabilities, hold = proportional_no_vig({"home": 1.9, "away": 1.9})
++    assert probabilities == {"home": 0.5, "away": 0.5}
++    assert hold == pytest.approx(2 / 1.9 - 1)
++    with pytest.raises(ValueError): proportional_no_vig({"home": 1.9})
++
++
++@pytest.mark.parametrize("price", [1, 0, math.nan, math.inf])
++def test_invalid_price_rejected(price):
++    with pytest.raises(ValueError): SettlementProbabilities(0.5, full_loss=0.5).expected_value(price)

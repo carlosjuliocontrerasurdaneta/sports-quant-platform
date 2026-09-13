@@ -13,6 +13,23 @@ set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p .claude/hooks
 
+# RESPALDO ANTES DE SOBRESCRIBIR (auditoria integral 2026-09-10). Los tres `cat >`
+# de abajo pisan los hooks sin comprobar si existen: re-ejecutar este script
+# DESCARTABA en silencio cualquier edicion local. Es idempotente respecto al
+# contenido original y destructivo respecto a lo que alguien hubiera afinado
+# despues. Ahora un hook ya presente y DISTINTO se respalda con marca de tiempo
+# antes de reescribirlo; `*.backup-*` ya esta en .gitignore.
+_respaldar() {
+  local destino="$1"
+  [ -f "$destino" ] || return 0
+  local copia="${destino}.backup-$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$destino" "$copia"
+  echo "  [AVISO] $destino ya existia; respaldado en $(basename "$copia")" >&2
+}
+for _h in require-dispatch-model mark-crossreview-pending crossreview-on-stop; do
+  _respaldar ".claude/hooks/${_h}.sh"
+done
+
 cat > .claude/hooks/require-dispatch-model.sh <<'HOOK1'
 #!/usr/bin/env bash
 # PreToolUse (Agent): NINGUN despacho de subagente sin `model` explicito.

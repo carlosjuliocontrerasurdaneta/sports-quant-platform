@@ -251,3 +251,31 @@ def test_settle_tennis_provider_failure_is_nonfatal(tmp_path, monkeypatch):
     settled = _settle_tennis(LEAGUE, days_from=2, provider=Exploding())
     assert settled.empty
     assert not (tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv").exists()
+
+
+def test_settle_tennis_candidates_fall_back_to_tour_history(tmp_path, monkeypatch):
+    """AUD-MED-004 (auditoria integral 2026-09-13): lo que el feed vivo de
+    ESPN no cubre pero data/historical/ del tour SI tiene, gradua igual. Los
+    candidates no heredaron el fallback que el stream servido tiene desde el
+    2026-08-05: 18 unidades listadas el dia del partido se quedaron sin
+    veredicto y el run siguiente las sobrescribio. El historico se guarda
+    orientado home=ganador, asi que el emparejamiento es sin orden."""
+    from sqp.storage.results_store import ResultsStore
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path)
+    # Historico del tour 'atp' (no de la liga): e3 aparece con el ganador
+    # listado como local, que no coincide con la orientacion de predictions.
+    ResultsStore(tmp_path).upsert("atp", [
+        {"date": YDAY, "home": "Jannik Sinner", "away": "Taylor Fritz",
+         "game_id": "h1", "home_score": 1, "away_score": 0},
+        {"date": YDAY, "home": "Carlos Alcaraz", "away": "Novak Djokovic",
+         "game_id": "h2", "home_score": 1, "away_score": 0},
+    ])
+    # Feed vivo SIN e1 ni e3: solo el resultado de e2.
+    vivo = FakeESPN([_results()[1]])
+    settled = _settle_tennis(LEAGUE, days_from=2, provider=vivo)
+    by_id = settled.set_index("event_id")
+    assert set(by_id.index) == {"e1", "e2", "e3"}
+    assert by_id.loc["e1", "result"] == "win"     # del historico
+    assert by_id.loc["e2", "result"] == "loss"    # del feed vivo
+    assert by_id.loc["e3", "result"] == "win"     # del historico

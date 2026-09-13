@@ -152,6 +152,19 @@ def _run(
 ) -> subprocess.CompletedProcess[bytes]:
     env = dict(os.environ)
 
+    # HIGIENE DE ENTORNO (auditoria integral 2026-09-10). `_run` siempre fija
+    # `cwd=root` y decide el indice por su cuenta, pero heredaba el entorno
+    # entero: si la consola del operador tiene `GIT_DIR`, `GIT_WORK_TREE` o
+    # `GIT_INDEX_FILE` definidos -- cosa normal dentro de un hook de git o de un
+    # `git rebase` --, el snapshot operaba sobre OTRO repositorio sin decirlo.
+    # Reproducido: con `GIT_DIR` apuntando a una ruta inexistente, `git init -q`
+    # falla con "Invalid path". Un snapshot que puede tomarse del repositorio
+    # equivocado invalida la ronda de revision cruzada entera, y en silencio.
+    # `cwd` es la unica fuente de verdad de que repositorio se mira.
+    for _ambiental in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                       "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"):
+        env.pop(_ambiental, None)
+
     if index is not None:
         env["GIT_INDEX_FILE"] = str(index)
 

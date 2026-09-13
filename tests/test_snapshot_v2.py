@@ -930,3 +930,32 @@ def test_capture_does_not_write_into_the_working_tree(tmp_path: Path) -> None:
     }
 
     assert after == before
+
+
+def test_el_snapshot_ignora_git_dir_del_entorno(tmp_path, monkeypatch):
+    """El repositorio lo decide `cwd`, nunca el entorno heredado.
+
+    Auditoria integral 2026-09-10. `_run` hacia `env = dict(os.environ)` y
+    pasaba el entorno entero a git. Si la consola del operador tiene `GIT_DIR`,
+    `GIT_WORK_TREE` o `GIT_INDEX_FILE` definidos -- normal dentro de un hook de
+    git o de un `git rebase` en curso -- el snapshot se tomaba de OTRO
+    repositorio, o fallaba, sin decirlo. Un snapshot del repositorio equivocado
+    invalida la ronda de revision cruzada entera y en silencio.
+
+    Reproducido antes del arreglo: con `GIT_DIR` a una ruta inexistente,
+    `git init -q` fallaba con "Invalid path".
+    """
+    import snapshot_v2
+
+    root = _repo(tmp_path)          # se construye con el entorno limpio
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "no" / "existe" / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "no" / "existe"))
+
+    r = snapshot_v2._run(root, "rev-parse", "--is-inside-work-tree")
+
+    assert r.returncode == 0, (
+        "el snapshot heredo GIT_DIR del entorno: "
+        f"{r.stderr.decode('utf-8', 'replace').strip()}")
+    assert r.stdout.decode().strip() == "true"
+    # Y sigue produciendo un snapshot valido bajo ese entorno hostil.
+    assert capture(root, RUN_ID).review_tree

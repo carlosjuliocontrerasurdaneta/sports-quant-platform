@@ -68,6 +68,21 @@ así que no lo distorsiona que unos partidos sean más predecibles que otros.
 > evidencia es `mlb|spreads` con **n = 156** y `p = 0,76`: ninguno se acerca al
 > umbral, y los dos que parecían acercarse eran artefacto de la duplicación.
 
+> **UNIDAD DE INFERENCIA ACTUALIZADA el 2026-09-06** (anotado el 2026-09-10,
+> auditoría integral, AUD-MED-004). El párrafo de arriba declara la unidad como
+> **(evento, mercado, línea)**. La implementación vigente
+> (`sqp/risk/prediction_gate.py::_independent_units`) usa **(evento, mercado)**,
+> sin la línea: dos totales distintos del mismo encuentro dependen del MISMO
+> marcador, así que son sucesos anidados y no ensayos independientes. Medido
+> sobre 11.315 filas usables: 22 de 41 segmentos contaban más unidades que
+> partidos (`ncaaf|totals` 118 unidades sobre 44 encuentros, 2,68×).
+>
+> El cambio es estrictamente **conservador** —sólo reduce `n`, y con `min_n` de
+> por medio eso sólo puede endurecer la decisión—, por eso se aplicó sin nuevo
+> pre-registro, igual que la corrección anterior. Se anota aquí porque
+> `configs/default.yaml` remite a este documento como «criterio completo» y
+> durante cuatro días describió una unidad que el código ya no usaba.
+
 ### Condición 2 — EV neto de vig positivo
 
 Sobre las mismas filas, a **stake plano** de 1 unidad:

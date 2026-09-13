@@ -1,52 +1,52 @@
 # Current Task
 
 Status: closed
-Result: VERIFICADO y publicado (6cddc4d). Tarea siguiente: KI-047, pruebas de comportamiento del guard de despacho — VERIFICADO, pendiente de aprobación para commit
-Primary loop: `bugfix.md`
-Skills: `bugfix`
+Result: DEGRADED
+Primary loop: `audit.md`
+Skills: `full-audit` (fases 0-3) → `audit-remediation` (fases 4-5)
 Iteration: 1 / 1
-Owner: sesión principal (`claude-opus-5`), sin delegación
-Date: 2026-09-09
+Owner: sesión principal (`claude-opus-5`); revisión independiente en `fable` de los cambios de contrato del ledger
+Date: 2026-09-13
 
 ## Routing
 
-Sin escalón a `claude-fable-5-1`. La clase observable no lo pide: no es trabajo
-irreversible, no toca parámetros de riesgo/modelo/estrategia/umbral/gate, no
-produce cifras publicables, no contradice ninguna decisión registrada y no
-cambia el contrato de ningún artefacto persistido. Es la resolución de un
-binario en un lanzador, reversible y cubierta por pruebas.
+Modo no orquestado en las fases 0–3 (validación independiente por segundo
+método en la misma sesión). En la Fase 4, escalón `fable` (parámetro
+`model: "fable"` de `Agent`, según la REGLA DE DESPACHO de `MODEL_ROUTING.md`)
+para revisar AUD-MED-002 (`half_win`/`half_loss`) y AUD-MED-003/004 (picks
+`superseded`, fallback histórico de tenis): clase de escalado «cambiar el
+contrato de un artefacto persistido» (`settled_*.csv`). Veredicto: 0 defectos
+confirmados; 1 sugerencia menor aplicada. No se tocó ningún parámetro de
+riesgo, modelo, estrategia, umbral ni gate, y no se contradijo ninguna decisión
+registrada (AUD-MED-006 registra la vigente, no la cambia).
 
-## Objective
+## Objetivo
 
-Eliminar la divergencia entre los dos binarios de Codex que usan las dos mitades
-de la revisión cruzada: `codex_command()` fijaba `%APPDATA%\npm\codex.cmd`
-mientras `crossreview-on-stop.sh` resuelve `codex` por PATH.
+Auditoría integral del proyecto y aplicación de las correcciones aprobadas
+(«todos los hallazgos confirmados y las mejoras demostradas»).
 
-## Estado
+## Resultado: por qué DEGRADED y no PASS
 
-| Paso del loop | Estado |
-|---|---|
-| 1. Reproducir el defecto | HECHO — 0.147.0 (lanzador) contra 0.153.4 (hook), mismo repo |
-| 2. Causa raíz, no síntoma | HECHO — pin de `8907fcb` (2026-08-13) + `codex_command()` sin ninguna prueba |
-| 3. Hipótesis e invariante | HECHO — invariante: las dos vías resuelven el MISMO binario |
-| 4. Corrección mínima | HECHO — PATH primero, shim de npm como respaldo |
-| 5. Rojo antes / verde después | HECHO — 6 de 7 en rojo por la razón correcta; 7/7 en verde |
-| 6. Regresión adyacente | HECHO — 378 pasados / 1 saltado / exit 0 (13:13); ruff y mypy en verde |
-| 7. ¿Afecta datos/liquidación/cuotas/probabilidades? | NO — solo qué binario se lanza para revisar |
-| 8. `/verification-gate` | HECHO — 10/10; se detiene antes del commit, que requiere aprobación |
+Se cumplen: comandos requeridos con exit 0 (ruff, mypy, fast 1787 passed,
+slow 224 passed / 1 skipped), artefactos obligatorios escritos y legibles
+(`audit/latest/{FINDINGS,BACKLOG,CHANGES,VALIDATION,EXECUTIVE_SUMMARY}.md`,
+`MANIFEST.json`), repositorio Git reconstituido y rama publicada. Lo que impide
+`PASS`, dicho sin esconderlo:
 
-## Ficheros tocados
+- **AUD-HIGH-002 (2b)**: las 5 tareas del Programador siguen en «Solo
+  interactivo»; cambiarlas exige orden explícita del operador. Sin eso, un día
+  sin sesión sigue sin producir picks (ahora al menos con aviso al logon).
+- **`VALIDATE_OOS.bat` sigue sin ejecutarse** (B-01, `rc 1` del 01-09).
+- **`wnba_totals_calibration_iso.joblib`** (colapsado, inerte) no se movió a
+  `retired/`: escritura en `data/` bloqueada por el clasificador de permisos.
+- El ledger histórico **no se regraduó** (1 línea de cuarto mal graduada, 150
+  picks sin veredicto): la corrección aplica hacia delante; regraduar el pasado
+  es decisión aparte.
+- `codex review` y `pip-audit` no ejecutados (cuota / red).
 
-- `scripts/ai/codex_review.py` — `codex_command(windows: bool | None = None)`
-- `tests/test_codex_review.py` — 7 pruebas nuevas, una fija la CLASE
-- `docs/CLAUDE-CODEX-INTEGRATION.md` — el párrafo del binario ya no miente
-- `.claude/memory/known-issues.md` — `KI-046`
-- `Obsidian/Bitácora/2026-09-09.md` — bitácora de la sesión
+## Siguiente acción
 
-## Nota
-
-`scripts/ai/` NO está en el ámbito vigilado por `mark-crossreview-pending.sh`
-(`configs/`, `src/sqp/risk/`, `src/sqp/calibration/`), así que este cambio —que
-toca la infraestructura de la propia revisión cruzada— no dispara la revisión
-cruzada. Queda señalado, no cambiado: ampliar el ámbito es gasto de cuota
-recurrente y es decisión del operador.
+Del operador: (1) abrir/mergear el PR `prod/remediacion-20260913` → `main` y
+comprobar el CI sobre él; (2) decidir el modo de inicio de sesión de las
+tareas; (3) `! cmd /c VALIDATE_OOS.bat`; (4) mover el `.joblib` retirado;
+(5) aprobar el MCP `graphify` o retirar la instrucción de `.claude/CLAUDE.md`.

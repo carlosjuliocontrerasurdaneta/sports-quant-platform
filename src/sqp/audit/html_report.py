@@ -46,7 +46,8 @@ from sqp.monitoring.health import RUN_MAX_AGE_DAYS, pipeline_liveness
 from sqp.monitoring.run_status import read_run_status
 from sqp.evaluation.labels import (EN_JUEGO, decision_prob, game_date_local,
                                    local_date, local_today, match_label,
-                                   picks_vigentes, picks_vigentes_unicos)
+                                   cargar_stream_servido, picks_vigentes,
+                                   picks_vigentes_unicos)
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -737,17 +738,11 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     Sin stakes. Generar picks y apostarlos son cosas distintas.
     """
     cal_dir = cal_dir or (ROOT / "data" / "calibration")
-    frames = []
-    for f in sorted(cal_dir.glob("served_*.csv")):
-        try:
-            d = pd.read_csv(f)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError):
-            continue
-        if not d.empty:
-            frames.append(d)
-    if not frames:
+    # Cargador CANONICO (AUD-MED-008): este bucle estaba triplicado y ya habia
+    # divergido en el manejo de errores. Ver `labels.cargar_stream_servido`.
+    df = cargar_stream_servido(cal_dir)
+    if df.empty:
         return []
-    df = pd.concat(frames, ignore_index=True)
     # Vigencia por PARTIDO (no por dia de generacion) mas UNA fila por pick, con
     # caida al ultimo dia servido si no queda nada vigente. Los tres criterios
     # viven en `picks_vigentes_unicos`.

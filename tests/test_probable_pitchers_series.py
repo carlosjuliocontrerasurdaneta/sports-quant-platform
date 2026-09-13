@@ -6,10 +6,30 @@ probables map on (home, away) only, so the later game overwrote the earlier one
 and both events estimated with identical pitchers (same probability to 6 dp).
 """
 import pandas as pd
+import pytest
 from sqp.domain.models import Event, EventOdds
+from sqp.pipeline import daily
 from sqp.pipeline.daily import _attach_probable_pitchers, _prior_day
 from sqp.sports.team_names import normalize_key
 from sqp.storage.starters import log_pitcher_confirmation
+
+
+@pytest.fixture(autouse=True)
+def _nunca_escribir_en_el_historico_real(tmp_path, monkeypatch):
+    """Redirige el ROOT del modulo para TODOS los tests de este fichero.
+
+    Existe por dano ya causado, no por precaucion. `_attach_probable_pitchers`
+    apendaba el log de confirmacion contra el ROOT global, y los cuatro tests de
+    abajo la llamaban directa: sus pitchers inventados acabaron en el historico
+    REAL. Comprobado el 2026-09-10 en la copia de produccion del operador --
+    `data/historical/pitcher_confirmation_log_mlb.csv` traia dos filas
+    "Game1/Game2 Home Ace" con `confirmed_at_utc` 2026-08-23T02:03:09Z, o sea
+    una ejecucion de la suite, no un run.
+
+    `autouse` y no un argumento por test a proposito: el fallo fue OLVIDAR
+    aislar, asi que la defensa no puede depender de acordarse. El parametro
+    `root=` de la funcion es la otra mitad del arreglo; esta es la red."""
+    monkeypatch.setattr(daily, "ROOT", tmp_path)
 
 
 class _FakeProbablesProvider:
@@ -161,3 +181,32 @@ def test_log_pitcher_confirmation_skips_rows_without_pitchers(tmp_path):
     ]
     n = log_pitcher_confirmation(tmp_path, "mlb", rows)
     assert n == 0
+
+
+def test_el_log_de_confirmacion_va_al_root_inyectado_y_no_al_de_produccion(
+        tmp_path, monkeypatch):
+    """Regresion de AUD-HIGH-005 (auditoria integral 2026-09-10).
+
+    Discrimina de verdad: pone el ROOT del modulo en un arbol distinto del que
+    se inyecta y exige que la escritura caiga en el inyectado y que el otro
+    quede intacto. Si `_attach_probable_pitchers` volviera a leer el global para
+    escribir, `produccion` tendria el fichero y este test lo veria."""
+    produccion = tmp_path / "produccion"
+    aislado = tmp_path / "aislado"
+    produccion.mkdir()
+    aislado.mkdir()
+    monkeypatch.setattr(daily, "ROOT", produccion)
+
+    provider = _FakeProbablesProvider({
+        "2026-06-15": [{"date": "2026-06-15", "commence": "2026-06-16T01:41:00Z",
+                        "home": "Arizona Diamondbacks", "away": "Los Angeles Angels",
+                        "home_pitcher": "Inyectado Ace", "away_pitcher": "Inyectado Arm"}],
+    })
+    _attach_probable_pitchers([_event("2026-06-16T01:41:00Z")], "mlb",
+                              provider=provider, root=aislado)
+
+    relativo = "data/historical/pitcher_confirmation_log_mlb.csv"
+    assert (aislado / relativo).exists(), "no escribio en el root inyectado"
+    assert not (produccion / relativo).exists(), (
+        "escribio contra el ROOT del modulo: la contaminacion del historico "
+        "real esta de vuelta")

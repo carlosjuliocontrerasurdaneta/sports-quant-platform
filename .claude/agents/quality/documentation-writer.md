@@ -1,6 +1,6 @@
 ---
 name: documentation-writer
-description: Use this agent only when documentation is explicitly requested: README, model cards, runbooks, and audit reports.
+description: "Use this agent only when documentation is explicitly requested: README, model cards, runbooks, and audit reports."
 model: haiku
 ---
 

@@ -27,8 +27,8 @@ Procedimiento:
 
 3. No abrir:
    - data/
-   - historical/
-   - exports/
+   - data/historical/
+   - data/odds/
 
 4. Entregar:
 

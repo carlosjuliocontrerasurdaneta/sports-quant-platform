@@ -20,9 +20,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# pytest-cov pineado el 2026-08-06 (auditoria F-20): el CI ya publicaba una
-# tabla de cobertura informativa, pero en local el comando fallaba por no
-# estar instalado, asi que no habia forma de reproducirla.
+# pytest-cov declarado el 2026-08-06 (auditoria F-20) para poder reproducir en
+# local la tabla de cobertura informativa del CI.
+#
+# NO SE PUEDE REPRODUCIR EN EL INTERPRETE DE PRODUCCION (auditoria integral
+# 2026-09-10, AUD-MED-007). Con Python 3.14.4 + numpy 2.4.4, CUALQUIER
+# invocacion con `--cov` aborta en la recoleccion:
+#     ImportError: cannot load module more than once per process
+# Reproducido con el caso minimo (`--cov=sqp.markets.odds tests/test_odds.py`):
+# 1 error; sin `--cov`, los mismos ficheros dan 47 passed. El CI no lo delata
+# porque solo mide cobertura en la pata 3.12 (.github/workflows/ci.yml), que es
+# donde sigue funcionando.
+#
+# Consecuencia practica: la cobertura se mide en 3.12, no en la maquina que
+# opera. Una decision de cobertura tomada "en local" en 3.14 no esta medida.
+# Ademas `pytest-cov`/`coverage` NO estan pineados en requirements.lock, asi que
+# tampoco los audita `pip-audit -r requirements.lock` (AUD-LOW, mismo informe).
 dev = ["pytest>=7.0", "pytest-cov", "ruff", "mypy"]
 
 [build-system]

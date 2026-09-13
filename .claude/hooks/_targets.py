@@ -35,7 +35,18 @@ FUENTES, en orden:
 
 1. `tool_input.file_path`  -- Edit/Write. Si esta, manda y no se mira nada mas.
 2. `tool_input.command`    -- Bash. Rutas con extension de codigo NOMBRADAS en el
-                              comando, que existan en disco. Preciso: no inventa
+                              comando, que existan en disco, SOLO si el comando
+                              contiene algun operador de ESCRITURA (`>`, `sed -i`,
+                              `tee`, `mv`, `cp`, `rm`, `write_text`, `to_csv`,
+                              `open(..., "w")`, `Set-Content`...; ver
+                              `_es_escritura`). Un `cat`, `sed -n`, `grep` o
+                              `head` que nombre un fichero es LECTURA y no arma
+                              nada: la auditoria integral del 2026-09-13 (solo
+                              lectura, ni una edicion) armo los centinelas de
+                              tests y de revision cruzada a las 08:12 con un
+                              `sed -n .../risk/prediction_gate.py`, y eso vale
+                              una suite de ~400 s y una llamada de pago a Codex
+                              por turno (AUD-MED-007). Preciso: no inventa
                               ficheros que el comando no menciona.
 3. `git status --porcelain` -- solo con `--with-git`. Red de seguridad para el
                               comando que escribe en una ruta calculada en
@@ -74,8 +85,38 @@ def _repo() -> Path:
     return Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".").resolve()
 
 
+# Operadores y llamadas que MUTAN ficheros desde un comando Bash/PowerShell.
+# La lista es deliberadamente amplia hacia la escritura: un falso positivo
+# cuesta correr la suite de mas; un falso negativo lo cubre `--with-git` en
+# los hooks baratos. Para el de revision cruzada (sin `--with-git`, de pago)
+# un falso negativo significa un cambio sin revisar, que es el mismo trato que
+# ya recibe una escritura en una ruta calculada en tiempo de ejecucion.
+_REDIRECCION_INOFENSIVA = re.compile(r"\d?>\s*&\d|\d?>>?\s*/dev/null|\d?>>?\s*NUL\b", re.I)
+_ESCRITURA = re.compile(
+    r">|"                                   # redireccion (tras quitar las inofensivas)
+    r"\bsed\s+(?:-[A-Za-z]*i|--in-place)|"  # sed -i / sed -Ei / sed --in-place
+    r"\b(?:tee|mv|cp|rm|touch|patch|install)\b|"
+    r"\bgit\s+(?:apply|checkout|restore|stash|reset|mv|rm|clean|merge|rebase|pull)\b|"
+    r"--fix\b|"
+    r"\b(?:write_text|write_bytes|to_csv|to_json|to_parquet|unlink|rename|replace|"
+    r"remove|removedirs|rmtree|copyfile|copy2|move|dump)\s*\(|"
+    r"\.write\s*\(|"
+    r"open\s*\([^)]*['\"][waxWAX]\+?b?['\"]|"
+    r"\b(?:Set-Content|Out-File|Add-Content|Remove-Item|Move-Item|Copy-Item|"
+    r"New-Item|Rename-Item|Clear-Content)\b",
+    re.I)
+
+
+def _es_escritura(cmd: str) -> bool:
+    """True si el comando contiene algun operador o llamada de ESCRITURA."""
+    limpio = _REDIRECCION_INOFENSIVA.sub(" ", cmd or "")
+    return _ESCRITURA.search(limpio) is not None
+
+
 def _del_comando(cmd: str, raiz: Path) -> list[str]:
     fuera = []
+    if not _es_escritura(cmd):
+        return fuera
     for bruto in _RUTA.findall(cmd or ""):
         ruta = bruto.strip("\"'")
         p = Path(ruta)

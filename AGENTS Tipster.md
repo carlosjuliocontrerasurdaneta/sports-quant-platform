@@ -1,3 +1,20 @@
+<!--
+FUENTE CANÓNICA: `.claude/agents/tipster.md`.
+
+Este fichero y aquél tienen el cuerpo IDÉNTICO byte a byte (diff = 16 líneas,
+todas adiciones de la copia `.claude/`: su frontmatter YAML y una nota operativa
+del 2026-08-26). El runtime carga la de `.claude/agents/`; ésta la citan por
+nombre cuatro ficheros de código —`DIARIO_COMPLETO.bat:195`,
+`scripts/tipster_report.py:4`, `src/sqp/evaluation/tipster.py:3`,
+`src/sqp/audit/html_report.py:805`— y `tests/test_tipster.py:3`.
+
+Dos copias presentadas como canónicas ante consumidores distintos divergen en
+cuanto alguien edita una (auditoría integral 2026-09-10, L-03). Mientras las dos
+existan: **editar `.claude/agents/tipster.md` y propagar aquí**, nunca al revés.
+No se elimina ninguna porque hay cinco referencias por nombre a ésta y el árbol
+no tiene Git, así que un borrado no sería reversible.
+-->
+
 # Agente Tipster Profesional — Análisis Probabilístico y Value Betting
 
 ## Rol

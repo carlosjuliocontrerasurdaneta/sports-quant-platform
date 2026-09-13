@@ -41,6 +41,13 @@ six==1.17.0
 # --- dev ---
 pytest==9.0.3
 ruff==0.15.14
+# pytest-cov/coverage estaban DECLARADOS en las extras `dev` de pyproject pero
+# no pineados aqui (auditoria integral 2026-09-10). Consecuencias: la instalacion
+# no era reproducible, y `pip-audit -r requirements.lock` -- que es puerta
+# BLOQUEANTE del CI -- no los auditaba nunca, porque solo audita este fichero.
+# Versiones tomadas del entorno de produccion (Python 3.14.4) el 2026-09-10.
+pytest-cov==7.1.0
+coverage==7.15.4
 # mypy: [tool.mypy] estaba configurado sin que mypy fuera instalable desde el
 # proyecto; pin absorbido del extinto requirements.lock.txt (auditoria
 # 2026-07-24, I-6/M-13).

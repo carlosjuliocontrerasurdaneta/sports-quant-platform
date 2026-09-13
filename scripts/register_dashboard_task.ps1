@@ -4,7 +4,7 @@
 # la sesion del usuario logueado, asi el navegador abre en su escritorio sin el
 # crash 0xC000013A que ocurria al abrirlo desde la tarea no interactiva del run.
 # Triggers:
-#   - Al iniciar sesion (delay 1 min): si el run de las 11:00 corrio sin sesion,
+#   - Al iniciar sesion (delay 1 min): si el run de las 12:00 corrio sin sesion,
 #     el dashboard abre al loguearse (open_dashboard.ps1 gatea por frescura+marcador).
 #   - Bajo demanda: DIARIO_COMPLETO.bat la dispara con schtasks /Run al terminar.
 # Idempotente: re-correr reemplaza la definicion existente.
