@@ -14,8 +14,8 @@ Analizar únicamente:
 Nunca **volcar a contexto**:
 
 - `data/`
-- `historical/`
-- `exports/`
+- `data/historical/`
+- `data/odds/`
 - Modelos no relacionados con la ejecución del día
 
 **Matiz que esta prohibición necesita** (auditoría del sistema de skills,

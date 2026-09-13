@@ -11,6 +11,7 @@ set PYTHONPATH=src
 REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
 REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 if not exist logs mkdir logs
@@ -19,7 +20,7 @@ echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\validate_oos.log
 echo === SQP - VALIDACION OOS MENSUAL (%DATE% %TIME%) === >> logs\validate_oos.log
 "%SQP_PYTHON%" scripts\validate_oos.py >> logs\validate_oos.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 REM Marcador modelo-vs-mercado y escalera de min_edge (2026-08-25). Responde si
 REM batimos al mercado y si el edge declarado tiene valor realizado. Solo lee
@@ -27,7 +28,7 @@ REM datos guardados: no gasta cuota ni escribe en data/. BEST-EFFORT a proposito
 REM -- es medicion, no validacion, y no debe poder tumbar la corrida mensual.
 echo --- Marcador modelo vs mercado --- >> logs\validate_oos.log
 "%SQP_PYTHON%" scripts\model_vs_market_report.py >> logs\validate_oos.log 2>&1
-if errorlevel 1 echo *** AVISO: el marcador modelo-vs-mercado fallo (no bloqueante) *** >> logs\validate_oos.log
+if %ERRORLEVEL% neq 0 echo *** AVISO: el marcador modelo-vs-mercado fallo (no bloqueante) *** >> logs\validate_oos.log
 
 REM Validacion correcta: limpia SOLO esta etapa. Un fallo del run diario o de la
 REM liquidacion sigue avisando hasta que su propio BAT termine bien.

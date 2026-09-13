@@ -142,3 +142,42 @@ def test_a_row_without_away_keeps_the_previous_behaviour():
     un esquema legado sigue graduando como antes."""
     row = pd.Series({"market": "h2h", "selection": "Red Sox", "line": 0.0})
     assert _grade(row, 5, 3, "Boston Red Sox") == "loss"
+
+
+def test_los_picks_reales_llevan_away_asi_que_la_guarda_no_esta_inerte():
+    """AUD-MED-001 (auditoria integral 2026-09-10).
+
+    La guarda de arriba solo actua `if row.get("away")`, y los picks se escriben
+    desde `BetCandidate.__dict__` (`daily._finalize`). Hasta hoy esa dataclass NO
+    traia `home`/`away`, asi que la proteccion contra FABRICAR un resultado
+    estaba viva en el stream servido (stake 0) y en el backtest de ROI, y MUERTA
+    justo en la ruta del dinero.
+
+    Reproducido antes del arreglo: local ganando 1-0, seleccion escrita de otra
+    forma que el nombre del marcador -> `loss`, `pnl -20`. Es peor que una fila
+    sin graduar: entra en el ROI realizado y en las etiquetas de calibracion como
+    evidencia valida.
+
+    Este test mira el ESQUEMA que produce el pipeline, no una fila a mano: si
+    alguien quita los campos de la dataclass, la guarda vuelve a quedarse inerte
+    y aqui se ve."""
+    import pandas as pd
+    from sqp.domain.models import BetCandidate
+
+    c = BetCandidate(
+        event_id="E1", league="atp", market="h2h", selection="Carlos Alcaraz",
+        line=None, price_decimal=2.0, bookmaker="consensus_median",
+        estimated_probability=0.55, implied_probability_novig=0.5,
+        estimated_edge=0.1, kelly_stake_pct=0.02, stake=20.0, data_label="real",
+        home="Carlos Alcaraz", away="Jannik Sinner")
+    fila = pd.DataFrame([c.__dict__]).iloc[0]
+
+    assert "away" in fila.index, (
+        "el esquema de picks perdio `away`: la guarda anti-fabricacion de "
+        "_grade vuelve a estar inerte en la ruta del dinero")
+    # El marcador nombra al local de otra forma (proveedor secundario de tenis,
+    # que es el caso que el modulo anticipa). No se puede acreditar el lado ->
+    # void, nunca un resultado inventado.
+    assert _grade(fila, 1, 0, "C. Alcaraz") == "void"
+    # Y con el nombre casando, se gradua normal: la guarda no rompe el caso sano.
+    assert _grade(fila, 1, 0, "Carlos Alcaraz") == "win"

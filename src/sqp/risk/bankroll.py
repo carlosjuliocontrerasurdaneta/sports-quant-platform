@@ -19,6 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.exceptions import LedgerIntegridadError
+from sqp.settlement.settle import HALF_RESULTS
 from sqp.logging_config import get_logger
 
 log = get_logger("sqp.bankroll")
@@ -330,7 +331,9 @@ class BankrollLedger:
 
     def summary(self) -> dict:
         df = self._settled()
-        graded = (df[df["result"].isin(["win", "loss"])]
+        # Medias de linea de cuarto incluidas (AUD-MED-002): llevan pnl y su
+        # stake debe contar en `total_staked`, o el ROI realizado no cuadra.
+        graded = (df[df["result"].isin(["win", "loss", *HALF_RESULTS])]
                   if not df.empty and "result" in df.columns else df.iloc[0:0])
         staked = (float(pd.to_numeric(graded["stake"], errors="coerce").fillna(0.0).sum())
                   if not graded.empty and "stake" in graded.columns else 0.0)

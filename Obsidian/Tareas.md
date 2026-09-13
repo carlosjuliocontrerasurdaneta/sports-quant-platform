@@ -1,12 +1,25 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-08-25
+actualizada: 2026-09-13
 ---
 
 # Tareas
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
+
+## Auditoría integral 2026-09-13
+
+- [x] 2026-09-13 — Auditoría integral (fases 0–3) y remediación (4–5): 2 HIGH, 7 MEDIUM, 4 LOW corregidos salvo lo que exige al operador; repositorio Git reconstituido en producción, rama `prod/remediacion-20260913`. Ver [[Bitácora/2026-09-13]] y `audit/latest/`.
+- [ ] **Operador**: pasar las 5 tareas `SQP_*` a «ejecutar aunque el usuario no haya iniciado sesión» (AUD-HIGH-002; 4 de 7 días sin run).
+- [ ] **Operador**: `VALIDATE_OOS.bat` a mano (B-01, `rc 1` desde el 01-09).
+- [ ] **Operador**: mover `data/models/wnba_totals_calibration_iso.joblib` a `data/models/retired/` (colapsado, inerte; escritura en `data/` bloqueada para la sesión).
+- [ ] Abrir el PR de `prod/remediacion-20260913` → `main` y dejar que el CI valide por fin el código que opera.
+
+
+- [x] Optimizar cálculo, validar parámetros y entregar modo independiente con freeze y matemáticas de push/cuartos. 1929 pruebas aprobadas, 2 omitidas; instalación probada en extracción nueva. Sin commit publicado. Ver [[Bitácora/2026-09-10]].
+- [ ] Verificar integración del paquete con el entorno Windows y los datos privados del operador. No ejecutado en esta sesión.
+- [ ] Evaluar históricamente cualquier cambio predictivo futuro con datos as-of. Esta optimización no acredita mayor rentabilidad o calibración.
 
 ## En curso (fase shadow — el sistema trabaja solo)
 

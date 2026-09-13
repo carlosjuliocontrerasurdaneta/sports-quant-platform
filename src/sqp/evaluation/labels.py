@@ -16,8 +16,13 @@ Una sola definicion de cada cosa, porque las dos se habian duplicado a mano:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
+
+from sqp.logging_config import get_logger
+
+log = get_logger("sqp.labels")
 
 SEPARADOR = " @ "  # visitante @ local, la convencion que ya usaba "Picks del Dia"
 
@@ -351,3 +356,40 @@ def game_date_local(df: pd.DataFrame) -> pd.Series:
     if "game_date" in df.columns:
         fecha = fecha.fillna(df["game_date"].astype(str).str[:10])
     return fecha.fillna("").astype(str)
+
+
+def cargar_stream_servido(cal_dir: Path) -> pd.DataFrame:
+    """Concatena los `served_*.csv` de `cal_dir`; DataFrame vacio si no hay nada.
+
+    FUENTE CANONICA (AUD-MED-008, auditoria integral 2026-09-10). Este bucle
+    estaba TRIPLICADO -- `audit/html_report.py`, `scripts/daily_picks.py` y
+    `scripts/tipster_report.py` -- y ya habia DIVERGIDO: solo el del tablero
+    capturaba `OSError`. Ante un `served_*.csv` ilegible (un fichero bloqueado
+    por otro proceso en Windows, permisos, disco), el tablero saltaba esa liga y
+    terminaba, mientras las dos vistas de picks ABORTABAN. Los tres los invoca
+    `DIARIO_COMPLETO.bat` en el mismo run y sobre los mismos ficheros, asi que el
+    operador veia tres respuestas distintas a la misma pregunta.
+
+    Importa por el contrato del proyecto, no por estetica: la REGLA FUNDAMENTAL
+    exige la lista diaria COMPLETA de todos los deportes y mercados. Es la misma
+    clase de fallo que KI-027, donde el arreglo del 2026-08-28 se escribio en una
+    copia y dejo fuera los dos CLI, escondiendo 13 ligas enteras.
+
+    Se toma el comportamiento TOLERANTE (el del tablero) como canonico: una liga
+    ilegible no puede quitar de la lista a las otras veintidos. La regla de
+    vigencia sigue viviendo en `picks_vigentes_unicos`, que es lo que se aplica
+    despues.
+    """
+    frames = []
+    for f in sorted(cal_dir.glob("served_*.csv")):
+        try:
+            d = pd.read_csv(f)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError):
+            log.warning("stream servido: %s no se pudo leer; se omite esa liga "
+                        "y la lista sigue con las demas.", f.name)
+            continue
+        if not d.empty:
+            frames.append(d)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)

@@ -47,7 +47,7 @@ Equivalente al comando `/memoria-guardar`. Actualizar en `.claude/memory/`:
 `architecture-log.md`, `roadmap.md`.
 
 La bóveda `Obsidian/` es la fuente central de conocimiento del proyecto y tiene
-su propio protocolo obligatorio (ver `.claude/CLAUDE.md`); `.claude/memory/` es la
+su propio protocolo obligatorio (ver la regla de Obsidian del `CLAUDE.md` RAIZ; `.claude/CLAUDE.md` no la contiene); `.claude/memory/` es la
 memoria operativa del agente. No duplicar contenido entre ambas: enlazar.
 
 ## Reglas

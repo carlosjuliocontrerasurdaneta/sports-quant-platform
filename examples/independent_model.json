@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "event": {
+    "event_id": "DEMO-NOT-A-REAL-EVENT",
+    "league": "synthetic_soccer",
+    "home": "Synthetic Home",
+    "away": "Synthetic Away",
+    "starts_at": "2026-09-10T20:00:00Z",
+    "period": "regulation"
+  },
+  "sporting_as_of": "2026-09-10T11:00:00Z",
+  "model_version": 1,
+  "data_label": "demo_synthetic",
+  "sources": [{"source": "Synthetic test fixture; no real sporting evidence", "as_of": "2026-09-10T11:00:00Z"}],
+  "distribution": {
+    "kind": "count",
+    "expected_home": 1.6,
+    "expected_away": 1.1,
+    "max_score": 30,
+    "dc_rho": 0.0,
+    "max_tail_mass": 0.000001
+  }
+}

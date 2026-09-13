@@ -104,6 +104,39 @@ def test_skips_out_of_window_stale_price_and_old_rows(tmp_path):
     assert (df["stake"] == 5.0).all()
 
 
+def test_evento_tras_medianoche_utc_se_evalua_con_generacion_de_ayer(tmp_path):
+    """AUD-MED-001 (auditoria integral 2026-09-13). El run genera a las ~15:00Z
+    y los partidos nocturnos de America empiezan pasadas las 00:00Z del dia UTC
+    siguiente. El scoping por "generado HOY" dejaba esos picks sin revalidar
+    (medido: 2 de 115 frente a 195 de 369 del mismo dia). El criterio es ahora
+    el run vigente del fichero: la generacion mas reciente presente en el."""
+    ahora = datetime(2026, 7, 2, 0, 30, tzinfo=timezone.utc)   # ya es "manana" en UTC
+    inicio = "2026-07-02T01:30:00Z"                            # 60 min despues
+    cands = [_cand_row(generated_at="2026-07-01T15:00:00Z")]  # generado AYER (UTC)
+    odds = [_odds_row(captured_at="2026-07-02T00:10:00Z", commence_time=inicio)]
+    preds = [{"event_id": "e1", "home": "A", "away": "B", "start_time": inicio}]
+    pred_dir = _write(tmp_path, cands, odds, preds)
+    s = revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=ahora)
+    assert s["evaluated"] == 1 and s["revoked"] == 1
+    assert _read_cands(tmp_path).iloc[0]["reval_action"] == "revoke"
+
+
+def test_con_dos_generaciones_solo_se_evalua_la_mas_reciente(tmp_path):
+    """La fila de una generacion ANTERIOR que conviva con una mas reciente sigue
+    excluida: el run vigente es el ultimo, no el dia UTC."""
+    cands = [_cand_row(event_id="e1"),
+             _cand_row(event_id="e2", generated_at="2026-06-30T15:00:00Z")]
+    odds = [_odds_row(), _odds_row(event_id="e2")]
+    preds = [{"event_id": "e1", "home": "A", "away": "B", "start_time": START_IN_WINDOW},
+             {"event_id": "e2", "home": "C", "away": "D", "start_time": START_IN_WINDOW}]
+    pred_dir = _write(tmp_path, cands, odds, preds)
+    s = revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=NOW)
+    assert s["evaluated"] == 1
+    df = _read_cands(tmp_path).set_index("event_id")
+    assert df.loc["e1", "reval_action"] == "revoke"
+    assert str(df.loc["e2", "reval_action"]) in ("", "nan")
+
+
 def test_revoke_is_final_even_if_price_recovers(tmp_path):
     pred_dir = _write(tmp_path, [_cand_row()], [_odds_row()])
     revalidate_candidates(pred_dir, tmp_path, min_edge=0.02, now=NOW)
@@ -347,10 +380,14 @@ class TestLaRedYaNoOcurreBajoElLock:
 class TestCosteDelPase:
 
     def test_sin_filas_evaluables_no_se_leen_cuotas(self, tmp_path, monkeypatch):
-        """Ninguna fila generada hoy -> ni un byte de data/odds/."""
+        """Ninguna fila evaluable (aqui: ya revocada) -> ni un byte de data/odds/.
+
+        Hasta el 2026-09-13 el caso era "generada ayer"; desde AUD-MED-001 una
+        fila de ayer que sea el run vigente del fichero SI se evalua, asi que la
+        exclusion que ejercita este test pasa a ser un `revoke` previo."""
         from sqp.pipeline import revalidation as mod
 
-        pred_dir = _write(tmp_path, [_cand_row(generated_at="2026-06-30T15:00:00Z")],
+        pred_dir = _write(tmp_path, [_cand_row(reval_action="revoke")],
                           [_odds_row()])
         monkeypatch.setattr(mod, "_league_odds", lambda *a, **kw: pytest.fail(
             "se leyeron cuotas sin ninguna fila evaluable"))

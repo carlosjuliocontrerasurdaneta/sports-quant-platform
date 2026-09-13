@@ -235,6 +235,25 @@ No asumir que un especialista existe por estar nombrado y no delegar dos veces e
 
 Antes de consolidar la salida, leer [references/reporting.md](references/reporting.md).
 
+**Dónde se deja el informe.** Persistir el resultado en `audit/latest/`, como
+mínimo `FINDINGS.md` (un ID por fila, con severidad, estado de evidencia y
+estado de corrección), `BACKLOG.md` (el plan priorizado) y `MANIFEST.json` (fecha,
+base, entorno, `tests_initial` y comandos de validación con su código de salida).
+Escribir el informe NO es modificar el proyecto auditado: es el entregable de la
+auditoría, y es la única escritura que estas fases autorizan.
+
+Esto es un CONTRATO con `audit-remediation`, que exige como precondición de
+entrada «un informe de auditoría legible en `audit/latest/` (al menos
+`FINDINGS.md` y `BACKLOG.md`)» y resuelve contra él los IDs aprobados. Hasta el
+2026-09-10 esta skill no nombraba `audit/latest/` ni una sola vez, así que la
+skill consumidora exigía artefactos que la productora no se comprometía a
+generar; existían en disco sólo porque auditorías previas los escribieron por su
+cuenta (auditoría integral 2026-09-10, AUD-MED-010).
+
+Si `audit/latest/` ya contiene una ronda anterior, **no sobrescribirla sin
+preservarla**: copiarla antes a `audit/<audit_id-anterior>/`. Sin Git en el
+árbol, un informe sobrescrito es un informe perdido.
+
 El informe debe mantener separados:
 
 - confirmados;

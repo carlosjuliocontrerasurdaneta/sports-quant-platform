@@ -10,8 +10,11 @@ El enrutamiento tiene tres capas independientes:
    consulta **bajo demanda** desde `/route-task`, con el clasificador
    `.claude/automation/route_classifier.py`. **No hay inyección automática**: el
    hook `UserPromptSubmit` que la hacía se **retiró el 2026-09-01**, porque
-   nunca había estado cableado —`settings.json` solo declara `PostToolUse` y
-   `Stop`— y porque, aun cableado, solo inyecta texto consultivo: no asigna
+   nunca había estado cableado —cuando se retiró, `settings.json` sólo
+   declaraba `PostToolUse` y `Stop`; hoy declara además `PreToolUse`
+   (matcher `Agent`), así que la frase en presente quedó obsoleta y se pone
+   en pasado (auditoría integral 2026-09-10). Nada de esto reabre el caso:
+   `UserPromptSubmit` sigue sin declararse— y porque, aun cableado, solo inyecta texto consultivo: no asigna
    modelo. Consultar bajo demanda cuesta contexto únicamente cuando el enrutado
    importa, en vez de en cada turno.
 

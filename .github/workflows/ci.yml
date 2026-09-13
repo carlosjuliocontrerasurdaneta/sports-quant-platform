@@ -5,6 +5,14 @@ on:
     branches: ["**"]
   pull_request:
 
+# Permisos MINIMOS a nivel de workflow (auditoria integral 2026-09-10). Sin
+# este bloque, `test` y `test-windows` heredaban el permiso por defecto del
+# repositorio, que en repositorios antiguos sigue siendo `contents: write`, y
+# son justo los jobs que instalan dependencias y ejecutan codigo de terceros.
+# El job `alerta-ci-rojo` declara el suyo (`issues: write`) y no se ve afectado.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:
   group: ci-${{ github.ref }}
@@ -61,7 +69,7 @@ jobs:
       - name: Pytest (+ coverage report, informational)
         if: matrix.python-version == '3.12'
         run: |
-          pip install pytest-cov
+          pip install pytest-cov -c requirements.lock
           pytest -q --cov=sqp --cov-report=term
 
       # BLOCKING since 2026-07-02: the lockfile was audited clean after bumping

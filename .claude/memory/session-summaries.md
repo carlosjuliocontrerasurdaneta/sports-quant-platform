@@ -377,7 +377,7 @@ Sesión de análisis cuantitativo del prediction gate y del estado del sistema. 
 - EV negativo de `ligamx|totals` se debe a que el mercado cobra el Over a 1.67 (break-even 59.9%) y el modelo solo asigna 58.1% — 2pp de diferencia que el histórico no justifica cambiar.
 
 **Cambio implementado:**
-- `PREDICTION_GATE_MIN_N`: 300 → **100** (commit `a5cb6ce`, pusheado a main)
+- `PREDICTION_GATE_MIN_N`: 300 → **100** (commit `a5cb6ce`, pusheado a main) — **NOTA 2026-09-13: superado; el umbral vigente es 300** (código, pre-registro y registro vivo coinciden; ver `project-decisions.md` 2026-09-13, AUD-MED-006)
 - Justificación estadística: n=300 es necesario para señales débiles (~52% win rate); con 67% win rate observado, n=100 da p~10⁻⁹ — el umbral era excesivo para la señal real.
 - Gate regenerado con `update_prediction_gate.py`: todos los mercados siguen en `muestra_insuficiente` (el más avanzado es `ligamx|h2h` con n=54, pero señal mala).
 
@@ -392,3 +392,28 @@ Sesión de análisis cuantitativo del prediction gate y del estado del sistema. 
 **Archivos modificados:** `src/sqp/risk/prediction_gate.py`
 
 **Estado del sistema:** shadow_mode activo, stakes=0, sin mercados abiertos. Próxima revisión automatizada el 27 de agosto.
+
+## 2026-09-12 — Graphify: MCP portable y grafo completo con capa semántica
+
+**Trabajo realizado:**
+
+Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de conocimiento: inspección de la instalación de Graphify, corrección de la causa raíz de la avería del MCP de ayer y reconstrucción completa del grafo por la skill `/graphify`.
+
+**Inspección (sin cambios):** `graphifyy` 0.9.58 en el Python 3.14 del sistema (ayer 0.9.11; se actualizó a las 08:21 del 2026-09-11, DESPUÉS de construir el grafo de 07:50). Skill en `~/.claude/skills/graphify/` con `.graphify_version` 0.9.58. MCP registrado en ámbito de usuario con ruta absoluta pinneada: `~/.claude.json` lista 13 ubicaciones históricas del proyecto, así que la rotura de ayer iba a repetirse.
+
+**Cambios:**
+- `.mcp.json` (nuevo, raíz): servidor `graphify` en ámbito de proyecto, `graphify-mcp` sin argumento (default `graphify-out/graph.json` relativo al cwd, según `graphify-mcp --help`). Pendiente de aprobación al arrancar la próxima sesión.
+- `graphify-out/` (ignorado): grafo completo por la skill — 534 ficheros (321 código, 213 documentos), **6.098 nodos · 12.575 aristas · 472 comunidades**, 93 % EXTRACTED / 7 % INFERRED (conf. media 0,90). Capa semántica extraída por 10 subagentes `sonnet` (~1,22 M tokens; sin clave Gemini, la sesión es el LLM). Tres chunks cayeron por límite de sesión (429, 09:03); dos ya habían escrito el fichero completo y el tercero se relanzó a las 14:40. Chunk 7 escribió `source_file` relativo y se normalizó mecánicamente a la forma verbatim.
+- `Obsidian/Bitácora/2026-09-12.md` (nuevo): nota de sesión completa.
+
+**Decisión medida, no asumida:** el guard anti-encogimiento (#479) se disparó porque el `graphify update .` del CLI (07:50→08:48) daba 7.009 nodos, todos AST: trata los `.md` como código y hace nodo de cada título de sección. Se forzó SOLO tras comprobar que los 1.559 nodos perdidos eran todos `.md`/AST y que los 657 nuevos son conceptos, KIs, decisiones y hallazgos enlazados a la función que citan. Copia previa en `graphify-out/2026-09-12/graph.pre-full-build-7009.json`.
+
+**Salud del grafo (declarada):** 865 aristas colgantes (840 imports de librerías externas, 25 referencias semánticas sin destino), 431 pares con relaciones fusionadas por el grafo no dirigido, 5 bucles. No bloqueante. Límite honesto: no hay camino `write_prediction_gate()` → «Value Betting»; los puentes doc↔código son los que la prosa nombra.
+
+**Validación:** `graphify explain/query/path` y MCP `graph_stats` sobre el grafo nuevo; `tests/test_claude_system_contract.py` 20 passed; JSON válidos; manifest 534 sellados, 0 pendientes; benchmark 60,5× menos tokens por consulta.
+
+**Pendiente (bloqueado para el agente por el clasificador de permisos, requiere al operador):** `claude mcp remove graphify -s user` (entrada global duplicada con ruta absoluta; mientras conviva, la de proyecto tiene precedencia) y borrar `~/.claude/skills/graphify/SKILL.md.bak`.
+
+**Archivos modificados:** `.mcp.json`, `Obsidian/Bitácora/2026-09-12.md`, `.claude/memory/session-summaries.md`, `.claude/memory/project-decisions.md`, `graphify-out/*` (ignorado). No hay repositorio git en `C:\dev\3\sports-quant-platform`: nada que commitear.
+
+**Cierre definitivo (segundo cierre, misma sesión):** el operador delegó la elección; se midió la hipótesis abierta y se aplicaron las dos pendientes. VERIFICADO el 2026-09-12 (medido con copia previa): `graphify update .` CONSERVA la capa semántica (787 nodos semánticos, 0 perdidos, 0 títulos AST de `.md` reintroducidos, +3 aristas de `.mcp.json`) pero RE-CLUSTERIZA (477 comunidades frente a 472) y renombra por hub: solo 147 de 472 etiquetas curadas sobreviven. Tras un `update .`, restaurar etiquetas e informe desde `graphify-out/2026-09-12/` o asumir nombres por hub. Grafo curado restaurado (6.098 · 12.575 · 472, etiquetas intactas) y `graph.html` regenerado. Entrada global del MCP retirada y `SKILL.md.bak` borrado; `claude mcp list` → `graphify: graphify-mcp` (proyecto, pendiente de aprobación). Copias de seguridad en `graphify-out/2026-09-12/`.

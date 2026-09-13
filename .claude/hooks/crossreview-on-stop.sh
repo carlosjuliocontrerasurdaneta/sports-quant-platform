@@ -16,6 +16,19 @@ marker=".claude/.crossreview-pending"
 [ -f "$marker" ] || exit 0
 rm -f "$marker"   # se limpia SIEMPRE, antes de nada: nunca bloquear en bucle
 command -v codex >/dev/null 2>&1 || exit 0
+# SIN REPOSITORIO GIT NO HAY NADA QUE REVISAR (AUD-MED-007, auditoria integral
+# 2026-09-13). `codex review` trabaja sobre `--uncommitted`, `--base` o
+# `--commit HEAD`, y los tres exigen un repositorio: en el arbol de produccion
+# (sin `.git`) cada Stop lanzaba una llamada de pago condenada a fallar, la
+# rama de fallo restauraba el centinela y el turno siguiente lo repetia. Se
+# avisa UNA vez y se sale limpio; el centinela ya esta borrado arriba.
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  { echo "REVISION CRUZADA NO EJECUTADA: este arbol no es un repositorio Git y la"
+    echo "revision de Codex necesita uno (alcance por cambios sin commitear, rama"
+    echo "base o commit). El cambio de este turno se queda SIN revisar por un"
+    echo "tercero. Ver audit/latest/FINDINGS.md AUD-HIGH-001 (2026-09-13)."; } >&2
+  exit 0
+fi
 
 # SIN prompt inline (2026-09-05). `--uncommitted`, `--base`, `--commit` y el
 # [PROMPT] posicional son selectores de ALCANCE mutuamente excluyentes:

@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-09
+actualizada: 2026-09-13
 ---
 
 # Bitácora — índice
@@ -10,6 +10,8 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-09-13]] — auditoría integral + remediación: repositorio reconstituido en producción (94+41 ficheros fuera de `main`), 4 de 7 días sin run, revalidación ciega tras las 00:00Z, líneas de cuarto, picks desplazados fuera del ledger, hooks armados por lecturas.
+- [[Bitácora/2026-09-10]] — PMF vectorizada, validación de parámetros, pricing independiente con freeze, instalación portable y paquete local probado. Sin cambios a riesgo ni publicación GitHub.
 - [[Bitácora/2026-09-09]] — diagnóstico de la integración Claude↔Codex: las tres vías operativas, la Forma 3 (centinela automático) documentada por fin; divergencia de binarios y PAT en claro fuera del repo.
 - [[Bitácora/2026-08-04]] — auditoría y remediación integrada de `.claude`: routing, Fable 5, estados, permisos, health check y promoción humana por defecto.
 - [[Bitácora/2026-08-02]] — auditoría integral, cierre de filas servidas pendientes y observatorio intradía v2.

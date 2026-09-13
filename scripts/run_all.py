@@ -27,7 +27,8 @@ from sqp.pipeline.budget import (DEFAULT_PRIORITY, days_left_in_month,
                                  leagues_within_budget, request_cost_per_league)
 from sqp.pipeline.cleanup import (prune_stale_candidates,
                                   unsettled_completed_picks)
-from sqp.pipeline.daily import apply_global_exposure_cap, run_league
+from sqp.pipeline.daily import (_LEAGUE_ID, apply_global_exposure_cap,
+                                run_league)
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
 from sqp.risk.prediction_gate import evaluate_markets, write_prediction_gate
 from sqp.storage.served_store import ServedStore
@@ -52,9 +53,23 @@ def _active_tennis(client: OddsAPIClient) -> list[str]:
     except Exception as exc:
         log.warning("no se pudo listar torneos de tenis: %s", exc)
         return []
-    return sorted(s["key"] for s in sports
-                  if s.get("active") and (str(s.get("group", "")).lower() == "tennis"
-                                          or str(s.get("key", "")).startswith("tennis_")))
+    crudas = sorted(s["key"] for s in sports
+                    if s.get("active") and (str(s.get("group", "")).lower() == "tennis"
+                                            or str(s.get("key", "")).startswith("tennis_")))
+    # El id sale de una respuesta remota y luego compone rutas de fichero, asi
+    # que se filtra AQUI con el mismo alfabeto que exige `daily._league_meta`
+    # (AUD-MED-002, auditoria integral 2026-09-10). Se descarta y se AVISA en vez
+    # de dejar que la excepcion suba: un torneo con una clave rara no puede
+    # tumbar el run de las otras 23 ligas, pero tampoco puede desaparecer en
+    # silencio -- eso seria perder un torneo sin que nadie se entere.
+    validas, descartadas = [], []
+    for k in crudas:
+        (validas if _LEAGUE_ID.fullmatch(k) else descartadas).append(k)
+    if descartadas:
+        log.warning("torneos de tenis descartados por id no admisible (solo "
+                    "[a-z0-9_]+, porque el id compone rutas de fichero): %s",
+                    ", ".join(repr(d) for d in descartadas))
+    return validas
 
 
 def _select_live(settings: Settings, supported: dict[str, str],

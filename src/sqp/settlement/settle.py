@@ -9,6 +9,7 @@ import math
 from datetime import datetime, timezone
 import pandas as pd
 
+from sqp.markets.settlement_math import split_asian_line
 from sqp.sports.team_names import normalize_key
 
 # Un partido cancelado/pospuesto nunca entrega score: sin expiracion, su pick
@@ -68,13 +69,53 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str,
             return "void"
         if not math.isfinite(line):
             return "void"
+        # LINEA ASIATICA DE CUARTO (+-0.25 / +-0.75, o totales 2.25 / 2.75):
+        # el stake se reparte a medias entre las dos lineas de medio punto
+        # adyacentes. Graduarla como una linea entera FABRICABA un resultado:
+        # `-0.75` con margen +1 salia "win" completo siendo medio-gana, y
+        # `-0.25` con empate salia "loss" completo siendo medio-pierde.
+        # Reproducido sobre el ledger el 2026-09-13 (chile, Universidad de
+        # Chile -0.75, margen +1, graduado `win`); 536 filas del stream
+        # graduado llevan linea de cuarto, 212 dentro de la ventana del gate
+        # (auditoria integral 2026-09-13, AUD-MED-002). La descomposicion es
+        # la de `markets.settlement_math.split_asian_line`, que ya existia
+        # como API de investigacion sin llegar al ledger.
+        if float(line * 4).is_integer() and not float(line * 2).is_integer():
+            lo, hi = split_asian_line(line)
+            return _combinar_medias(_grade_linea(m, sel, sel_is_home, margin, total, lo),
+                                    _grade_linea(m, sel, sel_is_home, margin, total, hi))
+        return _grade_linea(m, sel, sel_is_home, margin, total, line)
+    return "void"
+
+
+def _grade_linea(m: str, sel: str, sel_is_home: bool, margin: int, total: int,
+                 line: float) -> str:
+    """Resultado de una linea de medio punto o entera (win/push/loss)."""
     if m == "spreads":
         adj = margin + line if sel_is_home else -margin + line
         return "win" if adj > 0 else ("push" if adj == 0 else "loss")
-    if m == "totals":
-        if total == line: return "push"
-        return "win" if (total > line) == (sel == "Over") else "loss"
-    return "void"
+    if total == line: return "push"
+    return "win" if (total > line) == (sel == "Over") else "loss"
+
+
+# Resultados de una linea de cuarto: mitad del stake en cada linea adyacente.
+# `half_win`: una mitad gana y la otra se devuelve; `half_loss`: una mitad
+# pierde y la otra se devuelve. Todo consumidor que filtre `isin(["win",
+# "loss"])` los EXCLUYE, como a un push: es la direccion conservadora para el
+# gate, la calibracion y el monitor de degradacion. El ledger de banca los
+# incluye por su `pnl`, que es lo que define el saldo.
+HALF_RESULTS = frozenset({"half_win", "half_loss"})
+_COMBINACION_MEDIAS = {
+    ("win", "win"): "win", ("loss", "loss"): "loss",
+    ("win", "push"): "half_win", ("push", "win"): "half_win",
+    ("loss", "push"): "half_loss", ("push", "loss"): "half_loss",
+}
+
+
+def _combinar_medias(r_lo: str, r_hi: str) -> str:
+    # Dos lineas adyacentes de medio punto no pueden dar (win, loss) ni
+    # (push, push) sobre el mismo marcador; si ocurriera, mejor no graduar.
+    return _COMBINACION_MEDIAS.get((r_lo, r_hi), "void")
 
 
 def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int, str]],
@@ -90,7 +131,9 @@ def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int
         hs, as_, home = sc
         result = _grade(row, hs, as_, home, three_way)
         pnl = {"win": row["stake"] * (row["price_decimal"] - 1),
-               "loss": -row["stake"], "push": 0.0, "void": 0.0}[result]
+               "loss": -row["stake"], "push": 0.0, "void": 0.0,
+               "half_win": 0.5 * row["stake"] * (row["price_decimal"] - 1),
+               "half_loss": -0.5 * row["stake"]}[result]
         rows.append({**row.to_dict(), "result": result, "pnl": round(pnl, 2),
                      "settled_at": datetime.now(timezone.utc).isoformat()})
     out = pd.DataFrame(rows)

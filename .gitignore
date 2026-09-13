@@ -14,6 +14,14 @@ data/cache/
 logs/*
 !logs/.gitkeep
 .pytest_cache/
+# Cachés de las otras dos puertas locales. `make check` y el CI ejecutan `ruff
+# check` y `mypy src`, que las generan (13 MB medidos el 2026-09-10), y no
+# estaban ignoradas mientras `.pytest_cache/` sí lo estaba (auditoría integral,
+# AUD-MED-013). Consecuencia concreta, no estética: el protocolo Cross-Review V2
+# liga la ronda a los bytes que git NO ignora, así que un `mypy src` a mitad de
+# ronda movía `review_tree` y la invalidaba.
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
 dist/
 *.bak
@@ -75,3 +83,5 @@ graphify-out/
 .claude/reviews/runtime/
 # Scratch tree the Codex reviewer writes its temp files and caches into
 .codex-tmp/
+.venv/
+outputs/

@@ -36,7 +36,22 @@ def _bundle_path(root: Path, sport: str, name: str) -> Path:
 
 
 def _check_hash(path: Path) -> None:
-    """Warn if the sha256 sidecar exists and does not match the file."""
+    """Se NIEGA a seguir si el sidecar sha256 existe y no cuadra.
+
+    Hasta el 2026-09-10 avisaba y cargaba igualmente ("loading anyway"), es
+    decir: no era un control. El proyecto ya habia decidido lo contrario para el
+    MISMO problema cuatro dias antes -- `calibration/calibrator.py:65-80`
+    devuelve None y sirve en crudo, con esta razon escrita: *"un control cuyo
+    veredicto no cambia lo que pasa despues no es un control (AUD-LOW-001). Y el
+    fichero se abre con `joblib.load`, que es deserializacion de pickle"*. La
+    correccion se aplico a uno solo de los dos cargadores que hacen `joblib.load`
+    de un artefacto de disco (auditoria integral 2026-09-10, AUD-MED-012).
+
+    Sin sidecar NO se falla: los `.joblib` entrenados antes de que `_persist`
+    empezara a escribirlo no lo tienen, y romper su carga seria una regresion.
+    Lo que no puede seguir pasando es que un digest que NO cuadra deje pasar el
+    pickle igualmente.
+    """
     sidecar = path.with_suffix(path.suffix + ".sha256")
     if not sidecar.exists():
         return
@@ -46,8 +61,11 @@ def _check_hash(path: Path) -> None:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     if h.hexdigest() != expected:
-        _log.warning("joblib integrity check FAILED for %s — file may have been "
-                     "modified since training; loading anyway", path.name)
+        raise ValueError(
+            f"integridad joblib FALLIDA en {path.name}: el digest no coincide "
+            "con su sidecar .sha256. El fichero cambio desde el entrenamiento y "
+            "NO se deserializa (joblib.load ejecuta pickle). Re-entrena el "
+            "modelo o restaura el artefacto original.")
 
 
 def _load(root: Path, sport: str, name: str):

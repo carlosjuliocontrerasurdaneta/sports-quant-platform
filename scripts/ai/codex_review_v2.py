@@ -217,15 +217,29 @@ def main() -> int:
         # `subprocess.TimeoutExpired` lo recoge el `except` de abajo y se
         # registra como run fallido, que es exactamente el estado correcto: un
         # reviewer que no termino no es un reviewer limpio.
+        # SIN `shell=True` (AUD-MED-017, auditoria integral 2026-09-10).
+        # `shell=(os.name == "nt")` estaba aqui solo para poder lanzar el shim
+        # `codex.cmd` de npm, que CreateProcess no ejecuta directamente. El
+        # atajo arrastraba el interprete completo: con `shell=True` y una
+        # secuencia de argumentos, CPython construye la linea con
+        # `list2cmdline`, que cita para el parser de argv del CRT y NO para los
+        # metacaracteres de cmd.exe. Una ruta de instalacion con `&`, `|`, `^`,
+        # `(`, `)` o `>` -- todos legales en un nombre de directorio de Windows
+        # -- partia la linea y ejecutaba el resto como un segundo comando. Es
+        # decir: la ruta de instalacion de una CLI se convertia en codigo.
+        # Ahora el lanzador de .cmd se pide EXPLICITAMENTE y solo cuando hace
+        # falta, con la ruta como argumento y no como texto de linea de comando.
+        _argv = [str(codex), "exec", "-"]
+        if os.name == "nt" and str(codex).lower().endswith((".cmd", ".bat")):
+            _argv = [os.environ.get("COMSPEC", "cmd.exe"), "/c", *_argv]
         result = subprocess.run(
-            [str(codex), "exec", "-"],
+            _argv,
             input=build_prompt(interpreter, scratch, run),
             cwd=ROOT,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            shell=(os.name == "nt"),
             check=False,
             timeout=CODEX_TIMEOUT_S,
         )

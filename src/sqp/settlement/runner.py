@@ -6,7 +6,9 @@ settled in a prior run is never graded twice.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pandas as pd
 from sqp.config import ROOT, Settings
@@ -15,7 +17,7 @@ from sqp.pipeline.daily import _league_meta
 from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
 from sqp.storage.lock import locked
 from sqp.providers.odds_api import OddsAPIClient
-from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start,
+from sqp.settlement.settle import (HALF_RESULTS, STALE_VOID_DAYS, _parse_start,
                                    settle_candidates, void_stale_candidates)
 from sqp.sports.team_names import normalize_key
 from sqp.storage.served_store import ServedStore
@@ -23,6 +25,89 @@ from sqp.storage.served_store import ServedStore
 log = get_logger("sqp.settle")
 
 DEDUP_KEY = ["event_id", "market", "selection", "line", "generated_at"]
+
+# Identidad de un PICK (sin generacion): la que ve el operador en la lista.
+_PICK_IDENTITY = ["event_id", "market", "selection", "line"]
+SUPERSEDED_FLAG = "superseded"
+# Dias de archivo que se revisan buscando picks que dejaron la lista antes del
+# partido. Sobra con el horizonte de eventos (7 dias) mas margen.
+SUPERSEDED_LOOKBACK_DAYS = 14
+_ARCHIVE_DAY = re.compile(r"_(\d{4}-\d{2}-\d{2})\.csv$")
+
+
+def _pick_identity(df: pd.DataFrame) -> pd.Series:
+    line = pd.to_numeric(df["line"], errors="coerce").map(str)
+    return (df["event_id"].astype(str) + "|" + df["market"].astype(str) + "|"
+            + df["selection"].astype(str) + "|" + line)
+
+
+def superseded_candidates(league: str, current: pd.DataFrame | None, *,
+                          pred_dir: Path | None = None,
+                          now: datetime | None = None,
+                          lookback_days: int = SUPERSEDED_LOOKBACK_DAYS) -> pd.DataFrame:
+    """Picks REALES publicados en los ultimos ``lookback_days`` (archivo
+    ``archive/candidates_<liga>_<dia>.csv``) que YA NO estan en el fichero
+    vigente: una fila por identidad (evento, mercado, seleccion, linea), la de
+    su ULTIMA generacion, con flag ``superseded``.
+
+    El ledger solo graduaba la ultima vista de ``candidates_<liga>.csv``. Un
+    pick listado el dia D para un partido de D+k que no sobrevive al refresco
+    de D+1 (edge por debajo de ``min_edge``, linea distinta) desaparecia sin
+    `revoke` ni `void`: medido entre el 2026-08-16 y el 2026-09-08, 132 de 730
+    unidades (evento, mercado) listadas nunca recibieron veredicto pese a que
+    el stream servido las graduo (auditoria integral 2026-09-13,
+    AUD-MED-003). Con stake real, un pick apostado el dia D no se liquidaria
+    nunca y la banca dinamica quedaria desalineada del dinero.
+
+    Una fila por IDENTIDAD, no por generacion: el operador apuesta un pick una
+    vez, aunque lo vea listado siete dias. Se conserva la generacion mas
+    reciente porque es el ultimo precio/stake que se le mostro. Los picks que
+    siguen en el fichero vigente los gradua la ruta normal; los que ya estan
+    en ``settled_`` los descarta ``_persist_settled`` por ``DEDUP_KEY``.
+
+    Best-effort: un archivo ilegible se salta; sin archivo, frame vacio."""
+    pred_dir = Path(pred_dir) if pred_dir is not None else ROOT / "data" / "predictions"
+    archive = pred_dir / "archive"
+    if not archive.is_dir():
+        return pd.DataFrame()
+    now = now or datetime.now(timezone.utc)
+    suelo = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    frames: list[pd.DataFrame] = []
+    for f in sorted(archive.glob(f"candidates_{league}_*.csv")):
+        m = _ARCHIVE_DAY.search(f.name)
+        if m is None or m.group(1) < suelo:
+            continue
+        try:
+            df = pd.read_csv(f)
+        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            continue
+        if df.empty or not set(_PICK_IDENTITY + ["generated_at"]).issubset(df.columns):
+            continue
+        if "data_label" in df.columns:
+            df = df[df["data_label"].astype(str) == "real"]
+        if not df.empty:
+            frames.append(df)
+    if not frames:
+        return pd.DataFrame()
+    todo = pd.concat(frames, ignore_index=True)
+    todo["_id"] = _pick_identity(todo)
+    # Orden cronologico por sello parseado (no por texto): sobrevive la
+    # generacion mas reciente de cada identidad.
+    todo["_ts"] = pd.to_datetime(todo["generated_at"], errors="coerce", utc=True,
+                                 format="ISO8601")
+    todo = (todo.sort_values("_ts", kind="stable", na_position="first")
+                .drop_duplicates("_id", keep="last"))
+    if (current is not None and not current.empty
+            and set(_PICK_IDENTITY).issubset(current.columns)):
+        vivas = set(_pick_identity(current))
+        todo = todo[~todo["_id"].isin(vivas)]
+    todo = todo.drop(columns=["_id", "_ts"]).reset_index(drop=True)
+    if todo.empty:
+        return todo
+    flags = (todo["flags"].fillna("").astype(str).replace("nan", "")
+             if "flags" in todo.columns else pd.Series("", index=todo.index))
+    todo["flags"] = (flags + ";" + SUPERSEDED_FLAG).str.lstrip(";")
+    return todo
 
 
 def _scores_map(raw: list[dict]) -> dict[str, tuple[int, int, str]]:
@@ -67,13 +152,25 @@ def _attach_event_meta(settled: pd.DataFrame, meta: dict[str, dict]) -> pd.DataF
     """Add home/away/game_date columns to settled rows, keyed by event_id.
 
     Unmatched event_ids get empty strings (cosmetic; backfill fills them later).
+
+    RELLENA, NO PISA (AUD-MED-001, auditoria integral 2026-09-10). Desde que
+    `BetCandidate` lleva `home`/`away`, las filas liquidadas ya llegan con la
+    identidad que registro el pick. La version anterior asignaba la columna
+    entera desde el payload de /scores, asi que un evento AUSENTE de ese payload
+    -- normal: la ventana de scores son 3 dias -- borraba a "" una identidad que
+    el pick si tenia. Se conserva lo que ya hay y solo se completa lo vacio.
     """
     if settled.empty:
         return settled
     settled = settled.copy()
     for col in ("home", "away", "game_date"):
-        settled[col] = settled["event_id"].map(
+        desde_scores = settled["event_id"].map(
             lambda e: meta.get(str(e), {}).get(col, ""))
+        if col in settled.columns:
+            previo = settled[col].fillna("").astype(str)
+            settled[col] = previo.where(previo.str.strip() != "", desde_scores)
+        else:
+            settled[col] = desde_scores
     return settled
 
 
@@ -142,6 +239,34 @@ def history_scores_map(pending: pd.DataFrame, results: list[dict],
     return scores
 
 
+def tennis_history_results(league: str) -> list[dict]:
+    """Resultados del TOUR (data/historical/results_{atp,wta}.csv) en el
+    formato que consume ``tennis_scores_map`` (con ``winner``).
+
+    El historico de tenis se guarda orientado home=ganador (espn_tennis), asi
+    que el emparejamiento ORDENADO de ``history_scores_map`` fallaba cada vez
+    que The Odds API listaba al ganador como visitante. ``tennis_scores_map``
+    empareja sin orden por (par de jugadores, fecha), que es lo correcto en
+    tenis. Best-effort: [] si no hay tour o no hay historico."""
+    from sqp.providers.espn_tennis import tour_from_league
+    from sqp.storage.results_store import ResultsStore
+    tour = tour_from_league(league)
+    if not tour:
+        return []
+    out: list[dict] = []
+    for m in ResultsStore(ROOT).load(tour):
+        try:
+            hs, as_ = int(m["home_score"]), int(m["away_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if hs == as_:
+            continue
+        out.append({"home": m.get("home", ""), "away": m.get("away", ""),
+                    "date": m.get("date", ""),
+                    "winner": m.get("home") if hs > as_ else m.get("away")})
+    return out
+
+
 def _grade_served_from_history(league: str, three_way: bool = False) -> int:
     """Fallback for served rows the daily scores feed can never grade (older
     than The Odds API 3-day window; audit 2026-08-02, M-01): match them against
@@ -160,10 +285,16 @@ def _grade_served_from_history(league: str, three_way: bool = False) -> int:
         # vía: caducaban por stale_void con la evidencia ya descargada en
         # data/historical/ (auditoría 2026-08-05).
         history_key = tour_from_league(league) or league
-        results = ResultsStore(ROOT).load(history_key)
-        if not results:
-            return 0
-        scores = history_scores_map(still, results)
+        if history_key != league:
+            # Tenis: emparejamiento sin orden por par de jugadores + fecha
+            # (AUD-MED-004, 2026-09-13); el ordenado dejaba sin graduar la
+            # mitad de las filas, las del ganador listado como visitante.
+            scores = tennis_scores_map(still, tennis_history_results(league))
+        else:
+            results = ResultsStore(ROOT).load(history_key)
+            if not results:
+                return 0
+            scores = history_scores_map(still, results)
         if not scores:
             return 0
         return _grade_served(league, scores, three_way=three_way)
@@ -342,6 +473,27 @@ def _grade_served(league: str, scores: dict[str, tuple[int, int, str]],
         return 0
 
 
+def _con_superseded(league: str, cands: pd.DataFrame) -> pd.DataFrame:
+    """Candidates vigentes + picks desplazados (``superseded_candidates``),
+    alineados por union de columnas. Best-effort: si el archivo falla, se
+    liquida solo lo vigente, que es lo que se hacia hasta el 2026-09-13."""
+    try:
+        extra = superseded_candidates(league, cands)
+    except Exception as exc:
+        log.warning("[%s] no se pudieron recuperar los picks desplazados del "
+                    "archivo: %s", league, exc)
+        return cands
+    if extra.empty:
+        return cands
+    log.info("[%s] %d pick(s) que dejaron la lista antes del partido entran a "
+             "liquidacion con flag '%s'.", league, len(extra), SUPERSEDED_FLAG)
+    if cands is None or cands.empty:
+        return extra
+    cols = list(cands.columns) + [c for c in extra.columns if c not in cands.columns]
+    return pd.concat([cands.reindex(columns=cols), extra.reindex(columns=cols)],
+                     ignore_index=True)
+
+
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     """Grade tennis candidates via ESPN results matched by player name + date.
     Players and the match date come from predictions_<league>.csv (written by the
@@ -350,7 +502,13 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     cand_path = pred_dir / f"candidates_{league}.csv"
     pred_path = pred_dir / f"predictions_{league}.csv"
     pending_served = ServedStore(ROOT).pending(league)
-    if not cand_path.exists() and pending_served.empty:
+    # Picks que dejaron la lista antes del partido (AUD-MED-003): se graduan
+    # con los mismos resultados, una fila por identidad, flag `superseded`.
+    # Se leen AQUI para que una liga sin fichero vigente ni stream pendiente
+    # pero con picks archivados por liquidar no salga antes de tiempo.
+    cands = _con_superseded(
+        league, pd.read_csv(cand_path) if cand_path.exists() else pd.DataFrame())
+    if cands.empty and pending_served.empty:
         return pd.DataFrame()
     if provider is None:
         from sqp.providers.espn_tennis import ESPNTennisResultsProvider
@@ -401,15 +559,21 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
         _grade_served_from_history(league)
         if results_trusted:
             _void_stale_served(league)
-    if not cand_path.exists():
+    if cands.empty:
         return pd.DataFrame()
     if not pred_path.exists() or pred_path.stat().st_size <= 1:
         log.warning("[%s] no predictions file to recover players/date for tennis "
                     "settlement; skipped.", league)
         return pd.DataFrame()
-    cands = pd.read_csv(cand_path)
     preds = pd.read_csv(pred_path)
-    scores = tennis_scores_map(preds, results)
+    # Lo que el feed vivo de ESPN no cubre puede estar ya en data/historical/
+    # (backfill diario del tour): mismo fallback que el stream servido tiene
+    # desde el 2026-08-05 y que los candidates no heredaron. Sin el, un pick
+    # de tenis listado el dia del partido se quedaba sin veredicto y el run
+    # siguiente lo sobrescribia (18 unidades medidas, AUD-MED-004). El feed
+    # vivo manda cuando ambos responden.
+    scores = {**tennis_scores_map(preds, tennis_history_results(league)),
+              **tennis_scores_map(preds, results)}
     settled = settle_candidates(cands, scores)
     # Misma puerta de salud del payload que arriba (ya registrada en el log).
     if results_trusted:
@@ -435,7 +599,12 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         return pd.DataFrame()
     cand_path = ROOT / "data" / "predictions" / f"candidates_{league}.csv"
     pending_served = ServedStore(ROOT).pending(league)
-    if not cand_path.exists() and pending_served.empty:
+    # Picks que dejaron la lista antes del partido (AUD-MED-003), leidos antes
+    # de decidir si hay algo que liquidar: sin ellos una liga sin fichero
+    # vigente salia aqui con picks archivados sin veredicto.
+    cands = _con_superseded(
+        league, pd.read_csv(cand_path) if cand_path.exists() else pd.DataFrame())
+    if cands.empty and pending_served.empty:
         return pd.DataFrame()
     client = client or OddsAPIClient(settings.odds_api_key, settings.regions)
     raw = client.fetch_scores(meta["sport_key"], days_from=days_from)
@@ -471,9 +640,8 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
         _grade_served_from_history(league, three_way=three_way)
         if scores_trusted:
             _void_stale_served(league)
-    if not cand_path.exists():
+    if cands.empty:
         return pd.DataFrame()
-    cands = pd.read_csv(cand_path)
     settled = settle_candidates(cands, scores, three_way)
     if scores_trusted:
         settled = _with_stale_voids(league, cands, settled, scores,
@@ -486,6 +654,9 @@ def realized_roi(settled: pd.DataFrame) -> float:
     """Realized ROI over staked (win/loss) rows; 0.0 if nothing graded."""
     if settled.empty:
         return 0.0
-    graded = settled[settled["result"].isin(["win", "loss"])]
+    # Las medias (linea asiatica de cuarto, AUD-MED-002) tienen pnl, asi que
+    # su stake entra en el denominador: si no, el ROI mezclaria numerador y
+    # denominador de conjuntos distintos.
+    graded = settled[settled["result"].isin(["win", "loss", *HALF_RESULTS])]
     staked = graded["stake"].sum()
     return float(settled["pnl"].sum() / staked) if staked else 0.0

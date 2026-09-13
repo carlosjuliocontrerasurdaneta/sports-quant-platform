@@ -2,7 +2,7 @@
 
 - Python package: `src/sqp`; tests: `tests`; operational scripts: `scripts`.
 - Search before broad exploration. If the target file, symbol, schema, or path is already known, read it directly.
-- Never load complete CSV/Parquet datasets or broad `data/`, `logs/`, `historical/`, or `exports/` trees into model context. Programmatic full-dataset scans are allowed when necessary if only targeted aggregates, schemas, samples, or findings are returned to context.
+- Never load complete CSV/Parquet datasets or broad `data/` (incluidos `data/historical/`, `data/odds/`, `data/predictions/`, `data/models/`) or `logs/` trees into model context. Programmatic full-dataset scans are allowed when necessary if only targeted aggregates, schemas, samples, or findings are returned to context.
 - Keep changes scoped to the requested behavior. Do not perform unrelated refactors, formatting, dependency updates, cleanup, or documentation unless requested or required by the Obsidian rule below.
 - Run the narrowest relevant test first. For final validation, use `pytest -q`, `ruff check src scripts tests`, and `mypy src` when they are relevant to the files changed. Inspect non-Python operational scripts with an appropriate targeted validation rather than assuming the Python checks cover them.
 - For quantitative work, verify temporal/target leakage, train-test contamination, timestamp semantics, odds freshness, calibration, numerical validity, and backtest validity against the project's canonical implementation/configuration. Never invent thresholds, cutoffs, or formulas that are not defined by the project.

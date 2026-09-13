@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "quotes": [
+    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"spread","side":"home","line":-0.25,"price_decimal":1.95,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
+    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"spread","side":"away","line":0.25,"price_decimal":1.95,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
+    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"total","side":"over","line":3.0,"price_decimal":2.2,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"},
+    {"event_id":"DEMO-NOT-A-REAL-EVENT","period":"regulation","market":"total","side":"under","line":3.0,"price_decimal":1.8,"bookmaker":"SYNTHETIC-BOOK","timestamp":"2026-09-10T11:59:00Z","source":"Synthetic fixture"}
+  ]
+}

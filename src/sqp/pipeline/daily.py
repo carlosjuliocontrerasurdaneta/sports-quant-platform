@@ -3,6 +3,7 @@
 Single bankroll, single risk engine, every league flows through here.
 """
 from __future__ import annotations
+import re
 import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -47,7 +48,23 @@ DISCLAIMER = ("This output contains estimated probabilities only. It does not "
               "are risky and model error is expected.")
 
 
+# Alfabeto permitido para un id de liga. Existe porque el id de liga de TENIS
+# viene de la respuesta JSON del proveedor -- `scripts/run_all.py:_active_tennis`
+# devuelve `s["key"]` de /sports tal cual -- y se interpola en nombres de fichero
+# (`predictions_{league}.csv`, `odds_{league}_{mes}.csv`, el `.joblib` del
+# calibrador...). Las ramas de SPORT_KEYS y de futbol exigen pertenencia a una
+# lista y lanzan KeyError; la de tenis no comprobaba nada, asi que una clave con
+# separadores de ruta salia del arbol de datos. Reproducido el 2026-09-10:
+# `_league_meta("tennis_../../../configs/x")` no lanzaba y la ruta resuelta caia
+# fuera de data/predictions (AUD-MED-002).
+_LEAGUE_ID = re.compile(r"[a-z0-9_]+")
+
+
 def _league_meta(league: str) -> dict:
+    if not _LEAGUE_ID.fullmatch(league or ""):
+        raise KeyError(
+            f"League id invalido: {league!r}. Solo se admite [a-z0-9_]+ porque "
+            "el id compone rutas de fichero y llega de una respuesta remota.")
     if league in SPORT_KEYS:
         meta = dict(SPORT_KEYS[league])
     elif league.startswith("tennis_") or league in ("atp", "wta"):
@@ -166,7 +183,7 @@ _PROBABLE_MATCH_TOLERANCE_S = 12 * 3600
 
 def _attach_probable_pitchers(events: list[EventOdds], league: str,
                               normalize: Callable[[str | None], str] | None = None,
-                              provider=None) -> None:
+                              provider=None, root: Path | None = None) -> None:
     """Attach announced probable starters to live MLB events, matched by
     (home, away) and then by closest start time.
 
@@ -186,7 +203,21 @@ def _attach_probable_pitchers(events: list[EventOdds], league: str,
     overwrote the earlier one and both estimates ran with identical starters.
 
     Best-effort: unmatched events stay flagged 'starter unknown' and produce no
-    bet candidates. `provider` is injectable for testing."""
+    bet candidates. `provider` is injectable for testing.
+
+    `root` es el arbol donde se APENDA el log de confirmacion de pitchers; por
+    defecto el ROOT del modulo, que es lo correcto en produccion. Es inyectable
+    porque no serlo ya costo datos: esta funcion escribia contra el ROOT global
+    y `tests/test_probable_pitchers_series.py` la llamaba directa, asi que cinco
+    tests inyectaban filas SINTETICAS en el historico REAL. Se comprobo el
+    2026-09-10 sobre la copia de produccion del operador:
+    `data/historical/pitcher_confirmation_log_mlb.csv` contenia dos filas
+    "Game1/Game2 Home Ace" fechadas 2026-08-23T02:03:09Z, es decir contaminacion
+    de una ejecucion de la suite, no de un run. El dataset alimenta el
+    pre-registro de timing de starters (docs/research/2026-08-22-*): evidencia
+    fabricada entrando como valida es justo lo que ese experimento no puede
+    permitirse. Un parametro con default es mas barato que recordar aislar el
+    global en cada test futuro -- arregla la CLASE, no las cinco instancias."""
     if provider is None:
         from sqp.providers.mlb_statsapi import MLBStatsProvider
         provider = MLBStatsProvider()
@@ -226,7 +257,8 @@ def _attach_probable_pitchers(events: list[EventOdds], league: str,
     log.info("[%s] probable starters attached to %d/%d events.", league, matched, len(events))
     if confirmed_rows:
         from sqp.storage.starters import log_pitcher_confirmation
-        log_pitcher_confirmation(ROOT, league, confirmed_rows)
+        log_pitcher_confirmation(root if root is not None else ROOT,
+                                 league, confirmed_rows)
 
 
 def _closest_probable(cands: list[dict], ev_t: datetime | None) -> dict | None:
@@ -722,8 +754,35 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # Load all captured odds for this league once; used per-selection below to
     # compute pregame line movement (adverse movement deflates adjusted_edge).
     # Empty when no snapshots exist yet (demo mode, new league).
+    #
+    # EL IMPORT ES DIFERIDO Y NO PUEDE SUBIR A LA CABECERA (AUD-MED-015,
+    # auditoria integral 2026-09-10). Ademas del motivo de arriba, sostiene un
+    # CICLO de cinco modulos:
+    #
+    #   daily -> markets.line_movement -> audit.clv_movement -> audit.clv
+    #         -> backtesting.roi_engine -> daily          (a nivel de MODULO)
+    #
+    # `roi_engine` importa `_consensus_counts` y compañia de este modulo en su
+    # cabecera, asi que subir esta linea produce
+    # `ImportError: cannot import name '_consensus_counts' from partially
+    # initialized module 'sqp.pipeline.daily'`. Verificado en ejecucion, en los
+    # dos ordenes de import. El ciclo se detecto con un grafo AST (101 modulos,
+    # 244 aristas, Tarjan); hasta hoy nada en el arbol lo documentaba ni lo
+    # protegia, y el comentario justificaba el diferimiento por OTRA razon.
     from sqp.markets.line_movement import event_line_movement, load_league_odds
-    _league_odds = load_league_odds(league, ROOT / "data" / "odds")
+    # Con los dos coeficientes a 0 el termino de movimiento de linea es INERTE
+    # (`adjusted_edge` lo multiplica por cero), y cargar el historico COMPLETO
+    # de cuotas de la liga para no usarlo es el coste mas grande del run:
+    # medido el 2026-09-13, mlb = 8 ficheros mensuales, 241 MB, 1.587.980
+    # filas, 9,1 s y 342 MB de RAM por run, creciendo ~30 MB/mes (auditoria
+    # integral 2026-09-13, AUD-LOW-003). Con cualquiera de los dos activo se
+    # carga todo, como siempre: la semantica (primer snapshot -> ultimo) no
+    # cambia. `event_line_movement` sobre un frame vacio devuelve None, que es
+    # exactamente lo que recibe `adjusted_edge` cuando no hay movimiento.
+    _movimiento_activo = (float(settings.risk.line_movement_penalty) != 0.0
+                          or float(settings.risk.line_velocity_penalty) != 0.0)
+    _league_odds = (load_league_odds(league, ROOT / "data" / "odds")
+                    if _movimiento_activo else pd.DataFrame())
     _venues = load_yaml(CONFIG_DIR / "venues.yaml").get(league, {})
     for eo in events:
         spread, total = _pick_main_lines(eo)
@@ -893,6 +952,9 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 event_id=eo.event.event_id, league=league, market=key[0],
                 selection=key[1], line=key[2], price_decimal=price,
                 bookmaker="consensus_median",
+                # Sin estas dos, la guarda anti-fabricacion de `settle._grade`
+                # no se activa nunca en la ruta del dinero (AUD-MED-001).
+                home=eo.event.home, away=eo.event.away,
                 model_probability=round(p_model, 4),
                 estimated_probability=round(p_used, 4),
                 calibrated_probability=round(p_decision, 4),

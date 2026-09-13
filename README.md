@@ -1,5 +1,10 @@
 # Sports Quant Platform (SQP)
 
+**Paquete de optimización local, 2026-09-10:** instalación y ejecución en
+[`IMPLEMENTACION.md`](IMPLEMENTACION.md). Incluye cálculo de distribuciones
+vectorizado y un modo independiente opcional con freeze, push y líneas asiáticas.
+El pipeline diario mantiene sus modelos, configuración y controles de riesgo.
+
 Plataforma cuantitativa profesional, modular, auditable y calibrada estadísticamente
 que produce **probabilidades estimadas** para tres mercados — moneyline (1X2 en fútbol),
 spread/handicap y totals (over/under) — sobre un núcleo único compartido y adaptadores
@@ -18,9 +23,9 @@ por familia de deporte.
 |---|---|---|
 | Basketball | NBA, WNBA, NCAAB, WNCAAB | Margen ~ Normal(μ, σ) |
 | American Football | NFL, NCAAF | Margen ~ Normal(μ, σ) |
-| Baseball | MLB | Poisson por equipo (carreras) |
+| Baseball | MLB | Binomial negativa por equipo (carreras); Poisson como alternativa |
 | Hockey | NHL | Poisson por equipo (goles), empates→OT 50/50 |
-| Soccer | 12 ligas preconfiguradas (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, Liga MX, MLS, Brasileirão, Chile, Frauen-Bundesliga, UWCL) + extensible por YAML | Poisson por equipo, 3 vías (1X2), ajuste Dixon-Coles |
+| Soccer | 11 ligas preconfiguradas (EPL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, Liga MX, MLS, Brasileirão, Chile, UWCL) + extensible por YAML | Poisson por equipo, 3 vías (1X2), ajuste Dixon-Coles |
 | Tennis | ATP/WTA cuadros principales | Elo jugador-vs-jugador; solo ganador del partido por ahora |
 
 - **Agregar una liga de fútbol** = una entrada en `configs/leagues/soccer.yaml`.
@@ -61,10 +66,13 @@ YAML por liga / defaults de código): ver [`docs/CONFIG-PRECEDENCE.md`](docs/CON
 ## Instalación
 
 ```bash
-pip install -e ".[dev]"
-cp .env.example .env       # poner ODDS_API_KEY para modo live
-pytest -q
+python scripts/setup_local.py --verify
 ```
+
+En Windows también puede ejecutarse `INSTALL_LOCAL.bat`. La instalación crea
+`.venv`, usa `requirements.lock` y ejecuta validaciones. No crea `.env` ni
+ejecuta trabajos live. La configuración e integración con una instalación
+existente están explicadas en [`IMPLEMENTACION.md`](IMPLEMENTACION.md).
 
 ## Ejecución
 
@@ -80,8 +88,21 @@ DIARIO_COMPLETO.bat
 ```
 
 > **Orden crítico:** el run diario SOBRESCRIBE `data/predictions/candidates_*.csv`; por eso
-> la liquidación debe correr ANTES (si falla, `DIARIO_COMPLETO.bat` aborta el run). Como
-> respaldo, el pipeline archiva en `data/predictions/archive/` antes de sobrescribir.
+> la liquidación debe correr ANTES. Como respaldo, el pipeline archiva en
+> `data/predictions/archive/` antes de sobrescribir.
+>
+> El contrato real de aborto, dicho con precisión (auditoría integral 2026-09-10):
+> `DIARIO_COMPLETO.bat` aborta el run **si `SETTLE_ALL.bat` devuelve un código
+> distinto de 0**, y `scripts/settle_all.py` devuelve 0 cuando alguna liga falló
+> al liquidar pero **ninguna retiene picks ya comenzados sin liquidar**. Esa
+> decisión está razonada en el propio script (bajo shadow mode el recurso escaso
+> es la muestra liquidada, no el capital) y es deliberada. Lo que no era cierto
+> es la versión corta que estaba aquí —«si falla, aborta»—: el aborto es
+> condicional, y conviene saberlo antes de confiar en él.
+>
+> `RUN_DIARIO_ALL.bat` por sí solo **no** impone ese orden: sólo lo documenta.
+> La garantía vive dentro de `DIARIO_COMPLETO.bat`, que es el que debe estar en
+> el Programador de tareas (y es el que está).
 
 `RUN_DIARIO_ALL.bat` ejecuta `scripts/run_all.py --mode live`, que:
 - **auto-detecta** las ligas en temporada (`/sports`) y corre tantas como permita el
@@ -193,4 +214,3 @@ ajustes y riesgos específicos que guían la evolución de cada adaptador.
 5. El backtest demo usa datos sintéticos y solo valida la mecánica, jamás rentabilidad.
 6. NFL: las distribuciones normales ignoran key numbers (3, 7); tratar spreads cerca de
    key numbers con cautela.
-

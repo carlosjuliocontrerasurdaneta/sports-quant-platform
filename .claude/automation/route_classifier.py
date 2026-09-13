@@ -3,8 +3,10 @@
 
 RETIRADO COMO HOOK el 2026-09-01 (decision del operador). Esta logica vivio en
 `.claude/hooks/route-model.py` con un `main()` que leia stdin y emitia el JSON
-de `UserPromptSubmit`, pero ese hook **nunca estuvo cableado**: `settings.json`
-solo declara `PostToolUse` y `Stop`, asi que las 24 rutas de
+de `UserPromptSubmit`, pero ese hook **nunca estuvo cableado**: cuando se
+retiro, `settings.json` solo declaraba `PostToolUse` y `Stop` (hoy declara
+ademas `PreToolUse`, matcher `Agent`; `UserPromptSubmit` sigue sin declararse
+-- auditoria integral 2026-09-10), asi que las 24 rutas de
 `model-routing.json` llevaban meses sin ejecutarse mientras varios tests las
 validaban en verde. Codigo muerto con candado.
 

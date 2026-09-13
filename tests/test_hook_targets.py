@@ -205,3 +205,44 @@ def test_the_result_is_capped_so_a_huge_diff_cannot_hang_a_hook(tmp_path):
     assert isinstance(m._MAX, int) and 0 < m._MAX <= 200, (
         "el techo de ficheros desaparecio: un `git status` con cientos de "
         "cambios convertiria un hook de 30 s en uno que no termina")
+
+
+# --- AUD-MED-007 (auditoria integral 2026-09-13): leer no es escribir --------
+# Una auditoria de solo lectura armo los centinelas de tests y de revision
+# cruzada con `sed -n .../risk/prediction_gate.py` y `cat configs/default.yaml`:
+# una suite de ~400 s y una llamada de pago a Codex por turno, sin una edicion.
+
+@pytest.mark.parametrize("cmd", [
+    "cat src/sqp/risk/prediction_gate.py",
+    "sed -n 1,50p src/sqp/pipeline/daily.py | head -20",
+    "grep -n foo configs/default.yaml; head -3 src/cosa.py 2>&1",
+    "PYTHONPATH=src pytest -q tests/test_x.py -p no:cacheprovider 2>/dev/null",
+    "python -c \"print(open('src/cosa.py').read())\"",
+    "git status --porcelain",
+])
+def test_a_read_only_command_yields_no_targets(tmp_path, cmd):
+    m = _targets()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "cosa.py").write_text("x = 1\n", encoding="utf-8")
+    assert not m._es_escritura(cmd)
+    assert m._del_comando(cmd.replace("src/sqp/risk/prediction_gate.py", "src/cosa.py"),
+                          tmp_path) == []
+
+
+@pytest.mark.parametrize("cmd", [
+    "sed -i s/x/y/ src/cosa.py",
+    "echo x > src/cosa.py",
+    "pytest -q > out.txt 2>&1",
+    "ruff check --fix src/cosa.py",
+    "cp a.py src/cosa.py",
+    "python - <<'EOF'\nfrom pathlib import Path\nPath('src/cosa.py').write_text('a')\nEOF",
+    "python -c \"open('src/cosa.py','w').write('x')\"",
+    "powershell Set-Content -Path src/cosa.py -Value x",
+])
+def test_a_writing_command_still_yields_the_paths_it_names(tmp_path, cmd):
+    m = _targets()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "cosa.py").write_text("x = 1\n", encoding="utf-8")
+    assert m._es_escritura(cmd)
+    if "src/cosa.py" in cmd:
+        assert [Path(p).name for p in m._del_comando(cmd, tmp_path)] == ["cosa.py"]

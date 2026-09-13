@@ -29,7 +29,8 @@ def test_load_history_unions_closed_and_open(tmp_path):
     closed = h[h["is_closed"]].iloc[0]
     assert closed["home"] == "NYY" and closed["fecha"] == "2026-06-24" and closed["result"] == "win"
     open_row = h[~h["is_closed"]].iloc[0]
-    assert open_row["home"] == "LAD" and open_row["fecha"] == "2026-06-26" and open_row["result"] == ""
+    local_date = datetime.fromisoformat("2026-06-26T20:00:00+00:00").astimezone().date().isoformat()
+    assert open_row["home"] == "LAD" and open_row["fecha"] == local_date and open_row["result"] == ""
 
 
 def test_open_picks_without_stake_still_appear(tmp_path):

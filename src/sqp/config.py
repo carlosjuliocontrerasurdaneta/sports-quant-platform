@@ -547,7 +547,14 @@ class Settings:
         wt = cfg.get("weather") or {}
         if _env_flag("WEATHER_ENABLED") is None and "enabled" in wt:
             s.weather.enabled = bool(wt["enabled"])
-        if "weather_timeout_s" not in os.environ and "timeout_s" in wt:
+        # Nombre en MAYUSCULAS, como las otras doce comprobaciones vecinas
+        # (auditoria integral 2026-09-10). Decia "weather_timeout_s" en
+        # minuscula: en Linux/Docker/CI la condicion era SIEMPRE cierta (no
+        # existe esa clave) y en Windows `os.environ` normaliza las claves a
+        # mayusculas, asi que una WEATHER_TIMEOUT_S definida SUPRIMIA el yaml
+        # sin que nadie leyera su valor -- dejando el hardcode 10. Un guard
+        # que se comporta distinto segun el sistema operativo no es un guard.
+        if "WEATHER_TIMEOUT_S" not in os.environ and "timeout_s" in wt:
             s.weather.timeout_s = int(wt["timeout_s"])
         if "wind_threshold_kmh" in wt:
             s.weather.wind_threshold_kmh = float(wt["wind_threshold_kmh"])

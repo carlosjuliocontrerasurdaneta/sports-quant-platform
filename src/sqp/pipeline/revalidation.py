@@ -3,8 +3,9 @@
 Correccion de la desventaja de timing (diagnostico 2026-07-14): los picks se
 generan por la manana pero se liquidan contra una realidad que el cierre ya
 preciaba (lineups, abridores, clima). Este pase corre tras cada captura de
-cierre horaria (CAPTURE_CLOSE, sin cuota extra: reusa el snapshot recien
-persistido) y, para los picks del dia cuyo evento comienza dentro de la
+cierre -- cada 30 min desde julio (CAPTURE_CLOSE, SQP_Capture_Close_Cdev
+PT30M; aqui decia "horaria" hasta el 2026-09-13, AUD-LOW-004) y sin cuota
+extra: reusa el snapshot recien persistido y, para los picks del dia cuyo evento comienza dentro de la
 ventana, recalcula el edge al consenso vigente; si el pick ya NO se generaria
 (edge actual < min_edge), lo REVOCA: stake y kelly a 0, flag
 "stale_edge_revoked" y rastro en data/bets/revalidation_log.csv.
@@ -14,8 +15,14 @@ Reglas conservadoras:
   se re-evalua en cada pase posterior hasta el comienzo.
 - Sin snapshot fresco (<= price_max_age_min) no se actua: sin datos no hay
   accion, nunca se revoca a ciegas.
-- Solo toca filas generadas HOY (scoping por dia, como el resto del pipeline)
-  y solo baja stakes, nunca los sube.
+- Solo toca filas del RUN VIGENTE del fichero (la generacion mas reciente
+  presente en candidates_<liga>.csv) y solo baja stakes, nunca los sube. Hasta
+  el 2026-09-13 el criterio era "generadas HOY" en dia UTC, y eso dejaba fuera
+  todo partido que empieza despues de las 00:00Z (noche americana: MLS, WNBA,
+  MLB, NCAAF, Liga MX, sesiones nocturnas del US Open): medido sobre
+  settled_* desde el 2026-08-16, 195 de 369 picks del mismo dia revalidados
+  frente a 2 de 115 del dia UTC siguiente (auditoria integral 2026-09-13,
+  AUD-MED-001).
 - Bajo shadow mode (stakes ya 0) el efecto es de MEDICION: la etiqueta
   reval_action=revoke|keep viaja al settled via la persistencia por union de
   columnas, y permite comparar CLV/ROI de revocados vs mantenidos antes de
@@ -193,6 +200,24 @@ def _prob_basis(row) -> float | None:
     return float(est) if pd.notna(est) else None
 
 
+def _dia_run_vigente(df: pd.DataFrame) -> str | None:
+    """Dia (YYYY-MM-DD) de la generacion MAS RECIENTE presente en el fichero.
+
+    Es el criterio de "run vigente" de los dos pases de revalidacion. El
+    fichero de candidates se reescribe entero en cada run, asi que sus filas
+    comparten generacion; si conviven dos (p. ej. un run partido por la
+    medianoche), manda la ultima. Compararlo con el dia UTC ACTUAL --lo que se
+    hacia hasta el 2026-09-13-- excluia todo partido posterior a las 00:00Z
+    del dia de generacion, que son justo los nocturnos de America
+    (AUD-MED-001). Devuelve None si el fichero no trae sellos legibles: en ese
+    caso nada es evaluable, que es la direccion segura."""
+    if "generated_at" not in df.columns:
+        return None
+    dias = df["generated_at"].astype(str).str[:10]
+    dias = dias[dias.str.fullmatch(r"\d{4}-\d{2}-\d{2}")]
+    return str(dias.max()) if not dias.empty else None
+
+
 def _filas_evaluables(df: pd.DataFrame, starts: dict[str, str], *,
                       today: str, now: datetime,
                       window_min: int) -> list[tuple[int, Any]]:
@@ -203,7 +228,8 @@ def _filas_evaluables(df: pd.DataFrame, starts: dict[str, str], *,
     duplicarse para que el filtro previo y el bucle no puedan divergir: el bucle
     itera exactamente sobre lo que devuelve esta funcion.
 
-    - solo filas generadas HOY (scoping por dia del pipeline);
+    - solo filas del run vigente del fichero (`today` es ese dia, calculado
+      por `_dia_run_vigente`; NO el dia UTC actual, ver AUD-MED-001);
     - un `revoke` es FINAL y no se re-evalua;
     - los picks del modo precision se seleccionan por probabilidad, no por edge:
       revocarlos por edge los eliminaria siempre (su guard propio es el de
@@ -233,7 +259,6 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
     """Re-valida los picks del dia con evento en (now, now+window_min] contra
     el consenso del ultimo snapshot fresco. Devuelve el resumen del pase."""
     now = now or datetime.now(timezone.utc)
-    today = now.date().isoformat()
     summary: dict[str, Any] = {"evaluated": 0, "revoked": 0, "kept": 0,
                                "skipped_no_price": 0, "leagues": []}
     log_rows: list[dict] = []
@@ -259,8 +284,9 @@ def revalidate_candidates(predictions_dir: Path, root: Path, *,
             # filas. Mismo principio que
             # `test_sin_eventos_en_ventana_no_se_consulta_la_red` ya exige para
             # la red en `revalidate_pitchers`.
-            evaluables = _filas_evaluables(df, starts, today=today, now=now,
-                                           window_min=window_min)
+            evaluables = _filas_evaluables(df, starts,
+                                           today=_dia_run_vigente(df) or "",
+                                           now=now, window_min=window_min)
             if not evaluables:
                 continue
             odds = _league_odds(
@@ -348,7 +374,6 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
     de pitcher comparados con normalize_key (acentos/mayusculas)."""
     from sqp.pipeline.daily import _closest_probable, _parse_iso_utc, _prior_day
     now = now or datetime.now(timezone.utc)
-    today = now.date().isoformat()
     nk = normalize or normalize_key
     summary: dict[str, Any] = {"checked": 0, "revoked": 0,
                                "skipped_unmatched": 0}
@@ -421,6 +446,9 @@ def revalidate_pitchers(predictions_dir: Path, root: Path, league: str, *,
 
         # eventos del dia en ventana con linea base de abridores
         targets: dict[str, tuple] = {}
+        # Mismo criterio que `_filas_evaluables`: run vigente del fichero, no
+        # dia UTC actual (AUD-MED-001).
+        today = _dia_run_vigente(df) or ""
         for idx, r in enumerate(df.itertuples()):
             if str(getattr(r, "generated_at", ""))[:10] != today:
                 continue

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Capture a closing-line odds snapshot for leagues with imminent bet events.
 
-Runs hourly (CAPTURE_CLOSE.bat). Spends API quota only on leagues that have open
+Runs every 30 min (CAPTURE_CLOSE.bat, SQP_Capture_Close_Cdev PT30M; el docstring
+decia "hourly" hasta el 2026-09-13, AUD-LOW-004). Spends API quota only on leagues that have open
 candidates with a game commencing within the window. Bounded by a daily credit
 cap and the monthly remaining-quota guard.
 

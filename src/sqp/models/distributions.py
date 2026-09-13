@@ -7,9 +7,22 @@ Every function returns *estimated probabilities*.
 """
 from __future__ import annotations
 import math
+from numbers import Integral
 
 import numpy as np
 from scipy.stats import nbinom, norm, poisson
+
+
+def _finite(name: str, value: float) -> None:
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite, got {value}")
+
+
+def _normal_parameters(mean: float, sigma: float) -> None:
+    _finite("mean", mean)
+    _finite("sigma", sigma)
+    if sigma <= 0:
+        raise ValueError(f"sigma must be positive, got {sigma}")
 
 
 def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | None):
@@ -19,6 +32,9 @@ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | Non
     Continuity-corrected at 0.5 around pushes is intentionally omitted for
     half-point lines; integer lines return push-excluded probabilities.
     """
+    _normal_parameters(mu_margin, sigma)
+    if spread_line is not None:
+        _finite("spread_line", spread_line)
     p_home_win = 1.0 - norm.cdf(0.0, loc=mu_margin, scale=sigma)
     out = {"home_win": p_home_win, "away_win": 1.0 - p_home_win}
     if spread_line is not None:
@@ -37,6 +53,8 @@ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | Non
 def normal_total_probs(mu_total: float, sigma: float, total_line: float | None):
     if total_line is None:
         return {}
+    _normal_parameters(mu_total, sigma)
+    _finite("total_line", total_line)
     if float(total_line).is_integer():
         p_over = 1.0 - norm.cdf(total_line + 0.5, mu_total, sigma)
         p_push = norm.cdf(total_line + 0.5, mu_total, sigma) - norm.cdf(total_line - 0.5, mu_total, sigma)
@@ -76,9 +94,19 @@ def score_pmf(lam: float, max_goals: int = 15, k: float | None = None) -> list[f
 
     `k=None` devuelve Poisson puro: hockey y futbol quedan byte-identicos.
     """
+    _finite("lam", lam)
+    if lam < 0:
+        raise ValueError(f"lam must be non-negative, got {lam}")
+    if isinstance(max_goals, bool) or not isinstance(max_goals, Integral) or max_goals < 0:
+        raise ValueError("max_goals must be a non-negative integer")
+    if k is not None:
+        _finite("k", k)
+    # One vectorized SciPy call instead of one dispatch per score. Keep the
+    # list return type and the existing k<=0 Poisson fallback for compatibility.
+    scores = np.arange(max_goals + 1)
     if k is None or k <= 0:
-        return [poisson.pmf(i, lam) for i in range(max_goals + 1)]
-    return [nbinom.pmf(i, k, k / (k + lam)) for i in range(max_goals + 1)]
+        return poisson.pmf(scores, lam).tolist()
+    return nbinom.pmf(scores, k, k / (k + lam)).tolist()
 
 
 SCORE_RHO_MAX = 0.15
@@ -184,6 +212,11 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
     dc_rho which only touches the i,j<=1 corner; see `_joint_grid`. Default 0.0
     reproduces independence byte for byte.
     """
+    _finite("dc_rho", dc_rho)
+    if spread_line is not None:
+        _finite("spread_line", spread_line)
+    if total_line is not None:
+        _finite("total_line", total_line)
     p_home = score_pmf(lam_home, max_goals, dispersion_k)
     p_away = score_pmf(lam_away, max_goals, dispersion_k)
     joint = _joint_grid(p_home, p_away, score_rho)
@@ -207,6 +240,8 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
                 if t > total_line: over += p
                 elif t == total_line: total_push += p
     mass = win + draw + loss  # normalize truncated grid mass
+    if not math.isfinite(mass) or mass <= 0:
+        raise ValueError("score grid has no finite positive mass; check rates and max_goals")
     win, draw, loss = win / mass, draw / mass, loss / mass
     cover, push = cover / mass, push / mass
     over, total_push = over / mass, total_push / mass

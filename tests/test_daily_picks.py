@@ -329,20 +329,41 @@ class TestVigenciaNoDiaDeGeneracion:
             columns=["generated_at"])
         assert not picks_vigentes_unicos(df).empty
 
-    def test_la_consola_no_tumba_el_cli_con_un_nombre_no_ascii(self):
+    def test_la_consola_no_tumba_el_cli_con_un_nombre_no_ascii(self, monkeypatch):
         """La consola de Windows es cp1252: imprimir 'Cetkovic' (US Open)
         reventaba el CLI con el informe YA escrito en disco, y el .bat se lo
-        tragaba como paso no bloqueante. El helper debe tolerar ademas un flujo
-        que no admita `reconfigure` (una tuberia, un StringIO en tests)."""
+        tragaba como paso no bloqueante.
+
+        AUD-MED-016 (auditoria integral 2026-09-10). Este test NO tenia ni un
+        assert: pasaba identico sustituyendo `consola_utf8` por `def f(): pass`,
+        y el nombre no-ASCII que le da titulo no aparecia por ningun lado. Su
+        poder discriminante era CERO respecto al contrato que anunciaba. Ademas
+        sustituia `sys.stdout` a mano sin tocar `sys.stderr`, que la funcion real
+        SI reconfigura, dejandolo mutado para el resto de la sesion.
+
+        Ahora se afirman las dos mitades del contrato:
+          1. un flujo cp1252 real acaba imprimiendo el nombre sin reventar;
+          2. un flujo sin `reconfigure` (StringIO, tuberia) se tolera."""
         import io
 
         from sqp.logging_config import consola_utf8
-        original = sys.stdout
-        sys.stdout = io.StringIO()  # sin `reconfigure`
-        try:
-            consola_utf8()  # no debe lanzar
-        finally:
-            sys.stdout = original
+
+        # 1. Comportamiento: flujo cp1252 real. Sin reconfigurar, `print` de un
+        #    nombre con diacriticos eslavos lanza UnicodeEncodeError.
+        crudo = io.BytesIO()
+        cp1252 = io.TextIOWrapper(crudo, encoding="cp1252", newline="")
+        monkeypatch.setattr(sys, "stdout", cp1252)
+        monkeypatch.setattr(sys, "stderr", cp1252)
+        consola_utf8()
+        print("Cetkovic".replace("C", "Ć", 1))   # Ćetkovic
+        cp1252.flush()
+        assert "Ć".encode("utf-8") in crudo.getvalue(), (
+            "la consola no quedo en UTF-8: el nombre no se escribio")
+
+        # 2. Robustez: un flujo sin `reconfigure` no puede tumbar el helper.
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        monkeypatch.setattr(sys, "stderr", io.StringIO())
+        consola_utf8()   # no debe lanzar
 
     def test_la_tabla_dice_de_cuando_es_cada_fila(self):
         """Al mezclar runs, una cuota de hace tres dias no debe leerse como
@@ -407,7 +428,9 @@ class TestFiltroPorFechaDelPartido:
         ])
 
     def test_filtra_por_fecha_del_partido_no_de_generacion(self):
-        out = daily_picks.rank_picks(self._dias(), game_date="2026-08-26")
+        from datetime import datetime
+        local_date = datetime.fromisoformat("2026-08-26T18:00:00+00:00").astimezone().date().isoformat()
+        out = daily_picks.rank_picks(self._dias(), game_date=local_date)
         assert list(out["seleccion"]) == ["HOY"]
 
     def test_sin_filtro_devuelve_todo_el_horizonte(self):
@@ -421,12 +444,14 @@ class TestFiltroPorFechaDelPartido:
         assert set(out["liga"]) == {"epl"}
 
     def test_los_tres_filtros_componen(self):
+        from datetime import datetime
+        local_date = datetime.fromisoformat("2026-08-26T18:00:00+00:00").astimezone().date().isoformat()
         out = daily_picks.rank_picks(_served([
             {"league": "mlb", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
             {"league": "mlb", "market": "totals", "start_time": "2026-08-26T18:00:00Z"},
             {"league": "epl", "market": "h2h", "start_time": "2026-08-26T18:00:00Z"},
             {"league": "mlb", "market": "h2h", "start_time": "2026-08-29T18:00:00Z"},
-        ]), league="mlb", market="h2h", game_date="2026-08-26")
+        ]), league="mlb", market="h2h", game_date=local_date)
         assert len(out) == 1
 
 

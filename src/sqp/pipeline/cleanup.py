@@ -118,6 +118,21 @@ def prune_stale_candidates(predictions_dir: Path, bets_dir: Path,
             _archive_existing(pf)
             pf.unlink()
         pruned.append(league)
+    # Segunda pasada: `predictions_<liga>.csv` HUERFANOS. `_finalize` borra el
+    # candidates cuando el run no produce candidatos, asi que una liga fuera de
+    # temporada cuyo ultimo run fue "sin candidatos" nunca entraba en el bucle
+    # de arriba y su predictions quedaba para siempre: 10 ficheros de torneos
+    # de julio-agosto seguian en data/predictions/ el 2026-09-13 (auditoria
+    # integral 2026-09-13, AUD-LOW-001). Sin candidates no hay nada que liquidar
+    # ni que proteger; se archiva antes de borrar, como arriba.
+    for pf in sorted(predictions_dir.glob("predictions_*.csv")):
+        league = pf.stem.replace("predictions_", "")
+        if league in active or (predictions_dir / f"candidates_{league}.csv").exists():
+            continue
+        _archive_existing(pf)
+        pf.unlink()
+        if league not in pruned:
+            pruned.append(league)
     if pruned:
         log.info("Candidatos obsoletos podados (fuera de temporada y liquidados): %s",
                  ", ".join(pruned))
@@ -127,8 +142,18 @@ def prune_stale_candidates(predictions_dir: Path, bets_dir: Path,
 def unsettled_completed_picks(predictions_dir: Path, bets_dir: Path,
                               leagues: Iterable[str], *,
                               now: str | None = None) -> dict[str, int]:
-    """Per-league count of staked, real picks whose game has ALREADY commenced but
-    that are not yet present in ``settled_<league>.csv``.
+    """Per-league count of REAL picks (stake > 0 or not) whose game has ALREADY
+    commenced but that are not yet present in ``settled_<league>.csv``.
+
+    Contaba solo ``stake > 0`` hasta el 2026-09-13. Con el gate de prediccion
+    en default-deny TODOS los stakes son 0, asi que el guard nunca bloqueaba:
+    un fallo de liquidacion en dia de partido se sobrescribia al run siguiente
+    y el pick desaparecia del ledger sin veredicto. Medido: 18 unidades
+    (evento, mercado) listadas el dia del partido, graduadas en el stream
+    servido y ausentes de settled_* (auditoria integral 2026-09-13,
+    AUD-MED-004). Es la misma premisa falsa que N-A-1 ya corrigio en
+    `prune_stale_candidates`: liquidable no es lo mismo que apostable, y
+    `settle_candidates` gradua TODAS las filas.
 
     These are the picks the daily run would make ungradeable by overwriting
     ``candidates_<league>.csv``: the settlement dedup key includes ``generated_at``,
@@ -166,7 +191,7 @@ def unsettled_completed_picks(predictions_dir: Path, bets_dir: Path,
                 or "start_time" not in preds.columns
                 or "event_id" not in preds.columns):
             continue
-        staked = cands[cands["stake"] > 0]
+        staked = cands
         if "data_label" in staked.columns:
             staked = staked[staked["data_label"].astype(str) == "real"]
         if staked.empty:
@@ -207,7 +232,7 @@ def purge_old_artifacts(root: Path, *, days: int = PURGE_RETENTION_DAYS,
                         now: datetime | None = None) -> dict[str, int]:
     """Borra artefactos regenerables/expirados con mas de ``days`` dias.
 
-    Allowlist ESTRICTA — solo tres familias, nunca datos crudos ni settled:
+    Allowlist ESTRICTA — familias regenerables, nunca datos crudos ni settled:
 
     - ``data/predictions/archive/*.csv``: copias de seguridad de candidates/
       predictions ya sobrescritos (la ventana util de recuperacion es dias).
@@ -224,11 +249,23 @@ def purge_old_artifacts(root: Path, *, days: int = PURGE_RETENTION_DAYS,
         "archive": (root / "data" / "predictions" / "archive", "*.csv"),
         "clv_reports": (root / "data" / "bets", "clv_*.md"),
         "closing_credits": (root / "data" / "odds", ".closing_credits_*"),
+        # Familias anadidas el 2026-09-13 (AUD-LOW-002): crecian sin techo.
+        # Medido: report_*.html 81 ficheros / 36 MB (+1,2 MB/dia),
+        # audit_*.md 87, segment_diagnostics_*.md 57, picks_ranked_*.md 14.
+        # Todas regenerables desde el ledger y el stream servido; las vistas
+        # vivas (`report_latest.html`, `*_latest.csv`) no llevan fecha en el
+        # nombre y ademas se excluyen explicitamente abajo.
+        "reports": (root / "data" / "predictions", "report_20*.*"),
+        "picks_ranked": (root / "data" / "predictions", "picks_ranked_20*.md"),
+        "settlement_audits": (root / "data" / "bets", "audit_20*.md"),
+        "segment_diagnostics": (root / "data" / "bets", "segment_diagnostics_20*.md"),
     }
     out: dict[str, int] = {}
     for kind, (folder, pattern) in families.items():
         n = 0
         for f in (folder.glob(pattern) if folder.is_dir() else ()):
+            if "latest" in f.name:
+                continue        # vistas vivas: nunca se purgan
             when = _artifact_date(f.name)
             if when is None:
                 try:

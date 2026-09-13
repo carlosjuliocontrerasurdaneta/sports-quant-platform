@@ -81,7 +81,7 @@ A task is not complete because code was written. Completion requires:
 - relevant tests passing;
 - no known regression hidden or ignored;
 - statistical gates when probabilities, selection, staking, or evaluation change;
-- Obsidian update when required by `.claude/CLAUDE.md`;
+- Obsidian update when required by the ROOT `CLAUDE.md` (not `.claude/CLAUDE.md`, which does not mention Obsidian);
 - explicit list of unverified items.
 
 ## Human approval gates

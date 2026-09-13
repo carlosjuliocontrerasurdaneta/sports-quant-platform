@@ -11,6 +11,8 @@ entregable invisible no es un entregable.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 import pandas as pd
 
 from sqp.audit.html_report import _todos_records, html_dashboard
@@ -60,7 +62,8 @@ class TestTodosLosPicks:
         fallo que el operador detecto el 2026-08-26."""
         r = _todos_records(_served(tmp_path, [
             {"start_time": "2026-08-29T18:00:00Z"}]))[0]
-        assert r["fecha"] == "2026-08-29"
+        expected = datetime.fromisoformat("2026-08-29T18:00:00+00:00").astimezone().date().isoformat()
+        assert r["fecha"] == expected
 
 
 class TestEstaEnElDashboard:

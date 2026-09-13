@@ -322,3 +322,40 @@ def tune_dc_rho(results: list[dict], league: str, family: str,
             "note": ("Grid clamped to a sound Dixon-Coles range and scored by "
                      "three-way log loss; gated by a rolling-origin holdout when "
                      "enabled, else in-sample. Re-validate after season changes.")}
+
+
+def temporal_cutoff(results: list[dict], test_frac: float,
+                    test_start: str | None = None) -> str:
+    """Frontera train/test de la validacion fuera de muestra (fecha ISO).
+
+    IMPLEMENTACION CANONICA (AUD-MED-018, auditoria integral 2026-09-10). Este
+    cuerpo estaba duplicado BYTE A BYTE en `scripts/validate_oos.py:55` y
+    `scripts/oos_pitcher_mlb.py:44`, sin version en `src/` y sin ningun test
+    propio. Es exactamente la superficie donde una correccion de contaminacion
+    train/test se aplica a una copia y no a la otra, y el proyecto tiene regla
+    explicita de verificar la contaminacion "contra la implementacion canonica";
+    no habia ninguna, habia dos copias.
+
+    `test_start` explicito manda sobre la fraccion: un corte pre-registrado no se
+    recalcula. Sin el, se toma la fecha del elemento que deja `test_frac` de la
+    muestra a su derecha.
+
+    PRECONDICION: `results` viene ORDENADO cronologicamente. Lo garantiza
+    `ResultsStore.load` (`sort_values("date")`), que es de donde salen ambos
+    llamadores; con una lista desordenada el corte no significa nada.
+
+    CON `results` VACIO LANZA `IndexError`, y se conserva a proposito: es la
+    causa exacta del fallo de `frauen_bundesliga` del 2026-09-01 (KI-034)
+    -- `max(0, min(-1, 0))` da 0 y `results[0]` no existe --, y
+    `tests/test_validate_oos_exit_code.py::test_cutoff_con_resultados_vacios_reventaba`
+    la fija para que se vea si alguien la reintroduce. El arreglo de KI-034 no
+    fue tolerar la lista vacia aqui, sino no llegar: `validate_oos.py` la detecta
+    antes y se salta esa liga. Tolerarla en este punto DESACTIVARIA ese test y
+    convertiria "no hay nada que validar" en un corte silencioso que deja el
+    entrenamiento vacio. Esta funcion solo se deduplico (AUD-MED-018); su
+    contrato no se toco.
+    """
+    if test_start:
+        return test_start
+    i = max(0, min(len(results) - 1, int(len(results) * (1.0 - test_frac))))
+    return str(results[i].get("date", ""))[:10]

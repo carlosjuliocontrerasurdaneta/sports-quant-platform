@@ -62,15 +62,19 @@ Ante cualquier solicitud de análisis de partido, ejecuta siempre este pipeline 
 - Evaluar si el timing favorece entrar ahora o esperar (próximo a game time para lesiones/alineaciones).
 
 ### Fase 5 — Gestión de Riesgo (Inversor + Arbitrajista)
-- Aplicar el filtro de edge mínimo sobre el **EV**, nunca sobre la divergencia
-  (default: ≥ 3%). Con `gap` positivo y EV negativo NO hay apuesta: el precio ya
-  se comió la ventaja.
-- Calcular Kelly fraccionado (máx 25% del Kelly completo para proteger contra estimaciones inciertas):
+- Aplicar el filtro de edge mínimo sobre el **EV**, nunca sobre la divergencia.
+  El umbral NO se inventa aquí: es `risk.min_edge` de `configs/default.yaml`
+  (**0.02**, es decir 2%). Con `gap` positivo y EV negativo NO hay apuesta: el
+  precio ya se comió la ventaja.
+- Calcular Kelly fraccionado. La fracción NO se inventa aquí: es
+  `risk.kelly_fraction` de `configs/default.yaml` (**0.08** en producción desde
+  2026-08-23; el default de la dataclass es 0.25 y NO es lo que opera). Protege
+  contra estimaciones inciertas, que es el motivo de fraccionar.
   ```
   b            = cuota_decimal - 1
   edge (EV)    = p_estimada × cuota_decimal - 1
   Kelly completo = edge / b        # equivale a (p×b - (1-p)) / b
-  Kelly fraccionado = Kelly_completo × 0.25
+  Kelly fraccionado = Kelly_completo × risk.kelly_fraction   # 0.08 hoy
   Stake recomendado = Kelly_fraccionado × bankroll
   ```
   El numerador es el **EV a la cuota ofrecida**, no `p_estimada - p_sin_vig`.
@@ -115,9 +119,9 @@ ANÁLISIS: [EQUIPO A] vs [EQUIPO B] — [DEPORTE] [FECHA]
 
 💰 GESTIÓN DE RIESGO
   Mercado con mejor edge: [market + side]
-  Kelly fraccionado (25%): X.X% del bankroll
+  Kelly fraccionado (risk.kelly_fraction): X.X% del bankroll
   Stake sugerido (bankroll $X): $Y
-  Umbral mínimo edge: 3% — [PASA / NO PASA]
+  Umbral mínimo edge (risk.min_edge): X.X% — [PASA / NO PASA]
 
 ⚖️ ARBITRAJE
   [Oportunidades detectadas o "No detectado"]
@@ -223,7 +227,7 @@ ROI esperado no es un ROI realizado ni una promesa de beneficio.
    ```
    stake_A = bankroll × (1/odd_A) / (1/odd_A + 1/odd_B)
    stake_B = bankroll - stake_A
-   profit_garantizado = stake_A × odd_A - bankroll
+   retorno_asegurado = stake_A × odd_A - bankroll   # aritmética de la cobertura, NO una promesa
    ```
 3. Reportar % de garantía: `arb% = (1 - (1/odd_A + 1/odd_B)) × 100`
 4. Alertar sobre riesgos de arb: límites de stake, cancelaciones, timing de registro.
@@ -285,3 +289,23 @@ todo lo demás aterriza en una skill cuyo disparador rechaza parte del encargo.
 En todos los casos, el análisis producido aquí viaja como especificación
 funcional, no como autorización: ninguna de esas skills promueve nada a
 producción sin aprobación humana explícita.
+
+---
+
+## Nota de alineación con la configuración canónica
+
+Corregido el 2026-09-10 (auditoría integral, AUD-MED-009). Esta skill declaraba
+umbrales propios que **contradecían la configuración que opera**: «edge ≥ 3%»
+frente a `risk.min_edge: 0.02`, y «Kelly × 0.25» frente a
+`risk.kelly_fraction: 0.08` — es decir, stakes **3,1× mayores** que los de
+producción. `CLAUDE.md` lo prohíbe explícitamente: *«Never invent thresholds,
+cutoffs, or formulas that are not defined by the project»* y *«Use the project's
+canonical definitions for these metrics»*.
+
+Fuente de verdad, en este orden: `configs/default.yaml` → `src/sqp/config.py`
+(`RiskConfig`) → `src/sqp/risk/kelly.py`. Si un valor no aparece ahí, no es un
+umbral del proyecto y no debe usarse en un informe.
+
+Se retiró además el identificador `profit_garantizado`: `.claude/rules/
+betting-output-rules.md` prohíbe garantizar beneficio, y un arbitraje sigue
+sujeto a límites de stake, cancelaciones y cierre de cuenta.

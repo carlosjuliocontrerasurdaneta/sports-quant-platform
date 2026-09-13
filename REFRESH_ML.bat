@@ -21,6 +21,7 @@ set PYTHONPATH=src
 REM Interprete fijo (auditoria 2026-07-24, M-5): bajo el Programador de tareas
 REM el PATH puede resolver otro Python. Fallback a "python" si la ruta no existe.
 if not defined SQP_PYTHON set "SQP_PYTHON=C:\Users\Richard\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%SQP_PYTHON%" echo [AVISO] SQP_PYTHON no existe en la ruta fijada; se cae a "python" del PATH, que puede ser otra version y sin las dependencias pineadas de requirements.lock.
 if not exist "%SQP_PYTHON%" set "SQP_PYTHON=python"
 
 if not exist logs mkdir logs
@@ -29,13 +30,13 @@ echo === SQP - REFRESH ML (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\refresh_ml.log
 echo === SQP - REFRESH ML (%DATE% %TIME%) === >> logs\refresh_ml.log
 "%SQP_PYTHON%" scripts\build_features.py >> logs\refresh_ml.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 "%SQP_PYTHON%" scripts\train_models.py --oos >> logs\refresh_ml.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 "%SQP_PYTHON%" scripts\compare_models.py >> logs\refresh_ml.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 "%SQP_PYTHON%" scripts\health_check.py >> logs\refresh_ml.log 2>&1
-if errorlevel 1 goto :error
+if %ERRORLEVEL% neq 0 goto :error
 
 REM Refresh correcto: limpia SOLO esta etapa.
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage refresh_ml
