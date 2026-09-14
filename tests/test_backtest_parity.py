@@ -164,9 +164,8 @@ def _adjustment_scenario(extra_same_day: bool = False):
     """Historial sintetico con senal de racha: A llega +3, B llega -3.
 
     `extra_same_day` anade una victoria de A EL MISMO DIA del partido apostado
-    (doble jornada). Esa fila puede alimentar el Elo walk-forward (orden de la
-    lista), pero JAMAS las features de ajuste: en produccion las features solo
-    ven partidos liquidados de dias ANTERIORES."""
+    (doble jornada). Esa fila no puede alimentar ni Elo ni las features de
+    ajuste antes de las predicciones de ese dia."""
     results = [
         {"date": "2026-06-01", "home": "A", "away": "CC", "home_score": 5,
          "away_score": 2, "neutral": False, "game_id": "a1"},
@@ -182,8 +181,8 @@ def _adjustment_scenario(extra_same_day: bool = False):
          "away_score": 4, "neutral": False, "game_id": "b3"},
     ]
     if extra_same_day:
-        # Ordena ANTES del partido apostado (("A","AZ") < ("A","B")): el Elo
-        # walk-forward la observa, las features de ajuste no deben verla.
+        # Ordena ANTES del partido apostado (("A","AZ") < ("A","B"));
+        # ni Elo ni las features de ajuste deben verla.
         results.append({"date": "2026-06-10", "home": "A", "away": "AZ",
                         "home_score": 9, "away_score": 0, "neutral": False,
                         "game_id": "same_day"})
@@ -213,7 +212,7 @@ def _expected_home_probability(results, streak_coef: float,
                                              str(r.get("game_id", "")),
                                              str(r.get("home_score", "")),
                                              str(r.get("away_score", ""))))
-    prior = ordered[:-1]           # todo menos el partido apostado (es el ultimo)
+    prior = [r for r in ordered if str(r["date"])[:10] < "2026-06-10"]
     for r in prior:
         adapter.observe(r)
     ev = Event(event_id="e1", sport_key="bt", league="test", home="A", away="B",
@@ -255,8 +254,7 @@ def test_roi_backtest_adjustments_ignore_same_day_games():
     results, odds = _adjustment_scenario(extra_same_day=True)
     risk = RiskConfig(min_edge=0.0, market_shrink=0.0, max_plausible_edge=1.0,
                       streak_coef=0.01)
-    # El Elo walk-forward SI observa la fila del mismo dia (orden de la lista,
-    # comportamiento preexistente del motor); las features NO: diff sigue +6.
+    # Ni Elo ni las features pueden observar resultados del mismo dia.
     expected = _expected_home_probability(results, 0.01, expected_streak_diff=6.0)
     got = _backtest_home_probability(results, odds, risk)
     assert got == round(expected, 4)

@@ -78,8 +78,8 @@ class FileCache:
             return None
 
     def put(self, key: str, data) -> None:
-        self.dir.mkdir(parents=True, exist_ok=True)
         try:
+            self.dir.mkdir(parents=True, exist_ok=True)
             self._file(key).write_text(json.dumps(data), encoding="utf-8")
         except (TypeError, OSError):
             pass  # cache write is best-effort; never break a live fetch over it

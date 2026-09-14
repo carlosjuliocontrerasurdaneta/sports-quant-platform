@@ -10,10 +10,30 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 
 import pandas as pd
+
+
+def _replace(tmp: Path, out: Path) -> None:
+    """Retry transient Windows sharing violations for at most two seconds.
+
+    Readers outside our writer locks may hold a handle without delete sharing.
+    MoveFileEx also reports WinError 5 for an open destination on Windows.
+    Permanent access denial still raises the original error at the deadline.
+    Unrelated errors are never retried.
+    """
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            os.replace(tmp, out)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in (5, 32, 33) or time.monotonic() >= deadline:
+                raise
+            time.sleep(min(.05, max(0., deadline - time.monotonic())))
 
 
 def atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
@@ -42,7 +62,7 @@ def atomic_write_csv(df: pd.DataFrame, out: Path) -> None:
             os.fsync(fd)
         finally:
             os.close(fd)
-        os.replace(tmp, out)
+        _replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
@@ -89,6 +109,6 @@ def atomic_write_json(payload: object, out: Path, *, indent: int | None = 2,
                                 ensure_ascii=ensure_ascii))
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, out)
+        _replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)  # no-op tras un replace exitoso

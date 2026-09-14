@@ -15,6 +15,8 @@ from sqp.calibration.calibrator import (apply_calibration, calibrate_probability
 from sqp.config import ROOT, Settings
 from sqp.pipeline.daily import run_league
 
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
+
 
 def _miscalibrated(n: int = 3000, seed: int = 0) -> pd.DataFrame:
     rng = np.random.default_rng(seed)

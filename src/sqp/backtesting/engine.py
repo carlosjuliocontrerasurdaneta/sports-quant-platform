@@ -43,8 +43,8 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
                           league_params: dict | None = None, warmup: int = 60,
                           spread_lines: tuple[float, ...] = (),
                           total_lines: tuple[float, ...] = ()) -> dict:
-    """Backtest temporal. Sin `spread_lines`/`total_lines` el resultado es
-    identico al historico (los cinco scripts que ya lo llaman no se mueven).
+    """Backtest temporal por bloques diarios. Sin `spread_lines`/`total_lines`
+    solo se evalua moneyline; la interfaz de los consumidores se conserva.
 
     Con lineas, evalua ademas esos mercados contra lineas FIJAS de referencia:
     el desenlace sale del marcador, asi que no hace falta historico de cuotas.
@@ -64,7 +64,14 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
     dates: list[str] = []
     draw_probs, draw_outcomes = [], []
     threeway_ll_terms: list[float] = []
-    for i, r in enumerate(results):
+    # Dates do not establish when a same-day final score became available.
+    # Estimate the whole day against the state at the preceding day's close.
+    pending: list[dict] = []
+    for i, r in enumerate(sorted(results, key=lambda row: str(row.get("date", "")))):
+        if pending and str(r.get("date", ""))[:10] != str(pending[0].get("date", ""))[:10]:
+            for completed in pending:
+                adapter.observe(completed)
+            pending.clear()
         if i >= warmup:
             ev = Event(event_id=str(i), sport_key="bt", league=league,
                        home=r["home"], away=r["away"], start_time=str(r.get("date")),
@@ -105,7 +112,7 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
                 _record(f"totals@{t}",
                         adapter.estimate(ev, None, t).over_estimated_probability,
                         total > t, total == t)
-        adapter.observe(r)
+        pending.append(r)
     mask = [o in (0.0, 1.0) for o in outcomes]  # binary metrics exclude draws
     p = [x for x, m in zip(probs, mask) if m]
     y = [x for x, m in zip(outcomes, mask) if m]

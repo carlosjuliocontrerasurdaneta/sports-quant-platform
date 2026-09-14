@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-13
+actualizada: 2026-09-14
 ---
 
 # Tareas
@@ -9,6 +9,9 @@ actualizada: 2026-09-13
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
 
 ## Auditoría integral 2026-09-13
+
+- [ ] 2026-09-14 — Verificar independientemente AUD-001 y AUD-003–010 con `verificar-remediacion.md`; implementación y pruebas en `audits/remediation/latest.md`, sin commit. Ver [[Bitácora/2026-09-14]].
+- [ ] 2026-09-14 — Desbloquear AUD-002 con identidad entre fuentes o contrato explícito para eventos ambiguos; recabar carga representativa y fronteras de confianza para AUD-011–013.
 
 - [x] 2026-09-13 — Auditoría integral (fases 0–3) y remediación (4–5): 2 HIGH, 7 MEDIUM, 4 LOW corregidos salvo lo que exige al operador; repositorio Git reconstituido en producción, rama `prod/remediacion-20260913`. Ver [[Bitácora/2026-09-13]] y `audit/latest/`.
 - [x] 2026-09-13 — Las 4 tareas del pipeline pasan a **S4U + WakeToRun** con `scripts\set_tasks_unattended.ps1` (auto-elevación UAC; el operador aceptó el aviso). `SQP_Dashboard_Cdev` sigue interactiva a propósito. Primera prueba real: captura de las 18:30 del 13-09 (AUD-HIGH-002 cerrado).

@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-13
+actualizada: 2026-09-14
 ---
 
 # Bitácora — índice
@@ -9,6 +9,8 @@ actualizada: 2026-09-13
 Diario cronológico del proyecto: una nota por día con trabajo relevante, en `Bitácora/AAAA-MM-DD.md`. Cada entrada resume qué cambió, por qué, con qué commits y qué notas de la bóveda se actualizaron.
 
 ## Entradas
+
+- [[Bitácora/2026-09-14]] — remediación del consolidado: nueve correcciones implementadas, una bloqueada por identidad de eventos y tres investigaciones pendientes; verificación independiente requerida.
 
 - [[Bitácora/2026-09-13]] — auditoría integral + remediación: repositorio reconstituido en producción (94+41 ficheros fuera de `main`), 4 de 7 días sin run, revalidación ciega tras las 00:00Z, líneas de cuarto, picks desplazados fuera del ledger, hooks armados por lecturas.
 - [[Bitácora/2026-09-10]] — PMF vectorizada, validación de parámetros, pricing independiente con freeze, instalación portable y paquete local probado. Sin cambios a riesgo ni publicación GitHub.

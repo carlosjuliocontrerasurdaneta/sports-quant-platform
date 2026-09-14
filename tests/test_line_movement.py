@@ -19,6 +19,8 @@ import pytest
 
 from sqp.markets.line_movement import event_line_movement, load_league_odds
 
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
+
 
 def _fila(captured_at: str, price: float, *, event_id: str = "e1",
           outcome: str = "A", market: str = "h2h", point=None,

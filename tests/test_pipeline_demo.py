@@ -7,6 +7,8 @@ from sqp.pipeline.daily import run_league, _archive_existing
 from sqp.backtesting.engine import walk_forward_backtest
 from sqp.providers.synthetic import SyntheticProvider
 
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
+
 
 @pytest.mark.slow
 def test_demo_pipeline_all_families():
@@ -67,7 +69,7 @@ def test_default_config_unpauses_mlb_totals_with_park_factor():
 
 @pytest.mark.slow
 def test_paused_market_produces_no_actionable_candidates():
-    from sqp.config import ROOT
+    from sqp.pipeline.daily import ROOT
     settings = Settings.load()
     settings.paused_markets = {"mlb": ["totals"]}
     run_league("mlb", settings, mode="demo")
@@ -109,7 +111,7 @@ def test_shadow_mode_records_picks_with_zero_stake():
     # Shadow mode (2026-07-04): the pipeline selects picks exactly as in real
     # mode (selection still requires a would-be-staked candidate) but forces
     # stake 0, so CLV / calibration evidence accrues without risking capital.
-    from sqp.config import ROOT
+    from sqp.pipeline.daily import ROOT
     settings = Settings.load()
     settings.shadow_mode = True
     run_league("mlb", settings, mode="demo")

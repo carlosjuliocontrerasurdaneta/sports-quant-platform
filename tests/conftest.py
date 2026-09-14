@@ -10,6 +10,19 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture
+def isolated_pipeline_outputs(tmp_path, monkeypatch, request):
+    """Redirect pipeline artifacts while retaining canonical config inputs."""
+    from sqp.pipeline import daily
+    root = tmp_path / "pipeline"
+    root.mkdir()
+    monkeypatch.setattr(daily, "ROOT", root)
+    # Some integration tests imported ROOT only to inspect pipeline outputs.
+    if hasattr(request.module, "ROOT"):
+        monkeypatch.setattr(request.module, "ROOT", root)
+    return root
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _identidad_git_para_los_repos_de_prueba() -> None:
     """Identidad de git para CUALQUIER commit que haga la suite.

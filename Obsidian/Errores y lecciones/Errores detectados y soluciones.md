@@ -1,7 +1,7 @@
 ---
 tags: [errores, bugs, sqp]
 creada: 2026-07-08
-actualizada: 2026-08-04
+actualizada: 2026-09-14
 ---
 
 # Errores detectados y soluciones
@@ -9,6 +9,9 @@ actualizada: 2026-08-04
 Fuente canónica: `.claude/memory/known-issues.md` (KI-001…KI-018, con estado). Aquí, los errores más instructivos y su solución. Todos los KI están RESUELTOS o mitigados al 2026-07-08, salvo KI-002 (nombres soccer, verificable ~post 19-jul), KI-005 (vendor Frauen-Bundesliga) y KI-006 parcial (moneyline MLB/NHL sin señal específica).
 
 ## Integridad de datos
+
+- **Remediación consolidada 2026-09-14, pendiente de revisión independiente:** congelar el adaptador durante el día evita incorporar resultados aún no disponibles; recuperar metadata archivada permite liquidar candidatos desplazados. Atomicidad del archivo no basta para un append: el lock debe cubrir lectura, unión y escritura. Reintento acotado conserva publicación ante lectores transitorios Windows. Detalles, pruebas y bloqueos en `audits/remediation/latest.md` y [[Bitácora/2026-09-14]].
+- **Identidad entre proveedores (AUD-002, abierto):** proximidad de fechas y equipos no prueba identidad; tampoco igualdad del marcador. El store actual no conserva los campos suficientes para reconciliar todas las ambigüedades sin una decisión adicional.
 
 - **Empates 0-0 fabricados (MLB)**: statsapi marca pospuestos como Final SIN score; el default `.get("score", 0)` fabricó 24 empates que contaminaron Elo y backtest. Fix: score obligatorio + filtro de detailedState. *Lección: nunca rellenar datos ausentes.*
 - **Doubleheaders colapsados**: la clave (date, home, away) perdía 21 juegos MLB reales. Fix: game_id del vendor en la clave de dedup (esquema v2).

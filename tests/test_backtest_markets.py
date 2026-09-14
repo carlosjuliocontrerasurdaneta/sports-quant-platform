@@ -10,6 +10,7 @@ Los desenlaces salen del marcador, así que este arnés no necesita histórico d
 cuotas: se evalúa contra líneas fijas de referencia.
 """
 import math
+from datetime import date, timedelta
 
 import pytest
 from sqp.backtesting.engine import walk_forward_backtest
@@ -26,7 +27,9 @@ def _hockey_rows(n: int = 240) -> list[dict]:
     rows = []
     for i in range(n):
         h, a = pairs[i % 4]
-        rows.append({"date": f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
+        # Chronological fixture: warmup excludes the first 60 dated games.
+        # Cycling months made rows[60:] differ from the temporal holdout.
+        rows.append({"date": (date(2026, 1, 1) + timedelta(days=i)).isoformat(),
                      "home": h, "away": a,
                      "home_score": 1 + (i % 5), "away_score": (i % 7) % 5})
     return rows

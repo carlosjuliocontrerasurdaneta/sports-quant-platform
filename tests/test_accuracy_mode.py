@@ -14,6 +14,8 @@ import pytest
 
 from sqp.config import ROOT, Settings
 
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
+
 
 def _clean_pick_env(monkeypatch):
     monkeypatch.delenv("PICK_MODE", raising=False)

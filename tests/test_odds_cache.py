@@ -49,6 +49,25 @@ def test_file_cache_roundtrip_and_ttl(tmp_path):
     assert k == c.key("/x", {"a": 1, "apiKey": "other"})
 
 
+@pytest.mark.parametrize("failure", [FileExistsError, PermissionError])
+def test_successful_fetch_survives_cache_mkdir_failure(tmp_path, monkeypatch, failure):
+    session = _CountingSession()
+    client = _client(tmp_path, session, force_refresh=True)
+    from pathlib import Path
+    original = Path.mkdir
+
+    def blocked(path, *args, **kwargs):
+        if path == tmp_path / "cache":
+            raise failure("synthetic cache failure")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", blocked)
+    assert client._get("/sports/baseball_mlb/odds", cache=True) == _ODDS
+    assert session.calls == 1
+    assert client.requests_last == 3
+    assert client.requests_remaining == 100
+
+
 def test_second_fetch_served_from_cache(tmp_path):
     session = _CountingSession()
     client = _client(tmp_path, session, cache_ttl=1000)

@@ -494,13 +494,41 @@ def _con_superseded(league: str, cands: pd.DataFrame) -> pd.DataFrame:
                      ignore_index=True)
 
 
+def _tennis_prediction_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
+    """Latest known metadata per event, including displaced predictions.
+
+    Event IDs are stable within this provider. Prefer the current schedule;
+    otherwise use the newest archived snapshot within the candidate lookback.
+    Predictions historically lack generated_at, so archive day is the available
+    snapshot ordering, not an invented match-time or generation timestamp.
+    """
+    pred_dir = ROOT / "data" / "predictions"
+    floor = (datetime.now(timezone.utc) - timedelta(days=SUPERSEDED_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+    paths = [p for p in sorted((pred_dir / "archive").glob(f"predictions_{league}_*.csv"))
+             if (m := _ARCHIVE_DAY.search(p.name)) and m.group(1) >= floor]
+    paths.append(pred_dir / f"predictions_{league}.csv")
+    ids = set(cands["event_id"].astype(str))
+    frames = []
+    for path in paths:
+        try:
+            frame = pd.read_csv(path)
+        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            continue
+        if not {"event_id", "home", "away", "start_time"}.issubset(frame.columns):
+            continue
+        frame["event_id"] = frame["event_id"].astype(str)
+        frames.append(frame[frame["event_id"].isin(ids)])
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True).drop_duplicates("event_id", keep="last")
+
+
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     """Grade tennis candidates via ESPN results matched by player name + date.
-    Players and the match date come from predictions_<league>.csv (written by the
-    same run that produced the candidates)."""
+    Players and match dates come from current predictions, with archived
+    metadata as fallback for candidates displaced by a later daily run."""
     pred_dir = ROOT / "data" / "predictions"
     cand_path = pred_dir / f"candidates_{league}.csv"
-    pred_path = pred_dir / f"predictions_{league}.csv"
     pending_served = ServedStore(ROOT).pending(league)
     # Picks que dejaron la lista antes del partido (AUD-MED-003): se graduan
     # con los mismos resultados, una fila por identidad, flag `superseded`.
@@ -561,11 +589,11 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
             _void_stale_served(league)
     if cands.empty:
         return pd.DataFrame()
-    if not pred_path.exists() or pred_path.stat().st_size <= 1:
+    preds = _tennis_prediction_metadata(league, cands)
+    if preds.empty:
         log.warning("[%s] no predictions file to recover players/date for tennis "
                     "settlement; skipped.", league)
         return pd.DataFrame()
-    preds = pd.read_csv(pred_path)
     # Lo que el feed vivo de ESPN no cubre puede estar ya en data/historical/
     # (backfill diario del tour): mismo fallback que el stream servido tiene
     # desde el 2026-08-05 y que los candidates no heredaron. Sin el, un pick

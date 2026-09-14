@@ -2,11 +2,14 @@
 edge-plausibility cap that flags miscalibrated selections instead of staking them.
 """
 import pandas as pd
+import pytest
 from sqp.config import ROOT, RiskConfig, Settings
 from sqp.domain.models import Event
 from sqp.models.team_scoring import TeamScoringRates
 from sqp.pipeline.daily import run_league
 from sqp.sports.registry import get_adapter
+
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
 
 
 def _ev(home: str, away: str) -> Event:

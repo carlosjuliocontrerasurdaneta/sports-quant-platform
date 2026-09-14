@@ -44,7 +44,7 @@ from sqp.logging_config import get_logger
 from sqp.markets.edge import adjusted_edge
 from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
                                 _pick_main_lines, _spread_novig)
-from sqp.pipeline.probabilities import (adjust_model_probability,
+from sqp.pipeline.probabilities import (_consensus_spread, adjust_model_probability,
                                         build_adjustment_context,
                                         build_model_map)
 from sqp.risk.kelly import edge, kelly_fraction_stake
@@ -266,6 +266,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     are bet and counted; earlier games still feed the walk-forward ratings.
     This is the out-of-sample evaluation window: parameters frozen on the train
     period (date < bet_from_date) are scored only on later, unseen games."""
+    if risk.line_movement_penalty != 0 or risk.line_velocity_penalty != 0:
+        raise ValueError("ROI backtest cannot apply movement/velocity penalties without historical trajectories")
     adapter = get_adapter(league, family, league_params)
     # Orden determinista: el emparejamiento resultado<->cuotas es codicioso con
     # consumo (`used`), asi que el reparto depende del ORDEN de entrada. Con
@@ -284,7 +286,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     order_insensitive = family == "tennis"  # players have no home/away orientation
     idx = _match_index(odds_by_id, order_insensitive)
     # Historial walk-forward por equipo: (indice, fecha, fila) apendizados en
-    # el MISMO punto que adapter.observe. Las features de ajuste de un partido
+    # despues de cada prediccion. Las features de ajuste de un partido
     # solo pueden ver partidos de fechas estrictamente anteriores (via
     # _prior_games): en produccion se computan sobre resultados ya liquidados
     # (dias previos), nunca sobre partidos del mismo dia (dobles jornadas).
@@ -304,7 +306,14 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     cand_rows: list[dict] = []
     scores: dict[str, tuple[int, int, str]] = {}
     n_matched = 0
+    pending: list[dict] = []
     for i, r in enumerate(results):
+        # A start timestamp is not evidence that a final result was available.
+        # Keep adapter state frozen throughout each daily prediction batch.
+        if pending and str(r.get("date", ""))[:10] != str(pending[0].get("date", ""))[:10]:
+            for completed in pending:
+                adapter.observe(completed)
+            pending.clear()
         in_window = bet_from_date is None or str(r.get("date", ""))[:10] >= bet_from_date
         if i >= warmup and in_window:
             eo = _match_result(r, idx, used, order_insensitive)
@@ -318,6 +327,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                 est = adapter.estimate(ev, spread, total)
                 cons = _consensus_lines(eo)
                 cons_n = _consensus_counts(eo)
+                cons_spread = _consensus_spread(eo)
                 # Map final score to the odds' home/away orientation.
                 if normalize_key(r["home"]) == normalize_key(eo.event.home):
                     hs, as_ = int(r["home_score"]), int(r["away_score"])
@@ -357,7 +367,10 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                                         anomaly_edge_gap=risk.anomaly_edge_gap,
                                         anomaly_extra_penalty=risk.anomaly_extra_penalty,
                                         low_book_penalty=risk.low_book_penalty,
-                                        min_books_for_consensus=risk.min_books_for_consensus)
+                                        min_books_for_consensus=risk.min_books_for_consensus,
+                                        books_spread=cons_spread.get(key),
+                                        books_spread_penalty=risk.books_spread_penalty,
+                                        books_spread_threshold=risk.books_spread_threshold)
                     stake, _pct = kelly_fraction_stake(
                         adj.effective_probability, price, bankroll, risk.kelly_fraction,
                         risk.max_stake_pct, risk.min_edge)
@@ -372,9 +385,9 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                         "line": key[2], "price_decimal": price,
                         "stake": stake, "estimated_edge": round(e, 4),
                         "estimated_probability": round(p_used, 4)})
-        adapter.observe(r)
-        # Mismo punto walk-forward que observe: el partido i entra al historial
-        # de features SOLO despues de haberse apostado/estimado.
+        pending.append(r)
+        # El historial puede acumular filas del dia, pero _prior_games filtra
+        # estrictamente fechas anteriores, igual que el estado del adaptador.
         hn, an = _norm(str(r.get("home", ""))), _norm(str(r.get("away", "")))
         rec = (i, str(r.get("date", ""))[:10], r)
         team_hist[hn].append(rec)

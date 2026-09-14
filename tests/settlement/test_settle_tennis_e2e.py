@@ -9,11 +9,33 @@ grade home/away sides, attach event meta, persist idempotently.
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import pytest
 
 from sqp.settlement import runner
 from sqp.settlement.runner import _settle_tennis
 
 LEAGUE = "atp_wimbledon"
+
+
+@pytest.mark.parametrize("current_exists", [False, True])
+def test_superseded_tennis_recovers_archived_metadata(tmp_path, monkeypatch, current_exists):
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write_inputs(tmp_path)
+    base = tmp_path / "data" / "predictions"
+    archive = base / "archive"
+    archive.mkdir()
+    for kind in ("candidates", "predictions"):
+        (base / f"{kind}_{LEAGUE}.csv").rename(archive / f"{kind}_{LEAGUE}_{YDAY}.csv")
+    if current_exists:
+        pd.DataFrame([dict(event_id="other", home="Other", away="Player",
+                           start_time=f"{YDAY}T12:00:00Z")]).to_csv(
+            base / f"predictions_{LEAGUE}.csv", index=False)
+    first = _settle_tennis(LEAGUE, 2, provider=FakeESPN(_results()))
+    assert first.set_index("event_id")["result"].to_dict() == {"e1": "win", "e2": "loss"}
+    assert first.set_index("event_id")["pnl"].to_dict() == {"e1": 8., "e2": -5.}
+    assert set(first["game_date"]) == {YDAY}
+    assert _settle_tennis(LEAGUE, 2, provider=FakeESPN(_results())).empty
+    assert len(pd.read_csv(tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv")) == 2
 
 # Fechas relativas a hoy: con fechas fijas el fixture envejece y el void por
 # expiracion (STALE_VOID_DAYS) liquidaria el pick "pendiente" e3.

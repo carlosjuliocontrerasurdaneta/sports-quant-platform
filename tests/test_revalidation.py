@@ -12,6 +12,8 @@ import pytest
 from sqp.config import Settings
 from sqp.pipeline.revalidation import revalidate_candidates
 
+pytestmark = pytest.mark.usefixtures("isolated_pipeline_outputs")
+
 NOW = datetime(2026, 7, 1, 20, 0, tzinfo=timezone.utc)
 START_IN_WINDOW = "2026-07-01T21:00:00Z"       # 60 min despues de NOW
 FRESH_CAPTURE = "2026-07-01T19:40:00Z"         # 20 min antes de NOW

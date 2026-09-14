@@ -67,24 +67,21 @@ def _append_log(rows: list[dict], root: Path,
     bets_dir = Path(root) / "data" / "bets"
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / filename
-    new = pd.DataFrame(rows)
-    if path.exists():
-        try:
-            prior = pd.read_csv(path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            prior = pd.DataFrame()
-        if not prior.empty:
-            cols = list(prior.columns) + [c for c in new.columns
-                                          if c not in prior.columns]
-            new = pd.concat([prior.reindex(columns=cols),
-                             new.reindex(columns=cols)], ignore_index=True)
-    # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
-    # integral 2026-09-08): aporta fsync y un nombre de temporal UNICO por
-    # proceso. El `.csv.tmp` fijo que habia aqui es la colision que AUD-002
-    # senala como causa raiz secundaria, y este log se escribe FUERA del lock
-    # de candidates, asi que dos pases solapados de CAPTURE_CLOSE podian
-    # renombrar el fichero a medio escribir del otro.
-    atomic_write_csv(new, path)
+    # Atomic replacement protects readers, not concurrent read/modify/write.
+    # The log has its own lock, shared by all its append callers.
+    with locked(path):
+        new = pd.DataFrame(rows)
+        if path.exists():
+            try:
+                prior = pd.read_csv(path)
+            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+                prior = pd.DataFrame()
+            if not prior.empty:
+                cols = list(prior.columns) + [c for c in new.columns
+                                              if c not in prior.columns]
+                new = pd.concat([prior.reindex(columns=cols),
+                                 new.reindex(columns=cols)], ignore_index=True)
+        atomic_write_csv(new, path)
 
 
 def _revoke_row(df: pd.DataFrame, idx: int, flag: str, stamp: str) -> None:
