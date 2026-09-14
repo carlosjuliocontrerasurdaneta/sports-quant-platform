@@ -50,3 +50,22 @@ Del operador: (1) abrir/mergear el PR `prod/remediacion-20260913` → `main` y
 comprobar el CI sobre él; (2) decidir el modo de inicio de sesión de las
 tareas; (3) `! cmd /c VALIDATE_OOS.bat`; (4) mover el `.joblib` retirado;
 (5) aprobar el MCP `graphify` o retirar la instrucción de `.claude/CLAUDE.md`.
+
+---
+
+## Registro de enrutamiento — auditoría independiente `audits/` (2026-09-14)
+
+Tarea: `audits/prompts/auditoria-claude-code-opus-5.md` (solo lectura; informe en
+`audits/claude/latest.md`). Sesión principal en `claude-opus-5`. Despachos con el
+parámetro `model` de `Agent`, según la REGLA DE DESPACHO:
+
+- `fable` — lógica cuantitativa (fuga, calibración, gates, liquidación): clase
+  «parámetros de riesgo/modelo/umbral/gate» (el informe alimenta la remediación).
+- `opus` — datos/proveedores/robustez: **abortado por el API (HTTP 429, límite
+  semanal) sin producir salida**; el área la cubrió la sesión principal.
+- `opus` — operaciones/infraestructura/seguridad.
+- `sonnet` — calidad de la suite de pruebas (ingeniería normal).
+
+No se tocó ningún parámetro de riesgo, modelo, estrategia, umbral ni gate; no
+se contradijo ninguna decisión registrada (O-3 del informe deja constancia de la
+tolerancia K=41/50 sin cambiarla).
