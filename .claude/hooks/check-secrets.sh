@@ -15,25 +15,7 @@ input=$(cat)
 proyecto="${CLAUDE_PROJECT_DIR:-.}"
 ficheros=$(printf '%s' "$input" | python "$proyecto/.claude/hooks/_targets.py" --with-git 2>/dev/null)
 [ -z "${ficheros:-}" ] && exit 0
-# Tres patrones (auditoria 2026-07-29, S-9: el original exigia comillas, asi que
-# `set ODDS_API_KEY=abc...` en un .bat y `key: valor` en YAML pasaban sin detectar):
-#   1. asignacion con comillas   API_KEY = "valor"
-#   2. asignacion sin comillas   set API_KEY=valor   /   API_KEY=valor  (.bat, .env)
-#   3. separador de dos puntos   api_key: valor      (YAML)
-#   4. tokens con prefijo reconocible, sin necesidad de nombre de variable
-_names='(API_KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)'
-_patron="(${_names}[A-Z0-9_]*[[:space:]]*=[[:space:]]*[\"'][^\"']{8,}[\"'])|(${_names}[A-Z0-9_]*[[:space:]]*=[[:space:]]*[^[:space:]\"';#]{8,})|(${_names}[A-Z0-9_]*[[:space:]]*:[[:space:]]*[^[:space:]\"'#]{8,})|(sk-[A-Za-z0-9_-]{20,})|(Bearer[[:space:]]+[A-Za-z0-9._-]{20,})"
-# El vocabulario de marcadores incluye los ESPAÑOLES (auditoria integral
-# 2026-09-10). La lista solo cubria los ingleses (`your_`, `placeholder`,
-# `dummy`, `changeme`, `xxx`) sobre un repositorio cuya documentacion es
-# española, asi que el hook se disparaba sobre su propia plantilla de
-# instalacion -- `IMPLEMENTACION.md:125`, `ODDS_API_KEY=TU_CLAVE`, 8 caracteres,
-# justo en el umbral del patron 2. Reproducido tres veces durante esa auditoria,
-# bloqueando lecturas legitimas. Este repositorio repite que "una alarma que
-# suena sin motivo es una alarma que se aprende a ignorar"
-# (DIARIO_COMPLETO.bat); un detector de secretos que grita sobre su propio
-# ejemplo es el primer candidato a que lo desconecten.
-_ruido='os\.environ|getenv|dotenv|environ\.get|\$\{|\$env:|%[A-Za-z_]+%|\bexample\b|placeholder|changeme|dummy|your_|xxx|<[A-Za-z_]+>|[Tt][Uu]_[A-Za-z_]+|<[A-Z_]+>'
+# Los placeholders se filtran sobre el VALOR, nunca sobre comentarios.
 encontrado=""
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -61,7 +43,7 @@ while IFS= read -r file; do
   case "$ruta" in
     */data/*|*/historical/*|*/exports/*|*/logs/*) continue ;;
   esac
-  hits=$(grep -niE "$_patron" "$file" 2>/dev/null | grep -vE "$_ruido" || true)
+  hits=$(python "$proyecto/.claude/hooks/_secret_literals.py" "$file" 2>/dev/null || true)
   if [ -n "$hits" ]; then
     encontrado="${encontrado}${file}:
 ${hits}
