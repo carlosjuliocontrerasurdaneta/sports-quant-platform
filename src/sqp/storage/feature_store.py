@@ -16,6 +16,8 @@ import pandas as pd
 from sqp.config import ROOT
 from sqp.features import mlb as mlb_features
 from sqp.features import builders as _builders_module
+from sqp.features import temporal as _temporal_module
+from sqp.features import common as _common_module
 from sqp.features.builders import CONFIGS, build_team_rolling_dataset
 from sqp.features.common import write_state_csv
 from sqp.logging_config import get_logger
@@ -136,6 +138,8 @@ def builder_fingerprint(league: str) -> str:
     """
     h = hashlib.sha256()
     h.update(league.encode("utf-8"))
+    h.update(_module_source(_temporal_module))
+    h.update(_module_source(_common_module))
     if league == "mlb":
         h.update(repr([mlb_features.ROLLING_WINDOWS, mlb_features.EWM_SPAN,
                        mlb_features.RUN_DEFAULT]).encode("utf-8"))

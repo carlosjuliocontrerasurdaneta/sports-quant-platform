@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from sqp.features.common import rest_days
+from sqp.features.temporal import ordered_games
 from sqp.storage.atomic import atomic_write_csv
 
 ROLLING_WINDOWS = [7, 14, 30]
@@ -85,6 +86,14 @@ def _update_pitcher_stats(pitcher: str, ra: float, stats: dict) -> None:
     stats[key]["ra_history"].append(ra)
 
 
+def pitcher_name(value) -> str:
+    """Null is an absent identity, never a shared pitcher named 'nan'."""
+    if value is None or pd.isna(value):
+        return ""
+    name = str(value).strip()
+    return "" if name.lower() in {"nan", "none", "<na>"} else name
+
+
 def build_mlb_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Build the MLB training dataset. Returns (dataset, final_stats). Pure."""
     needed = {"home_team", "away_team", "home_score", "away_score"}
@@ -93,16 +102,26 @@ def build_mlb_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         raise ValueError(f"build MLB dataset: missing columns {sorted(missing)}")
 
     df = df.dropna(subset=["home_team", "away_team", "home_score", "away_score"])
-    time_col = next((c for c in ("commence_time", "start_time") if c in df.columns), None)
-    sort_cols = ["date"] + ([time_col] if time_col else []) + (["game_id"] if "game_id" in df.columns else [])
-    df = df.sort_values([c for c in sort_cols if c in df.columns]).reset_index(drop=True)
+    df = ordered_games(df)
 
     stats: dict[str, dict] = {}
     rows: list[dict] = []
+    pending: list[tuple] = []
+
+    def flush() -> None:
+        for home, away, hs, aws, hp, ap, day in pending:
+            _update_team_stats(home, hs, aws, hs > aws, stats, game_date=day)
+            _update_team_stats(away, aws, hs, aws > hs, stats, game_date=day)
+            _update_pitcher_stats(hp, aws, stats)
+            _update_pitcher_stats(ap, hs, stats)
+        pending.clear()
+
     for _, r in df.iterrows():
+        if pending and pending[0][-1] != r["date"]:
+            flush()
         home, away = str(r["home_team"]), str(r["away_team"])
-        home_pitcher = str(r.get("home_pitcher", "") or "")
-        away_pitcher = str(r.get("away_pitcher", "") or "")
+        home_pitcher = pitcher_name(r.get("home_pitcher"))
+        away_pitcher = pitcher_name(r.get("away_pitcher"))
 
         hf = _get_team_features(home, stats, game_date=r.get("date"))
         af = _get_team_features(away, stats, game_date=r.get("date"))
@@ -127,10 +146,8 @@ def build_mlb_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         row.update({f"away_p_{k}": v for k, v in ap.items()})
         rows.append(row)
 
-        _update_team_stats(home, hs, as_, home_win == 1, stats, game_date=r.get("date"))
-        _update_team_stats(away, as_, hs, home_win == 0, stats, game_date=r.get("date"))
-        _update_pitcher_stats(home_pitcher, as_, stats)  # pitcher allowed the away runs
-        _update_pitcher_stats(away_pitcher, hs, stats)
+        pending.append((home, away, hs, as_, home_pitcher, away_pitcher, r["date"]))
+    flush()
     return pd.DataFrame(rows), stats
 
 

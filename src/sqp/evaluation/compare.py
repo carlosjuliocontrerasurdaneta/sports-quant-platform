@@ -6,8 +6,8 @@ FIRST half of the holdout (ties favour LESS ML, i.e. the smaller weight); the
 recommendation's honest metric is then reported on the disjoint second half
 (audit 2026-07-24, M-27: selecting and scoring on the same slice inflated it).
 
-Simulation probability is the Elo baseline (the core of the moneyline estimate),
-walk-forward over the same ordered games as the ML holdout — so both models are
+Simulation probability comes from the configured sporting adapter,
+walk-forward by complete days over the same games as the ML holdout — both models are
 scored on identical games. Calibration only; never infer profit from this.
 """
 from __future__ import annotations
@@ -19,10 +19,12 @@ import pandas as pd
 
 from sqp.calibration.metrics import calibration_report
 from sqp.config import ROOT
+from sqp.domain.models import Event
+from sqp.features.temporal import holdout_start
+from sqp.features.mlb import pitcher_name
 from sqp.models.blend import blend_probabilities
-from sqp.models.elo import EloRatings
 from sqp.models.ml_train import _clf_pipeline, feature_columns
-from sqp.sports.registry import FAMILY_PARAMS, LEAGUE_OVERRIDES
+from sqp.sports.registry import get_adapter
 from sqp.storage.feature_store import build_training_dataset
 
 LEAGUE_FAMILY = {"mlb": "baseball", "nba": "basketball", "nfl": "football", "nhl": "hockey"}
@@ -30,16 +32,26 @@ BLEND_GRID = (0.25, 0.5, 0.75)
 
 
 def _sim_probs(df: pd.DataFrame, league: str) -> np.ndarray:
-    """Walk-forward Elo P(home win) for each game, using family/league params."""
-    family = LEAGUE_FAMILY[league]
-    params = {**FAMILY_PARAMS[family], **LEAGUE_OVERRIDES.get(league, {})}
-    elo = EloRatings(k=float(params.get("elo_k", 20.0)),
-                     home_advantage=float(params.get("elo_home_adv", 60.0)),
-                     mov_scaling=bool(params.get("elo_mov", False)))
+    """Actual configured adapter, with prior-day state like the canonical replay."""
+    from sqp.pipeline.daily import _league_meta
+    meta = _league_meta(league)
+    adapter = get_adapter(league, meta["family"], meta.get("league_params"))
     probs = []
+    pending: list[dict] = []
     for r in df.itertuples(index=False):
-        probs.append(elo.expected_home_win(r.home_team, r.away_team))
-        elo.update(r.home_team, r.away_team, float(r.home_score), float(r.away_score))
+        day = str(r.date)[:10]
+        if pending and pending[0]["date"] != day:
+            for prior in pending:
+                adapter.observe(prior)
+            pending.clear()
+        hp, ap = pitcher_name(getattr(r, "home_pitcher", None)), pitcher_name(getattr(r, "away_pitcher", None))
+        event = Event(str(r.game_id), "comparison", league, r.home_team, r.away_team, day,
+                      home_pitcher=hp, away_pitcher=ap)
+        probs.append(adapter.estimate(event, None, None).home_win_estimated_probability)
+        pending.append({"date": day, "home": r.home_team, "away": r.away_team,
+                        "home_score": float(r.home_score), "away_score": float(r.away_score),
+                        "home_starter": hp, "away_starter": ap,
+                        "neutral": getattr(r, "neutral", False)})
     return np.asarray(probs, dtype=float)
 
 
@@ -49,7 +61,7 @@ def compare_league(league: str, val_fraction: float = 0.20, root: Path = ROOT) -
 
     df = build_training_dataset(league, root=root).sort_values("date").reset_index(drop=True)
     cols = feature_columns(df)
-    split = int(len(df) * (1.0 - val_fraction))
+    split = holdout_start(df["date"], val_fraction)
     if split < 50 or len(df) - split < 10:
         raise ValueError(f"[{league}] not enough rows: {split}/{len(df) - split}")
 
@@ -78,7 +90,9 @@ def compare_league(league: str, val_fraction: float = 0.20, root: Path = ROOT) -
 
     # Weight SELECTION on the first half of the holdout, honest evaluation on
     # the disjoint second half; ties favour less ML.
-    mid = max(1, len(y) // 2)
+    mid = holdout_start(df.iloc[split:]["date"], 0.5)
+    if mid < 1 or mid >= len(y):
+        raise ValueError("blend selection and evaluation require distinct dates")
 
     def _ll(p, yy) -> float:
         return calibration_report(p, yy)["log_loss"]
