@@ -1,10 +1,33 @@
 """Tests for the MLB feature builder (runs + pitcher form). SYNTHETIC only."""
 from __future__ import annotations
 
+import pandas as pd
+import pytest
+
 from sqp.features.mlb import build_mlb_dataset
 from sqp.storage import feature_store as fs
 from sqp.storage.results_store import ResultsStore
 from sqp.storage.starters import StartersStore
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), pd.NA, ""])
+@pytest.mark.parametrize("side", ["home", "away"])
+def test_missing_pitchers_do_not_accumulate_shared_history(missing, side):
+    known_side = "away" if side == "home" else "home"
+    runs_allowed = 5.0 if known_side == "away" else 3.0
+    games = pd.DataFrame([
+        {"date": f"2024-04-0{i}", "home_team": "NYY", "away_team": "BOS",
+         "home_score": 5, "away_score": 3,
+         f"{side}_pitcher": missing, f"{known_side}_pitcher": "Cole"}
+        for i in range(1, 4)
+    ])
+    out, stats = build_mlb_dataset(games)
+    assert out[f"{side}_p_starts"].tolist() == [0, 0, 0]
+    assert out[f"{side}_p_ra_l5"].tolist() == [4.5, 4.5, 4.5]
+    assert out[f"{side}_pitcher"].tolist() == ["", "", ""]
+    assert out[f"{known_side}_p_starts"].tolist() == [0, 1, 2]
+    assert out[f"{known_side}_p_ra_l5"].tolist() == [4.5, runs_allowed, runs_allowed]
+    assert {key for key in stats if key.startswith("__p_")} == {"__p_Cole"}
 
 
 def _seed_mlb(root):

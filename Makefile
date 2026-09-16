@@ -4,7 +4,7 @@
 install:
 	pip install -e ".[dev]" -c requirements.lock
 test:
-	pytest -q
+	pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest
 demo:
 	python scripts/run_daily.py --sports mlb nba nfl nhl --mode demo
 lint:

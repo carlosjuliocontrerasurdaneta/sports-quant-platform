@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from sqp.features.common import get_team_features, update_team_stats
+from sqp.features.temporal import ordered_games
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,11 @@ CONFIGS: dict[str, SportFeatureConfig] = {
 
 def build_team_rolling_dataset(df: pd.DataFrame, cfg: SportFeatureConfig) -> tuple[pd.DataFrame, dict]:
     """Build a pregame training dataset from games with home_team/away_team/
-    home_score/away_score (+ optional date, game_id, season, week).
+    home_score/away_score and date (+ optional game_id, season, week).
 
     Returns (dataset, final_team_state). Pure: no files written. Features for
-    each game are computed BEFORE that game's result is folded in, so there is
-    no leakage.
+    each game use only results from earlier UTC days. Start times alone do not
+    establish when other same-day results became available.
     """
     needed = {"home_team", "away_team", "home_score", "away_score"}
     missing = needed - set(df.columns)
@@ -45,18 +46,23 @@ def build_team_rolling_dataset(df: pd.DataFrame, cfg: SportFeatureConfig) -> tup
         raise ValueError(f"build dataset for {cfg.sport}: missing columns {sorted(missing)}")
 
     df = df.dropna(subset=["home_team", "away_team", "home_score", "away_score"])
-    if "week" in df.columns:
-        sort_cols = ["date", "week"]
-    else:
-        # Prefer an explicit start time for intra-day ordering (doubleheaders).
-        # game_id alone is not guaranteed to be chronologically monotone.
-        time_col = next((c for c in ("commence_time", "start_time") if c in df.columns), None)
-        sort_cols = ["date"] + ([time_col] if time_col else []) + (["game_id"] if "game_id" in df.columns else [])
-    df = df.sort_values([c for c in sort_cols if c in df.columns]).reset_index(drop=True)
+    df = ordered_games(df)
 
     team_stats: dict[str, dict] = {}
     rows: list[dict] = []
+    pending: list[tuple] = []
+
+    def flush() -> None:
+        for home, away, hs, aws, day in pending:
+            update_team_stats(home, hs, aws, hs > aws, team_stats,
+                              cfg.pts_default, game_date=day)
+            update_team_stats(away, aws, hs, aws > hs, team_stats,
+                              cfg.pts_default, game_date=day)
+        pending.clear()
+
     for _, r in df.iterrows():
+        if pending and pending[0][-1] != r["date"]:
+            flush()
         home, away = str(r["home_team"]), str(r["away_team"])
         hf = get_team_features(home, team_stats, cfg.rolling_windows, cfg.ewm_span,
                                cfg.pts_default, game_date=r.get("date"), rest_cap=cfg.rest_cap)
@@ -88,9 +94,8 @@ def build_team_rolling_dataset(df: pd.DataFrame, cfg: SportFeatureConfig) -> tup
         row["diff_rest_days"] = hf["rest_days"] - af["rest_days"]
         rows.append(row)
 
-        update_team_stats(home, home_score, away_score, home_win == 1, team_stats,
-                          cfg.pts_default, game_date=r.get("date"))
-        update_team_stats(away, away_score, home_score, home_win == 0, team_stats,
-                          cfg.pts_default, game_date=r.get("date"))
+        pending.append((home, away, home_score, away_score, r["date"]))
+
+    flush()
 
     return pd.DataFrame(rows), team_stats

@@ -1,0 +1,132 @@
+{
+  "checked_at": "2026-09-16T04:20:12.740472+00:00",
+  "experiment": "data\\models\\feature_shadow_20260915_v2",
+  "status": "INTEGRITY_CHECKS_PASSED_FORWARD_EVALUATION_PENDING",
+  "protocol_sha256": "12374c3cfdc33265c4fdb63962810ad79d9bfe746e8415f075d7efea6d589fbf",
+  "frozen_code_config_sha256": "627604a0265160980462ed9a205165afa4a288883696579b4579915952b19915",
+  "integrated_code_config_sha256": "a97a12fee6e0b6bfc99a324fa02aa640ea8a05bdff6d152381182992a0ff0442",
+  "runtime_versions": {
+    "python": "3.14.4",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2",
+    "sklearn": "1.9.0",
+    "joblib": "1.5.3",
+    "scipy": "1.17.1"
+  },
+  "start": "2026-09-16T00:00:00+00:00",
+  "end_exclusive": "2027-09-16T00:00:00+00:00",
+  "n_candidates": 12,
+  "training": [
+    {
+      "candidate_id": "atp/h2h/schedule",
+      "n_train": 8141,
+      "train_through": "2026-09-13"
+    },
+    {
+      "candidate_id": "atp/h2h/opponent_form",
+      "n_train": 8141,
+      "train_through": "2026-09-13"
+    },
+    {
+      "candidate_id": "nba/h2h/opponent_form",
+      "n_train": 34064,
+      "train_through": "2026-06-14"
+    },
+    {
+      "candidate_id": "nba/total_score/opponent_form",
+      "n_train": 34065,
+      "train_through": "2026-06-14"
+    },
+    {
+      "candidate_id": "ncaab/h2h/schedule",
+      "n_train": 6331,
+      "train_through": "2026-04-07"
+    },
+    {
+      "candidate_id": "ncaaf/h2h/schedule",
+      "n_train": 3074,
+      "train_through": "2026-09-13"
+    },
+    {
+      "candidate_id": "nfl/total_score/opponent_form",
+      "n_train": 8028,
+      "train_through": "2026-09-14"
+    },
+    {
+      "candidate_id": "nhl/total_score/opponent_form",
+      "n_train": 32837,
+      "train_through": "2026-06-15"
+    },
+    {
+      "candidate_id": "wncaab/h2h/schedule",
+      "n_train": 6125,
+      "train_through": "2026-04-05"
+    },
+    {
+      "candidate_id": "wncaab/h2h/opponent_form",
+      "n_train": 6125,
+      "train_through": "2026-04-05"
+    },
+    {
+      "candidate_id": "wta/h2h/schedule",
+      "n_train": 10988,
+      "train_through": "2026-09-14"
+    },
+    {
+      "candidate_id": "wta/h2h/opponent_form",
+      "n_train": 10988,
+      "train_through": "2026-09-14"
+    }
+  ],
+  "n_complete_batches": 1,
+  "n_archived_rows": 101,
+  "n_first_predictions": 101,
+  "n_first_events": 96,
+  "first_predictions_by_league": {
+    "ncaaf": 75,
+    "nfl": 16,
+    "wta": 10
+  },
+  "heartbeat": {
+    "at": "2026-09-16T04:19:36.506796+00:00",
+    "last_capture": {
+      "n_input": 0,
+      "n_predictions": 0,
+      "reason": "no new eligible fixtures in local odds store"
+    },
+    "pid": 8760,
+    "status": "RUNNING"
+  },
+  "heartbeat_age_seconds": 36.233676,
+  "evaluation_status": "NOT_VERIFIABLE: fixed prospective window has not ended",
+  "promotion": false,
+  "protected_file_hashes": {
+    "data\\models\\feature_shadow_20260915_v2\\protocol.json": "12374c3cfdc33265c4fdb63962810ad79d9bfe746e8415f075d7efea6d589fbf",
+    "data\\models\\feature_shadow_20260915_v2\\atp_h2h_schedule.joblib": "6b13f30562f1adaeba229505c3e1d30faa7e1c9964f577e7b53faae4e4dfeeb7",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_atp.csv": "84534cb8cb75d2069d1bd05aae02b30ed61ec3e12bb4388cdeed8a1b9ea9ecf0",
+    "data\\models\\feature_shadow_20260915_v2\\atp_h2h_opponent_form.joblib": "c7476c54b4af1b76f1d3e5bfef8014bc21d10733cc150231c8ea7c261f91330e",
+    "data\\models\\feature_shadow_20260915_v2\\nba_h2h_opponent_form.joblib": "b956d1987673966c295a67197f627ab2d61fd202364e88e0b597e7d795a88c68",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_nba.csv": "6b2b0e04fda20d518b0f9f5c393b611f15ef018ef616fc97bc218237420b62cf",
+    "data\\models\\feature_shadow_20260915_v2\\nba_total_score_opponent_form.joblib": "7dd0411f0540a509ffc3c068fa925c9f894e02609f8023f6f31402b69a3ad0e6",
+    "data\\models\\feature_shadow_20260915_v2\\ncaab_h2h_schedule.joblib": "2501ea17bfb034b3723f14287a6c2538a23088038a31748279c503c437c8a8e8",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_ncaab.csv": "651a407d1fcae782a1a46629bb29ac70688001f73688899b889be47c95c0e251",
+    "data\\models\\feature_shadow_20260915_v2\\ncaaf_h2h_schedule.joblib": "974c410f7479c55ece9e0fedce4d78d4656417bd7fae7a13cb13da4bd9a4c3d5",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_ncaaf.csv": "e41615eb1e7067605df40fca0b0f0a62f6cb44c9b8a5b02dbe06411aadc8cf2e",
+    "data\\models\\feature_shadow_20260915_v2\\nfl_total_score_opponent_form.joblib": "f70a843ddf19d9536adcd2e5940b8a229014bf92ea96b9d292f9983e804941e6",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_nfl.csv": "ac71dd9bb6f605d33aaef66218975c0b996cc35ff298f0eabe5b031c2d7902cf",
+    "data\\models\\feature_shadow_20260915_v2\\nhl_total_score_opponent_form.joblib": "805d9b0cbc57c9e81cd391233614159500da8c2fe5fad1f3265c10a825f764d9",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_nhl.csv": "73e9ea0b00a44243131af66705c3b4afd33b57bb96c6979f23d4641d0a9f5633",
+    "data\\models\\feature_shadow_20260915_v2\\wncaab_h2h_schedule.joblib": "9b8ebdd9433aca251cadc30332f5aaf20efa891a4901ad1a782f863e1b66a5a8",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_wncaab.csv": "714072373593bc158b2c76c1418eaa70cf6e435fa3badf2e828c6319ce55a206",
+    "data\\models\\feature_shadow_20260915_v2\\wncaab_h2h_opponent_form.joblib": "015560958a4eecec6e2a821420c902b4c75670f4be2153df5e816956d5da3025",
+    "data\\models\\feature_shadow_20260915_v2\\wta_h2h_schedule.joblib": "e9dee49ea08123998f5ce76f53d626a3ee07e82e31129b5c4ef22ea4162999cc",
+    "data\\models\\feature_shadow_20260915_v2\\training\\results_wta.csv": "8b0f37022cfe13752d00197a658b54da027ab70b23bf5f234f940fafd61f668f",
+    "data\\models\\feature_shadow_20260915_v2\\wta_h2h_opponent_form.joblib": "a3474722372ba70ddb8f6258f34a54f5918b1ed7c994324392c8ecd99a2cbf9f"
+  },
+  "limitations": [
+    "No interim outcome metrics calculated",
+    "Hashes are not external signatures",
+    "Current integrated code differs from frozen experiment; continue using frozen capture/evaluation CLI",
+    "No claim of improved prediction or advantage against market odds"
+  ]
+}

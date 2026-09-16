@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "status": "DRAFT_NOT_PREREGISTERED",
+  "discovery_report_sha256": "a74985b4d11be37f3603e10ce091cebd29aef8ac07c9ca79bd24d8a2bc2fc3b1",
+  "discovery_code_config_sha256": "480789fe7af66a83917d4ae2c75b802068d40ee095efb45b1980fa0e1503cceb",
+  "candidates": [
+    {
+      "id": "atp/h2h/schedule",
+      "league": "atp",
+      "target": "h2h",
+      "block": "schedule",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "schedule",
+        "loss": 0.2289999119704868,
+        "delta_vs_baseline": -0.002174946343573057,
+        "delta_lo": -0.00452232641190355,
+        "delta_hi": -9.171062317634514e-05,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.0019055176678800633,
+        "log_loss": 0.6492259064009874
+      },
+      "discovery_through": "2026-09-13",
+      "source_sha256": "84534cb8cb75d2069d1bd05aae02b30ed61ec3e12bb4388cdeed8a1b9ea9ecf0",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "atp/h2h/opponent_form",
+      "league": "atp",
+      "target": "h2h",
+      "block": "opponent_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 0.22575823558386698,
+        "delta_vs_baseline": -0.005416622730192871,
+        "delta_lo": -0.008257341287473572,
+        "delta_hi": -0.002526906454367835,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.005147194054499879,
+        "log_loss": 0.6421479567075424
+      },
+      "discovery_through": "2026-09-13",
+      "source_sha256": "84534cb8cb75d2069d1bd05aae02b30ed61ec3e12bb4388cdeed8a1b9ea9ecf0",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "nba/h2h/opponent_form",
+      "league": "nba",
+      "target": "h2h",
+      "block": "opponent_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 0.2137800698921335,
+        "delta_vs_baseline": -0.0010263121731970966,
+        "delta_lo": -0.0016451929520292677,
+        "delta_hi": -0.0003899186294116095,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.0016018646341304853,
+        "log_loss": 0.6163225258325595
+      },
+      "discovery_through": "2026-06-14",
+      "source_sha256": "6b2b0e04fda20d518b0f9f5c393b611f15ef018ef616fc97bc218237420b62cf",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "nba/total_score/opponent_form",
+      "league": "nba",
+      "target": "total_score",
+      "block": "opponent_form",
+      "metric": "mae",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 15.12070287139492,
+        "delta_vs_baseline": -0.5819086437471968,
+        "delta_lo": -0.6585119562622961,
+        "delta_hi": -0.49464476974449595,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.03654097192120839
+      },
+      "discovery_through": "2026-06-14",
+      "source_sha256": "6b2b0e04fda20d518b0f9f5c393b611f15ef018ef616fc97bc218237420b62cf",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "ncaab/h2h/schedule",
+      "league": "ncaab",
+      "target": "h2h",
+      "block": "schedule",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "schedule",
+        "loss": 0.19719862987875247,
+        "delta_vs_baseline": -0.004710654823712503,
+        "delta_lo": -0.008578889202360867,
+        "delta_hi": -0.00034311071704686724,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.014883013242382986,
+        "log_loss": 0.58111500401302
+      },
+      "discovery_through": "2026-04-07",
+      "source_sha256": "651a407d1fcae782a1a46629bb29ac70688001f73688899b889be47c95c0e251",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "ncaaf/h2h/schedule",
+      "league": "ncaaf",
+      "target": "h2h",
+      "block": "schedule",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "schedule",
+        "loss": 0.1878024633806479,
+        "delta_vs_baseline": -0.006467987751565905,
+        "delta_lo": -0.01246097096615087,
+        "delta_hi": -0.001250894834288687,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.018221664582736018,
+        "log_loss": 0.558387172912874
+      },
+      "discovery_through": "2026-09-13",
+      "source_sha256": "e41615eb1e7067605df40fca0b0f0a62f6cb44c9b8a5b02dbe06411aadc8cf2e",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "nfl/total_score/opponent_form",
+      "league": "nfl",
+      "target": "total_score",
+      "block": "opponent_form",
+      "metric": "mae",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 10.91207509142464,
+        "delta_vs_baseline": -0.12184172413235166,
+        "delta_lo": -0.21374335296089247,
+        "delta_hi": -0.042642268540591576,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.09949383614440646
+      },
+      "discovery_through": "2026-09-14",
+      "source_sha256": "ac71dd9bb6f605d33aaef66218975c0b996cc35ff298f0eabe5b031c2d7902cf",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "nhl/total_score/opponent_form",
+      "league": "nhl",
+      "target": "total_score",
+      "block": "opponent_form",
+      "metric": "mae",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 1.8188351521390556,
+        "delta_vs_baseline": -0.013033294908100198,
+        "delta_lo": -0.017756384209429234,
+        "delta_hi": -0.008957517397081383,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.010374922148001654
+      },
+      "discovery_through": "2026-06-15",
+      "source_sha256": "73e9ea0b00a44243131af66705c3b4afd33b57bb96c6979f23d4641d0a9f5633",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "wncaab/h2h/schedule",
+      "league": "wncaab",
+      "target": "h2h",
+      "block": "schedule",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "schedule",
+        "loss": 0.17306445363600545,
+        "delta_vs_baseline": -0.005051793741798914,
+        "delta_lo": -0.009418421354303408,
+        "delta_hi": -0.0006757992405402693,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.028294782921713474,
+        "log_loss": 0.519966829333
+      },
+      "discovery_through": "2026-04-05",
+      "source_sha256": "714072373593bc158b2c76c1418eaa70cf6e435fa3badf2e828c6319ce55a206",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "wncaab/h2h/opponent_form",
+      "league": "wncaab",
+      "target": "h2h",
+      "block": "opponent_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 0.1671861909630697,
+        "delta_vs_baseline": -0.010930056414734653,
+        "delta_lo": -0.017290513758705443,
+        "delta_hi": -0.004728068027133317,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.03417304559464921,
+        "log_loss": 0.4994619185943876
+      },
+      "discovery_through": "2026-04-05",
+      "source_sha256": "714072373593bc158b2c76c1418eaa70cf6e435fa3badf2e828c6319ce55a206",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "wta/h2h/schedule",
+      "league": "wta",
+      "target": "h2h",
+      "block": "schedule",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "schedule",
+        "loss": 0.231602310356504,
+        "delta_vs_baseline": -0.00304326328449735,
+        "delta_lo": -0.004761909675106646,
+        "delta_hi": -0.0014628748890157047,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.0029317303329246063,
+        "log_loss": 0.6547130081035064
+      },
+      "discovery_through": "2026-09-14",
+      "source_sha256": "8b0f37022cfe13752d00197a658b54da027ab70b23bf5f234f940fafd61f668f",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    },
+    {
+      "id": "wta/h2h/opponent_form",
+      "league": "wta",
+      "target": "h2h",
+      "block": "opponent_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "opponent_form",
+        "loss": 0.22814345772582537,
+        "delta_vs_baseline": -0.006502115915175996,
+        "delta_lo": -0.009658033324823748,
+        "delta_hi": -0.003185485810133295,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.0063905829636032516,
+        "log_loss": 0.647638242042603
+      },
+      "discovery_through": "2026-09-14",
+      "source_sha256": "8b0f37022cfe13752d00197a658b54da027ab70b23bf5f234f940fafd61f668f",
+      "window": 20,
+      "status": "AWAITING_FORWARD_PROTOCOL"
+    }
+  ],
+  "deferred": [
+    {
+      "id": "atp/h2h/venue_form",
+      "league": "atp",
+      "target": "h2h",
+      "block": "venue_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "venue_form",
+        "loss": 0.22713570908218722,
+        "delta_vs_baseline": -0.004039149231872599,
+        "delta_lo": -0.006139762267309941,
+        "delta_hi": -0.0020060192019162775,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.0037697205561796057,
+        "log_loss": 0.645028360496863
+      },
+      "discovery_through": "2026-09-13",
+      "source_sha256": "84534cb8cb75d2069d1bd05aae02b30ed61ec3e12bb4388cdeed8a1b9ea9ecf0",
+      "window": 20,
+      "status": "DEFERRED_PROVIDER_ORIENTATION_AUDIT"
+    },
+    {
+      "id": "wta/h2h/venue_form",
+      "league": "wta",
+      "target": "h2h",
+      "block": "venue_form",
+      "metric": "brier",
+      "discovery_score": {
+        "variant": "venue_form",
+        "loss": 0.229757235311038,
+        "delta_vs_baseline": -0.004888338329963351,
+        "delta_lo": -0.007087466026180682,
+        "delta_hi": -0.0028420406400488114,
+        "improvement_detected": true,
+        "delta_vs_operational": -0.004776805378390606,
+        "log_loss": 0.6509434611846525
+      },
+      "discovery_through": "2026-09-14",
+      "source_sha256": "8b0f37022cfe13752d00197a658b54da027ab70b23bf5f234f940fafd61f668f",
+      "window": 20,
+      "status": "DEFERRED_PROVIDER_ORIENTATION_AUDIT"
+    }
+  ],
+  "forward_protocol": {
+    "start": null,
+    "end": null,
+    "sample_size_or_power": null,
+    "multiplicity": "Must cover all frozen candidate hypotheses",
+    "comparators": [
+      "same learned baseline",
+      "operational adapter"
+    ],
+    "market_comparison": "Requires aligned timestamped odds",
+    "data_availability": "Capture inputs and predictions before results",
+    "selection": "Discovery-selected; no independent confirmation yet",
+    "promotion": false
+  }
+}

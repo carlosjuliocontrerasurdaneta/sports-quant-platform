@@ -45,70 +45,26 @@ from sqp.storage.results_store import ResultsStore
 
 
 def _pearson(xs: list[float], ys: list[float]) -> tuple[float, float]:
-    """Pearson r and two-tailed p-value (t-distribution approximation)."""
-    n = len(xs)
-    if n < 4:
+    """Pearson correlation with a nominal (not dependence-adjusted) p-value."""
+    if len(xs) != len(ys):
+        raise ValueError("feature/target lengths differ")
+    if len(xs) < 4 or not all(math.isfinite(v) for v in xs + ys):
         return 0.0, 1.0
-    mx = sum(xs) / n
-    my = sum(ys) / n
-    num = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
-    dx = math.sqrt(sum((x - mx) ** 2 for x in xs))
-    dy = math.sqrt(sum((y - my) ** 2 for y in ys))
-    if dx == 0 or dy == 0:
+    if len(set(xs)) < 2 or len(set(ys)) < 2:
         return 0.0, 1.0
-    r = num / (dx * dy)
-    r = max(-1.0, min(1.0, r))
-    t = r * math.sqrt(n - 2) / math.sqrt(max(1e-12, 1 - r ** 2))
-    # p-value via Student-t CDF approximation (Abramowitz & Stegun)
-    df = n - 2
-    x = df / (df + t * t)
-    # regularized incomplete beta approximation
-    try:
-        p_one = 0.5 * _incomplete_beta(x, df / 2, 0.5)
-        p_val = min(1.0, 2 * p_one)
-    except Exception:
-        p_val = 1.0
-    return r, p_val
-
-
-def _incomplete_beta(x: float, a: float, b: float, iters: int = 200) -> float:
-    """Regularized incomplete beta I_x(a,b) via continued fraction (Lentz method)."""
-    if x <= 0:
-        return 0.0
-    if x >= 1:
-        return 1.0
-    lbeta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
-    front = math.exp(math.log(x) * a + math.log(1 - x) * b - lbeta) / a
-    # Use symmetry when x > (a+1)/(a+b+2)
-    if x > (a + 1) / (a + b + 2):
-        return 1.0 - _incomplete_beta(1 - x, b, a, iters)
-    # Lentz continued fraction
-    f, C, D = 1e-30, 1e-30, 0.0
-    for m in range(iters):
-        for step in (0, 1):
-            if m == 0 and step == 0:
-                num = 1.0
-            elif step == 0:
-                num = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m))
-            else:
-                num = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))
-            D = 1.0 + num * D
-            if abs(D) < 1e-30:
-                D = 1e-30
-            D = 1.0 / D
-            C = 1.0 + num / C
-            if abs(C) < 1e-30:
-                C = 1e-30
-            f *= C * D
-            if abs(C * D - 1.0) < 1e-8:
-                break
-    return front * (f - 1.0)
+    from scipy.stats import pearsonr
+    result = pearsonr(xs, ys)
+    return float(result.statistic), float(result.pvalue)
 
 
 def _measure_league(league: str, warmup: int, totals_ref: float | None,
                     n_form: int = 5, n_long: int = 10,
                     per_game_ref: bool = False) -> None:
-    results = ResultsStore(ROOT).load(league)
+    results = sorted(ResultsStore(ROOT).load(league), key=lambda r: str(r.get("date", "")))
+    if 0 < warmup < len(results):
+        boundary = str(results[warmup].get("date", ""))[:10]
+        while warmup > 0 and str(results[warmup - 1].get("date", ""))[:10] == boundary:
+            warmup -= 1
     if len(results) < warmup + 10:
         print(f"  [{league}] insufficient data ({len(results)} games, need {warmup + 10})")
         return
@@ -136,6 +92,12 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
         "off_def_margin": [],
         "avg_total_combined": [], "over_rate_combined": [],
     }
+    targets: dict[str, list[float]] = {key: [] for key in signals}
+
+    def record(name: str, value: float, outcome: float) -> None:
+        signals[name].append(value)
+        targets[name].append(outcome)
+
     outcomes_h2h: list[float] = []
     totals_seen: list[float] = []
 
@@ -174,14 +136,16 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
             team_hist[_an].append(r)
             continue
 
+        if not math.isfinite(hs) or not math.isfinite(aws):
+            continue
         home, away = str(r["home"]), str(r["away"])
         hn, an = normalize(home), normalize(away)
         ref_date = str(r.get("date", ""))[:10]
         actual_total = hs + aws
 
         # Build team-scoped prior slices (small, already sorted chronologically)
-        prior_h = list(team_hist[hn])
-        prior_a = list(team_hist[an])
+        prior_h = [x for x in team_hist[hn] if str(x.get("date", ""))[:10] < ref_date]
+        prior_a = [x for x in team_hist[an] if str(x.get("date", ""))[:10] < ref_date]
         # H2H prior: intersect both teams' histories
         h2h_ids = {id(x) for x in prior_h}
         prior_h2h = [x for x in prior_a if id(x) in h2h_ids]
@@ -216,30 +180,30 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
         over_a = team_over_rate(away, prior_a, game_ref, n_long, normalize)
 
         # H2H signals
-        signals["streak_diff"].append(float(streak_h - streak_a))
+        record("streak_diff", float(streak_h - streak_a), out_h2h)
         outcomes_h2h.append(out_h2h)
 
         if form_h is not None and form_a is not None:
-            signals["form_diff"].append(form_h - form_a)
+            record("form_diff", form_h - form_a, out_h2h)
         if h2h is not None:
-            signals["h2h_home"].append(h2h - 0.5)
+            record("h2h_home", h2h - 0.5, out_h2h)
         if rest_h is not None and rest_a is not None:
-            signals["rest_diff"].append(float(rest_h - rest_a))
+            record("rest_diff", float(rest_h - rest_a), out_h2h)
         if margin_h is not None and margin_a is not None:
-            signals["margin_diff"].append(margin_h - margin_a)
+            record("margin_diff", margin_h - margin_a, out_h2h)
         if form_hh is not None and form_aa is not None:
-            signals["form_home_role_diff"].append(form_hh - form_aa)
+            record("form_home_role_diff", form_hh - form_aa, out_h2h)
         have_off_def = all(x is not None for x in [sc_h, cc_h, sc_a, cc_a])
         if have_off_def:
-            signals["off_def_margin"].append(
-                (sc_h + cc_a - sc_a - cc_h) / 2.0)  # type: ignore[operator]
+            record("off_def_margin",
+                (sc_h + cc_a - sc_a - cc_h) / 2.0, out_h2h)  # type: ignore[operator]
 
         # Totals signals
         totals_seen.append(actual_total)
         if avg_tot_h is not None and avg_tot_a is not None:
-            signals["avg_total_combined"].append((avg_tot_h + avg_tot_a) / 2.0)
+            record("avg_total_combined", (avg_tot_h + avg_tot_a) / 2.0, actual_total)
         if over_h is not None and over_a is not None:
-            signals["over_rate_combined"].append((over_h + over_a) / 2.0)
+            record("over_rate_combined", (over_h + over_a) / 2.0, actual_total)
 
         # Fold the game just evaluated into both teams' histories, AFTER using
         # them. Without this the index only ever grew during the warmup priming
@@ -253,6 +217,7 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
         team_hist[an].append(r)
 
     # Report
+    print("Nominal p-values; dependence/multiplicity require evaluate_feature_blocks.py.")
     print(f"\n{'='*60}")
     print(f"  {league.upper()}  |  {len(results)} total games  |  {len(outcomes_h2h)} test games")
     if totals_seen:
@@ -271,25 +236,19 @@ def _measure_league(league: str, warmup: int, totals_ref: float | None,
     print("  -- H2H/SPREADS (signal vs home win outcome) --")
     for feat in h2h_features:
         vals = signals[feat]
-        if len(vals) < len(outcomes_h2h):
-            outs = outcomes_h2h[-len(vals):]
-        else:
-            outs = outcomes_h2h
-        pairs = [(v, o) for v, o in zip(vals, outs)]
+        pairs = list(zip(vals, targets[feat]))
         if len(pairs) < 10:
             print(f"  {feat:<23} {'<10':>5}")
             continue
         xs, ys = zip(*pairs)
         r, p = _pearson(list(xs), list(ys))
         sig = "***" if p < 0.01 else ("**" if p < 0.05 else ("*" if p < 0.10 else ""))
-        suggested = round(r * 0.05, 4)  # conservative scaling: r=1 -> coef=0.05
-        print(f"  {feat:<23} {len(pairs):>5} {r:>+7.3f} {p:>7.4f}  {sig:<4} "
-              f"(suggested coef ~{suggested:+.4f})")
+        print(f"  {feat:<23} {len(pairs):>5} {r:>+7.3f} {p:>7.4f}  {sig}")
 
     print("\n  -- TOTALS (signal vs actual total) --")
     for feat in totals_features:
         vals = signals[feat]
-        ys = totals_seen[-len(vals):] if len(vals) < len(totals_seen) else totals_seen
+        ys = targets[feat]
         pairs = [(v, o) for v, o in zip(vals, ys)]
         if len(pairs) < 10:
             print(f"  {feat:<23} {'<10':>5}")
@@ -324,7 +283,7 @@ def main() -> int:
 
     print("\nFeature signal measurement (walk-forward, no lookahead)")
     print("Correlation with outcome. * p<0.10  ** p<0.05  *** p<0.01")
-    print("suggested coef is conservative (r * 0.05); validate OOS before using.\n")
+    print("Nominal p-values only; validate with temporal ablations before changing coefficients.\n")
 
     if args.per_game_ref and args.totals_ref is not None:
         print("error: --per-game-ref and --totals-ref are mutually exclusive",

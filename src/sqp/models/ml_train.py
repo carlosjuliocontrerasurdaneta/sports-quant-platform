@@ -20,12 +20,13 @@ import joblib
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from sqp.calibration.metrics import calibration_report
 from sqp.config import ROOT
+from sqp.features.temporal import daily_splits, holdout_start
 from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_json
 
@@ -146,10 +147,11 @@ def train_moneyline(df: pd.DataFrame, sport: str, root: Path = ROOT,
         raise ValueError(f"[{sport}] too few rows to train moneyline: {len(d)}")
     X, y = d[cols].to_numpy(float), d["home_win"].to_numpy(int)
     model = _clf_pipeline()
-    cv = cross_val_score(model, X, y, cv=TimeSeriesSplit(n_splits=5), scoring="roc_auc")
+    cv = cross_val_score(model, X, y, cv=list(daily_splits(d["date"])),
+                         scoring="roc_auc", error_score="raise")
     model.fit(X, y)
     metrics = {"cv_roc_auc_mean": float(cv.mean()), "cv_roc_auc_std": float(cv.std()),
-               "n_train": int(len(y)), "cv": "TimeSeriesSplit(5)"}
+               "n_train": int(len(y)), "cv": "DailyTimeSeriesSplit(5)"}
     path = _persist(root, model, cols, sport, "moneyline", metrics)
     return {"path": str(path), "features": cols, "metrics": metrics}
 
@@ -163,11 +165,11 @@ def train_totals(df: pd.DataFrame, sport: str, root: Path = ROOT,
         raise ValueError(f"[{sport}] too few rows to train totals: {len(d)}")
     X, y = d[cols].to_numpy(float), d[target].to_numpy(float)
     model = _reg_pipeline()
-    cv = cross_val_score(model, X, y, cv=TimeSeriesSplit(n_splits=5),
-                         scoring="neg_mean_absolute_error")
+    cv = cross_val_score(model, X, y, cv=list(daily_splits(d["date"])),
+                         scoring="neg_mean_absolute_error", error_score="raise")
     model.fit(X, y)
     metrics = {"cv_mae_mean": float(-cv.mean()), "cv_mae_std": float(cv.std()),
-               "n_train": int(len(y)), "cv": "TimeSeriesSplit(5)"}
+               "n_train": int(len(y)), "cv": "DailyTimeSeriesSplit(5)"}
     path = _persist(root, model, cols, sport, "totals", metrics)
     return {"path": str(path), "features": cols, "metrics": metrics}
 
@@ -179,7 +181,7 @@ def oos_moneyline_metrics(df: pd.DataFrame, sport: str, val_fraction: float = 0.
     how much) to blend ML with the simulation model — see sqp.models.blend."""
     cols = feature_cols or feature_columns(df)
     d = df.sort_values("date").dropna(subset=["home_win"] + cols).reset_index(drop=True)
-    split = int(len(d) * (1.0 - val_fraction))
+    split = holdout_start(d["date"], val_fraction)
     tr, va = d.iloc[:split], d.iloc[split:]
     if len(tr) < 50 or len(va) < 10:
         raise ValueError(f"[{sport}] not enough rows for OOS eval: {len(tr)}/{len(va)}")
