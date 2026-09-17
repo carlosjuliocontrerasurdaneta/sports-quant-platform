@@ -12,7 +12,9 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 - [ ] 2026-09-17 — Confirmar tras las 12:00 que `DIARIO COMPLETO: OK` reaparece en `logs/diario_completo.log` (15 y 16/09 sin run; directorio restaurado el 16/09 20:35). Ver [[Bitácora/2026-09-16]].
 - [ ] 2026-09-16 — Diagnosticar `SQP_Validate_OOS_Cdev` (rc=1 desde el 01/09, sin rastro en el directorio restaurado).
-- [ ] 2026-09-16 — Tratar `origin/codex/feature-signal-shadow` (`57ec7b0`) por el flujo model-change: pre-registro, medir el efecto de `ordered_games(utc=True)` sobre fechas locales/doubleheaders, champion-challenger; NO mergear a `main` sin aprobación del operador.
+- [ ] 2026-09-16 — Tratar `origin/codex/feature-signal-shadow` (`57ec7b0`) por el flujo model-change: pre-registro, champion-challenger (el efecto de `ordered_games(utc=True)` quedó descartado en el cross-review del 16/09); NO mergear a `main` sin aprobación del operador.
+- [ ] 2026-09-21 — Repetir el cross-review V2 de `codex/feature-signal-shadow` cuando Codex vuelva a estar disponible (límite de uso hasta el 21/09 17:50): la ronda `1bb77fd5` quedó INCOMPLETE (CLAUDE CLEAN, CODEX EXECUTION_FAILED, sin consenso). Ver [[Bitácora/2026-09-16]].
+- [x] 2026-09-16 — Cross-review V2 ronda `1bb77fd5`: CLAUDE CLEAN (0 hallazgos, 6 sub-afirmaciones confirmadas por el adjudicador, 1 incierta); punto de `ordered_games(utc=True)` CERRADO (`results_store.py:49` trunca `date`).
 - [x] 2026-09-16 — CI de `codex/feature-signal-shadow` en verde local (2079 passed): entrada de tenis renombrada `surface_elo` → `elo_on_surface` (`57ec7b0`, pusheado).
 
 ## Auditoría integral 2026-09-13
