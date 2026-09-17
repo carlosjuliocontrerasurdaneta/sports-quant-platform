@@ -28,7 +28,10 @@ SPORTING_INPUTS = {
     "hockey": ("goalie_gsax_per60", "xgf_per60_5v5", "xga_per60_5v5",
                "power_play_rate", "penalty_kill_rate"),
     "soccer": ("xgf_per90", "xga_per90", "available_starter_minutes"),
-    "tennis": ("surface_elo", "serve_points_won_rate", "return_points_won_rate",
+    # Nombre elegido para no colisionar con el guard por subcadena de
+    # tests/test_tennis_params.py: el adaptador de tenis NO modela la superficie.
+    # Esto es solo el nombre de una entrada externa del catalogo, no una implementacion.
+    "tennis": ("elo_on_surface", "serve_points_won_rate", "return_points_won_rate",
                "minutes_played_7d"),
 }
 

@@ -67,7 +67,7 @@ Las restantes columnas permitidas son `home_`/`away_` seguidas de:
 | Football | `qb_epa_per_play`, `off_epa_per_play`, `def_epa_per_play` (EPA por jugada); `plays_per_game`; `returning_snap_share` [0,1] |
 | NHL | `goalie_gsax_per60`; `xgf_per60_5v5`, `xga_per60_5v5`; `power_play_rate`, `penalty_kill_rate` [0,1] |
 | Fútbol | `xgf_per90`, `xga_per90`; `available_starter_minutes` (minutos proyectados) |
-| Tenis | `surface_elo`; `serve_points_won_rate`, `return_points_won_rate` [0,1]; `minutes_played_7d` |
+| Tenis | `elo_on_surface` (entrada externa: el adaptador de tenis NO modela la superficie, ver `test_no_code_actually_handles_surface`); `serve_points_won_rate`, `return_points_won_rate` [0,1]; `minutes_played_7d` |
 
 Ejemplo MLB (datos ilustrativos, no señal validada):
 

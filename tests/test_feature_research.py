@@ -117,12 +117,12 @@ def test_research_features_exclude_same_day_and_future_outcomes():
 def test_snapshots_require_provenance_and_do_not_use_future_versions():
     d = games(4)
     s = pd.DataFrame([{"game_id": "2", "available_at": "2025-01-01T23:00:00Z",
-                       "source": "fixture", "home_surface_elo": 1600},
+                       "source": "fixture", "home_elo_on_surface": 1600},
                       {"game_id": "2", "available_at": "2025-01-02T01:00:00Z",
-                       "source": "fixture", "home_surface_elo": 2000}])
+                       "source": "fixture", "home_elo_on_surface": 2000}])
     out = snapshot_features(d, s, "tennis")
-    assert out.loc[2, "home_surface_elo"] == 1600
-    assert pd.isna(out.loc[0, "home_surface_elo"])
+    assert out.loc[2, "home_elo_on_surface"] == 1600
+    assert pd.isna(out.loc[0, "home_elo_on_surface"])
     with pytest.raises(ValueError, match="timezone"):
         snapshot_features(d, s.assign(available_at="2025-01-01"), "tennis")
     with pytest.raises(ValueError, match="unknown"):
