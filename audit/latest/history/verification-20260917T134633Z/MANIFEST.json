@@ -3,9 +3,8 @@
   "started_utc": "2026-09-16T20:51:00Z",
   "diagnosis_claude_utc": "2026-09-17T11:30:00Z/2026-09-17T12:20:00Z",
   "consolidated_utc": "2026-09-17T12:25:00Z",
-  "finished_utc": "2026-09-17T13:51:20Z",
-  "status": "verificacion independiente cerrada -- APTO CON PENDIENTES",
-  "verification_utc": "2026-09-17T13:51:20Z",
+  "finished_utc": null,
+  "status": "remediacion cerrada (pendiente de verificacion independiente)",
   "scope": "auditoria integral del repositorio (src/sqp, scripts, BAT, configs, tests, CI, hooks, .claude contratos; datos solo por agregados) sobre el working tree actual; cambios locales sin commitear incluidos y separados de la base",
   "base_commit": "44e48f26045f734fc479a127a9eb35f776c6483c",
   "branch": "main (ahead 2 de la referencia local origin/main=96a4749; el remoto real va 6 commits por delante de 96a4749 y no contiene HEAD local)",
@@ -57,8 +56,7 @@
     "audit/latest/BACKLOG.md": "d9e26a1c31c3db0f89671c10cfc4ebec0f0b1f3fef66c28751c6969ec50d77ef",
     "audit/latest/CHANGES.md": "5253037ed0454c23d00c7c5b20e58257fcc17ad8c44563d7659bf1af0e51d8ad",
     "audit/latest/VALIDATION.md": "421d3d7ba9fa07bb17f95686c710a36e5b3abcbbca6915cd372af769eb677712",
-    "audit/latest/STATUS.md": "ba0605a65b6567c368e34ff52c4f123bb5be8a11373f604e7be23060423eecf1",
-    "audit/latest/VERIFICATION.md": "6c343487f19ab65c0ba413e59a1ee71f0075db92ee2441bc240a141e380d111a"
+    "audit/latest/STATUS.md": "9de9bb84b9ad325eb02fcf02b5dc7c55d1533172d843444416860957033eb299"
   },
   "id_map": {
     "AUD-001": [
@@ -141,16 +139,14 @@
     "audit/latest/FINDINGS.md",
     "audit/latest/BACKLOG.md",
     "audit/latest/MANIFEST.json",
-    "audit/latest/history/manifest-20260917T121805Z/MANIFEST.json",
-    "audit/latest/VERIFICATION.md",
-    "audit/latest/history/verification-20260917T134633Z/STATUS.md",
-    "audit/latest/history/verification-20260917T134633Z/MANIFEST.json"
+    "audit/latest/history/manifest-20260917T121805Z/MANIFEST.json"
   ],
   "bookkeeping_excluded": "current-task.md actualizado en la fase de remediacion (Edit); Obsidian y .claude/memory actualizados (/memoria-guardar)",
-  "final_result": "APTO CON PENDIENTES",
-  "final_result_rationale": "Verificacion independiente (2026-09-17T13:51:20Z, audits/prompts/verificar-remediacion.md): los 7 IDs (AUD-001..007) reproducidos/confirmados de forma independiente (oraculos propios, sin reutilizar los tests nuevos como unica evidencia) contra el codigo en 1ee3571; ningun P0/P1 abierto ni bloqueo confirmado de rondas anteriores. Validacion global verde: ruff 0, mypy 0, 387 tests dirigidos + suite completa 1958 passed/225 deselected (coincide con tests_final). Regla 3 (APTO CON PENDIENTES) por hallazgos menores sin cerrar: hallazgo adyacente Normal (recuantificado a 0.32 pp, no 0.25 pp, sigue bajo min_edge, sin ticket para esta ronda), decision del operador pendiente sobre AUD-005 (cablear execution.books), B-02 (CI sin pin SHA, heredado) y discrepancia de bookkeeping en CL-02 (fichero ya en retired/ pero STATUS/BACKLOG no actualizados). Detalle completo en VERIFICATION.md.",
+  "final_result": null,
+  "final_result_rationale": "remediacion validada (suite, ruff, mypy, revision fable de AUD-001) y publicada; el veredicto APTO/NO APTO corresponde a la fase de verificacion independiente, no ejecutada. AUD-004 corregido a las 13:40Z (residuo eliminado con elevacion UAC por orden del operador).",
   "not_available": [
     "openai/REPORT.md",
+    "verificacion (VERIFICATION.md)",
     "suite slow",
     "pip-audit local",
     "logs/ (permiso denegado)",
@@ -164,7 +160,6 @@
     "31cfdb0 (merge origin/main; 3 conflictos Obsidian resueltos)"
   ],
   "pushed": "origin/main a2ee66c..31cfdb0; CI run 35224249563 success (3.11-3.14, windows)",
-  "production_tree_note": "la tarea programada ejecuta C:/dev/3/sports-quant-platform (a2ee66c, guard scope limpio), no este clon (C:/dev/6); git pull en produccion pendiente del operador. ACTUALIZADO en verificacion independiente (2026-09-17T13:51:20Z): 'git -C C:/dev/3/sports-quant-platform rev-parse HEAD' y 'status -sb' confirman HEAD=1ee3571 (=origin/main), arbol limpio; el pull ya se ejecuto (ver commit 09bcef5), sin accion de produccion pendiente.",
-  "escalation": "AUD-001 revisado en fable (Agent model=fable, clase parametro de modelo): 0 defectos; barrido 18432 combinaciones sin excepcion; 1 sugerencia menor aplicada; 1 hallazgo adyacente sin ticket (normal_margin_probs, delta <= 0.25 pp). Verificacion independiente (2026-09-17): hallazgo adyacente confirmado real y recuantificado a 0.32 pp (spread) / 0.30 pp (total) con rejilla fina sobre los sigma de sports/registry.py; sigue bajo min_edge. Ver VERIFICATION.md.",
-  "verification_authorization": "fase de verificacion independiente invocada explicitamente por el operador (prompt de sesion, 2026-09-17); solo lectura del proyecto salvo VERIFICATION.md, columna Verificacion de STATUS.md y este manifest, con historico preservado en audit/latest/history/verification-20260917T134633Z/"
+  "production_tree_note": "la tarea programada ejecuta C:/dev/3/sports-quant-platform (a2ee66c, guard scope limpio), no este clon (C:/dev/6); git pull en produccion pendiente del operador",
+  "escalation": "AUD-001 revisado en fable (Agent model=fable, clase parametro de modelo): 0 defectos; barrido 18432 combinaciones sin excepcion; 1 sugerencia menor aplicada; 1 hallazgo adyacente sin ticket (normal_margin_probs, delta <= 0.25 pp)"
 }
