@@ -111,3 +111,28 @@ def test_settlement_audit_report(tmp_path):
 def test_settlement_audit_empty_is_safe(tmp_path):
     path = settlement_audit_report(tmp_path)
     assert "sin apuestas liquidadas" in open(path, encoding="utf-8").read()
+
+
+def test_load_all_candidates_keeps_home_away_when_both_files_carry_them(tmp_path):
+    """Regresion del 2026-09-10 (AUD-MED-001 anadio home/away a BetCandidate):
+    el merge con predictions_<liga>.csv, que tambien trae home/away, los
+    renombraba a home_x/home_y y `match_label` caia al event_id -- el
+    dashboard mostraba un hash de 32 caracteres en la columna Partido."""
+    from sqp.audit.report import load_all_candidates
+    from sqp.evaluation.labels import match_label
+    pd.DataFrame([{"event_id": "e1", "league": "nfl", "market": "h2h", "selection": "A",
+                   "line": None, "price_decimal": 1.9, "stake": 0.0, "estimated_edge": 0.01,
+                   "generated_at": "2026-09-17T15:00:00+00:00", "home": "A", "away": "B"},
+                  {"event_id": "e2", "league": "nfl", "market": "h2h", "selection": "C",
+                   "line": None, "price_decimal": 2.1, "stake": 0.0, "estimated_edge": 0.02,
+                   "generated_at": "2026-09-17T15:00:00+00:00", "home": "", "away": ""}]
+                 ).to_csv(tmp_path / "candidates_nfl.csv", index=False)
+    pd.DataFrame([{"event_id": "e1", "home": "A", "away": "B", "start_time": "2026-09-20T17:00:00Z"},
+                  {"event_id": "e2", "home": "C", "away": "D", "start_time": "2026-09-20T20:00:00Z"}]
+                 ).to_csv(tmp_path / "predictions_nfl.csv", index=False)
+    df = load_all_candidates(tmp_path)
+    assert {"home", "away", "start_time"} <= set(df.columns)
+    assert not [c for c in df.columns if c.endswith(("_x", "_y"))]
+    # fila con nombres en candidates: se conservan; fila con huecos: se rellenan
+    # desde predictions, nunca se cae al event_id.
+    assert list(match_label(df)) == ["B @ A", "D @ C"]

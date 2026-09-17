@@ -97,7 +97,20 @@ def load_all_candidates(predictions_dir: Path,
         pf = predictions_dir / f"predictions_{league}.csv"
         if pf.exists() and pf.stat().st_size > 1:
             p = pd.read_csv(pf, usecols=lambda x: x in ("event_id", "home", "away", "start_time"))
-            c = c.merge(p, on="event_id", how="left")
+            # Desde AUD-MED-001 (2026-09-10) `candidates_*.csv` ya trae `home`/
+            # `away`; un merge a secas con `predictions_*.csv`, que tambien los
+            # trae, los renombraba a `home_x`/`home_y` y `match_label` caia al
+            # `event_id`: el dashboard mostraba un hash de 32 caracteres en la
+            # columna Partido (detectado por el operador el 2026-09-17). Se
+            # une con sufijo solo en la copia de predictions y se usa como
+            # RELLENO de los huecos del candidato, nunca como sustituto.
+            c = c.merge(p, on="event_id", how="left", suffixes=("", "_pred"))
+            for col in ("home", "away", "start_time"):
+                extra = f"{col}_pred"
+                if extra in c.columns:
+                    base = c[col].where(c[col].notna() & (c[col].astype(str).str.strip() != ""))
+                    c[col] = base.fillna(c[extra])
+                    c = c.drop(columns=[extra])
         frames.append(c)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
