@@ -11,7 +11,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Auditoría integral 2026-09-17 (ronda `audit-2026-09-16`)
 
 - [x] 2026-09-17 — Diagnóstico + consolidación + remediación autorizada de AUD-001…007 (HIGH 1, MEDIUM 4, LOW 2): pricing de líneas de cuarto coherente con la liquidación, ROI realizado único, HEAD autoconsistente y publicado (`f93bdc1`, `4f06b4f`, `31cfdb0`), aviso de `execution.books` sin cablear, hooks y `feature_shadow`. Ver [[Bitácora/2026-09-17]] y `audit/latest/`.
-- [ ] 2026-09-17 — Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`) sobre `31cfdb0`; confirmar CI run 35224249563 verde.
+- [x] 2026-09-17 — Verificación independiente de la ronda (agente `fable` sin contexto del implementador, `audit/latest/VERIFICATION.md`): **APTO CON PENDIENTES**; 7/7 reproducidos, sin regresiones ni P0/P1; CI verde. CL-02 cerrado (traslado del 13/09). Ver [[Bitácora/2026-09-17]].
 - [x] 2026-09-17 — `git pull --ff-only` en `C:\dev\3\sports-quant-platform` por orden del operador: `a2ee66c` → `7f24491`, sin conflictos; guard de árbol limpio; 68 tests de los módulos corregidos en verde y `sync_agent_instructions.py --check` sincronizado. Producción sirve AUD-001/002 desde el próximo run.
 - [x] 2026-09-17 — Residuo de AUD-004 eliminado con elevación UAC por orden del operador (`takeown` + `icacls` + `Remove-Item` sobre `.codex-tmp/pytest.bloqueado-20260916/openai-20260916-retry`, log en el scratchpad de la sesión); el directorio padre vacío también retirado. AUD-004 pasa de mitigado a corregido.
 - [ ] 2026-09-17 — Decidir si se cablea el line shopping (`execution.books`, AUD-005; clase de escalado: cambia precios de ejecución) o se mantiene la decisión `9dfb4cc` con el aviso.
