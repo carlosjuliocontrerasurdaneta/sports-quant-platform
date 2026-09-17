@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-16
+actualizada: 2026-09-17
 ---
 
 # Bitácora — índice
@@ -10,8 +10,8 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
-- [[Bitácora/2026-09-16]] — correcciones de prompts/skills/loops y rediseño de fuentes únicas con generación y compatibilidad; 83 pruebas satisfactorias, sin cambios operativos ni commit.
-
+- [[Bitácora/2026-09-17]] — `SQP_Validate_OOS_Cdev` lanzada a mano: rc=0, 33/34 ligas validadas, sin overfit sistemático pero MLB/NHL mejor con historia completa; marcador modelo-vs-mercado: mercado mejor (Brier), selección con delta −6,45 % IC95 que roza el cero.
+- [[Bitácora/2026-09-16]] — (a) correcciones de prompts/skills/loops y rediseño de fuentes únicas con generación y compatibilidad (83 pruebas, sin commit ese día; commiteado el 17/09 en `f93bdc1`); (b) directorio de producción restaurado desde copia del 14/09 (15 y 16/09 sin run); rama `codex/feature-signal-shadow` en verde tras renombrar `surface_elo`; la rama toca builders/mlb/ml_train (clase model-change, no mergeable sin champion-challenger); cross-review V2 INCOMPLETE: CLAUDE CLEAN, CODEX sin cuota.
 - [[Bitácora/2026-09-14]] — remediación del consolidado: nueve correcciones implementadas, una bloqueada por identidad de eventos y tres investigaciones pendientes; verificación independiente requerida.
 
 - [[Bitácora/2026-09-13]] — auditoría integral + remediación: repositorio reconstituido en producción (94+41 ficheros fuera de `main`), 4 de 7 días sin run, revalidación ciega tras las 00:00Z, líneas de cuarto, picks desplazados fuera del ledger, hooks armados por lecturas.
