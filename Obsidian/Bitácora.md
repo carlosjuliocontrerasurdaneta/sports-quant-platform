@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-14
+actualizada: 2026-09-16
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-09-16]] — directorio de producción restaurado desde copia del 14/09 (15 y 16/09 sin run); rama `codex/feature-signal-shadow` en verde tras renombrar `surface_elo`; la rama toca builders/mlb/ml_train (clase model-change, no mergeable sin champion-challenger).
 - [[Bitácora/2026-09-14]] — remediación del consolidado: nueve correcciones implementadas, una bloqueada por identidad de eventos y tres investigaciones pendientes; verificación independiente requerida.
 
 - [[Bitácora/2026-09-13]] — auditoría integral + remediación: repositorio reconstituido en producción (94+41 ficheros fuera de `main`), 4 de 7 días sin run, revalidación ciega tras las 00:00Z, líneas de cuarto, picks desplazados fuera del ledger, hooks armados por lecturas.

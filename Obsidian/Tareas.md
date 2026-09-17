@@ -1,12 +1,19 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-14
+actualizada: 2026-09-16
 ---
 
 # Tareas
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
+
+## Operación y rama de Codex 2026-09-16
+
+- [ ] 2026-09-17 — Confirmar tras las 12:00 que `DIARIO COMPLETO: OK` reaparece en `logs/diario_completo.log` (15 y 16/09 sin run; directorio restaurado el 16/09 20:35). Ver [[Bitácora/2026-09-16]].
+- [ ] 2026-09-16 — Diagnosticar `SQP_Validate_OOS_Cdev` (rc=1 desde el 01/09, sin rastro en el directorio restaurado).
+- [ ] 2026-09-16 — Tratar `origin/codex/feature-signal-shadow` (`57ec7b0`) por el flujo model-change: pre-registro, medir el efecto de `ordered_games(utc=True)` sobre fechas locales/doubleheaders, champion-challenger; NO mergear a `main` sin aprobación del operador.
+- [x] 2026-09-16 — CI de `codex/feature-signal-shadow` en verde local (2079 passed): entrada de tenis renombrada `surface_elo` → `elo_on_surface` (`57ec7b0`, pusheado).
 
 ## Auditoría integral 2026-09-13
 
