@@ -12,7 +12,8 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 - [x] 2026-09-17 — Diagnóstico + consolidación + remediación autorizada de AUD-001…007 (HIGH 1, MEDIUM 4, LOW 2): pricing de líneas de cuarto coherente con la liquidación, ROI realizado único, HEAD autoconsistente y publicado (`f93bdc1`, `4f06b4f`, `31cfdb0`), aviso de `execution.books` sin cablear, hooks y `feature_shadow`. Ver [[Bitácora/2026-09-17]] y `audit/latest/`.
 - [ ] 2026-09-17 — Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`) sobre `31cfdb0`; confirmar CI run 35224249563 verde.
-- [ ] 2026-09-17 — Operador: `git pull` en `C:\dev\3\sports-quant-platform` (producción sigue en `a2ee66c`, sin AUD-001/002) y eliminar con privilegios `.codex-tmp/pytest.bloqueado-20260916/openai-20260916-retry` (AUD-004).
+- [x] 2026-09-17 — `git pull --ff-only` en `C:\dev\3\sports-quant-platform` por orden del operador: `a2ee66c` → `7f24491`, sin conflictos; guard de árbol limpio; 68 tests de los módulos corregidos en verde y `sync_agent_instructions.py --check` sincronizado. Producción sirve AUD-001/002 desde el próximo run.
+- [ ] 2026-09-17 — Operador: eliminar con privilegios `.codex-tmp/pytest.bloqueado-20260916/openai-20260916-retry` (AUD-004; `takeown`/`icacls`/`Remove-Item` denegados sin elevación).
 - [ ] 2026-09-17 — Decidir si se cablea el line shopping (`execution.books`, AUD-005; clase de escalado: cambia precios de ejecución) o se mantiene la decisión `9dfb4cc` con el aviso.
 - [ ] 2026-09-17 — Ticketear en la siguiente ronda el mismo patrón de AUD-001 en `normal_margin_probs`/`normal_total_probs` (NBA/NFL, Δ ≤ 0,25 pp; plantilla en `models/independent.py`).
 - [ ] 2026-09-18 — Auditoría diaria: revisar las líneas de cuarto servidas (spreads de fútbol) tras AUD-001; la probabilidad de esos lados cambia hasta ±12 pp.
