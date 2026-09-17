@@ -310,3 +310,9 @@ Format:
 - Reason: AUD-001/AUD-002 de la auditoría integral 2026-09-17: AUD-MED-002 (2026-09-13) cambió el contrato de liquidación sin propagarlo al pricing ni a los consumidores del ROI; desviaciones reproducidas de 7–13 pp y ROI duplicado.
 - Alternatives: regraduar las etiquetas históricas de calibración de líneas de cuarto (no autorizado; queda documentado); contar las medias como medio acierto en `hit_rate` (rechazado: cambia la métrica rectora sin evidencia).
 - Consequences: cambia la probabilidad de ~2 % de las líneas servidas (spreads de fútbol) hasta ±12 pp; medir en la auditoría diaria. `execution.books` sigue **sin cablear** (decisión `9dfb4cc` intacta) pero ahora lo declara el yaml y lo avisa `Settings.load`; cablearlo es decisión del operador (clase de escalado).
+
+- Date: 2026-09-17
+- Decision: el line shopping (`execution.books` / `EXECUTION_BOOKS`) **se mantiene sin cablear** en `pipeline/daily.py`; se confirma la decisión `9dfb4cc`. El aviso de `Settings.load` y el candado `test_execution_prices_sigue_sin_llamadores_en_el_pipeline` (AUD-005) son el estado permanente, no una transición.
+- Reason: orden del operador tras la auditoría integral 2026-09-17 («Mantén la decisión 9dfb4cc: no cablees el line shopping»). Cablearlo cambiaría el precio de ejecución de todos los picks (clase de escalado) sin evidencia de que las casas accesibles estén definidas.
+- Alternatives: cablear `_execution_prices` bajo una lista de casas declarada (rechazado por ahora); retirar `ExecutionConfig` del yaml (rechazado: la clave documenta la opción y el aviso evita que quede inerte en silencio).
+- Consequences: todos los picks siguen ejecutándose a `consensus_median`; AUD-005 pasa de verificado-mitigado a cerrado por decisión; si algún día se cablea, retirar el aviso y el candado juntos.

@@ -57,7 +57,7 @@
     "audit/latest/BACKLOG.md": "d9e26a1c31c3db0f89671c10cfc4ebec0f0b1f3fef66c28751c6969ec50d77ef",
     "audit/latest/CHANGES.md": "5253037ed0454c23d00c7c5b20e58257fcc17ad8c44563d7659bf1af0e51d8ad",
     "audit/latest/VALIDATION.md": "421d3d7ba9fa07bb17f95686c710a36e5b3abcbbca6915cd372af769eb677712",
-    "audit/latest/STATUS.md": "ba0605a65b6567c368e34ff52c4f123bb5be8a11373f604e7be23060423eecf1",
+    "audit/latest/STATUS.md": "3e02c0108996b37c6c4511bae02f268ea2202160615267e96abc4e6ca0d65e0a",
     "audit/latest/VERIFICATION.md": "6c343487f19ab65c0ba413e59a1ee71f0075db92ee2441bc240a141e380d111a"
   },
   "id_map": {
@@ -166,5 +166,8 @@
   "pushed": "origin/main a2ee66c..31cfdb0; CI run 35224249563 success (3.11-3.14, windows)",
   "production_tree_note": "la tarea programada ejecuta C:/dev/3/sports-quant-platform (a2ee66c, guard scope limpio), no este clon (C:/dev/6); git pull en produccion pendiente del operador. ACTUALIZADO en verificacion independiente (2026-09-17T13:51:20Z): 'git -C C:/dev/3/sports-quant-platform rev-parse HEAD' y 'status -sb' confirman HEAD=1ee3571 (=origin/main), arbol limpio; el pull ya se ejecuto (ver commit 09bcef5), sin accion de produccion pendiente.",
   "escalation": "AUD-001 revisado en fable (Agent model=fable, clase parametro de modelo): 0 defectos; barrido 18432 combinaciones sin excepcion; 1 sugerencia menor aplicada; 1 hallazgo adyacente sin ticket (normal_margin_probs, delta <= 0.25 pp). Verificacion independiente (2026-09-17): hallazgo adyacente confirmado real y recuantificado a 0.32 pp (spread) / 0.30 pp (total) con rejilla fina sobre los sigma de sports/registry.py; sigue bajo min_edge. Ver VERIFICATION.md.",
-  "verification_authorization": "fase de verificacion independiente invocada explicitamente por el operador (prompt de sesion, 2026-09-17); solo lectura del proyecto salvo VERIFICATION.md, columna Verificacion de STATUS.md y este manifest, con historico preservado en audit/latest/history/verification-20260917T134633Z/"
+  "verification_authorization": "fase de verificacion independiente invocada explicitamente por el operador (prompt de sesion, 2026-09-17); solo lectura del proyecto salvo VERIFICATION.md, columna Verificacion de STATUS.md y este manifest, con historico preservado en audit/latest/history/verification-20260917T134633Z/",
+  "operator_decisions_after_verification": [
+    "2026-09-17: AUD-005 -- line shopping NO se cablea; se mantiene 9dfb4cc (aviso + candado como estado permanente)"
+  ]
 }
