@@ -183,12 +183,13 @@ def test_quantitative_prompts_route_to_the_specialized_loops():
 
 
 def test_quant_incident_precedes_generic_incident_in_decision_engine():
+    assert MODULE.classify("incidente cuantitativo en producción", CONFIG)["id"] == "quant-incident"
+    assert MODULE.classify("incidente: producción caída", CONFIG)["id"] == "incident"
     text = (ROOT / ".claude/automation/decision-engine.md").read_text(
         encoding="utf-8"
     )
-    assert text.index("Quantitative production incident") < text.index(
-        "Active non-quantitative incident or production outage"
-    )
+    rows = re.findall(r"^\| `([^`]+)` \|", text, re.MULTILINE)
+    assert rows.index("quant-incident") < rows.index("incident")
 
 
 def test_router_finds_configuration_from_nested_working_directory(tmp_path):

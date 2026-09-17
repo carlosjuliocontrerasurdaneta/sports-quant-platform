@@ -41,6 +41,10 @@ Generar probabilidades estimadas reproducibles y congelar snapshots antes del in
 5. Congelar event_id, mercado, línea, cuota, probabilidad, edge, fuentes y versiones.
 
 ## Artefactos
+Los artefactos por liga son obligatorios para las ligas seleccionadas para
+ejecución. Registrar por separado las ligas activas excluidas por el guard de
+cuota; no usar sus archivos antiguos como evidencia de generación actual.
+
 - `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`
 - `data/predictions/report_<día>.md` y el dashboard HTML
 - `data/calibration/served_<liga>.csv` (stream servido, base del calibrador)
@@ -51,9 +55,14 @@ Pruebas focalizadas de pipeline, odds, edge y decisión.
 ## Criterios de salida
 Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos de este loop:
 - `BLOCKED`: el batch termina con código ≠ 0; leakage detectado; evento ya
-  iniciado; datos críticos no frescos; `predictions_<liga>.csv` ausente o ilegible.
-- `DEGRADED`: una liga se omitió por el guard de cuota o por un fallo transitorio
-  del proveedor y el resto se generó. Nombrar la liga y la causa.
+  iniciado; datos críticos no frescos; `predictions_<liga>.csv` de una liga
+  seleccionada ausente o ilegible. Un fallo transitorio del proveedor que
+  provoca salida ≠ 0 sigue siendo `BLOCKED`, aunque otras ligas se generen.
+- `DEGRADED`: una liga activa se omitió por el guard de cuota, todos los comandos
+  requeridos terminaron con código 0 y las ligas seleccionadas dejaron los
+  artefactos actuales y validaciones satisfactorias. Nombrar ligas omitidas,
+  causa, ligas generadas y sus conteos. Si no se generó ninguna liga activa,
+  no se cumplió el objetivo: `BLOCKED`.
 - `PASS`: artefactos escritos para todas las ligas activas y validaciones en verde.
 
 ## Acciones que requieren aprobación humana

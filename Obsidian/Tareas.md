@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-14
+actualizada: 2026-09-16
 ---
 
 # Tareas
@@ -9,6 +9,12 @@ actualizada: 2026-09-14
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
 
 ## Auditoría integral 2026-09-13
+
+- [x] 2026-09-16 — Rediseñar instrucciones: contrato de auditoría único, prompts/tablas/guardarraíles generados, alias MLB y compatibilidad histórica. 83 pruebas satisfactorias. Ver [[Bitácora/2026-09-16]].
+
+- [x] 2026-09-16 — Corregir los cuatro hallazgos de loops: archivado, estados del run diario, cohorte vacía y evaluación del candidato correcto. Ver [[Bitácora/2026-09-16]].
+
+- [x] 2026-09-16 — Corregir los cinco hallazgos de prompts y skills: límite de stake, retorno de arbitraje, normalización de probabilidades, severidad y decisión final. 30 pruebas satisfactorias; sin commit. Ver [[Bitácora/2026-09-16]].
 
 - [ ] 2026-09-14 — Verificar independientemente AUD-001 y AUD-003–010 con `verificar-remediacion.md`; implementación y pruebas en `audits/remediation/latest.md`, sin commit. Ver [[Bitácora/2026-09-14]].
 - [ ] 2026-09-14 — Desbloquear AUD-002 con identidad entre fuentes o contrato explícito para eventos ambiguos; recabar carga representativa y fronteras de confianza para AUD-011–013.

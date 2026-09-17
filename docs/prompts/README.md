@@ -14,11 +14,11 @@ no había historial ni respaldo.
 | Archivo | Deportes | Distribución | Versión |
 |---|---|---|---|
 | `prompt-191-mlb-pricing-v3.md` | MLB | Negative Binomial + cópula | v3 |
-| `prompt-basket-pricing-v2.md` | NBA, WNBA, NCAAB, WNCAAB | Normal bivariante | v2 |
-| `prompt-football-pricing-v2.md` | NFL, NCAAF | Normal + números clave | v2 |
-| `prompt-nhl-pricing-v2.md` | NHL | Poisson bivariante + OT/EN | v2 |
-| `prompt-soccer-pricing-v2.md` | 12 competiciones | Poisson + Dixon-Coles | v2 |
-| `prompt-tenis-pricing-v2.md` | ATP, WTA | Elo / Markov jerárquico | v2 |
+| `prompt-basket-pricing-v3.md` | NBA, WNBA, NCAAB, WNCAAB | Normal bivariante | v3 |
+| `prompt-football-pricing-v3.md` | NFL, NCAAF | Normal + números clave | v3 |
+| `prompt-nhl-pricing-v3.md` | NHL | Poisson bivariante + OT/EN | v3 |
+| `prompt-soccer-pricing-v3.md` | 12 competiciones | Poisson + Dixon-Coles | v3 |
+| `prompt-tenis-pricing-v3.md` | ATP, WTA | Elo / Markov jerárquico | v3 |
 
 Los seis quedaron sincronizados el 2026-08-15. Cada archivo lleva su propio
 registro de cambios en la cabecera.
@@ -36,7 +36,7 @@ deporte → `simulation/` y `models/distributions.py` (con `nbinom`) →
 `markets/odds.py` y `markets/edge.py` → gate de CLV → ranking de edges.
 
 La **v1 de prompt 191 no existe como archivo**: se conserva únicamente citada y
-analizada en las notas de la bóveda. Este directorio guarda la v2 corregida.
+analizada en las notas de la bóveda. Este directorio guarda las versiones vigentes del inventario.
 
 ## Sincronización de 2026-08-15
 
@@ -108,3 +108,12 @@ casi idénticos para un delta del 5% invita a que alguien edite el equivocado y
 a que las versiones deriven en silencio — que es exactamente el problema que
 tuvo esta familia hasta el 2026-08-15. Para ver una versión anterior:
 `git log --follow docs/prompts/<archivo>`.
+
+## Correcciones del 2026-09-16
+
+Los cinco motores no MLB pasan a v3: EV con devoluciones (basket, football,
+NHL y tenis), signo del margen con clima extremo (football), liquidación
+del hándicap firmado (soccer), separación de OT/SO y portería vacía (NHL),
+y redondeo de la tabla Bo3/Bo5 (tenis). No se recalibraron constantes.
+Las referencias en manifiestos de builds e informes históricos describen
+sus snapshots originales y se conservan como evidencia histórica.

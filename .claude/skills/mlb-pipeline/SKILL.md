@@ -7,32 +7,11 @@ description: >
   partidos, probabilidades o calibración MLB (eso es quant-baseball-mlb).
 ---
 
-# MLB Pipeline Inspect
+# MLB Pipeline — alias de compatibilidad
 
-Objetivo:
-Entender el flujo operacional MLB sin recorrer el repositorio completo.
+Leer y seguir [daily-operations](../daily-operations/SKILL.md), modalidad
+«Inspección estructural por liga», con alcance `mlb`.
 
-Procedimiento:
-
-1. Inspeccionar únicamente:
-   - scripts/ (run_all.py, settle_all.py, train_calibration.py, etc.)
-   - configs/
-
-2. Identificar:
-   - descarga de datos
-   - generación de features
-   - entrenamiento
-   - generación de picks
-   - settle
-
-3. No abrir:
-   - data/
-   - data/historical/
-   - data/odds/
-
-4. Entregar:
-
-- Flujo
-- Archivos implicados
-- Dependencias
-- Riesgos detectados
+Conservar este nombre para invocaciones existentes; el procedimiento se mantiene
+solo en `daily-operations`. No usar para probabilidades de partidos ni calibración:
+esas solicitudes pertenecen a `quant-baseball-mlb` y los loops de calibración.

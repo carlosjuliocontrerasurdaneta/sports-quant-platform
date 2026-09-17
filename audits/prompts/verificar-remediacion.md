@@ -1,432 +1,162 @@
-# Verificación independiente de remediación
-
-## OBJETIVO
-
-Verifica de forma independiente las correcciones realizadas durante la fase de remediación.
-
-Archivos principales:
-
-`audits/consolidated/latest.md`
-
-`audits/remediation/latest.md`
-
-La verificación deberá contrastarse directamente contra el código actual.
-
-Esta fase es de **verificación**, no de corrección.
-
-No modifiques código fuente para conseguir que un hallazgo pase la validación.
-
-Genera:
-
-`audits/verification/latest.md`
-
-Antes de sobrescribir una verificación anterior, archívala, cuando sea posible, en:
-
-`audits/verification/history/YYYY-MM-DD-HHMM.md`
-
----
-
-# 1. Principio de independencia
-
-No asumas que una corrección es correcta porque:
-
-- el agente de remediación lo afirma;
-- existe un commit;
-- los tests pasan;
-- el código cambió;
-- desapareció el patrón original.
-
-Verifica cada criterio contra evidencia actual.
-
-El código actual es la fuente de verdad.
-
----
-
-# 2. No corregir durante esta fase
-
-No modifiques:
-
-- código;
-- tests;
-- configuración;
-- dependencias;
-- migraciones;
-
-para conseguir que la verificación resulte satisfactoria.
-
-Si detectas un problema, regístralo.
-
-La separación entre remediación y verificación es intencional.
-
----
-
-# 3. Preparación
-
-Antes de verificar:
-
-1. determina la raíz;
-2. lee las instrucciones aplicables del repositorio;
-3. identifica el estado Git;
-4. lee `audits/consolidated/latest.md`;
-5. lee `audits/remediation/latest.md`;
-6. identifica los hallazgos procesados;
-7. identifica criterios de aceptación;
-8. identifica pruebas de regresión;
-9. identifica cambios realizados.
-
----
-
-# 4. Hallazgos a verificar
-
-Prioriza:
-
-1. P0
-2. P1
-3. P2
-4. P3
-5. P4
-
-Verifica obligatoriamente todos los hallazgos que la remediación marque como:
-
-- Corregido
-- Pendiente de validación independiente
-
-No cierres automáticamente hallazgos marcados:
-
-- Bloqueado
-- No reproducible
-- No aplicable
-
-Revísalos según la evidencia disponible.
-
----
-
-# 5. Verificación por hallazgo
-
-Para cada ID:
-
-## Paso 1 — Revisar problema original
-
-Comprende:
-
-- causa raíz;
-- evidencia;
-- impacto;
-- escenario;
-- criterio de aceptación.
-
-## Paso 2 — Revisar cambio
-
-Inspecciona el diff o implementación actual.
-
-Comprueba que:
-
-- aborda la causa raíz;
-- no solo oculta el síntoma;
-- no desactiva una validación;
-- no elimina una prueba;
-- no reduce seguridad;
-- no introduce bypass;
-- no desplaza el fallo.
-
-## Paso 3 — Reproducir escenario
-
-Cuando sea seguro:
-
-- reproduce el escenario original;
-- ejecuta la prueba de regresión;
-- ejecuta tests relevantes.
-
-## Paso 4 — Comprobar criterio de aceptación
-
-Evalúa cada requisito explícitamente.
-
-## Paso 5 — Buscar regresiones
-
-Revisa efectos en:
-
-- callers;
-- módulos dependientes;
-- APIs;
-- datos;
-- errores;
-- rendimiento;
-- seguridad;
-- concurrencia;
-- compatibilidad.
-
----
-
-# 6. Estados de verificación
-
-Asigna uno:
-
-## Verificado — Corregido
-
-Existe evidencia suficiente de que la causa raíz fue corregida y el criterio de aceptación se cumple.
-
-## Verificado — Mitigado
-
-El riesgo fue reducido de forma suficiente, pero existe riesgo residual documentado.
-
-## Reabierto
-
-El problema continúa presente total o parcialmente.
-
-## Regresión
-
-La corrección introdujo un problema nuevo materialmente relacionado.
-
-## No verificable
-
-El entorno no permite obtener evidencia suficiente.
-
-## No aplicable
-
-Existe evidencia suficiente de que el hallazgo original no era aplicable al estado actual.
-
----
-
-# 7. Pruebas
-
-Ejecuta cuando corresponda:
-
-- prueba de regresión;
-- tests unitarios relacionados;
-- integración;
-- E2E;
-- lint;
-- type-checking;
-- build;
-- análisis estático.
-
-No necesitas ejecutar indiscriminadamente todos los controles para cada hallazgo si no aportan evidencia relevante.
-
-Al final, ejecuta una validación global razonable.
-
----
-
-# 8. Verificación de seguridad
-
-Para correcciones de seguridad, verifica específicamente:
-
-- autenticación;
-- autorización;
-- validación;
-- paths alternativos;
-- controles compensatorios;
-- errores;
-- exposición de datos.
-
-Una corrección que solo bloquea un caso específico pero mantiene vías equivalentes vulnerables no debe cerrarse.
-
----
-
-# 9. Verificación de datos
-
-Para correcciones de datos:
-
-- comprueba integridad;
-- consistencia;
-- compatibilidad;
-- migraciones;
-- transacciones;
-- idempotencia;
-- casos existentes.
-
-No ejecutes operaciones destructivas.
-
----
-
-# 10. Verificación de concurrencia
-
-Cuando el hallazgo involucre concurrencia:
-
-- revisa sincronización;
-- atomicidad;
-- locks;
-- transacciones;
-- orden de ejecución;
-- idempotencia;
-- reintentos.
-
-No declares resuelta una carrera únicamente porque no se reproduzca en una ejecución.
-
-Analiza también la corrección estructural.
-
----
-
-# 11. Verificación de rendimiento
-
-Cuando corresponda:
-
-- verifica que la operación problemática cambió;
-- compara complejidad o número de operaciones cuando sea posible;
-- evita conclusiones basadas en microbenchmarks irrelevantes;
-- documenta ausencia de métricas cuando limite la validación.
-
----
-
-# 12. Regresiones
-
-Si detectas una regresión relacionada con una corrección:
-
-crea un registro:
-
-`REG-XXX`
-
-Incluye:
-
-- cambio relacionado;
-- hallazgo original;
-- evidencia;
-- impacto;
-- severidad;
-- recomendación.
-
-No la corrijas durante esta fase.
-
----
-
-# 13. Cierre
-
-Un hallazgo solo puede quedar como **Verificado — Corregido** cuando:
-
-- la causa raíz fue abordada;
-- el escenario original ya no produce el defecto;
-- el criterio de aceptación se cumple;
-- las pruebas relevantes son satisfactorias;
-- no existe una regresión evidente relacionada;
-- no se trasladó el defecto.
-
----
-
-# 14. Severidad de regresiones
-
-Para nuevas regresiones utiliza:
-
-`Puntuación = (I × 30 + A × 20 + P × 20 + E × 15 + R × 10 + C × 5) / 4`
-
-Clasificación:
-
-- 90–100: Crítica
-- 70–89,9: Alta
-- 40–69,9: Media
-- 15–39,9: Baja
-- 0–14,9: Informativa
-
-No recalcules innecesariamente la severidad del hallazgo original si su naturaleza no cambió.
-
----
-
-# 15. Tabla de verificación
-
-Incluye:
-
-| ID | Severidad | Prioridad | Estado remediación | Estado verificación | Criterio aceptación | Regresión | Evidencia |
-|---|---|---|---|---|---|---|---|
-
----
-
-# 16. Tabla de regresiones
-
-Cuando existan:
-
-| ID | Hallazgo original | Regresión | Severidad | Evidencia | Acción recomendada |
-|---|---|---|---|---|---|
-
----
-
-# 17. Métricas finales
-
-Incluye:
-
-- hallazgos verificados;
-- corregidos;
-- mitigados;
-- reabiertos;
-- no verificables;
-- no aplicables;
-- regresiones;
-- P0 aún abiertos;
-- P1 aún abiertos.
-
----
-
-# 18. Actualización del backlog
-
-No destruyas ni sobrescribas el informe consolidado original.
-
-Genera además, cuando sea posible:
-
-`audits/consolidated/status.md`
-
-Este archivo debe representar el estado actualizado de los IDs existentes después de la verificación.
-
-Debe contener:
-
-| ID | Estado actual | Severidad | Prioridad | Verificación | Próxima acción |
-|---|---|---|---|---|---|
-
-El histórico original permanece intacto.
-
----
-
-# 19. Informe final
-
-Genera:
-
-`audits/verification/latest.md`
-
-Contenido:
-
-1. Resumen ejecutivo
-2. Alcance
-3. Metodología
-4. Limitaciones
-5. Hallazgos verificados
-6. Corregidos
-7. Mitigados
-8. Reabiertos
-9. No verificables
-10. No aplicables
-11. Regresiones
-12. Validación global
-13. P0/P1 pendientes
-14. Tabla maestra
-15. Recomendaciones de siguiente acción
-16. Anexo de comandos
-
----
-
-# 20. Decisión final
-
-Al finalizar, determina una de estas situaciones:
-
-## APTO
-
-No quedan P0/P1 abiertos atribuibles a la remediación y las validaciones relevantes son satisfactorias.
-
-## APTO CON PENDIENTES
-
-No existen bloqueos críticos, pero permanecen hallazgos que requieren trabajo planificado.
-
-## NO APTO
-
-Persisten P0/P1 materiales, existen regresiones graves o la evidencia demuestra que correcciones importantes no son válidas.
-
-## VERIFICACIÓN INCOMPLETA
-
-Las limitaciones del entorno impiden obtener evidencia suficiente.
-
-No utilices `APTO` como afirmación absoluta de ausencia de defectos. Significa únicamente que la remediación evaluada superó los criterios definidos.
-
-Al terminar, responde brevemente con:
-
-- estado final;
-- corregidos;
-- reabiertos;
-- regresiones;
-- P0 abiertos;
-- P1 abiertos;
-- ruta del informe.
+<!-- GENERATED by scripts/sync_agent_instructions.py; edit the canonical source. -->
+# Verificación independiente
+
+Fuente: `.claude/automation/audit-workflow.md`.
+
+Ejecutar únicamente la fase indicada en este documento.
+
+## Autoridad, alcance y evidencia
+
+Leer `AGENTS.md` y las instrucciones aplicables; inspeccionar Git y separar los
+cambios preexistentes. Registrar alcance, exclusiones, base Git y limitaciones.
+El código/configuración actual es la fuente de verdad, los informes son evidencia
+secundaria. No asumir que otro auditor, un test verde o una alerta de herramienta
+demuestran corrección. No inventar ejecuciones, datos, umbrales ni resultados.
+
+Diagnóstico, consolidación y verificación son de solo lectura del proyecto:
+solo escribir los entregables de la fase, su histórico y el registro de tarea
+cuando esté autorizado. No cambiar fuentes, tests, configuración, dependencias,
+datos productivos ni credenciales para conseguir una validación satisfactoria.
+Evaluar los efectos de comandos antes de ejecutarlos; usar temporales/aislamiento.
+No instalar dependencias, consumir servicios de pago, efectuar escrituras externas,
+commits, pushes, releases o despliegues sin autorización específica.
+No mostrar secretos completos; registrar tipo y ubicación, nunca utilizarlos.
+
+Validar primero lo más acotado. En este entorno usar pytest con
+`-p no:cacheprovider --basetemp=.codex-tmp/pytest`; inspeccionar Make/BAT/builds
+antes de ejecutarlos. Registrar comando, código de salida y evidencia, distinguiendo
+`NEW_REGRESSION`, `PRE_EXISTING_FAILURE`, `ENVIRONMENTAL_FAILURE`, `NOT_VERIFIABLE`.
+Un control configurado no demuestra que esté pasando: comprobar su estado actual
+o declarar la limitación. No modificar ni eliminar datos para probar una hipótesis.
+
+## Contrato de hallazgos
+
+Usar la taxonomía de `AGENTS.md`:
+
+- Evidencia: `REPRODUCED`, `STATICALLY_VERIFIED`, `TOOL_DETECTED`, `INFERRED`,
+  `NOT_VERIFIABLE`, `DISMISSED`.
+- Solo `REPRODUCED` y `STATICALLY_VERIFIED` son defectos confirmados.
+  `TOOL_DETECTED` requiere revisión independiente; si falta evidencia,
+  reclasificar como `INFERRED` o `NOT_VERIFIABLE`, sin fingir confirmación.
+- Confianza: `HIGH`, `MEDIUM`, `LOW`; un candidato `LOW` no se confirma.
+- Severidad por impacto demostrado: `CRITICAL` (sistémico/catastrófico),
+  `HIGH` (considerable), `MEDIUM` (limitado/condicionado), `LOW` (menor).
+  La frecuencia y la confianza no rebajan la severidad del impacto alcanzable.
+  Comprobar controles compensatorios antes de afirmar ese impacto.
+- Prioridad independiente: P0 inmediata, P1 urgente, P2 planificada,
+  P3 mantenimiento, P4 opcional. Las observaciones informativas van aparte.
+
+Cada hallazgo incluye ID, título, categoría, severidad, confianza, evidencia,
+archivo/línea, activación, problema, evidencia concreta, esperado, observado,
+causa raíz, consecuencia, corrección mínima, pruebas necesarias y limitaciones.
+Añadir controles existentes, criterio de aceptación y prioridad para remediación.
+Declarar explícitamente los campos no verificables. Agrupar por causa raíz;
+separar solo problemas con impacto o solución materialmente distintos.
+No convertir estilo, TODO, complejidad, antigüedad o baja cobertura en defectos
+sin consecuencia demostrable. Conservar descartes relevantes y su explicación.
+
+IDs estables dentro de una ronda: auditores `CLAUDE-001` / `OPENAI-001`,
+consolidado `AUD-001`, regresiones `REG-001`. La identidad completa es
+`round_id + ID`; no reiniciar ni renumerar dentro de la ronda ni cambiar IDs
+cuando cambia la severidad. Registrar alias de origen en la consolidación.
+Los IDs históricos (`AUD-MED-001`, etc.) se conservan tal como fueron emitidos.
+Al leer informes legacy, normalizar etiquetas equivalentes sin elevar evidencia:
+REPRODUCIDO → REPRODUCED, VERIFICADO_ESTÁTICAMENTE → STATICALLY_VERIFIED,
+DETECTADO_POR_HERRAMIENTA → TOOL_DETECTED, INFERIDO → INFERRED,
+NO_VERIFICABLE → NOT_VERIFIABLE, DESCARTADO → DISMISSED. Conservar la etiqueta
+original como origen y revalidar el hallazgo; una etiqueta «confirmado» sin
+evidencia suficiente no adquiere confirmación por la conversión.
+
+La antigua puntuación ponderada es solo información histórica de riesgo:
+no convertirla en severidad ni exigir recalcularla en rondas nuevas. Un impacto
+catastrófico demostrado sigue siendo CRITICAL aunque su activación sea rara.
+
+## Rondas, archivos y compatibilidad
+
+Para nuevas rondas, usar `audit/latest/` y un `round_id` único registrado en
+`MANIFEST.json`. El coordinador inicializa el manifest antes del diagnóstico;
+en una ejecución individual el mismo agente puede preparar la ronda sin leer
+conclusiones históricas (preservación mediante copia/hashes). Antes de iniciar
+una ronda distinta, un único coordinador copia
+íntegramente la ronda anterior a `audit/<round_id-anterior>/`, comprueba igualdad
+de archivos/contenidos y solo después reemplaza los entregables de `latest`.
+No sobrescribir históricos. Si el ID es ambiguo, hay un escritor activo o falla
+la preservación, no sobrescribir: registrar bloqueo. Un segundo auditor de la
+misma ronda no reinicia ni archiva la ronda que está evaluando.
+
+| Fase | Entradas | Entregables dentro de `audit/latest/` |
+|---|---|---|
+| Diagnóstico independiente | Repositorio y alcance | `claude/REPORT.md` o `openai/REPORT.md`, más `EVIDENCE.json` en ese subdirectorio |
+| Consolidación | Informes de los auditores de la misma ronda | `FINDINGS.md`, `BACKLOG.md`, `MANIFEST.json` |
+| Remediación autorizada | Hallazgos y alcance aprobado | `CHANGES.md`, `VALIDATION.md`, `STATUS.md`; actualización del manifest |
+| Verificación independiente | Hallazgos, cambios y evidencia actual | `VERIFICATION.md`, `STATUS.md`; actualización del manifest |
+
+El manifest registra `round_id`, fecha UTC, alcance, base/working tree, rutas y
+hashes de informes fuente, auditores disponibles, `tests_initial`, `tests_final`,
+`files_modified`, `final_result`, `final_result_rationale` y campos no disponibles.
+Los auditores escriben únicamente su subdirectorio y anotan allí comandos,
+códigos de salida, base y cobertura en `EVIDENCE.json`; el coordinador integra
+estos registros en el manifest sin permitir escrituras concurrentes sobre él.
+Con un solo auditor autorizado, consolidar tras su diagnóstico y declarar que
+no hubo segunda opinión; nunca inventar un informe del auditor ausente.
+
+`FINDINGS.md` es la línea base de diagnóstico: remediación/verificación no borran
+ni reescriben hallazgos para simular su cierre. `STATUS.md` relaciona ID, estado
+de remediación, estado de verificación, evidencia y próxima acción. La fase que
+lo actualiza preserva las columnas/evidencia de las fases anteriores.
+Antes de reemplazar un entregable de la misma ronda, guardar su versión previa
+en `history/<fase>-<fecha-UTC-unica>/` dentro de la ronda y verificar la copia.
+
+Compatibilidad: aceptar como entrada explícita los informes existentes en
+`audits/claude/`, `audits/openai/`, `audits/consolidated/`, `audits/remediation/`,
+`audits/verification/` y el antiguo `audit/latest/`. Registrar ruta, hash e IDs
+originales; no mover, renombrar ni modificar esos históricos. Si se continúa
+una ronda legacy, usar sus IDs y dejar los nuevos entregables en una ronda
+canónica preservada por el procedimiento anterior. No seleccionar por mtime ni
+mezclar automáticamente informes de distinta base/alcance: pedir identificar
+la fuente si no puede resolverse de la solicitud. Campos ausentes son
+`NOT_VERIFIABLE`, nunca una razón para inventar evidencia o cerrar un hallazgo.
+
+## Verificación independiente
+
+No asumir corrección por un commit, un diff o un test verde. No editar código,
+tests ni configuración para hacer pasar esta fase. Contrastar hallazgos y
+remediación con el código actual, especialmente todos los IDs declarados corregidos
+o pendientes de verificación; revisar bloqueados/no aplicables según evidencia.
+
+Por ID: reconstruir causa/activación original, inspeccionar parche y callers,
+reproducir cuando sea seguro, ejecutar tests relevantes y verificar explícitamente
+cada criterio. Buscar regresiones, bypass, síntomas ocultados y fallos trasladados.
+En seguridad revisar rutas alternativas; en datos, compatibilidad e integridad;
+en concurrencia, corrección estructural además de reproducciones; en rendimiento,
+medidas pertinentes o límites claros. Validación global razonable al finalizar.
+
+Estados: verificado-corregido, verificado-mitigado (riesgo residual explícito),
+reabierto, regresión, no verificable o no aplicable con evidencia. Solo cerrar
+como corregido si se resolvió la causa, el escenario ya no falla, se cumplen
+criterios y pruebas relevantes, sin regresión relacionada conocida ni traslado.
+Nuevas regresiones reciben `REG-###` y relación con el ID original.
+
+Evaluar el backlog completo de la ronda, incluidos bloqueados originales y
+regresiones. Declarar exclusiones sin convertirlas en cierres. Elegir la primera
+regla aplicable:
+
+1. **NO APTO**: P0/P1 material abierto, original o introducido, regresión grave
+   o evidencia de corrección importante inválida. Prevalece aunque también falte
+   evidencia en otras áreas; informar esas limitaciones.
+2. **VERIFICACIÓN INCOMPLETA**: sin bloqueo confirmado anterior, falta evidencia
+   de algún hallazgo o validación relevante del alcance.
+3. **APTO CON PENDIENTES**: evidencia suficiente, validaciones satisfactorias,
+   sin bloqueos anteriores, pero con hallazgos menores o riesgos por seguir.
+4. **APTO**: evidencia suficiente, validaciones satisfactorias y ningún hallazgo
+   o riesgo residual pendiente de seguimiento dentro del alcance evaluado.
+
+Casos: P1 original bloqueado + tests verdes → NO APTO; P1 nuevo → NO APTO;
+P1 confirmado + validación incompleta → NO APTO con limitaciones; sin bloqueo
+confirmado + evidencia faltante → VERIFICACIÓN INCOMPLETA; solo P2 pendiente
+con evidencia suficiente → APTO CON PENDIENTES; todo cerrado con evidencia → APTO.
+
+`VERIFICATION.md` incluye alcance, metodología, estado/evidencia por ID, regresiones,
+validación global, P0/P1 abiertos, limitaciones y próxima acción. Actualizar
+`STATUS.md` y manifest preservando historia. APTO solo califica la remediación
+evaluada, no garantiza ausencia absoluta de defectos ni rentabilidad.

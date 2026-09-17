@@ -1,15 +1,36 @@
 ---
 name: daily-operations
-description: Use this skill to review the daily operational run of the Sports Quant Platform — RUN_DIARIO_ALL.bat, SETTLE_ALL.bat, the BAT/scripts they call, and the most recent logs — without scanning large data directories. Covers pipeline status, generated picks, settlement/liquidación, errors, dependencies and failure risks. (Absorbe los antiguos skills daily-run y settle-bets.)
+description: >
+  Review daily operations or inspect the pipeline structure for a selected league
+  (including MLB): BAT/scripts, configuration, dependencies, recent logs, generated
+  picks and settlement. Use for operational status or "cómo funciona el pipeline",
+  not matchup probabilities. Includes the compatible daily-run, settle-bets and
+  mlb-pipeline entrypoints.
 ---
 
 # Daily Operations
 
-Analizar únicamente:
+En la revisión diaria ligera, analizar:
 
 - `RUN_DIARIO_ALL.bat` (run diario multi-liga agendado) y `SETTLE_ALL.bat` (liquidación + auditoría)
 - BATs y scripts llamados por ellos (`run_all.py`, `settle_all.py`)
 - Logs más recientes (solo el final del archivo): `logs\run_diario.log`, `logs\settle_all.log`, `logs\backfill.log`
+
+## Inspección estructural por liga
+
+Para «cómo funciona el pipeline», «flujo MLB» o dependencias operacionales,
+delimitar liga y reconstruir BAT → scripts → configuración → módulos llamados.
+Inspeccionar `src/sqp/` solo donde sea necesario para comprobar el comportamiento
+que los wrappers delegan. Identificar descarga, features, entrenamiento, generación
+y settlement, con sus entradas, salidas, orden y autorizaciones.
+Entregar flujo, archivos implicados, dependencias y riesgos con evidencia.
+No ejecutar el pipeline ni consultar proveedores por el solo hecho de inspeccionarlo.
+
+`mlb-pipeline` es el alias compatible para esta modalidad con alcance `mlb`;
+el procedimiento se mantiene aquí. Para partidos/probabilidades usar `quant-*`;
+para decisiones estructurales de diseño usar `sports-quant-platform-architect`.
+
+## Restricciones de datos
 
 Nunca **volcar a contexto**:
 

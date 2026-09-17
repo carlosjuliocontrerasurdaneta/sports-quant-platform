@@ -1,4 +1,6 @@
-# MOTOR CUANTITATIVO DE PRICING PREGAME — TENIS (ATP · WTA) v2
+# MOTOR CUANTITATIVO DE PRICING PREGAME — TENIS (ATP · WTA) v3
+
+> **v3 (2026-09-16)**: EV con devoluciones y tabla Bo3/Bo5 redondeada desde las fórmulas; interpolación aproximada.
 
 > **v2 (2026-08-15)** — sincronizado con prompt 191 v3. Cambios: EV por unidad
 > como variable de decisión, ranking lexicográfico (el Score ponderado de v1
@@ -203,17 +205,18 @@ El Elo de referencia calibra a Bo3. Para Grand Slam masculino (Bo5):
 2. P_bo5 = p³ × [1 + 3(1−p) + 6(1−p)²].
 Sin código, usar la tabla de conversión (interpolar linealmente):
     P_bo3:  55%  60%  65%  70%  75%  80%  85%  90%  95%
-    P_bo5:  56.3 62.4 68.5 74.3 80.0 85.4 90.3 94.6 98.0
+    P_bo5:  56.2 62.4 68.5 74.4 80.0 85.4 90.2 94.5 98.0
 
 CORRECCIÓN v2 — la tabla de v1 contradecía a estas fórmulas:
     P_bo3   tabla v1   fórmulas   Δ
-     70%      73.0       74.3    −1.3
+     70%      73.0       74.4    −1.4
      80%      83.5       85.4    −1.9
-     90%      93.0       94.6    −1.6
+     90%      93.0       94.5    −1.5
 La vía con código y la vía sin código daban resultados distintos en hasta
 1.9 pp, del mismo orden que el umbral de decisión (4–5 pp). La tabla de
-arriba se ha recalculado desde las fórmulas de esta misma fase, así que
-ambas vías coinciden.
+arriba se ha recalculado desde las fórmulas de esta misma fase. En sus
+nodos coincide al redondear a un decimal; entre nodos, la interpolación
+lineal es una aproximación, no una igualdad con la conversión exacta.
 
 ADVERTENCIA ABIERTA, a resolver con datos: la conversión asume p_set
 CONSTANTE entre sets, y empíricamente eso SOBREESTIMA al favorito en Bo5
@@ -261,7 +264,12 @@ evaluable".
 3. Edge_pp = Prob_modelo − Prob_mercado_sinvig, en PUNTOS PORCENTUALES.
    No mezclar nunca probabilidad implícita con vig y probabilidad justa.
 4. EV POR UNIDAD (variable de decisión principal):
-    EV_por_unidad = p_modelo × (decimal − 1) − (1 − p_modelo)
+    EV_por_unidad = p_win × (decimal − 1) − p_loss
+   Usar probabilidades incondicionales: p_win + p_push + p_loss = 1.
+   La devolución aporta 0 al beneficio. La probabilidad condicional
+   p_win / (p_win + p_loss) sirve para comparar precios, no para el EV
+   por unidad apostada; si todo es push, EV = 0 y no hay probabilidad
+   condicional definida. Sin push, p_loss = 1 − p_win.
    El edge en pp NO basta: 4 pp a cuota 1.10 y 4 pp a cuota 3.00 no valen
    ni parecido. Un edge positivo con EV ≤ 0 no es apostable. Muy relevante
    en tenis, donde los favoritos de primera ronda cotizan a 1.05–1.15 y un

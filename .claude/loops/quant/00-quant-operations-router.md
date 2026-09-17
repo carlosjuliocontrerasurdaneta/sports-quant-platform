@@ -14,20 +14,22 @@
 ## Objetivo
 Seleccionar exactamente un loop cuantitativo primario.
 
-| Situación | Loop |
+<!-- generated: quant-routes -->
+| Ruta | Loop |
 |---|---|
-| Predicción diaria | `01-daily-prediction.md` |
-| Cambio prepartido material | `02-pregame-refresh.md` |
-| Liquidación de resultados | `03-postgame-settlement.md` |
-| Auditoría diaria | `04-daily-audit.md` |
-| Diagnóstico de pérdidas | `05-loss-diagnosis.md` |
-| Monitoreo de calibración | `06-calibration-monitor.md` |
-| Monitoreo de drift | `07-drift-monitor.md` |
-| Recuperación de calidad de datos | `08-data-quality-recovery.md` |
-| Champion vs challenger | `09-champion-challenger.md` |
-| Recalibración controlada | `10-controlled-recalibration.md` |
-| Transición de temporada | `11-season-transition.md` |
-| Incidente cuantitativo | `12-quant-incident.md` |
-| Mejora continua semanal | `13-weekly-continuous-improvement.md` |
+| `quant-incident` | `12-quant-incident.md` |
+| `quant-daily-prediction` | `01-daily-prediction.md` |
+| `quant-pregame-refresh` | `02-pregame-refresh.md` |
+| `quant-settlement` | `03-postgame-settlement.md` |
+| `quant-daily-audit` | `04-daily-audit.md` |
+| `quant-loss-diagnosis` | `05-loss-diagnosis.md` |
+| `quant-calibration-monitor` | `06-calibration-monitor.md` |
+| `quant-drift-monitor` | `07-drift-monitor.md` |
+| `quant-data-recovery` | `08-data-quality-recovery.md` |
+| `quant-champion-challenger` | `09-champion-challenger.md` |
+| `quant-controlled-recalibration` | `10-controlled-recalibration.md` |
+| `quant-season-transition` | `11-season-transition.md` |
+| `quant-weekly-improvement` | `13-weekly-continuous-improvement.md` |
+<!-- endgenerated: quant-routes -->
 
 Registrar la elección, razón, alcance y criterio de salida en `current-task.md`.

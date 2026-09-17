@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-14
+actualizada: 2026-09-16
 ---
 
 # Bitácora — índice
@@ -9,6 +9,8 @@ actualizada: 2026-09-14
 Diario cronológico del proyecto: una nota por día con trabajo relevante, en `Bitácora/AAAA-MM-DD.md`. Cada entrada resume qué cambió, por qué, con qué commits y qué notas de la bóveda se actualizaron.
 
 ## Entradas
+
+- [[Bitácora/2026-09-16]] — correcciones de prompts/skills/loops y rediseño de fuentes únicas con generación y compatibilidad; 83 pruebas satisfactorias, sin cambios operativos ni commit.
 
 - [[Bitácora/2026-09-14]] — remediación del consolidado: nueve correcciones implementadas, una bloqueada por identidad de eventos y tres investigaciones pendientes; verificación independiente requerida.
 

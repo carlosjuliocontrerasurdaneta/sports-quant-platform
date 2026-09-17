@@ -1,7 +1,7 @@
 ---
 tags: [errores, bugs, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-14
+actualizada: 2026-09-16
 ---
 
 # Errores detectados y soluciones
@@ -9,6 +9,12 @@ actualizada: 2026-09-14
 Fuente canónica: `.claude/memory/known-issues.md` (KI-001…KI-018, con estado). Aquí, los errores más instructivos y su solución. Todos los KI están RESUELTOS o mitigados al 2026-07-08, salvo KI-002 (nombres soccer, verificable ~post 19-jul), KI-005 (vendor Frauen-Bundesliga) y KI-006 parcial (moneyline MLB/NHL sin señal específica).
 
 ## Integridad de datos
+
+- **Fuentes de instrucciones, 2026-09-16:** mantener procedimientos equivalentes en prompts, skills y loops produjo deriva. El contrato de auditoría, routing y guardarraíles tienen ahora fuentes explícitas y consumidores generados verificables; aliases e históricos permanecen compatibles. Detalles de mantenimiento en `.claude/automation/INSTRUCTIONS.md` y [[Bitácora/2026-09-16]].
+
+- **Loops, 2026-09-16:** el productor de artefactos, el evaluador y el contrato de cierre deben coincidir. Un comando fallido no es una omisión por cuota; una cohorte vacía no genera necesariamente un ledger; una comparación de ratings no valida un calibrador. El histórico de auditorías debe ser un destino autorizado antes de exigir su preservación. Ver [[Bitácora/2026-09-16]].
+
+- **Prompts y skills, 2026-09-16:** el cálculo conversacional de stake debe usar la función canónica con el límite efectivo; la brecha de probabilidades de arbitraje no equivale al retorno sobre capital. Las probabilidades estimadas completas suman uno. Severidad por impacto y puntuación de riesgo son dimensiones separadas; un P1 original bloqueado impide aprobar la remediación. Correcciones y validación en [[Bitácora/2026-09-16]].
 
 - **Remediación consolidada 2026-09-14, pendiente de revisión independiente:** congelar el adaptador durante el día evita incorporar resultados aún no disponibles; recuperar metadata archivada permite liquidar candidatos desplazados. Atomicidad del archivo no basta para un append: el lock debe cubrir lectura, unión y escritura. Reintento acotado conserva publicación ante lectores transitorios Windows. Detalles, pruebas y bloqueos en `audits/remediation/latest.md` y [[Bitácora/2026-09-14]].
 - **Identidad entre proveedores (AUD-002, abierto):** proximidad de fechas y equipos no prueba identidad; tampoco igualdad del marcador. El store actual no conserva los campos suficientes para reconciliar todas las ambigüedades sin una decisión adicional.

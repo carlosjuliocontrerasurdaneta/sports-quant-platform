@@ -1,459 +1,157 @@
-# Remediación controlada de auditoría
-
-## OBJETIVO
-
-Corrige de forma controlada, verificable y trazable los hallazgos contenidos en:
-
-`audits/consolidated/latest.md`
-
-Esta ejecución corresponde a la fase de **remediación**.
-
-No vuelvas a realizar una auditoría general del repositorio salvo que sea estrictamente necesario para comprender o corregir un hallazgo.
-
-El repositorio actual es la fuente de verdad.
-
-El informe consolidado define el backlog de trabajo, pero cada hallazgo deberá volver a verificarse antes de modificar código.
-
----
-
-# 1. Principios obligatorios
-
-Trabaja según estos principios:
-
-1. corregir causa raíz, no síntomas;
-2. realizar el cambio mínimo correcto;
-3. evitar modificaciones no relacionadas;
-4. preservar comportamiento correcto existente;
-5. añadir pruebas de regresión cuando corresponda;
-6. validar cada corrección;
-7. mantener trazabilidad;
-8. evitar cambios destructivos;
-9. detener una corrección individual si existe incertidumbre material, sin detener innecesariamente el resto del proceso;
-10. no marcar como corregido algo que no haya sido verificado.
-
-No conviertas esta ejecución en una refactorización general.
-
----
-
-# 2. Instrucciones del repositorio
-
-Antes de modificar código:
-
-1. determina la raíz del repositorio;
-2. lee las instrucciones aplicables, como `AGENTS.md`, `CLAUDE.md` u otros archivos equivalentes;
-3. identifica convenciones de código;
-4. identifica comandos de test;
-5. identifica lint;
-6. identifica type-checking;
-7. identifica build;
-8. identifica políticas de migraciones;
-9. identifica requisitos de CI/CD;
-10. determina el estado actual de Git.
-
-Respeta las instrucciones aplicables del proyecto.
-
----
-
-# 3. Estado inicial
-
-Antes de corregir cualquier hallazgo, registra:
-
-- branch actual;
-- commit actual, cuando exista;
-- estado del working tree;
-- cambios preexistentes;
-- tests inicialmente fallidos, si pueden determinarse razonablemente;
-- limitaciones del entorno.
-
-No atribuyas a esta remediación cambios o fallos que ya existían previamente.
-
-No sobrescribas cambios preexistentes del usuario.
-
----
-
-# 4. Fuente de trabajo
-
-Lee:
-
-`audits/consolidated/latest.md`
-
-Extrae:
-
-- IDs;
-- prioridad;
-- severidad;
-- confianza;
-- ubicación;
-- evidencia;
-- causa raíz;
-- recomendación;
-- criterio de aceptación;
-- prueba de regresión sugerida;
-- estado.
-
-No leas los informes originales de Claude u OpenAI salvo que el consolidado no contenga información suficiente para comprender un hallazgo.
-
----
-
-# 5. Orden de remediación
-
-Trabaja por prioridad:
-
-1. P0
-2. P1
-3. P2
-4. P3
-5. P4
-
-Dentro de una misma prioridad, considera:
-
-1. mayor severidad;
-2. mayor confianza;
-3. dependencias entre hallazgos;
-4. causas raíz compartidas;
-5. riesgo de regresión;
-6. alcance del cambio.
-
-No ejecutes automáticamente todos los hallazgos en un único cambio lógico.
-
-Agrupa únicamente hallazgos que compartan claramente:
-
-- causa raíz;
-- componente;
-- solución;
-- pruebas.
-
----
-
-# 6. Lotes de corrección
-
-Divide el trabajo en lotes pequeños y coherentes.
-
-Cada lote deberá tener:
-
-- uno o varios IDs relacionados;
-- objetivo;
-- archivos previstos;
-- riesgo;
-- criterios de aceptación;
-- pruebas necesarias.
-
-Evita lotes que mezclen:
-
-- seguridad;
-- arquitectura;
-- datos;
-- UI;
-- infraestructura;
-
-si no comparten causa raíz.
-
----
-
-# 7. Verificación previa de cada hallazgo
-
-Antes de modificar código para un hallazgo:
-
-1. localiza la evidencia;
-2. confirma que el código actual sigue afectado;
-3. verifica que no haya sido corregido previamente;
-4. identifica la causa raíz;
-5. identifica controles existentes;
-6. determina el cambio mínimo necesario;
-7. identifica pruebas relevantes.
-
-Clasifica el resultado previo como:
-
-- Confirmado
-- Ya corregido
-- Parcialmente corregido
-- No reproducible
-- No aplicable
-- Requiere información adicional
-
-No modifiques código para un hallazgo que ya no sea aplicable.
-
----
-
-# 8. Corrección
-
-Cuando el hallazgo esté confirmado:
-
-1. corrige la causa raíz;
-2. evita workarounds innecesarios;
-3. evita silenciar errores sin resolverlos;
-4. evita desactivar validaciones;
-5. evita ampliar permisos;
-6. evita eliminar tests para conseguir resultados verdes;
-7. evita cambiar expectativas correctas para ocultar fallos;
-8. conserva compatibilidad cuando sea razonablemente necesaria;
-9. actualiza documentación solo cuando el cambio lo requiera;
-10. modifica configuración únicamente cuando forme parte legítima de la solución.
-
----
-
-# 9. Cambios de arquitectura
-
-Para hallazgos arquitectónicos:
-
-- prioriza cambios incrementales;
-- evita reescrituras completas salvo necesidad demostrable;
-- conserva interfaces existentes cuando sea razonable;
-- identifica dependencias;
-- valida flujos principales.
-
-Un hallazgo de arquitectura no autoriza automáticamente un refactor global.
-
----
-
-# 10. Seguridad
-
-Para hallazgos de seguridad:
-
-- no reproduzcas secretos;
-- no uses credenciales reales contra servicios;
-- no desactives controles existentes;
-- no introduzcas bypass temporales;
-- corrige la causa raíz;
-- añade pruebas negativas cuando sea razonable;
-- verifica autorización además de autenticación cuando corresponda.
-
-Si la corrección requiere rotación de credenciales externa, no la ejecutes automáticamente. Documenta la acción manual necesaria.
-
----
-
-# 11. Datos y migraciones
-
-Cuando una corrección afecte persistencia:
-
-- protege integridad;
-- considera compatibilidad;
-- evalúa datos existentes;
-- evita migraciones destructivas sin autorización explícita;
-- evalúa rollback;
-- considera transacciones;
-- verifica idempotencia cuando corresponda.
-
-Si una migración puede provocar pérdida de datos, no la ejecutes automáticamente.
-
----
-
-# 12. Dependencias
-
-Antes de actualizar dependencias:
-
-1. confirma que la actualización aborda el hallazgo;
-2. revisa compatibilidad;
-3. minimiza saltos innecesarios;
-4. actualiza lockfile cuando corresponda;
-5. ejecuta pruebas relevantes;
-6. verifica cambios de API.
-
-No actualices todo el árbol de dependencias sin necesidad.
-
----
-
-# 13. Pruebas de regresión
-
-Cuando un defecto sea reproducible mediante una prueba automatizable:
-
-1. crea o adapta una prueba que represente el fallo;
-2. confirma, cuando sea razonable, que la prueba habría detectado el defecto;
-3. implementa la corrección;
-4. verifica que la prueba pase;
-5. ejecuta pruebas relacionadas.
-
-La prueba debe validar comportamiento, no detalles innecesarios de implementación.
-
----
-
-# 14. Validación por hallazgo
-
-Después de cada corrección:
-
-- verifica el criterio de aceptación;
-- ejecuta la prueba de regresión;
-- ejecuta tests relacionados;
-- ejecuta lint relevante;
-- ejecuta type-checking relevante;
-- ejecuta build cuando corresponda;
-- inspecciona el diff.
-
-No marques un hallazgo como corregido únicamente porque el código compile.
-
----
-
-# 15. Validación por lote
-
-Después de cada lote:
-
-1. ejecuta pruebas específicas;
-2. ejecuta controles estáticos relevantes;
-3. revisa el diff;
-4. comprueba que no existan cambios no relacionados;
-5. verifica criterios de aceptación;
-6. registra resultados.
-
-Si el lote introduce una regresión, corrígela antes de continuar cuando sea razonablemente atribuible al lote.
-
----
-
-# 16. Validación global
-
-Cuando termines todos los lotes autorizados:
-
-ejecuta, cuando estén disponibles y sean razonables:
-
-- tests completos;
-- lint;
-- type-checking;
-- build;
-- pruebas de integración relevantes.
-
-Distingue claramente:
-
-- controles ejecutados;
-- controles no ejecutados;
-- controles fallidos por causas preexistentes;
-- controles fallidos por cambios actuales;
-- controles imposibles de ejecutar.
-
----
-
-# 17. Prohibiciones
-
-No:
-
-- hagas push;
-- despliegues;
-- publiques paquetes;
-- borres datos;
-- ejecutes comandos destructivos;
-- reescribas historial Git;
-- hagas force push;
-- elimines tests válidos;
-- reduzcas controles de seguridad;
-- ocultes errores;
-- alteres informes anteriores para simular correcciones;
-- marques hallazgos como resueltos sin evidencia.
-
----
-
-# 18. Registro de remediación
-
-Genera:
-
-`audits/remediation/latest.md`
-
-Antes de sobrescribir un informe anterior, archívalo, cuando sea posible, en:
-
-`audits/remediation/history/YYYY-MM-DD-HHMM.md`
-
----
-
-# 19. Formato de cada corrección
-
-Incluye:
-
-## ID
-
-ID consolidado.
-
-## Estado inicial
-
-- Confirmado
-- Ya corregido
-- Parcialmente corregido
-- No reproducible
-- No aplicable
-
-## Causa raíz
-
-Descripción breve y basada en evidencia.
-
-## Archivos modificados
-
-Lista exacta.
-
-## Cambio realizado
-
-Explicación precisa.
-
-## Prueba de regresión
-
-Indica:
-
-- añadida;
-- modificada;
-- existente suficiente;
-- no aplicable.
-
-## Validaciones ejecutadas
-
-Incluye comandos y resultados.
-
-## Criterio de aceptación
-
-Indica si se cumple.
-
-## Estado final
-
-- Corregido
-- Pendiente de validación independiente
-- Bloqueado
-- No aplicable
-
-## Riesgos residuales
-
-Indícalos cuando existan.
-
----
-
-# 20. Tabla maestra de remediación
-
-Incluye:
-
-| ID | Prioridad | Severidad | Estado inicial | Estado final | Archivos modificados | Tests | Criterio de aceptación |
-|---|---|---|---|---|---|---|---|
-
----
-
-# 21. No modificar el consolidado como fuente histórica
-
-No reescribas `audits/consolidated/latest.md` para hacer desaparecer hallazgos.
-
-El informe consolidado representa el estado detectado antes de la remediación.
-
-La fase posterior de verificación determinará qué hallazgos pueden cerrarse.
-
----
-
-# 22. Resultado final
-
-El informe:
-
-`audits/remediation/latest.md`
-
-deberá incluir:
-
-1. Resumen
-2. Estado inicial
-3. Hallazgos procesados
-4. Hallazgos corregidos
-5. Hallazgos ya corregidos
-6. Hallazgos bloqueados
-7. Hallazgos no aplicables
-8. Cambios realizados
-9. Pruebas de regresión
-10. Validaciones ejecutadas
-11. Fallos preexistentes
-12. Riesgos residuales
-13. Tabla maestra
-14. Cambios pendientes de verificación independiente
-15. Anexo de comandos
-
-Al terminar, no declares el proyecto completamente corregido.
-
-Indica que las correcciones quedan pendientes de la fase independiente:
-
-`verificar-remediacion.md`
+<!-- GENERATED by scripts/sync_agent_instructions.py; edit the canonical source. -->
+# Remediación autorizada
+
+Fuente: `.claude/automation/audit-workflow.md`.
+
+Ejecutar únicamente la fase indicada en este documento.
+
+## Autoridad, alcance y evidencia
+
+Leer `AGENTS.md` y las instrucciones aplicables; inspeccionar Git y separar los
+cambios preexistentes. Registrar alcance, exclusiones, base Git y limitaciones.
+El código/configuración actual es la fuente de verdad, los informes son evidencia
+secundaria. No asumir que otro auditor, un test verde o una alerta de herramienta
+demuestran corrección. No inventar ejecuciones, datos, umbrales ni resultados.
+
+Diagnóstico, consolidación y verificación son de solo lectura del proyecto:
+solo escribir los entregables de la fase, su histórico y el registro de tarea
+cuando esté autorizado. No cambiar fuentes, tests, configuración, dependencias,
+datos productivos ni credenciales para conseguir una validación satisfactoria.
+Evaluar los efectos de comandos antes de ejecutarlos; usar temporales/aislamiento.
+No instalar dependencias, consumir servicios de pago, efectuar escrituras externas,
+commits, pushes, releases o despliegues sin autorización específica.
+No mostrar secretos completos; registrar tipo y ubicación, nunca utilizarlos.
+
+Validar primero lo más acotado. En este entorno usar pytest con
+`-p no:cacheprovider --basetemp=.codex-tmp/pytest`; inspeccionar Make/BAT/builds
+antes de ejecutarlos. Registrar comando, código de salida y evidencia, distinguiendo
+`NEW_REGRESSION`, `PRE_EXISTING_FAILURE`, `ENVIRONMENTAL_FAILURE`, `NOT_VERIFIABLE`.
+Un control configurado no demuestra que esté pasando: comprobar su estado actual
+o declarar la limitación. No modificar ni eliminar datos para probar una hipótesis.
+
+## Contrato de hallazgos
+
+Usar la taxonomía de `AGENTS.md`:
+
+- Evidencia: `REPRODUCED`, `STATICALLY_VERIFIED`, `TOOL_DETECTED`, `INFERRED`,
+  `NOT_VERIFIABLE`, `DISMISSED`.
+- Solo `REPRODUCED` y `STATICALLY_VERIFIED` son defectos confirmados.
+  `TOOL_DETECTED` requiere revisión independiente; si falta evidencia,
+  reclasificar como `INFERRED` o `NOT_VERIFIABLE`, sin fingir confirmación.
+- Confianza: `HIGH`, `MEDIUM`, `LOW`; un candidato `LOW` no se confirma.
+- Severidad por impacto demostrado: `CRITICAL` (sistémico/catastrófico),
+  `HIGH` (considerable), `MEDIUM` (limitado/condicionado), `LOW` (menor).
+  La frecuencia y la confianza no rebajan la severidad del impacto alcanzable.
+  Comprobar controles compensatorios antes de afirmar ese impacto.
+- Prioridad independiente: P0 inmediata, P1 urgente, P2 planificada,
+  P3 mantenimiento, P4 opcional. Las observaciones informativas van aparte.
+
+Cada hallazgo incluye ID, título, categoría, severidad, confianza, evidencia,
+archivo/línea, activación, problema, evidencia concreta, esperado, observado,
+causa raíz, consecuencia, corrección mínima, pruebas necesarias y limitaciones.
+Añadir controles existentes, criterio de aceptación y prioridad para remediación.
+Declarar explícitamente los campos no verificables. Agrupar por causa raíz;
+separar solo problemas con impacto o solución materialmente distintos.
+No convertir estilo, TODO, complejidad, antigüedad o baja cobertura en defectos
+sin consecuencia demostrable. Conservar descartes relevantes y su explicación.
+
+IDs estables dentro de una ronda: auditores `CLAUDE-001` / `OPENAI-001`,
+consolidado `AUD-001`, regresiones `REG-001`. La identidad completa es
+`round_id + ID`; no reiniciar ni renumerar dentro de la ronda ni cambiar IDs
+cuando cambia la severidad. Registrar alias de origen en la consolidación.
+Los IDs históricos (`AUD-MED-001`, etc.) se conservan tal como fueron emitidos.
+Al leer informes legacy, normalizar etiquetas equivalentes sin elevar evidencia:
+REPRODUCIDO → REPRODUCED, VERIFICADO_ESTÁTICAMENTE → STATICALLY_VERIFIED,
+DETECTADO_POR_HERRAMIENTA → TOOL_DETECTED, INFERIDO → INFERRED,
+NO_VERIFICABLE → NOT_VERIFIABLE, DESCARTADO → DISMISSED. Conservar la etiqueta
+original como origen y revalidar el hallazgo; una etiqueta «confirmado» sin
+evidencia suficiente no adquiere confirmación por la conversión.
+
+La antigua puntuación ponderada es solo información histórica de riesgo:
+no convertirla en severidad ni exigir recalcularla en rondas nuevas. Un impacto
+catastrófico demostrado sigue siendo CRITICAL aunque su activación sea rara.
+
+## Rondas, archivos y compatibilidad
+
+Para nuevas rondas, usar `audit/latest/` y un `round_id` único registrado en
+`MANIFEST.json`. El coordinador inicializa el manifest antes del diagnóstico;
+en una ejecución individual el mismo agente puede preparar la ronda sin leer
+conclusiones históricas (preservación mediante copia/hashes). Antes de iniciar
+una ronda distinta, un único coordinador copia
+íntegramente la ronda anterior a `audit/<round_id-anterior>/`, comprueba igualdad
+de archivos/contenidos y solo después reemplaza los entregables de `latest`.
+No sobrescribir históricos. Si el ID es ambiguo, hay un escritor activo o falla
+la preservación, no sobrescribir: registrar bloqueo. Un segundo auditor de la
+misma ronda no reinicia ni archiva la ronda que está evaluando.
+
+| Fase | Entradas | Entregables dentro de `audit/latest/` |
+|---|---|---|
+| Diagnóstico independiente | Repositorio y alcance | `claude/REPORT.md` o `openai/REPORT.md`, más `EVIDENCE.json` en ese subdirectorio |
+| Consolidación | Informes de los auditores de la misma ronda | `FINDINGS.md`, `BACKLOG.md`, `MANIFEST.json` |
+| Remediación autorizada | Hallazgos y alcance aprobado | `CHANGES.md`, `VALIDATION.md`, `STATUS.md`; actualización del manifest |
+| Verificación independiente | Hallazgos, cambios y evidencia actual | `VERIFICATION.md`, `STATUS.md`; actualización del manifest |
+
+El manifest registra `round_id`, fecha UTC, alcance, base/working tree, rutas y
+hashes de informes fuente, auditores disponibles, `tests_initial`, `tests_final`,
+`files_modified`, `final_result`, `final_result_rationale` y campos no disponibles.
+Los auditores escriben únicamente su subdirectorio y anotan allí comandos,
+códigos de salida, base y cobertura en `EVIDENCE.json`; el coordinador integra
+estos registros en el manifest sin permitir escrituras concurrentes sobre él.
+Con un solo auditor autorizado, consolidar tras su diagnóstico y declarar que
+no hubo segunda opinión; nunca inventar un informe del auditor ausente.
+
+`FINDINGS.md` es la línea base de diagnóstico: remediación/verificación no borran
+ni reescriben hallazgos para simular su cierre. `STATUS.md` relaciona ID, estado
+de remediación, estado de verificación, evidencia y próxima acción. La fase que
+lo actualiza preserva las columnas/evidencia de las fases anteriores.
+Antes de reemplazar un entregable de la misma ronda, guardar su versión previa
+en `history/<fase>-<fecha-UTC-unica>/` dentro de la ronda y verificar la copia.
+
+Compatibilidad: aceptar como entrada explícita los informes existentes en
+`audits/claude/`, `audits/openai/`, `audits/consolidated/`, `audits/remediation/`,
+`audits/verification/` y el antiguo `audit/latest/`. Registrar ruta, hash e IDs
+originales; no mover, renombrar ni modificar esos históricos. Si se continúa
+una ronda legacy, usar sus IDs y dejar los nuevos entregables en una ronda
+canónica preservada por el procedimiento anterior. No seleccionar por mtime ni
+mezclar automáticamente informes de distinta base/alcance: pedir identificar
+la fuente si no puede resolverse de la solicitud. Campos ausentes son
+`NOT_VERIFIABLE`, nunca una razón para inventar evidencia o cerrar un hallazgo.
+
+## Remediación autorizada
+
+La petición del usuario debe identificar el informe y el alcance a corregir
+(IDs, grupo inequívoco o todos los confirmados). La autorización ya concedida
+en la sesión sigue siendo válida para ese alcance; no exigir que se repita.
+Si no hay fuente o el alcance es ambiguo, resolverlo antes de editar. Una
+auditoría por sí sola no autoriza correcciones ni operaciones externas.
+
+1. Leer hallazgos/backlog (o fuente legacy explícita); registrar base Git, cambios
+   locales y validaciones iniciales antes de corregir. No pisar trabajo existente.
+2. Revalidar cada ID: confirmado, ya corregido, parcial, no reproducible,
+   no aplicable o requiere información. No modificar código por un falso positivo.
+3. Preparar lotes pequeños por causa/solución. Aplicar el parche mínimo autorizado;
+   preservar interfaces, datos históricos y comportamiento correcto. No mezclar
+   refactors, limpieza o actualizaciones de dependencias ajenas al defecto.
+4. Añadir una prueba discriminante cuando el defecto sea automatizable. Demostrar
+   fallo antes y éxito después, o registrar motivo y evidencia equivalente si no
+   es seguro. No debilitar assertions, validaciones o seguridad para obtener verde.
+5. Validar por lote: caso del defecto, componente, regresión y checks pertinentes.
+   Inspeccionar los comandos Make/BAT por separado; una suite Python no los cubre.
+   Ejecutar la suite global solo cuando aporte evidencia relevante y sea segura.
+6. Revisar diff y efectos de hooks/autofixes realmente observados; registrar
+   cambios relacionados, comandos/códigos, criterios cumplidos y fallos preexistentes.
+7. Detener el ID bloqueado, documentar qué falta y continuar con los demás IDs
+   independientes autorizados. No marcar resuelto algo sin evidencia.
+
+Cambios de riesgo/modelo/promoción, producción, credenciales, cuota de pago,
+migraciones irreversibles y eliminaciones requieren el alcance específico
+autorizado por el usuario y las reglas del repositorio. No inferirlo del backlog.
+Para eliminar, volver a comprobar rutas, consumidores y ausencia de cambios
+preexistentes no autorizados; nunca retirar un elemento ambiguo/no verificable.
+
+En `CHANGES.md` registrar por ID: estado inicial, causa, archivos, cambio,
+prueba, aceptación, riesgos residuales y estado final (pendiente de verificación,
+parcial, bloqueado o no aplicable). En `VALIDATION.md` registrar evidencia real.
+Actualizar estado sin alterar la línea base. Cumplir el bookkeeping aplicable
+de `CLAUDE.md`/Obsidian y registrar limitaciones. La implementación validada queda
+pendiente de verificación independiente; no declarar el proyecto libre de errores.

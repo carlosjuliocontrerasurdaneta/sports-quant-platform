@@ -5,32 +5,16 @@ description: Use this skill for targeted code audits in the Sports Quant Platfor
 
 # Code Audit
 
-## Scope
+Revisión focalizada del diff, archivos o módulos solicitados. Leer las secciones
+comunes y «Diagnóstico independiente» del
+[contrato de auditoría](../../automation/audit-workflow.md).
 
-Audit code changes or selected modules without unnecessarily scanning large data folders.
+Aplicar sus criterios de evidencia, severidad, formato y seguridad al alcance
+pedido; inspeccionar callers solo cuando aporten evidencia de corrección.
+No iniciar una auditoría integral ni cargar todas sus referencias por defecto.
+Para áreas especializadas, consultar únicamente la referencia pertinente de
+`../full-audit/references/`. No cargar datasets completos en contexto.
 
-## Check
-
-- Imports and dependencies.
-- Error handling.
-- Type hints.
-- Tests.
-- Data leakage risk.
-- Secret handling.
-- Logging.
-- Runtime risk.
-- Maintainability.
-
-## Avoid
-
-- Opening large data files unless explicitly required.
-- Inventing results.
-- Claiming tests passed without command output.
-
-## Output
-
-1. Files inspected
-2. Findings by severity
-3. Evidence
-4. Recommended fix
-5. Validation command
+Entregar archivos inspeccionados, hallazgos, evidencia, corrección mínima,
+validaciones y limitaciones. Si solo se pidió revisión conversacional, responder
+en conversación; no crear una ronda persistida sin necesidad o petición.

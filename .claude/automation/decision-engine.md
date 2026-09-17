@@ -1,30 +1,45 @@
 # Decision Engine
 
-Use this order; the first matching condition wins.
+El catálogo canónico es `model-routing.json`; `route_classifier.py::classify`
+aplica sus keywords en prioridad descendente y cae al default cuando ninguna
+coincide. Consultarlo bajo demanda mediante `/route-task`, no como hook automático.
+La clasificación textual es orientativa: respetar el alcance explícito del usuario
+y los triggers específicos de la skill. Registrar cualquier override y su motivo;
+una coincidencia de keyword nunca autoriza modificar ni ampliar el encargo.
 
-1. Quantitative production incident -> `quant/12-quant-incident.md`.
-2. Active non-quantitative incident or production outage -> `incident.md`.
-3. Release/deploy/tag request -> `release.md`.
-4. Failing test or reproducible incorrect behavior -> `bugfix.md`.
-5. Daily prediction generation -> `quant/01-daily-prediction.md`.
-6. Material pregame information update -> `quant/02-pregame-refresh.md`.
-7. Completed-game settlement -> `quant/03-postgame-settlement.md`.
-8. Daily quantitative performance audit -> `quant/04-daily-audit.md`.
-9. Diagnosis of failed picks -> `quant/05-loss-diagnosis.md`.
-10. Calibration monitoring without artifact modification -> `quant/06-calibration-monitor.md`.
-11. Data or performance drift monitoring -> `quant/07-drift-monitor.md`.
-12. Quantitative data-quality recovery -> `quant/08-data-quality-recovery.md`.
-13. Champion-versus-challenger evaluation -> `quant/09-champion-challenger.md`.
-14. Controlled recalibration request -> `quant/10-controlled-recalibration.md`.
-15. Season-transition analysis -> `quant/11-season-transition.md`.
-16. Weekly quantitative continuous-improvement review -> `quant/13-weekly-continuous-improvement.md`.
-17. Probability/model/calibrator/feature-selection change -> `model.md`.
-18. Evaluation-only or historical simulation change -> `backtest.md`.
-19. Calibration-only analysis or artifact -> `calibration.md`.
-20. External data source, parser, mapping, ETL -> `provider.md`.
-21. Behavior-preserving structural change -> `refactor.md`.
-22. New externally observable behavior -> `feature.md`.
-23. Documentation-only request -> `documentation.md`.
+<!-- generated: routes -->
+Catálogo derivado de `.claude/automation/model-routing.json`. La política de
+modelos está en `MODEL_ROUTING.md`; esta tabla no cambia el modelo activo
+ni autoriza delegación, escrituras o ejecución del loop.
+
+| Ruta | Loop | Agente principal | Apoyo |
+|---|---|---|---|
+| `full-audit` | `audit.md` | principal-orchestrator | repository-cartographer, backend-architect, sports-quant-auditor, qa-engineer, security-reviewer |
+| `quant-incident` | `quant/12-quant-incident.md` | principal-orchestrator | sports-quant-auditor, leakage-detector, qa-engineer |
+| `incident` | `incident.md` | principal-orchestrator | qa-engineer, security-reviewer, devops-engineer |
+| `quant-daily-prediction` | `quant/01-daily-prediction.md` | sports-quant-auditor | provider-integrator, qa-engineer |
+| `quant-pregame-refresh` | `quant/02-pregame-refresh.md` | line-movement-analyst | odds-market-auditor, sports-quant-auditor |
+| `quant-settlement` | `quant/03-postgame-settlement.md` | sports-quant-auditor | data-engineer, qa-engineer |
+| `quant-daily-audit` | `quant/04-daily-audit.md` | sports-quant-auditor | calibration-auditor, backtest-reviewer |
+| `quant-loss-diagnosis` | `quant/05-loss-diagnosis.md` | sports-quant-auditor | leakage-detector, odds-market-auditor |
+| `quant-calibration-monitor` | `quant/06-calibration-monitor.md` | calibration-auditor | backtest-reviewer, risk-manager |
+| `quant-drift-monitor` | `quant/07-drift-monitor.md` | ml-engineer | data-engineer, sports-quant-auditor |
+| `quant-data-recovery` | `quant/08-data-quality-recovery.md` | data-engineer | provider-integrator, qa-engineer |
+| `quant-champion-challenger` | `quant/09-champion-challenger.md` | backtest-reviewer | calibration-auditor, leakage-detector, risk-manager |
+| `quant-controlled-recalibration` | `quant/10-controlled-recalibration.md` | calibration-auditor | backtest-reviewer, risk-manager |
+| `quant-season-transition` | `quant/11-season-transition.md` | sports-quant-auditor | feature-engineer, ml-engineer |
+| `quant-weekly-improvement` | `quant/13-weekly-continuous-improvement.md` | principal-orchestrator | sports-quant-auditor, calibration-auditor, ml-engineer |
+| `calibration-only` | `calibration.md` | calibration-auditor | backtest-reviewer, risk-manager |
+| `modeling` | `model.md` | ml-engineer | feature-engineer, leakage-detector, calibration-auditor, backtest-reviewer, risk-manager |
+| `backtest` | `backtest.md` | backtest-reviewer | leakage-detector, sports-quant-auditor |
+| `architecture` | `refactor.md` | backend-architect | repository-cartographer, python-engineer, qa-engineer |
+| `provider` | `provider.md` | provider-integrator | data-engineer, leakage-detector, qa-engineer |
+| `bugfix` | `bugfix.md` | python-engineer | repository-cartographer, qa-engineer |
+| `security` | `refactor.md` | security-reviewer | python-engineer, qa-engineer |
+| `release` | `release.md` | devops-engineer | qa-engineer, security-reviewer |
+| `documentation` | `documentation.md` | documentation-writer |  |
+| `default` | `feature.md` | python-engineer |  |
+<!-- endgenerated: routes -->
 
 ## Health-driven priority
 

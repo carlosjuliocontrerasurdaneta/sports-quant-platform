@@ -1,4 +1,6 @@
-# MOTOR CUANTITATIVO DE PRICING PREGAME — FÚTBOL (SOCCER) MULTI-LIGA v1
+# MOTOR CUANTITATIVO DE PRICING PREGAME — FÚTBOL (SOCCER) MULTI-LIGA v3
+
+> **v3 (2026-09-16)**: Liquidar el hándicap firmado mediante margen + h, incluido el push.
 Ligas cubiertas: EPL · La Liga · Bundesliga · Serie A · Ligue 1 · UCL ·
 Liga MX · MLS · Brasileirão · Primera División de Chile ·
 Frauen-Bundesliga · UWCL
@@ -252,9 +254,13 @@ A. 1X2: P_home = Σ P(i>j) | P_empate = Σ P(i=j) | P_away = Σ P(i<j).
 B. Doble oportunidad: 1X, 12, X2 (sumas directas).
 C. Draw No Bet: P_home / (P_home + P_away) (empate = push).
 D. Hándicap asiático (línea h para el equipo elegido):
-    Enteras (0, ±1, ±2): push si el margen iguala la línea; prob de
-    ganar/push/perder desde la matriz; edge sobre prob condicional
-    sin push.
+    Definir margen = goles del equipo elegido − goles del rival;
+    h es el hándicap firmado aplicado al equipo elegido.
+    margen_ajustado = margen + h
+    Enteras (0, ±1, ±2): ganar si margen_ajustado > 0, push si = 0,
+    perder si < 0. Ejemplo: equipo −1 que gana por un gol → push.
+    Probabilidades ganar/push/perder desde la matriz; edge sobre
+    probabilidad condicional sin push.
     Medias (±0.5, ±1.5): sin push; lectura directa.
     Cuartos (±0.25, ±0.75): mitad de la apuesta en cada línea
     adyacente; reportar P_gana / P_media-gana / P_push-parcial /

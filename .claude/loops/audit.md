@@ -1,8 +1,8 @@
 # Audit Loop
 
-Loop de **solo lectura** para auditorías integrales. Sustituye a `refactor.md`
-en la ruta `full-audit`: una auditoría diagnostica, no refactoriza. La
-corrección vive en una skill distinta y detrás de un gate humano.
+Entrada operacional de solo lectura para auditorías integrales. La fuente del
+procedimiento es `.claude/automation/audit-workflow.md`; la skill `full-audit`
+selecciona las referencias especializadas según el alcance.
 
 ## Common guardrails
 
@@ -12,24 +12,16 @@ corrección vive en una skill distinta y detrás de un gate humano.
 - Maintain `.claude/automation/runtime/current-task.md`.
 - Stop at the iteration budget or any human approval gate.
 
-## Restricciones propias del diagnóstico
-
-Se suman a las anteriores, no las sustituyen:
-
-- no modificar código, configuración, datos ni dependencias durante las fases 0–3;
-- único destino de escritura autorizado: `audit/latest/` y `.claude/automation/runtime/current-task.md`;
-- "the smallest reversible change" se aplica a la fase de corrección; durante el diagnóstico el cambio correcto es **ninguno**.
-
 ## Pasos
 
-1. Leer instrucciones aplicables y `.claude/memory/known-issues.md` antes de auditar.
-2. Inventariar y construir la matriz de cobertura antes de buscar defectos.
-3. Auditar por área, registrando evidencia con su estado.
-4. Revalidar cada hallazgo activo con un segundo método independiente.
-5. Persistir hallazgos en `audit/latest/FINDINGS.md` a medida que se confirman.
-6. Entregar el plan priorizado y **detenerse**: la corrección exige aprobación explícita.
-7. Si se aprueba, continuar con la skill `audit-remediation`, no con este loop.
-8. Finish through `/verification-gate`.
-
-La skill `full-audit` define el procedimiento completo. Este archivo fija los
-guardarraíles de ejecución; no los duplica ni los reinterpreta.
+1. Leer instrucciones aplicables y las secciones comunes/diagnóstico del contrato.
+2. Identificar ronda y auditor; preservar la ronda anterior antes de reemplazarla
+   según «Rondas, archivos y compatibilidad». No reiniciar la ronda al sumar auditor.
+3. Inventariar, auditar y revalidar con independencia; no leer conclusiones de
+   auditores previos durante la fase principal. Declarar contexto contaminado.
+4. Persistir solo los entregables autorizados de la fase. Si se requiere backlog,
+   consolidar después del diagnóstico según el contrato común.
+5. Entregar y terminar el diagnóstico. Correcciones autorizadas continúan mediante
+   `audit-remediation`, no dentro de este loop.
+6. Finish through `/verification-gate`, sujeto a los límites de escritura del
+   diagnóstico. Registrar cualquier bookkeeping excluido; no editar el proyecto.

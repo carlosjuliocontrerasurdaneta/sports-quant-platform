@@ -41,7 +41,7 @@ Ante cualquier solicitud de análisis de partido, ejecuta siempre este pipeline 
 
 ### Fase 3 — Estimación de Probabilidad (Pronosticador)
 - Generar probabilidad estimada para cada mercado activo:
-  - **Moneyline**: P(home_win), P(away_win) [suma ≠ 1 por vig; reportar sin vig]
+  - **Moneyline**: P(home_win), P(away_win), cuya suma es 1 en mercados de dos resultados exhaustivos. En 1X2 incluir P(draw) y exigir que los tres sumen 1. Las probabilidades estimadas no contienen vig; las implícitas brutas de las cuotas pueden sumar más de 1, y tras quitar el vig deben normalizarse sobre el mercado completo (`src/sqp/markets/vig.py`).
   - **Spread/Handicap**: P(home_cover), P(away_cover) dado la línea actual
   - **Total**: P(over), P(under) dado el total de mercado
 - Usar modelo apropiado según deporte (ver sección por deporte).
@@ -70,12 +70,18 @@ Ante cualquier solicitud de análisis de partido, ejecuta siempre este pipeline 
   `risk.kelly_fraction` de `configs/default.yaml` (**0.08** en producción desde
   2026-08-23; el default de la dataclass es 0.25 y NO es lo que opera). Protege
   contra estimaciones inciertas, que es el motivo de fraccionar.
-  ```
-  b            = cuota_decimal - 1
-  edge (EV)    = p_estimada × cuota_decimal - 1
-  Kelly completo = edge / b        # equivale a (p×b - (1-p)) / b
-  Kelly fraccionado = Kelly_completo × risk.kelly_fraction   # 0.08 hoy
-  Stake recomendado = Kelly_fraccionado × bankroll
+  Usar la función canónica con `risk` de la configuración efectiva de
+  `Settings.load()` (precedencia en `docs/CONFIG-PRECEDENCE.md`). El límite
+  `risk.max_stake_pct` también es obligatorio: 0.02 en el YAML vigente.
+  ```python
+  from sqp.risk.kelly import kelly_fraction_stake
+
+  stake_recomendado, kelly_pct_aplicado = kelly_fraction_stake(
+      p_estimada, cuota_decimal, bankroll,
+      fraction=risk.kelly_fraction,
+      max_stake_pct=risk.max_stake_pct,
+      min_edge=risk.min_edge,
+  )
   ```
   El numerador es el **EV a la cuota ofrecida**, no `p_estimada - p_sin_vig`.
   Usar la divergencia ahí invierte el signo económico: con p=0.54, p_sin_vig=0.50
@@ -83,7 +89,10 @@ Ante cualquier solicitud de análisis de partido, ejecuta siempre este pipeline 
   EV = 0.54×1.80 − 1 = **−2.8%** y el stake correcto es **0**. Fuente canónica y
   única autoridad: `src/sqp/risk/kelly.py:kelly_fraction_stake`, que además
   devuelve 0 ante valores no finitos, p fuera de (0,1), cuota ≤ 1 o banca ≤ 0.
-  Si hay duda, calcular con esa función en vez de a mano.
+  Su fórmula aplica `max(0, min(Kelly_completo * risk.kelly_fraction,
+  risk.max_stake_pct))`, después del filtro de EV. Ejemplo de control:
+  p=0.97, cuota=1.10, banca=1000 y fracción=0.08 dan 53.60 antes del límite,
+  pero el stake recomendado con máximo 0.02 es 20.00.
 - Detectar oportunidades de arbitraje si hay líneas de múltiples books.
 - Reportar exposure total del día/sesión si el usuario mantiene un log.
 
@@ -102,7 +111,7 @@ ANÁLISIS: [EQUIPO A] vs [EQUIPO B] — [DEPORTE] [FECHA]
 [métricas relevantes, lesiones, situación, notas]
 
 🎯 PROBABILIDADES ESTIMADAS
-  Moneyline:  [Home X%] | [Away Y%]  (sin vig)
+  Moneyline:  [Home X%] | [Away Y%] | [Draw Z% solo en 1X2]  (suma 100%)
   Spread [línea]: [Home cover A%] | [Away cover B%]
   Total [línea]:  [Over C%] | [Under D%]
 
@@ -222,14 +231,16 @@ ROI esperado no es un ROI realizado ni una promesa de beneficio.
 
 ## Reglas de Arbitraje
 
-1. Detectar cuando `1/odd_book1 + 1/odd_book2 < 1.0` para el mismo mercado entre books distintos.
-2. Calcular garantía:
-   ```
-   stake_A = bankroll × (1/odd_A) / (1/odd_A + 1/odd_B)
+1. Para dos resultados mutuamente excluyentes y exhaustivos del mismo mercado, con reglas de liquidación equivalentes, detectar cuando `1/odd_A + 1/odd_B < 1.0`. No aplicar la cobertura de dos resultados a un mercado 1X2 omitiendo el empate.
+2. Calcular el retorno teórico de la cobertura (cuotas decimales finitas > 1 y banca positiva):
+   ```python
+   suma_inversas = 1 / odd_A + 1 / odd_B
+   stake_A = bankroll * (1 / odd_A) / suma_inversas
    stake_B = bankroll - stake_A
-   retorno_asegurado = stake_A × odd_A - bankroll   # aritmética de la cobertura, NO una promesa
+   beneficio_teorico = stake_A * odd_A - bankroll
+   arb_pct = (1 / suma_inversas - 1) * 100
    ```
-3. Reportar % de garantía: `arb% = (1 - (1/odd_A + 1/odd_B)) × 100`
+3. Reportar `arb_pct` como retorno teórico porcentual sobre la banca asignada: debe coincidir con `beneficio_teorico / bankroll * 100`. Con cuotas 2.10/2.10 y banca 100, se asignan 50/50 y el beneficio teórico es 5 (5%). `1 - suma_inversas` es una brecha de probabilidades, no ese retorno.
 4. Alertar sobre riesgos de arb: límites de stake, cancelaciones, timing de registro.
 
 ---
@@ -302,9 +313,10 @@ producción. `CLAUDE.md` lo prohíbe explícitamente: *«Never invent thresholds
 cutoffs, or formulas that are not defined by the project»* y *«Use the project's
 canonical definitions for these metrics»*.
 
-Fuente de verdad, en este orden: `configs/default.yaml` → `src/sqp/config.py`
-(`RiskConfig`) → `src/sqp/risk/kelly.py`. Si un valor no aparece ahí, no es un
-umbral del proyecto y no debe usarse en un informe.
+Fuente de verdad para parámetros: la configuración efectiva de `Settings.load()`
+en `src/sqp/config.py`, con precedencia entorno → `configs/default.yaml` →
+defaults de código según `docs/CONFIG-PRECEDENCE.md`. La fórmula canónica está
+en `src/sqp/risk/kelly.py`. No introducir umbrales ajenos a esas fuentes.
 
 Se retiró además el identificador `profit_garantizado`: `.claude/rules/
 betting-output-rules.md` prohíbe garantizar beneficio, y un arbitraje sigue

@@ -1,4 +1,6 @@
-# MOTOR CUANTITATIVO DE PRICING PREGAME — BALONCESTO (NBA · WNBA · NCAAB · WNCAAB) v2
+# MOTOR CUANTITATIVO DE PRICING PREGAME — BALONCESTO (NBA · WNBA · NCAAB · WNCAAB) v3
+
+> **v3 (2026-09-16)**: EV por unidad con probabilidades incondicionales de ganar, devolver y perder.
 
 > **v2 (2026-08-15)** — sincronizado con prompt 191 v3. Cambios: EV por unidad
 > como variable de decisión, ranking lexicográfico (el Score ponderado de v1
@@ -256,7 +258,12 @@ C. Total (línea t): P_over = P(Total > t); línea entera → P_push aparte.
 3. Edge_pp = Prob_modelo − Prob_mercado_sinvig, en PUNTOS PORCENTUALES.
    No mezclar nunca probabilidad implícita con vig y probabilidad justa.
 4. EV POR UNIDAD (variable de decisión principal):
-    EV_por_unidad = p_modelo × (decimal − 1) − (1 − p_modelo)
+    EV_por_unidad = p_win × (decimal − 1) − p_loss
+   Usar probabilidades incondicionales: p_win + p_push + p_loss = 1.
+   La devolución aporta 0 al beneficio. La probabilidad condicional
+   p_win / (p_win + p_loss) sirve para comparar precios, no para el EV
+   por unidad apostada; si todo es push, EV = 0 y no hay probabilidad
+   condicional definida. Sin push, p_loss = 1 − p_win.
    El edge en pp NO basta: 4 pp a cuota 1.10 y 4 pp a cuota 3.00 no valen
    ni parecido. Un edge positivo con EV ≤ 0 no es apostable.
    Sin línea NO existe edge: |Prob_modelo − 0.50| puede reportarse como

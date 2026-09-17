@@ -1,4 +1,6 @@
-# MOTOR CUANTITATIVO DE PRICING PREGAME — NHL v2
+# MOTOR CUANTITATIVO DE PRICING PREGAME — NHL v3
+
+> **v3 (2026-09-16)**: EV con devoluciones; separar los goles esperados de OT/SO y portería vacía.
 
 > **v2 (2026-08-15)** — sincronizado con prompt 191 v3. Cambios: EV por unidad
 > como variable de decisión, ranking lexicográfico (el Score ponderado de v1
@@ -220,7 +222,8 @@ REGRESIÓN DE SUERTE (específica de hockey):
 excepcionales y exigen re-verificación de inputs antes de publicar.)
 
 ## FASE 6 — TOTAL ESPERADO CON PORTERÍA VACÍA
-    Total_reportado = Total + EN_total (+0.20)
+    Total_con_EN = Total + EN_total (+0.20)
+Este es el total intermedio; el total final incorpora OT en la Fase 8.
 (Los goles a portería vacía existen en ~30% de los juegos y cuentan
 para el total; el modelo de λ los subestima. Aplicar SIEMPRE, salvo
 que la simulación en código ya modele EN explícitamente.)
@@ -241,9 +244,13 @@ Con código y EN modelado explícitamente: no aplicar (regla 8).
         por diferencia clara de calidad)
     El ganador de OT/SO recibe +1 gol en el score final: cuenta para
     ML, puck line y TOTAL (el shootout acredita exactamente 1 gol al
-    ganador). Con código: simular explícitamente. Sin código: sumar
-    P_reg_empate × 1 gol ponderado al total ya está aproximado dentro
-    de EN_total; no duplicar.
+    ganador). Con código: simular explícitamente y derivar los mercados
+    del score final. Sin código, ajustar la media analítica:
+        OT_total = P_reg_empate × 1
+        Total_reportado = Total_con_EN + OT_total
+    EN_total representa solo portería vacía; no incluye OT/SO. Ambas
+    vías deben incluir cada componente una sola vez: si los scores
+    simulados ya incluyen OT o EN, no volver a sumar ese componente.
     Línea de 60 minutos (3 vías), solo si el mercado la ofrece:
         P_home_reg | P_empate_reg | P_away_reg (sin módulo OT).
 
@@ -256,7 +263,7 @@ A. ML (incluye OT/SO): Fase 8.
 B. Puck line ±1.5 (score final, con corrección EN de Fase 7):
     P_fav_−1.5 | P_dog_+1.5 = 1 − eso (sin push posible en ±1.5).
 C. Total (línea t = 5.5 / 6 / 6.5 típicas): P_over = P(Total_dist > t)
-   sobre el total con EN; línea entera → declarar P_push (masa del
+   sobre el total final con EN y OT/SO; línea entera → declarar P_push (masa del
    valor exacto) y edge sin push.
 D. 60 minutos (3 vías): si hay mercado, reportar las tres.
 
@@ -269,7 +276,12 @@ D. 60 minutos (3 vías): si hay mercado, reportar las tres.
 3. Edge_pp = Prob_modelo − Prob_mercado_sinvig, en PUNTOS PORCENTUALES.
    No mezclar nunca probabilidad implícita con vig y probabilidad justa.
 4. EV POR UNIDAD (variable de decisión principal):
-    EV_por_unidad = p_modelo × (decimal − 1) − (1 − p_modelo)
+    EV_por_unidad = p_win × (decimal − 1) − p_loss
+   Usar probabilidades incondicionales: p_win + p_push + p_loss = 1.
+   La devolución aporta 0 al beneficio. La probabilidad condicional
+   p_win / (p_win + p_loss) sirve para comparar precios, no para el EV
+   por unidad apostada; si todo es push, EV = 0 y no hay probabilidad
+   condicional definida. Sin push, p_loss = 1 − p_win.
    El edge en pp NO basta: 4 pp a cuota 1.10 y 4 pp a cuota 3.00 no valen
    ni parecido. Un edge positivo con EV ≤ 0 no es apostable. Relevante en
    NHL, donde la puck line del favorito y el ML del underdog pueden tener

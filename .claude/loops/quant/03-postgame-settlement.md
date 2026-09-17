@@ -30,8 +30,13 @@ Liquidar picks de forma determinista contra el snapshot original.
 6. Guardar score, proveedor y regla aplicada.
 
 ## Artefactos
-- `data/bets/settled_<liga>.csv`
-- `data/calibration/served_<liga>.csv` con las filas graduadas
+- `data/bets/settled_<liga>.csv` cuando existen liquidaciones persistidas.
+- `data/calibration/served_<liga>.csv` con las filas graduadas cuando existe
+  stream servido para la cohorte.
+- Para una cohorte vacía inicial, ambos archivos pueden no existir. Registrar
+  en `current-task.md` la ruta y legibilidad del snapshot, `n_emitidos = 0` y
+  ausencia comprobada de pendientes tanto servidos como archivados/desplazados.
+  Un CSV ilegible o un snapshot ausente no demuestran una cohorte vacía.
 
 ## Criterios de salida
 Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos:
@@ -39,7 +44,9 @@ Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos:
   ausente, o la reconciliación no cuadra.
 - `DEGRADED`: quedan `PENDING` por resultados aún no publicados; registrar cuántos
   y de qué liga.
-- `PASS`: reconciliación cuadrada y `settled_<liga>.csv` legible; también aplica
-  a una cohorte válida con `n_emitidos = 0`.
+- `PASS`: reconciliación cuadrada, sin pendientes y artefactos aplicables
+  legibles. Para una cohorte válida con `n_emitidos = 0` y sin pendientes
+  servidos ni archivados/desplazados, basta la evidencia de vacío anterior;
+  no exigir ni crear un `settled_<liga>.csv` o stream servido artificial.
 - `DONE`: además, la cohorte finita queda cerrada sin pendientes y se cumplen las
   condiciones generales de `DONE`.

@@ -1,608 +1,159 @@
-# Auditoría técnica integral — Claude Code / Opus 5
-
-## OBJETIVO
-
-Realiza una auditoría técnica exhaustiva, sistemática, reproducible y basada en evidencia del repositorio actualmente abierto.
-
-Esta ejecución es exclusivamente de **auditoría**. No corrijas, refactorices ni modifiques automáticamente el código fuente del proyecto.
-
-El informe final deberá guardarse como:
-
-`audits/claude/latest.md`
-
-Antes de sobrescribir un informe existente, archívalo, cuando sea posible, en:
-
-`audits/claude/history/YYYY-MM-DD-HHMM.md`
-
-No permitas que informes de otros auditores influyan inicialmente en tus conclusiones. En particular, no leas `audits/openai/` ni `audits/consolidated/` durante la fase principal de análisis.
-
----
-
-# 1. Principios obligatorios
-
-Prioriza:
-
-1. exactitud;
-2. evidencia;
-3. reproducibilidad;
-4. trazabilidad;
-5. causa raíz;
-6. utilidad práctica;
-7. minimización de falsos positivos.
-
-No maximices artificialmente el número de hallazgos.
-
-No inventes:
-
-- archivos;
-- líneas;
-- resultados;
-- vulnerabilidades;
-- ejecuciones;
-- métricas;
-- configuraciones;
-- comportamientos.
-
-No presentes inferencias como hechos confirmados.
-
----
-
-# 2. Instrucciones del repositorio
-
-Antes de comenzar:
-
-1. Determina la raíz del repositorio.
-2. Busca y lee `CLAUDE.md` y demás instrucciones aplicables.
-3. Lee `README`, documentación arquitectónica, manifiestos, archivos de configuración y scripts principales.
-4. Identifica el stack tecnológico.
-5. Identifica los principales puntos de entrada.
-6. Construye un inventario inicial.
-
-Contrasta siempre la documentación con la implementación real.
-
----
-
-# 3. Autonomía
-
-Trabaja de forma autónoma hasta completar razonablemente la auditoría.
-
-Puedes ejecutar, cuando sean seguros:
-
-- exploración del repositorio;
-- búsquedas;
-- lectura de código;
-- inspección Git;
-- tests;
-- lint;
-- type-checking;
-- builds locales;
-- analizadores estáticos;
-- comprobaciones de dependencias;
-- reproducciones locales no destructivas.
-
-No ejecutes:
-
-- modificaciones productivas;
-- despliegues;
-- commits;
-- pushes;
-- borrados;
-- migraciones destructivas;
-- ataques contra servicios externos;
-- operaciones sobre datos reales que puedan alterarlos.
-
-Si una comprobación no puede realizarse, registra la limitación y continúa.
-
----
-
-# 4. Uso de subagentes
-
-Puedes utilizar subagentes para áreas independientes cuando aumenten realmente la cobertura.
-
-Áreas candidatas:
-
-- arquitectura;
-- seguridad;
-- datos;
-- lógica de negocio;
-- APIs;
-- rendimiento y concurrencia;
-- pruebas;
-- infraestructura.
-
-El agente principal deberá:
-
-- validar hallazgos importantes;
-- consolidar resultados;
-- eliminar duplicados;
-- identificar causas raíz;
-- mantener criterios uniformes;
-- producir el informe final.
-
-Un hallazgo propuesto por un subagente no se considera confirmado automáticamente.
-
----
-
-# 5. Inventario y cobertura
-
-Identifica, cuando existan:
-
-- aplicaciones;
-- servicios;
-- módulos;
-- paquetes;
-- puntos de entrada;
-- modelos;
-- esquemas;
-- bases de datos;
-- migraciones;
-- APIs;
-- workers;
-- colas;
-- tareas programadas;
-- procesos asíncronos;
-- integraciones externas;
-- scripts;
-- tests;
-- dependencias;
-- Docker;
-- CI/CD;
-- infraestructura como código;
-- configuración;
-- autenticación;
-- autorización;
-- observabilidad;
-- documentación.
-
-Clasifica los elementos como:
-
-- inspeccionados;
-- localizados pero no inspeccionados profundamente;
-- excluidos.
-
-No declares cobertura del 100 % salvo que puedas demostrarla.
-
----
-
-# 6. Áreas de auditoría
-
-## Arquitectura y diseño
-
-Evalúa:
-
-- separación de responsabilidades;
-- cohesión;
-- acoplamiento;
-- dependencias;
-- ciclos;
-- abstracciones;
-- modularidad;
-- límites arquitectónicos;
-- puntos únicos de fallo;
-- inconsistencias de diseño.
-
-## Lógica de negocio
-
-Reconstruye los principales flujos.
-
-Busca:
-
-- cálculos incorrectos;
-- casos límite;
-- estados inválidos;
-- errores numéricos;
-- errores de precisión;
-- errores de unidades;
-- fechas;
-- zonas horarias;
-- supuestos no garantizados;
-- divergencias entre componentes.
-
-Presta especial atención a lógica cuantitativa, estadística, deportiva o financiera.
-
-## Seguridad
-
-Evalúa:
-
-- secretos;
-- credenciales;
-- autenticación;
-- autorización;
-- control de acceso;
-- validación;
-- inyección;
-- traversal;
-- SSRF;
-- ejecución de comandos;
-- deserialización;
-- sesiones;
-- criptografía;
-- CORS;
-- exposición de datos;
-- configuraciones inseguras;
-- dependencias vulnerables.
-
-## Datos
-
-Evalúa:
-
-- integridad;
-- esquemas;
-- transacciones;
-- migraciones;
-- consistencia;
-- concurrencia;
-- idempotencia;
-- índices;
-- queries;
-- N+1;
-- precisión;
-- cachés;
-- corrupción potencial.
-
-## APIs e integraciones
-
-Evalúa:
-
-- contratos;
-- validaciones;
-- autenticación;
-- autorización;
-- códigos de respuesta;
-- timeouts;
-- reintentos;
-- backoff;
-- idempotencia;
-- rate limiting;
-- errores;
-- versionado.
-
-## Rendimiento y concurrencia
-
-Busca:
-
-- consultas ineficientes;
-- algoritmos problemáticos;
-- bloqueos;
-- carreras;
-- deadlocks;
-- recursos no liberados;
-- crecimiento de memoria;
-- operaciones innecesarias;
-- ausencia de límites.
-
-## Robustez
-
-Evalúa:
-
-- manejo de excepciones;
-- timeouts;
-- reintentos;
-- recuperación;
-- estados parciales;
-- degradación;
-- tolerancia a fallos.
-
-## Pruebas
-
-Evalúa:
-
-- unitarias;
-- integración;
-- E2E;
-- tests negativos;
-- casos límite;
-- assertions;
-- determinismo;
-- aislamiento;
-- tests ignorados;
-- flakiness;
-- cobertura de flujos críticos.
-
-No utilices únicamente el porcentaje global de cobertura.
-
-## Infraestructura
-
-Evalúa:
-
-- Docker;
-- CI/CD;
-- permisos;
-- secretos;
-- health checks;
-- configuración;
-- imágenes;
-- reproducibilidad;
-- diferencias entre entornos.
-
-## Observabilidad
-
-Evalúa:
-
-- logging;
-- métricas;
-- tracing;
-- correlación;
-- diagnóstico;
-- errores silenciosos;
-- filtrado de información sensible.
-
----
-
-# 7. Evidencia
-
-Todo hallazgo debe identificar, cuando sea posible:
-
-- ruta;
-- archivo;
-- símbolo;
-- función;
-- clase;
-- endpoint;
-- líneas;
-- condición desencadenante;
-- evidencia;
-- impacto;
-- controles existentes.
-
-Distingue:
-
-- evidencia directa;
-- evidencia indirecta;
-- inferencia.
-
-Antes de registrar un problema, comprueba si existen:
-
-- middleware;
-- validaciones;
-- sanitización;
-- restricciones;
-- wrappers;
-- autorización superior;
-- configuración;
-- tests;
-- controles compensatorios.
-
----
-
-# 8. Falsos positivos
-
-No conviertas automáticamente en defectos:
-
-- TODO;
-- FIXME;
-- dependencia antigua;
-- baja cobertura;
-- falta de comentarios;
-- complejidad;
-- warning;
-- ausencia de un patrón;
-- código poco elegante.
-
-Debe existir una consecuencia técnica suficientemente demostrable.
-
----
-
-# 9. Deduplicación
-
-Agrupa problemas derivados de la misma causa raíz.
-
-No generes múltiples hallazgos únicamente porque un mismo problema aparezca en múltiples archivos.
-
-Divide hallazgos únicamente si difieren materialmente en:
-
-- causa;
-- impacto;
-- riesgo;
-- solución.
-
----
-
-# 10. Clasificación
-
-Utiliza:
-
-- **Defecto confirmado**
-- **Riesgo potencial**
-- **Deuda técnica**
-- **Oportunidad de mejora**
-
----
-
-# 11. Matriz reproducible
-
-Puntúa de 0 a 4:
-
-| Dimensión | 0 | 1 | 2 | 3 | 4 |
-|---|---|---|---|---|---|
-| Impacto (I) | Sin impacto | Menor | Moderado | Significativo | Crítico |
-| Alcance (A) | Ninguno | Aislado | Varios componentes | Flujo principal | Sistema/datos críticos |
-| Probabilidad (P) | Prácticamente imposible | Poco probable | Posible | Probable | Recurrente/inevitable |
-| Activación (E) | No activable | Excepcional | Condiciones específicas | Fácil | Trivial |
-| Recuperación (R) | No necesaria | Inmediata | Sencilla | Compleja | Irreversible/extrema |
-| Controles (C) | Neutralizan | Fuertes | Parciales | Débiles | Ausentes |
-
-Fórmula:
-
-`Puntuación = (I × 30 + A × 20 + P × 20 + E × 15 + R × 10 + C × 5) / 4`
-
-Redondea a un decimal.
-
-| Puntuación | Severidad |
-|---|---|
-| 90,0–100,0 | Crítica |
-| 70,0–89,9 | Alta |
-| 40,0–69,9 | Media |
-| 15,0–39,9 | Baja |
-| 0–14,9 | Informativa |
-
-No alteres pesos ni umbrales.
-
-Usa el escenario razonablemente demostrable, no el peor escenario hipotético.
-
----
-
-# 12. Confianza
-
-Asigna:
-
-- **Alta:** evidencia directa suficiente.
-- **Media:** evidencia sólida con alguna condición no verificable.
-- **Baja:** requiere validación adicional.
-
-La confianza no modifica la puntuación matemática.
-
----
-
-# 13. Prioridad
-
-Asigna:
-
-- **P0:** inmediata.
-- **P1:** urgente.
-- **P2:** planificada.
-- **P3:** mantenimiento.
-- **P4:** opcional.
-
-Severidad y prioridad son independientes.
-
----
-
-# 14. Validación
-
-Cuando sea seguro, intenta validar mediante:
-
-- tests;
-- builds;
-- lint;
-- type-checking;
-- reproducciones locales;
-- análisis de dependencias.
-
-Registra:
-
-- comando;
-- propósito;
-- resultado;
-- limitación.
-
-No afirmes haber ejecutado una comprobación que solo hayas inferido.
-
----
-
-# 15. Formato de cada hallazgo
-
-Incluye:
-
-- ID
-- título
-- categoría
-- área
-- severidad
-- puntuación
-- prioridad
-- confianza
-- estado de validación
-- ubicación
-- evidencia
-- descripción
-- causa raíz
-- impacto
-- escenario de materialización
-- controles existentes
-- I + justificación
-- A + justificación
-- P + justificación
-- E + justificación
-- R + justificación
-- C + justificación
-- cálculo explícito
-- recomendación
-- criterio de aceptación
-- prueba de regresión sugerida
-
----
-
-# 16. Auditoría recurrente
-
-Si existe un informe Claude anterior, puedes utilizarlo al final de la auditoría, nunca como sustituto de la inspección actual.
-
-Clasifica respecto de la ejecución anterior:
-
-- Nuevo
-- Persistente
-- Corregido
-- Regresión
-- No verificable
-
-No copies hallazgos antiguos sin revalidarlos.
-
-El código actual es la fuente de verdad.
-
----
-
-# 17. Control final
-
-Antes de entregar:
-
-1. elimina duplicados;
-2. revisa falsos positivos;
-3. verifica evidencia;
-4. verifica cálculos;
-5. comprueba severidades;
-6. separa severidad de confianza;
-7. verifica afirmaciones de ejecución;
-8. comprueba recomendaciones;
-9. comprueba criterios de aceptación;
-10. declara limitaciones;
-11. elimina afirmaciones especulativas presentadas como hechos.
-
----
-
-# 18. Informe final
-
-Guarda:
-
-`audits/claude/latest.md`
-
-Estructura:
-
-1. Resumen ejecutivo
-2. Alcance
-3. Metodología
-4. Limitaciones
-5. Inventario y cobertura
-6. Arquitectura
-7. Estado técnico general
-8. Tabla maestra
-9. Hallazgos críticos
-10. Hallazgos altos
-11. Hallazgos medios
-12. Hallazgos bajos
-13. Observaciones informativas
-14. Seguridad
-15. Arquitectura
-16. Lógica y exactitud
-17. Datos
-18. APIs
-19. Rendimiento y concurrencia
-20. Robustez
-21. Pruebas
-22. Dependencias
-23. Infraestructura
-24. Observabilidad
-25. Deuda técnica
-26. Fortalezas
-27. Riesgos principales
-28. Plan de remediación
-29. Criterios de aceptación
-30. Comparación histórica
-31. Conclusiones
-32. Anexo de comandos
-
-Al finalizar, responde únicamente con:
-
-- ruta del informe;
-- cantidad de hallazgos por severidad;
-- cantidad de P0/P1;
-- si hubo limitaciones materiales.
+<!-- GENERATED by scripts/sync_agent_instructions.py; edit the canonical source. -->
+# Diagnóstico independiente — Claude
+
+Fuente: `.claude/automation/audit-workflow.md`.
+
+Auditor de esta ejecución: `claude`. Preparar o unirse a la ronda
+según el contrato común. Durante el diagnóstico escribir su informe
+y evidencia únicamente en `audit/latest/claude/`. No leer al otro
+auditor ni la consolidación durante el diagnóstico principal.
+
+## Autoridad, alcance y evidencia
+
+Leer `AGENTS.md` y las instrucciones aplicables; inspeccionar Git y separar los
+cambios preexistentes. Registrar alcance, exclusiones, base Git y limitaciones.
+El código/configuración actual es la fuente de verdad, los informes son evidencia
+secundaria. No asumir que otro auditor, un test verde o una alerta de herramienta
+demuestran corrección. No inventar ejecuciones, datos, umbrales ni resultados.
+
+Diagnóstico, consolidación y verificación son de solo lectura del proyecto:
+solo escribir los entregables de la fase, su histórico y el registro de tarea
+cuando esté autorizado. No cambiar fuentes, tests, configuración, dependencias,
+datos productivos ni credenciales para conseguir una validación satisfactoria.
+Evaluar los efectos de comandos antes de ejecutarlos; usar temporales/aislamiento.
+No instalar dependencias, consumir servicios de pago, efectuar escrituras externas,
+commits, pushes, releases o despliegues sin autorización específica.
+No mostrar secretos completos; registrar tipo y ubicación, nunca utilizarlos.
+
+Validar primero lo más acotado. En este entorno usar pytest con
+`-p no:cacheprovider --basetemp=.codex-tmp/pytest`; inspeccionar Make/BAT/builds
+antes de ejecutarlos. Registrar comando, código de salida y evidencia, distinguiendo
+`NEW_REGRESSION`, `PRE_EXISTING_FAILURE`, `ENVIRONMENTAL_FAILURE`, `NOT_VERIFIABLE`.
+Un control configurado no demuestra que esté pasando: comprobar su estado actual
+o declarar la limitación. No modificar ni eliminar datos para probar una hipótesis.
+
+## Contrato de hallazgos
+
+Usar la taxonomía de `AGENTS.md`:
+
+- Evidencia: `REPRODUCED`, `STATICALLY_VERIFIED`, `TOOL_DETECTED`, `INFERRED`,
+  `NOT_VERIFIABLE`, `DISMISSED`.
+- Solo `REPRODUCED` y `STATICALLY_VERIFIED` son defectos confirmados.
+  `TOOL_DETECTED` requiere revisión independiente; si falta evidencia,
+  reclasificar como `INFERRED` o `NOT_VERIFIABLE`, sin fingir confirmación.
+- Confianza: `HIGH`, `MEDIUM`, `LOW`; un candidato `LOW` no se confirma.
+- Severidad por impacto demostrado: `CRITICAL` (sistémico/catastrófico),
+  `HIGH` (considerable), `MEDIUM` (limitado/condicionado), `LOW` (menor).
+  La frecuencia y la confianza no rebajan la severidad del impacto alcanzable.
+  Comprobar controles compensatorios antes de afirmar ese impacto.
+- Prioridad independiente: P0 inmediata, P1 urgente, P2 planificada,
+  P3 mantenimiento, P4 opcional. Las observaciones informativas van aparte.
+
+Cada hallazgo incluye ID, título, categoría, severidad, confianza, evidencia,
+archivo/línea, activación, problema, evidencia concreta, esperado, observado,
+causa raíz, consecuencia, corrección mínima, pruebas necesarias y limitaciones.
+Añadir controles existentes, criterio de aceptación y prioridad para remediación.
+Declarar explícitamente los campos no verificables. Agrupar por causa raíz;
+separar solo problemas con impacto o solución materialmente distintos.
+No convertir estilo, TODO, complejidad, antigüedad o baja cobertura en defectos
+sin consecuencia demostrable. Conservar descartes relevantes y su explicación.
+
+IDs estables dentro de una ronda: auditores `CLAUDE-001` / `OPENAI-001`,
+consolidado `AUD-001`, regresiones `REG-001`. La identidad completa es
+`round_id + ID`; no reiniciar ni renumerar dentro de la ronda ni cambiar IDs
+cuando cambia la severidad. Registrar alias de origen en la consolidación.
+Los IDs históricos (`AUD-MED-001`, etc.) se conservan tal como fueron emitidos.
+Al leer informes legacy, normalizar etiquetas equivalentes sin elevar evidencia:
+REPRODUCIDO → REPRODUCED, VERIFICADO_ESTÁTICAMENTE → STATICALLY_VERIFIED,
+DETECTADO_POR_HERRAMIENTA → TOOL_DETECTED, INFERIDO → INFERRED,
+NO_VERIFICABLE → NOT_VERIFIABLE, DESCARTADO → DISMISSED. Conservar la etiqueta
+original como origen y revalidar el hallazgo; una etiqueta «confirmado» sin
+evidencia suficiente no adquiere confirmación por la conversión.
+
+La antigua puntuación ponderada es solo información histórica de riesgo:
+no convertirla en severidad ni exigir recalcularla en rondas nuevas. Un impacto
+catastrófico demostrado sigue siendo CRITICAL aunque su activación sea rara.
+
+## Rondas, archivos y compatibilidad
+
+Para nuevas rondas, usar `audit/latest/` y un `round_id` único registrado en
+`MANIFEST.json`. El coordinador inicializa el manifest antes del diagnóstico;
+en una ejecución individual el mismo agente puede preparar la ronda sin leer
+conclusiones históricas (preservación mediante copia/hashes). Antes de iniciar
+una ronda distinta, un único coordinador copia
+íntegramente la ronda anterior a `audit/<round_id-anterior>/`, comprueba igualdad
+de archivos/contenidos y solo después reemplaza los entregables de `latest`.
+No sobrescribir históricos. Si el ID es ambiguo, hay un escritor activo o falla
+la preservación, no sobrescribir: registrar bloqueo. Un segundo auditor de la
+misma ronda no reinicia ni archiva la ronda que está evaluando.
+
+| Fase | Entradas | Entregables dentro de `audit/latest/` |
+|---|---|---|
+| Diagnóstico independiente | Repositorio y alcance | `claude/REPORT.md` o `openai/REPORT.md`, más `EVIDENCE.json` en ese subdirectorio |
+| Consolidación | Informes de los auditores de la misma ronda | `FINDINGS.md`, `BACKLOG.md`, `MANIFEST.json` |
+| Remediación autorizada | Hallazgos y alcance aprobado | `CHANGES.md`, `VALIDATION.md`, `STATUS.md`; actualización del manifest |
+| Verificación independiente | Hallazgos, cambios y evidencia actual | `VERIFICATION.md`, `STATUS.md`; actualización del manifest |
+
+El manifest registra `round_id`, fecha UTC, alcance, base/working tree, rutas y
+hashes de informes fuente, auditores disponibles, `tests_initial`, `tests_final`,
+`files_modified`, `final_result`, `final_result_rationale` y campos no disponibles.
+Los auditores escriben únicamente su subdirectorio y anotan allí comandos,
+códigos de salida, base y cobertura en `EVIDENCE.json`; el coordinador integra
+estos registros en el manifest sin permitir escrituras concurrentes sobre él.
+Con un solo auditor autorizado, consolidar tras su diagnóstico y declarar que
+no hubo segunda opinión; nunca inventar un informe del auditor ausente.
+
+`FINDINGS.md` es la línea base de diagnóstico: remediación/verificación no borran
+ni reescriben hallazgos para simular su cierre. `STATUS.md` relaciona ID, estado
+de remediación, estado de verificación, evidencia y próxima acción. La fase que
+lo actualiza preserva las columnas/evidencia de las fases anteriores.
+Antes de reemplazar un entregable de la misma ronda, guardar su versión previa
+en `history/<fase>-<fecha-UTC-unica>/` dentro de la ronda y verificar la copia.
+
+Compatibilidad: aceptar como entrada explícita los informes existentes en
+`audits/claude/`, `audits/openai/`, `audits/consolidated/`, `audits/remediation/`,
+`audits/verification/` y el antiguo `audit/latest/`. Registrar ruta, hash e IDs
+originales; no mover, renombrar ni modificar esos históricos. Si se continúa
+una ronda legacy, usar sus IDs y dejar los nuevos entregables en una ronda
+canónica preservada por el procedimiento anterior. No seleccionar por mtime ni
+mezclar automáticamente informes de distinta base/alcance: pedir identificar
+la fuente si no puede resolverse de la solicitud. Campos ausentes son
+`NOT_VERIFIABLE`, nunca una razón para inventar evidencia o cerrar un hallazgo.
+
+## Diagnóstico independiente
+
+1. Inventariar el alcance y construir matriz con componentes, criticidad,
+   método, evidencia y estado: revisado, parcial, no aplicable, no verificable
+   o excluido con motivo. No prometer cobertura total sin demostrarla.
+2. Durante el análisis principal no leer informes del otro auditor ni
+   consolidados/estados históricos. Si el contexto ya contiene sus conclusiones,
+   declarar la contaminación o iniciar una revisión independiente nueva.
+3. Reconstruir flujos y revisar las áreas aplicables:
+   arquitectura/contratos; lógica, unidades y casos límite; seguridad/secretos;
+   integridad, migraciones, atomicidad y concurrencia; APIs, errores, reintentos
+   y cuota; recursos/rendimiento demostrable; pruebas discriminantes; dependencias;
+   CI, infraestructura, observabilidad y estado efectivo de los controles.
+4. En cuantitativo: leakage temporal/target, splits, información disponible
+   al cutoff de predicción, timestamps y frescura canónica, probabilidades finitas
+   y normalizadas, calibración OOS, incertidumbre, selección de muestras y
+   backtesting con costos/voids/ejecución realistas. Separar ROI esperado,
+   ROI realizado y acierto; no afirmar rentabilidad por aprobar tests.
+5. Revisar skills/loops/prompts/routing como contratos: consumidores, referencias,
+   autoridad, entradas/salidas y estados. Para retirar archivos comprobar imports,
+   carga dinámica, entrypoints, scripts, empaquetado, documentación y compatibilidad;
+   ausencia de referencias textuales no demuestra que sean eliminables.
+6. Revalidar cada candidato mediante evidencia adicional independiente: callers,
+   tests, configuración, controles compensatorios o reproducción segura. Una
+   segunda opinión aporta evidencia, no confirma automáticamente el hallazgo.
+7. Tras fijar conclusiones propias, comparar el histórico cuando exista:
+   nuevo, persistente, corregido, regresión o no verificable; revalidar cada ID.
+8. Entregar informe con resumen, alcance, inventario/cobertura, hallazgos confirmados,
+   inferidos/no verificables, descartes, validaciones y comandos, plan priorizado,
+   criterios de aceptación, pruebas, riesgos residuales y limitaciones.
+
+Para auditoría focalizada aplicar los mismos criterios al diff/módulos pedidos;
+no expandir a todo el repositorio ni reportar defectos ajenos al alcance.
+Para una auditoría integral ampliar con las referencias especializadas de
+`.claude/skills/full-audit/references/`, según el stack y área encontrada.
+No corregir durante el diagnóstico. Informar al terminar ruta, conteos por
+severidad, P0/P1 y limitaciones; no emitir PASS incondicional con evidencia crítica ausente.

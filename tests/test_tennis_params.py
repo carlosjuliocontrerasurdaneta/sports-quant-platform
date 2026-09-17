@@ -84,9 +84,14 @@ def test_no_code_actually_handles_surface():
 
     import sqp
     raiz = _P(sqp.__file__).parent
+    # features/research.py solo INVENTARIA 'surface_elo' como entrada candidata
+    # del bloque sporting (SPORTING_INPUTS, contrato de unidades): no la calcula
+    # ni la consume TennisAdapter. Listar un candidato no es manejar superficie.
+    solo_inventario = {raiz / "features" / "research.py"}
     hits = [f.name for f in raiz.rglob("*.py")
-            if any(t in f.read_text(encoding="utf-8").lower()
-                   for t in ("surface_elo", "por_superficie", "surface_rating"))]
+            if f not in solo_inventario
+            and any(t in f.read_text(encoding="utf-8").lower()
+                    for t in ("surface_elo", "por_superficie", "surface_rating"))]
     assert hits == [], f"ya hay manejo de superficie en {hits}: actualizar el modelo de tenis"
 
 

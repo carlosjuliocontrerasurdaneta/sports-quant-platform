@@ -1,431 +1,137 @@
-# Consolidación independiente de auditorías
-
-## OBJETIVO
-
-Consolida las auditorías independientes realizadas por Claude Code y OpenAI Astra.
-
-Archivos esperados:
-
-`audits/claude/latest.md`
-
-`audits/openai/latest.md`
-
-El repositorio actual constituye la **fuente de verdad definitiva**.
-
-Los informes son evidencia secundaria y pueden contener:
-
-- falsos positivos;
-- falsos negativos;
-- severidades incorrectas;
-- hallazgos duplicados;
-- evidencia insuficiente;
-- errores de interpretación.
-
-No combines automáticamente ambos informes.
-
-Verifica las discrepancias relevantes contra el código actual.
-
-El resultado deberá guardarse como:
-
-`audits/consolidated/latest.md`
-
-Antes de sobrescribir una consolidación anterior, archívala, cuando sea posible, en:
-
-`audits/consolidated/history/YYYY-MM-DD-HHMM.md`
-
----
-
-# 1. Principio fundamental
-
-La coincidencia entre dos auditores aumenta el interés de un hallazgo, pero **no constituye por sí misma una confirmación**.
-
-La ausencia de un hallazgo en uno de los informes tampoco invalida automáticamente el hallazgo del otro.
-
-Cada conclusión consolidada deberá basarse en evidencia.
-
----
-
-# 2. Proceso de consolidación
-
-## Fase 1 — Lectura
-
-Lee ambos informes completos.
-
-Extrae:
-
-- hallazgos;
-- identificadores;
-- ubicaciones;
-- evidencia;
-- severidad;
-- puntuación;
-- confianza;
-- prioridad;
-- recomendaciones.
-
----
-
-# 3. Normalización
-
-Normaliza nombres y conceptos.
-
-Dos hallazgos deberán considerarse candidatos a equivalencia cuando compartan razonablemente:
-
-- misma causa raíz;
-- mismo código;
-- mismo flujo;
-- mismo impacto;
-- misma remediación.
-
-No te bases únicamente en títulos similares.
-
----
-
-# 4. Clasificación cruzada
-
-Clasifica cada resultado como:
-
-### Confirmado por ambos
-
-Ambos auditores identificaron sustancialmente el mismo problema y la evidencia actual lo respalda.
-
-### Exclusivo Claude
-
-Solo Claude lo reportó y la verificación actual lo respalda.
-
-### Exclusivo OpenAI
-
-Solo OpenAI lo reportó y la verificación actual lo respalda.
-
-### Parcialmente coincidente
-
-Ambos detectaron el mismo fenómeno general, pero difieren en causa, alcance o impacto.
-
-### Falso positivo Claude
-
-El código actual no respalda el hallazgo de Claude.
-
-### Falso positivo OpenAI
-
-El código actual no respalda el hallazgo de OpenAI.
-
-### No verificable
-
-No existe información suficiente para confirmar o descartar razonablemente el problema.
-
----
-
-# 5. Verificación obligatoria
-
-Para:
-
-- discrepancias de severidad;
-- hallazgos críticos;
-- hallazgos altos;
-- P0;
-- P1;
-- hallazgos exclusivos relevantes;
-
-revisa directamente el código antes de adoptar una conclusión final.
-
-Cuando sea seguro y útil, ejecuta comprobaciones locales.
-
-No asumas que un hallazgo es correcto porque contiene referencias de línea.
-
----
-
-# 6. Severidad final
-
-Utiliza la misma matriz:
-
-| Dimensión | 0 | 1 | 2 | 3 | 4 |
-|---|---|---|---|---|---|
-| Impacto (I) | Sin impacto | Menor | Moderado | Significativo | Crítico |
-| Alcance (A) | Ninguno | Aislado | Varios componentes | Flujo principal | Sistema/datos críticos |
-| Probabilidad (P) | Prácticamente imposible | Poco probable | Posible | Probable | Recurrente |
-| Activación (E) | No activable | Excepcional | Específica | Fácil | Trivial |
-| Recuperación (R) | No necesaria | Inmediata | Sencilla | Compleja | Irreversible |
-| Controles (C) | Neutralizan | Fuertes | Parciales | Débiles | Ausentes |
-
-Fórmula:
-
-`Puntuación = (I × 30 + A × 20 + P × 20 + E × 15 + R × 10 + C × 5) / 4`
-
-Rangos:
-
-- 90–100: Crítica
-- 70–89,9: Alta
-- 40–69,9: Media
-- 15–39,9: Baja
-- 0–14,9: Informativa
-
-No promedies automáticamente las puntuaciones de Claude y OpenAI.
-
-Calcula una puntuación consolidada nueva a partir de la evidencia actual.
-
----
-
-# 7. Confianza consolidada
-
-Asigna:
-
-### Alta
-
-La evidencia actual confirma directamente el problema.
-
-### Media
-
-El problema está sólidamente sustentado, pero existe alguna condición no verificable.
-
-### Baja
-
-La conclusión requiere validación adicional.
-
-No eleves automáticamente la confianza solo porque dos auditores coincidan.
-
----
-
-# 8. Causa raíz
-
-Prioriza causas raíz sobre síntomas.
-
-Si Claude reporta cinco síntomas y OpenAI reporta una causa común que explica los cinco, considera consolidarlos en un único hallazgo cuando la evidencia lo respalde.
-
----
-
-# 9. Backlog técnico definitivo
-
-El informe consolidado debe producir un backlog accionable.
-
-Para cada hallazgo final incluye:
-
-- ID consolidado;
-- origen;
-- título;
-- categoría;
-- área;
-- severidad;
-- puntuación;
-- prioridad;
-- confianza;
-- ubicación;
-- evidencia;
-- causa raíz;
-- impacto;
-- recomendación;
-- criterio de aceptación;
-- prueba de regresión;
-- estado.
-
-Utiliza IDs:
-
-`AUD-001`
-
-`AUD-002`
-
-etc.
-
----
-
-# 10. Estados
-
-Utiliza:
-
-- Abierto
-- En corrección
-- Pendiente de validación
-- Corregido
-- Aceptado como riesgo
-- No aplicable
-
-Durante una consolidación nueva, no marques automáticamente como corregido un hallazgo histórico. Debe existir evidencia.
-
----
-
-# 11. Prioridad de implementación
-
-Ordena las acciones principalmente según:
-
-1. P0;
-2. P1;
-3. P2;
-4. P3;
-5. P4.
-
-Dentro de cada prioridad utiliza:
-
-1. mayor severidad;
-2. mayor confianza;
-3. mayor alcance;
-4. dependencias entre correcciones.
-
-Identifica cuando una corrección desbloquea varias otras.
-
----
-
-# 12. Plan de remediación por fases
-
-Genera:
-
-## Fase 0 — Emergencia
-
-P0 y problemas críticos que requieran intervención inmediata.
-
-## Fase 1 — Riesgo elevado
-
-P1 y hallazgos altos suficientemente confirmados.
-
-## Fase 2 — Estabilización
-
-Hallazgos medios, robustez y pruebas críticas.
-
-## Fase 3 — Calidad estructural
-
-Deuda técnica significativa y mantenibilidad.
-
-## Fase 4 — Mejoras
-
-Problemas bajos y oportunidades.
-
-No propongas cambios masivos cuando una solución localizada y segura sea suficiente.
-
----
-
-# 13. Reglas para correcciones posteriores
-
-El objetivo de esta consolidación es producir el backlog; no corregir automáticamente todos los hallazgos.
-
-Cada corrección futura debería seguir:
-
-1. seleccionar un hallazgo;
-2. reproducir o verificar;
-3. identificar causa raíz;
-4. realizar el cambio mínimo correcto;
-5. añadir o mejorar prueba cuando corresponda;
-6. ejecutar tests relevantes;
-7. verificar criterio de aceptación;
-8. marcar como pendiente de validación o corregido;
-9. evitar mezclar cambios no relacionados.
-
----
-
-# 14. Auditorías históricas
-
-Si existe:
-
-`audits/consolidated/latest.md`
-
-de una ejecución anterior, compáralo después de consolidar el estado actual.
-
-Clasifica hallazgos históricos:
-
-- Nuevo
-- Persistente
-- Corregido
-- Regresión
-- No verificable
-- Reemplazado por causa raíz consolidada
-
----
-
-# 15. Métricas
-
-Incluye:
-
-- total de hallazgos;
-- críticos;
-- altos;
-- medios;
-- bajos;
-- informativos;
-- P0;
-- P1;
-- coincidentes;
-- exclusivos Claude;
-- exclusivos OpenAI;
-- falsos positivos Claude;
-- falsos positivos OpenAI;
-- no verificables;
-- nuevos;
-- persistentes;
-- corregidos;
-- regresiones.
-
-No utilices estas métricas para evaluar cuál modelo es “mejor”. Sirven para evaluar el estado del proyecto y la complementariedad de las auditorías.
-
----
-
-# 16. Tabla maestra consolidada
-
-Incluye:
-
-| ID | Hallazgo | Origen | Categoría | Área | Puntuación | Severidad | Prioridad | Confianza | Estado | Ubicación |
-|---|---|---|---|---|---:|---|---|---|---|---|
-
----
-
-# 17. Discrepancias
-
-Incluye una sección específica:
-
-## Discrepancias entre auditores
-
-Para cada discrepancia importante indica:
-
-- posición Claude;
-- posición OpenAI;
-- evidencia revisada;
-- conclusión consolidada;
-- justificación.
-
----
-
-# 18. Falsos positivos
-
-Documenta los falsos positivos detectados para evitar que reaparezcan innecesariamente en futuras revisiones.
-
-No conviertas esta información en una instrucción para ignorar permanentemente ese patrón. El código puede cambiar.
-
----
-
-# 19. Entregable
-
-Guarda:
-
-`audits/consolidated/latest.md`
-
-Estructura:
-
-1. Resumen ejecutivo
-2. Fuentes analizadas
-3. Metodología de consolidación
-4. Limitaciones
-5. Estado técnico general
-6. Métricas
-7. Tabla maestra
-8. P0
-9. P1
-10. P2
-11. P3/P4
-12. Coincidencias
-13. Hallazgos exclusivos
-14. Discrepancias
-15. Falsos positivos
-16. No verificables
-17. Causas raíz principales
-18. Plan de remediación por fases
-19. Pruebas de regresión recomendadas
-20. Comparación histórica
-21. Conclusiones
-
-El resultado deberá constituir el **backlog técnico de auditoría de referencia** para el proyecto.
-
-Al finalizar, informa únicamente:
-
-- ruta del informe consolidado;
-- P0;
-- P1;
-- críticos;
-- altos;
-- cantidad de discrepancias;
-- cantidad de falsos positivos descartados.
+<!-- GENERATED by scripts/sync_agent_instructions.py; edit the canonical source. -->
+# Consolidación independiente
+
+Fuente: `.claude/automation/audit-workflow.md`.
+
+Ejecutar únicamente la fase indicada en este documento.
+
+## Autoridad, alcance y evidencia
+
+Leer `AGENTS.md` y las instrucciones aplicables; inspeccionar Git y separar los
+cambios preexistentes. Registrar alcance, exclusiones, base Git y limitaciones.
+El código/configuración actual es la fuente de verdad, los informes son evidencia
+secundaria. No asumir que otro auditor, un test verde o una alerta de herramienta
+demuestran corrección. No inventar ejecuciones, datos, umbrales ni resultados.
+
+Diagnóstico, consolidación y verificación son de solo lectura del proyecto:
+solo escribir los entregables de la fase, su histórico y el registro de tarea
+cuando esté autorizado. No cambiar fuentes, tests, configuración, dependencias,
+datos productivos ni credenciales para conseguir una validación satisfactoria.
+Evaluar los efectos de comandos antes de ejecutarlos; usar temporales/aislamiento.
+No instalar dependencias, consumir servicios de pago, efectuar escrituras externas,
+commits, pushes, releases o despliegues sin autorización específica.
+No mostrar secretos completos; registrar tipo y ubicación, nunca utilizarlos.
+
+Validar primero lo más acotado. En este entorno usar pytest con
+`-p no:cacheprovider --basetemp=.codex-tmp/pytest`; inspeccionar Make/BAT/builds
+antes de ejecutarlos. Registrar comando, código de salida y evidencia, distinguiendo
+`NEW_REGRESSION`, `PRE_EXISTING_FAILURE`, `ENVIRONMENTAL_FAILURE`, `NOT_VERIFIABLE`.
+Un control configurado no demuestra que esté pasando: comprobar su estado actual
+o declarar la limitación. No modificar ni eliminar datos para probar una hipótesis.
+
+## Contrato de hallazgos
+
+Usar la taxonomía de `AGENTS.md`:
+
+- Evidencia: `REPRODUCED`, `STATICALLY_VERIFIED`, `TOOL_DETECTED`, `INFERRED`,
+  `NOT_VERIFIABLE`, `DISMISSED`.
+- Solo `REPRODUCED` y `STATICALLY_VERIFIED` son defectos confirmados.
+  `TOOL_DETECTED` requiere revisión independiente; si falta evidencia,
+  reclasificar como `INFERRED` o `NOT_VERIFIABLE`, sin fingir confirmación.
+- Confianza: `HIGH`, `MEDIUM`, `LOW`; un candidato `LOW` no se confirma.
+- Severidad por impacto demostrado: `CRITICAL` (sistémico/catastrófico),
+  `HIGH` (considerable), `MEDIUM` (limitado/condicionado), `LOW` (menor).
+  La frecuencia y la confianza no rebajan la severidad del impacto alcanzable.
+  Comprobar controles compensatorios antes de afirmar ese impacto.
+- Prioridad independiente: P0 inmediata, P1 urgente, P2 planificada,
+  P3 mantenimiento, P4 opcional. Las observaciones informativas van aparte.
+
+Cada hallazgo incluye ID, título, categoría, severidad, confianza, evidencia,
+archivo/línea, activación, problema, evidencia concreta, esperado, observado,
+causa raíz, consecuencia, corrección mínima, pruebas necesarias y limitaciones.
+Añadir controles existentes, criterio de aceptación y prioridad para remediación.
+Declarar explícitamente los campos no verificables. Agrupar por causa raíz;
+separar solo problemas con impacto o solución materialmente distintos.
+No convertir estilo, TODO, complejidad, antigüedad o baja cobertura en defectos
+sin consecuencia demostrable. Conservar descartes relevantes y su explicación.
+
+IDs estables dentro de una ronda: auditores `CLAUDE-001` / `OPENAI-001`,
+consolidado `AUD-001`, regresiones `REG-001`. La identidad completa es
+`round_id + ID`; no reiniciar ni renumerar dentro de la ronda ni cambiar IDs
+cuando cambia la severidad. Registrar alias de origen en la consolidación.
+Los IDs históricos (`AUD-MED-001`, etc.) se conservan tal como fueron emitidos.
+Al leer informes legacy, normalizar etiquetas equivalentes sin elevar evidencia:
+REPRODUCIDO → REPRODUCED, VERIFICADO_ESTÁTICAMENTE → STATICALLY_VERIFIED,
+DETECTADO_POR_HERRAMIENTA → TOOL_DETECTED, INFERIDO → INFERRED,
+NO_VERIFICABLE → NOT_VERIFIABLE, DESCARTADO → DISMISSED. Conservar la etiqueta
+original como origen y revalidar el hallazgo; una etiqueta «confirmado» sin
+evidencia suficiente no adquiere confirmación por la conversión.
+
+La antigua puntuación ponderada es solo información histórica de riesgo:
+no convertirla en severidad ni exigir recalcularla en rondas nuevas. Un impacto
+catastrófico demostrado sigue siendo CRITICAL aunque su activación sea rara.
+
+## Rondas, archivos y compatibilidad
+
+Para nuevas rondas, usar `audit/latest/` y un `round_id` único registrado en
+`MANIFEST.json`. El coordinador inicializa el manifest antes del diagnóstico;
+en una ejecución individual el mismo agente puede preparar la ronda sin leer
+conclusiones históricas (preservación mediante copia/hashes). Antes de iniciar
+una ronda distinta, un único coordinador copia
+íntegramente la ronda anterior a `audit/<round_id-anterior>/`, comprueba igualdad
+de archivos/contenidos y solo después reemplaza los entregables de `latest`.
+No sobrescribir históricos. Si el ID es ambiguo, hay un escritor activo o falla
+la preservación, no sobrescribir: registrar bloqueo. Un segundo auditor de la
+misma ronda no reinicia ni archiva la ronda que está evaluando.
+
+| Fase | Entradas | Entregables dentro de `audit/latest/` |
+|---|---|---|
+| Diagnóstico independiente | Repositorio y alcance | `claude/REPORT.md` o `openai/REPORT.md`, más `EVIDENCE.json` en ese subdirectorio |
+| Consolidación | Informes de los auditores de la misma ronda | `FINDINGS.md`, `BACKLOG.md`, `MANIFEST.json` |
+| Remediación autorizada | Hallazgos y alcance aprobado | `CHANGES.md`, `VALIDATION.md`, `STATUS.md`; actualización del manifest |
+| Verificación independiente | Hallazgos, cambios y evidencia actual | `VERIFICATION.md`, `STATUS.md`; actualización del manifest |
+
+El manifest registra `round_id`, fecha UTC, alcance, base/working tree, rutas y
+hashes de informes fuente, auditores disponibles, `tests_initial`, `tests_final`,
+`files_modified`, `final_result`, `final_result_rationale` y campos no disponibles.
+Los auditores escriben únicamente su subdirectorio y anotan allí comandos,
+códigos de salida, base y cobertura en `EVIDENCE.json`; el coordinador integra
+estos registros en el manifest sin permitir escrituras concurrentes sobre él.
+Con un solo auditor autorizado, consolidar tras su diagnóstico y declarar que
+no hubo segunda opinión; nunca inventar un informe del auditor ausente.
+
+`FINDINGS.md` es la línea base de diagnóstico: remediación/verificación no borran
+ni reescriben hallazgos para simular su cierre. `STATUS.md` relaciona ID, estado
+de remediación, estado de verificación, evidencia y próxima acción. La fase que
+lo actualiza preserva las columnas/evidencia de las fases anteriores.
+Antes de reemplazar un entregable de la misma ronda, guardar su versión previa
+en `history/<fase>-<fecha-UTC-unica>/` dentro de la ronda y verificar la copia.
+
+Compatibilidad: aceptar como entrada explícita los informes existentes en
+`audits/claude/`, `audits/openai/`, `audits/consolidated/`, `audits/remediation/`,
+`audits/verification/` y el antiguo `audit/latest/`. Registrar ruta, hash e IDs
+originales; no mover, renombrar ni modificar esos históricos. Si se continúa
+una ronda legacy, usar sus IDs y dejar los nuevos entregables en una ronda
+canónica preservada por el procedimiento anterior. No seleccionar por mtime ni
+mezclar automáticamente informes de distinta base/alcance: pedir identificar
+la fuente si no puede resolverse de la solicitud. Campos ausentes son
+`NOT_VERIFIABLE`, nunca una razón para inventar evidencia o cerrar un hallazgo.
+
+## Consolidación independiente
+
+Leer los informes fuente completos, comprobar ronda/base/alcance y preservar sus
+IDs y hashes. No asumir equivalencia por título ni confirmación por coincidencia.
+Contrastar con el código actual discrepancias, críticos/altos, P0/P1 y exclusivos
+relevantes. Si el código cambió, registrar base y revalidar la afirmación.
+
+Clasificar origen: ambos, exclusivo Claude, exclusivo OpenAI, coincidencia parcial,
+falso positivo o no verificable. Mantener esta dimensión separada del estado de
+evidencia. Agrupar por causa raíz, documentar discrepancias y por qué se descartan.
+Asignar IDs consolidados estables y mapear todos sus IDs fuente; no promediar
+severidad/confianza. Mantener observaciones y deuda separadas de defectos.
+
+Producir `FINDINGS.md` y backlog por prioridad, impacto, dependencias y riesgo:
+ID, cambio mínimo, archivos, pruebas, criterio de aceptación y autorización
+pendiente. Incluir métricas de confirmados, descartados y no verificables, cobertura,
+validaciones, limitaciones y comparación histórica. No medir la calidad de los
+auditores por número de hallazgos. Consolidar no autoriza correcciones.
