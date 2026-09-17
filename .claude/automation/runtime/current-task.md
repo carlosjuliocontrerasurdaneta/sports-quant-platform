@@ -69,3 +69,27 @@ parámetro `model` de `Agent`, según la REGLA DE DESPACHO:
 No se tocó ningún parámetro de riesgo, modelo, estrategia, umbral ni gate; no
 se contradijo ninguna decisión registrada (O-3 del informe deja constancia de la
 tolerancia K=41/50 sin cambiarla).
+
+---
+
+## Registro — auditoría integral ronda `audit-2026-09-16` (2026-09-17)
+
+Status: remediación cerrada, pendiente de verificación independiente ·
+Result: 7 confirmados (HIGH 1, MEDIUM 4, LOW 2) → 6 corregidos + 1 mitigado
+(AUD-004) · Loop: `audit.md` · Skills: `full-audit` (0–3) → `audit-remediation`
+(4–5) · Owner: sesión principal `claude-opus-5` · Autorización: «Sí, hazlo»
+sobre todos los confirmados, incluido commit+push.
+
+Routing: diagnóstico no orquestado (validación por segundo método en la misma
+sesión). **Escalado a `fable`** (`Agent`, `model: "fable"`) para la revisión
+independiente de AUD-001, clase «parámetro de modelo» (probabilidad servida de
+las líneas asiáticas de cuarto): 0 defectos, barrido de 18.432 combinaciones,
+1 sugerencia menor aplicada (`is_quarter_line` compartido) y 1 hallazgo
+adyacente sin ticket (`normal_margin_probs`, Δ ≤ 0,25 pp). AUD-005 se resolvió
+en la variante «aviso» para no contradecir la decisión registrada `9dfb4cc`;
+cablear el line shopping queda como decisión del operador. Ningún parámetro
+de riesgo, umbral ni gate cambió.
+
+Commits: `f93bdc1`, `4f06b4f`, `31cfdb0` (merge) · push `a2ee66c..31cfdb0` ·
+CI run 35224249563. Producción (`C:\dev\3`) sigue en `a2ee66c`: `git pull`
+pendiente del operador. Entregables en `audit/latest/`.
