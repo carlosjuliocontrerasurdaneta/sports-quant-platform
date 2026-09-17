@@ -56,7 +56,7 @@
     "audit/latest/BACKLOG.md": "d9e26a1c31c3db0f89671c10cfc4ebec0f0b1f3fef66c28751c6969ec50d77ef",
     "audit/latest/CHANGES.md": "5253037ed0454c23d00c7c5b20e58257fcc17ad8c44563d7659bf1af0e51d8ad",
     "audit/latest/VALIDATION.md": "421d3d7ba9fa07bb17f95686c710a36e5b3abcbbca6915cd372af769eb677712",
-    "audit/latest/STATUS.md": "17e4862b04c429ef51ced08a44111ce05403520980cda2abd25f07b0e6a3bab7"
+    "audit/latest/STATUS.md": "9de9bb84b9ad325eb02fcf02b5dc7c55d1533172d843444416860957033eb299"
   },
   "id_map": {
     "AUD-001": [
@@ -143,7 +143,7 @@
   ],
   "bookkeeping_excluded": "current-task.md actualizado en la fase de remediacion (Edit); Obsidian y .claude/memory actualizados (/memoria-guardar)",
   "final_result": null,
-  "final_result_rationale": "remediacion validada (suite, ruff, mypy, revision fable de AUD-001) y publicada; el veredicto APTO/NO APTO corresponde a la fase de verificacion independiente, no ejecutada. AUD-004 solo mitigado.",
+  "final_result_rationale": "remediacion validada (suite, ruff, mypy, revision fable de AUD-001) y publicada; el veredicto APTO/NO APTO corresponde a la fase de verificacion independiente, no ejecutada. AUD-004 corregido a las 13:40Z (residuo eliminado con elevacion UAC por orden del operador).",
   "not_available": [
     "openai/REPORT.md",
     "verificacion (VERIFICATION.md)",
