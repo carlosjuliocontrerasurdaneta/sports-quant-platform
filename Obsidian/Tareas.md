@@ -1,7 +1,7 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-16
+actualizada: 2026-09-17
 ---
 
 # Tareas
@@ -10,6 +10,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Operación y rama de Codex 2026-09-16
 
+- [x] 2026-09-17 — `SQP_Validate_OOS_Cdev` lanzada a mano por orden del operador: rc=0 (sustituye el 1 rancio del 01/09); 33/34 ligas validadas, `audit/model_vs_market_20260917.md`. Ver [[Bitácora/2026-09-17]].
 - [ ] 2026-09-17 — Confirmar tras las 12:00 que `DIARIO COMPLETO: OK` reaparece en `logs/diario_completo.log` (15 y 16/09 sin run; directorio restaurado el 16/09 20:35). Ver [[Bitácora/2026-09-16]].
 - [x] 2026-09-16 — Diagnosticar `SQP_Validate_OOS_Cdev`: el rc=1 es el resultado RANCIO del 01/09 (KI-034, `IndexError` en `_cutoff` con `frauen_bundesliga` sin resultados), corregido el 06/09 (`263c6c7`, `f98c639`) y verificado a mano el 13/09 (exit 0, `audit/model_vs_market_20260913.md`). La tarea es mensual y no vuelve a correr hasta el 01/10, así que el Programador seguirá mostrando 1 hasta entonces; la definición (S4U, WakeToRun, StartWhenAvailable, 72 h) es correcta y el centinela está limpio. Ver [[Bitácora/2026-09-16]].
 - [ ] 2026-09-16 — Tratar `origin/codex/feature-signal-shadow` (`57ec7b0`) por el flujo model-change: pre-registro, champion-challenger (el efecto de `ordered_games(utc=True)` quedó descartado en el cross-review del 16/09); NO mergear a `main` sin aprobación del operador.
