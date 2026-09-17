@@ -149,3 +149,14 @@ def test_horizon_excludes_distant_fixtures_without_loading_models(tmp_path, monk
     result = shadow.capture(tmp_path, tmp_path, path)
     assert result["n_predictions"] == 0
     assert result["n_input"] == 1
+
+
+def test_protocol_fingerprint_is_of_the_code_not_of_the_data_root(monkeypatch):
+    """AUD-007 (auditoria integral 2026-09-17): `train` huellaba `--data-root`
+    y `load_protocol` huella `ROOT`; con un directorio de datos distinto la
+    captura fallaba siempre con 'code/configuration changed'."""
+    import inspect
+    from sqp.evaluation import feature_shadow as fs
+    src = inspect.getsource(fs.train)
+    assert "fingerprint(ROOT)" in src and "fingerprint(root)" not in src
+    assert "fingerprint(ROOT)" in inspect.getsource(fs.load_protocol)

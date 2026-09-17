@@ -48,9 +48,13 @@ FUENTES, en orden:
                               una suite de ~400 s y una llamada de pago a Codex
                               por turno (AUD-MED-007). Preciso: no inventa
                               ficheros que el comando no menciona.
-3. `git status --porcelain` -- solo con `--with-git`. Red de seguridad para el
-                              comando que escribe en una ruta calculada en
-                              tiempo de ejecucion, que (2) no puede ver.
+3. `git status --porcelain` -- solo con `--with-git` Y solo si el comando
+                              contiene algun operador de escritura (AUD-006).
+                              Red de seguridad para el comando que escribe en
+                              una ruta calculada en tiempo de ejecucion, que
+                              (2) no puede ver. Un comando de LECTURA no pudo
+                              cambiar nada: las modificaciones preexistentes
+                              del arbol no son suyas.
 
 Por que (3) NO es para todos los hooks: sobre-disparar es barato en un hook que
 solo LEE o solo hace `touch`, y caro en uno que MUTA ficheros o que cuesta
@@ -182,7 +186,14 @@ def main() -> int:
     for ruta in _del_comando(str(entrada.get("command") or ""), raiz):
         if ruta not in vistos:
             vistos.append(ruta)
-    if con_git:
+    # La red de seguridad de git solo tiene sentido si el comando PUDO escribir
+    # (AUD-006, auditoria integral 2026-09-17). Sin esta condicion, con el
+    # arbol sucio -- que en este repositorio es casi siempre -- cualquier `cat`
+    # o `sed -n` devolvia las modificaciones preexistentes enteras y armaba el
+    # centinela de tests: la auditoria de solo lectura del 2026-09-17 lo armo
+    # a las 08:52 con su primera lectura, y cada Stop pagaba la suite. Es el
+    # mismo coste que AUD-MED-007 retiro de la fuente 2, reintroducido por la 3.
+    if con_git and _es_escritura(str(entrada.get("command") or "")):
         for ruta in _de_git(raiz):
             if ruta not in vistos:
                 vistos.append(ruta)

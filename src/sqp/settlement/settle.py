@@ -9,7 +9,7 @@ import math
 from datetime import datetime, timezone
 import pandas as pd
 
-from sqp.markets.settlement_math import split_asian_line
+from sqp.markets.settlement_math import is_quarter_line, split_asian_line
 from sqp.sports.team_names import normalize_key
 
 # Un partido cancelado/pospuesto nunca entrega score: sin expiracion, su pick
@@ -80,7 +80,7 @@ def _grade(row: pd.Series, hs: int, as_: int, home: str,
         # (auditoria integral 2026-09-13, AUD-MED-002). La descomposicion es
         # la de `markets.settlement_math.split_asian_line`, que ya existia
         # como API de investigacion sin llegar al ledger.
-        if float(line * 4).is_integer() and not float(line * 2).is_integer():
+        if is_quarter_line(line):
             lo, hi = split_asian_line(line)
             return _combinar_medias(_grade_linea(m, sel, sel_is_home, margin, total, lo),
                                     _grade_linea(m, sel, sel_is_home, margin, total, hi))
@@ -110,6 +110,34 @@ _COMBINACION_MEDIAS = {
     ("win", "push"): "half_win", ("push", "win"): "half_win",
     ("loss", "push"): "half_loss", ("push", "loss"): "half_loss",
 }
+
+
+# Resultados que ARRIESGAN stake y por tanto entran en el ROI realizado: las
+# victorias/derrotas enteras y las medias. Push y void devuelven el stake.
+#
+# DEFINICION CANONICA DEL ROI REALIZADO (auditoria integral 2026-09-17,
+# AUD-002): numerador y denominador sobre el MISMO conjunto de filas, este.
+# Tras AUD-MED-002 coexistian tres definiciones: `runner.realized_roi` (medias
+# en ambos lados), `roi_engine._summarize` y el dashboard (pnl de TODAS las
+# filas sobre el stake de win/loss: una `half_win` sola daba ROI 0,0 y mezclada
+# con una `win` lo DUPLICABA, 1,50 frente a 0,75) y `audit/report.py` (medias
+# fuera de ambos). Todos los consumidores pasan por `realized_roi_parts`.
+STAKED_RESULTS = frozenset({"win", "loss"}) | HALF_RESULTS
+
+
+def staked_mask(result: pd.Series) -> pd.Series:
+    """Filas cuyo stake se arriesgo (win/loss/medias); push y void quedan fuera."""
+    return result.isin(STAKED_RESULTS)
+
+
+def realized_roi_parts(settled: pd.DataFrame) -> tuple[float, float]:
+    """(pnl, stake) sobre las filas con stake arriesgado. ROI = pnl / stake."""
+    if settled.empty or "result" not in settled.columns:
+        return 0.0, 0.0
+    graded = settled[staked_mask(settled["result"])]
+    stake = float(pd.to_numeric(graded["stake"], errors="coerce").fillna(0.0).sum())
+    pnl = float(pd.to_numeric(graded["pnl"], errors="coerce").fillna(0.0).sum())
+    return pnl, stake
 
 
 def _combinar_medias(r_lo: str, r_hi: str) -> str:

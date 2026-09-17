@@ -179,3 +179,28 @@ def test_validate_rechaza_un_uplift_no_positivo_o_absurdo():
         s.validate()
     s.execution.max_uplift = 0.15
     s.validate()
+
+
+def test_books_declarados_sin_cablear_avisan(monkeypatch, caplog):
+    """AUD-005 (auditoria integral 2026-09-17): `_execution_prices` no tiene
+    ningun llamador en el pipeline (decision 9dfb4cc), asi que una lista de
+    casas no vacia no cambia precios. Que al menos lo diga."""
+    import logging
+    from sqp.config import Settings
+    monkeypatch.setenv("EXECUTION_BOOKS", "accessible,other")
+    with caplog.at_level(logging.WARNING, logger="sqp.config"):
+        s = Settings.load()
+    assert s.execution.books == ("accessible", "other")
+    assert any("NO esta cableado" in r.getMessage() for r in caplog.records)
+
+
+def test_execution_prices_sigue_sin_llamadores_en_el_pipeline():
+    """Candado del estado registrado: si alguien cablea el line shopping, este
+    test y el aviso de `Settings.load` deben retirarse juntos."""
+    from pathlib import Path
+    import sqp
+    raiz = Path(sqp.__file__).parent
+    llamadores = [f for f in raiz.rglob("*.py")
+                  if f.name != "probabilities.py"
+                  and "_execution_prices(" in f.read_text(encoding="utf-8")]
+    assert llamadores == [], f"line shopping cableado en {llamadores}: retirar el aviso AUD-005"

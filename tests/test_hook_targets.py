@@ -246,3 +246,34 @@ def test_a_writing_command_still_yields_the_paths_it_names(tmp_path, cmd):
     assert m._es_escritura(cmd)
     if "src/cosa.py" in cmd:
         assert [Path(p).name for p in m._del_comando(cmd, tmp_path)] == ["cosa.py"]
+
+
+# --- AUD-006 (auditoria integral 2026-09-17): el arbol sucio no es del lector --
+# La fuente 3 (`--with-git`) devolvia las modificaciones PREEXISTENTES del arbol
+# ante cualquier `Bash`, tambien de solo lectura: `cat README.md` armo el
+# centinela de tests a las 08:52 y cada Stop pagaba la suite completa.
+
+def _run_main(monkeypatch, capsys, m, cmd, con_git=True):
+    import io
+    import json
+    import sys
+    monkeypatch.setattr(sys, "argv", ["_targets.py"] + (["--with-git"] if con_git else []))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_name": "Bash", "tool_input": {"command": cmd}})))
+    assert m.main() == 0
+    return [linea for linea in capsys.readouterr().out.splitlines() if linea.strip()]
+
+
+def test_git_safety_net_ignores_read_only_commands(monkeypatch, capsys, tmp_path):
+    m = _targets()
+    monkeypatch.setattr(m, "_de_git", lambda raiz: [str(tmp_path / "tests" / "sucio.py")])
+    assert _run_main(monkeypatch, capsys, m, "cat README.md") == []
+    assert _run_main(monkeypatch, capsys, m, "sed -n 1,20p src/sqp/pipeline/daily.py") == []
+
+
+def test_git_safety_net_still_covers_writing_commands(monkeypatch, capsys, tmp_path):
+    m = _targets()
+    sucio = str(tmp_path / "tests" / "sucio.py")
+    monkeypatch.setattr(m, "_de_git", lambda raiz: [sucio])
+    assert _run_main(monkeypatch, capsys, m, "python gen.py > salida.txt") == [sucio]
+    assert _run_main(monkeypatch, capsys, m, "python gen.py > salida.txt", con_git=False) == []

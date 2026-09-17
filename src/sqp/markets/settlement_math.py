@@ -63,6 +63,16 @@ class SettlementProbabilities:
         }
 
 
+def is_quarter_line(line: float) -> bool:
+    """Linea asiatica de cuarto (+-x.25 / +-x.75): liquida a medias.
+
+    Unico predicado compartido por la liquidacion (`settle._grade`) y el
+    pricing (`distributions.poisson_match_probs`): tenerlo duplicado es como
+    se reintroduciria AUD-001 en silencio (revision fable, 2026-09-17)."""
+    return (math.isfinite(line) and float(line * 4).is_integer()
+            and not float(line * 2).is_integer())
+
+
 def split_asian_line(line: float) -> tuple[float, float]:
     """Side-oriented line; -0.25 -> (-0.5, 0), -0.75 -> (-1, -0.5)."""
     if not math.isfinite(line) or not float(line * 4).is_integer():

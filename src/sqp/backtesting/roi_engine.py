@@ -48,7 +48,7 @@ from sqp.pipeline.probabilities import (_consensus_spread, adjust_model_probabil
                                         build_adjustment_context,
                                         build_model_map)
 from sqp.risk.kelly import edge, kelly_fraction_stake
-from sqp.settlement.settle import settle_candidates
+from sqp.settlement.settle import realized_roi_parts, settle_candidates, staked_mask
 from sqp.sports.registry import get_adapter
 from sqp.sports.team_names import normalize_key
 
@@ -408,14 +408,18 @@ def _summarize(league: str, settled: pd.DataFrame, n_matched: int) -> dict:
     if settled.empty:
         return {"league": league, "n_events_matched": n_matched, "n_bets": 0,
                 "by_market": pd.DataFrame(), "note": "no graded bets"}
-    graded_mask = settled["result"].isin(["win", "loss"])
+    # Mismo conjunto en numerador y denominador: win/loss/medias
+    # (`settle.realized_roi_parts`, AUD-002). Antes el pnl se sumaba sobre TODAS
+    # las filas y el stake solo sobre win/loss, asi que una `half_win` sola
+    # daba ROI 0,0 y mezclada con una `win` lo duplicaba (1,50 frente a 0,75).
+    graded_mask = staked_mask(settled["result"])
     graded = settled[graded_mask]
-    staked = float(graded["stake"].sum())
-    pnl = float(settled["pnl"].sum())
-    # Denominador por mercado = stake REALMENTE arriesgado (win/loss), igual
-    # que el ROI global: incluir stakes de push/void deflactaba el ROI de los
-    # mercados con empates/cancelados (auditoria 2026-07-24, M-29).
-    by_market = (settled.assign(stake_graded=settled["stake"].where(graded_mask, 0.0))
+    pnl, staked = realized_roi_parts(settled)
+    # Denominador por mercado = stake REALMENTE arriesgado (win/loss/medias),
+    # igual que el ROI global: incluir stakes de push/void deflactaba el ROI de
+    # los mercados con empates/cancelados (auditoria 2026-07-24, M-29).
+    by_market = (settled.assign(stake_graded=settled["stake"].where(graded_mask, 0.0),
+                                pnl=settled["pnl"].where(graded_mask, 0.0))
                  .groupby("market")
                  .agg(n=("result", "size"),
                       wins=("result", lambda s: (s == "win").sum()),

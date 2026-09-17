@@ -48,6 +48,7 @@ from sqp.evaluation.labels import (EN_JUEGO, decision_prob, game_date_local,
                                    local_date, local_today, match_label,
                                    cargar_stream_servido, picks_vigentes,
                                    picks_vigentes_unicos)
+from sqp.settlement.settle import realized_roi_parts, staked_mask
 from sqp.sports.team_names import normalize_key
 
 # Columns shown in the Picks del Dia table, in order: (key, header, kind).
@@ -174,16 +175,19 @@ def _audit_section(bets_dir: Path) -> str:
     if df.empty:
         return ('<p class="empty">Sin apuestas liquidadas todavia. Corre '
                 'SETTLE_ALL.bat tras los partidos para poblar esta pestana.</p>')
-    graded = df[df["result"].isin(["win", "loss"])]
-    staked = float(graded["stake"].sum())
-    overall_roi = float(df["pnl"].sum() / staked) if staked else 0.0
+    # ROI canonico (`settle.realized_roi_parts`, AUD-002): pnl y stake sobre
+    # el MISMO conjunto (win/loss/medias). Antes el pnl era de todas las filas y
+    # el stake solo de win/loss: una media sola daba 0,0 y mezclada duplicaba.
+    graded = df[staked_mask(df["result"])]
+    pnl, staked = realized_roi_parts(df)
+    overall_roi = pnl / staked if staked else 0.0
     by_league = _segment_audit(df, ["league"])
     by_market = _segment_audit(df, ["market"])
     return "".join([
         '<div class="cards">',
         _card("Apuestas liquidadas", f"{len(graded)}",
               f"pushes/void: {len(df) - len(graded)}"),
-        _card("Stake total", f"{staked:.2f}", f"PnL: {df['pnl'].sum():.2f}"),
+        _card("Stake total", f"{staked:.2f}", f"PnL: {pnl:.2f}"),
         _card("ROI realizado", f"{overall_roi:.2%}", "global, sobre stake graded"),
         "</div>",
         "<h3>Por liga</h3>", _df_to_html_table(by_league, empty_msg="(sin datos)"),

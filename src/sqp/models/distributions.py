@@ -12,6 +12,9 @@ from numbers import Integral
 import numpy as np
 from scipy.stats import nbinom, norm, poisson
 
+from sqp.markets.settlement_math import (combine_adjacent_lines, is_quarter_line,
+                                         split_asian_line)
+
 
 def _finite(name: str, value: float) -> None:
     if not math.isfinite(value):
@@ -220,9 +223,24 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
     p_home = score_pmf(lam_home, max_goals, dispersion_k)
     p_away = score_pmf(lam_away, max_goals, dispersion_k)
     joint = _joint_grid(p_home, p_away, score_rho)
+    # LINEAS ASIATICAS DE CUARTO (auditoria integral 2026-09-17, AUD-001).
+    # Una linea +-x.25 / +-x.75 liquida la mitad del stake en cada una de las
+    # dos lineas de medio punto adyacentes (`settle._grade`, AUD-MED-002).
+    # Este pricing la trataba como una linea entera -- con margen entero el
+    # push era siempre 0 --, asi que la probabilidad servida se desviaba
+    # 7-13 pp de la coherente con la liquidacion (reproducido: Under 2.25
+    # 0.544 frente a 0.477) e invertia el signo del EV. Se acumulan las masas
+    # de cada linea adyacente y se combinan con `combine_adjacent_lines`; la
+    # probabilidad servida es la de DECISION (win_units / (win_units +
+    # loss_units)), la misma convencion que ya elimina la masa push en las
+    # lineas de medio punto y enteras, para las que el calculo no cambia.
+    spread_lines = _adjacent_lines(spread_line)
+    total_lines = _adjacent_lines(total_line)
     win = draw = loss = 0.0
-    cover = push = 0.0
-    over = total_push = 0.0
+    cover = [0.0] * len(spread_lines)
+    push = [0.0] * len(spread_lines)
+    over = [0.0] * len(total_lines)
+    total_push = [0.0] * len(total_lines)
     for i in range(max_goals + 1):
         for j in range(max_goals + 1):
             p = float(joint[i, j])
@@ -233,32 +251,52 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
             if m > 0: win += p
             elif m == 0: draw += p
             else: loss += p
-            if spread_line is not None:
-                if m > -spread_line: cover += p
-                elif m == -spread_line: push += p
-            if total_line is not None:
-                if t > total_line: over += p
-                elif t == total_line: total_push += p
+            for k, line in enumerate(spread_lines):
+                if m > -line: cover[k] += p
+                elif m == -line: push[k] += p
+            for k, line in enumerate(total_lines):
+                if t > line: over[k] += p
+                elif t == line: total_push[k] += p
     mass = win + draw + loss  # normalize truncated grid mass
     if not math.isfinite(mass) or mass <= 0:
         raise ValueError("score grid has no finite positive mass; check rates and max_goals")
     win, draw, loss = win / mass, draw / mass, loss / mass
-    cover, push = cover / mass, push / mass
-    over, total_push = over / mass, total_push / mass
     out: dict[str, float] = {}
     if three_way:
         out.update({"home_win": win, "draw": draw, "away_win": loss})
     else:
         out.update({"home_win": win + draw * 0.5, "away_win": loss + draw * 0.5})
     if spread_line is not None:
-        denom = max(1e-12, 1.0 - push)
-        out["home_cover"] = cover / denom
+        out["home_cover"] = _decision_probability(cover, push, mass)
         out["away_cover"] = 1.0 - out["home_cover"]
     if total_line is not None:
-        denom = max(1e-12, 1.0 - total_push)
-        out["over"] = over / denom
+        out["over"] = _decision_probability(over, total_push, mass)
         out["under"] = 1.0 - out["over"]
     return out
+
+
+def _adjacent_lines(line: float | None) -> list[float]:
+    """[line] para lineas enteras/medias; las dos adyacentes para las de cuarto."""
+    if line is None:
+        return []
+    if is_quarter_line(line):
+        return list(split_asian_line(line))
+    return [line]
+
+
+def _decision_probability(win_mass: list[float], push_mass: list[float], mass: float) -> float:
+    """P(gana | no push) sobre una linea, o su equivalente ponderado por stake
+    sobre dos lineas adyacentes de medio punto (medias victorias/derrotas)."""
+    if len(win_mass) == 1:
+        w, p = win_mass[0] / mass, push_mass[0] / mass
+        return w / max(1e-12, 1.0 - p)
+    lines = []
+    for w, p in zip(win_mass, push_mass):
+        w, p = w / mass, p / mass
+        lines.append((w, p, max(0.0, 1.0 - w - p)))
+    sp = combine_adjacent_lines(lines[0], lines[1])
+    resolved = sp.win_units + sp.loss_units
+    return sp.win_units / resolved if resolved > 1e-12 else 0.5
 
 
 def elo_diff_to_margin(elo_diff: float, points_per_elo: float) -> float:

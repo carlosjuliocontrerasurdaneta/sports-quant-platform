@@ -17,7 +17,7 @@ from sqp.pipeline.daily import _league_meta
 from sqp.storage.atomic import atomic_write_csv as _atomic_write_csv
 from sqp.storage.lock import locked
 from sqp.providers.odds_api import OddsAPIClient
-from sqp.settlement.settle import (HALF_RESULTS, STALE_VOID_DAYS, _parse_start,
+from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start, realized_roi_parts,
                                    settle_candidates, void_stale_candidates)
 from sqp.sports.team_names import normalize_key
 from sqp.storage.served_store import ServedStore
@@ -680,11 +680,8 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
 
 def realized_roi(settled: pd.DataFrame) -> float:
     """Realized ROI over staked (win/loss) rows; 0.0 if nothing graded."""
-    if settled.empty:
-        return 0.0
-    # Las medias (linea asiatica de cuarto, AUD-MED-002) tienen pnl, asi que
-    # su stake entra en el denominador: si no, el ROI mezclaria numerador y
-    # denominador de conjuntos distintos.
-    graded = settled[settled["result"].isin(["win", "loss", *HALF_RESULTS])]
-    staked = graded["stake"].sum()
-    return float(settled["pnl"].sum() / staked) if staked else 0.0
+    # Definicion canonica en `settle.realized_roi_parts` (AUD-002): las medias
+    # (linea asiatica de cuarto, AUD-MED-002) entran en numerador Y
+    # denominador; push/void en ninguno.
+    pnl, staked = realized_roi_parts(settled)
+    return pnl / staked if staked else 0.0

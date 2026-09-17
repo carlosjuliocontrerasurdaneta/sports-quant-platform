@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from sqp.config import ROOT
 from sqp.evaluation.labels import game_date_local, local_today, picks_vigentes
+from sqp.settlement.settle import realized_roi_parts, staked_mask
 
 DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado "
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
@@ -219,9 +220,15 @@ def breakeven_probability(price_decimal: float | None) -> float | None:
 
 
 def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
-    graded = df[df["result"].isin(["win", "loss"])].copy()
+    # `hit_rate` se mide sobre win/loss (una media no es acierto ni fallo:
+    # direccion conservadora de AUD-MED-002); `staked`/`pnl`/`realized_roi`
+    # sobre TODO el stake arriesgado, medias incluidas, como el ROI global y el
+    # ledger de banca (AUD-002). Las medias entran con pnl y stake, y sus
+    # aciertos no cuentan en `wins`.
+    graded = df[staked_mask(df["result"])].copy()
     if graded.empty:
         return pd.DataFrame()
+    decided = graded["result"].isin(["win", "loss"])
     # Punto de equilibrio por pick, promediado por segmento: cuanto habria que
     # acertar para quedar en tablas con las cuotas realmente tomadas.
     if "price_decimal" in graded.columns:
@@ -234,8 +241,9 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     # `n_staked` se expone junto a `n`: sin el, el ROI se lee como si aplicara a
     # toda la muestra y las contradicciones gap/ROI parecen inexplicables.
     graded["_staked"] = (graded["stake"] > 0).astype(int)
+    graded["_decided"] = decided.astype(int)
     g = graded.groupby(by)
-    out = g.agg(n=("result", "size"),
+    out = g.agg(n=("_decided", "sum"),
                 n_staked=("_staked", "sum"),
                 wins=("result", lambda r: (r == "win").sum()),
                 staked=("stake", "sum"),
@@ -243,7 +251,7 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
                 mean_est_edge=("estimated_edge", "mean"),
                 mean_est_prob=("estimated_probability", "mean"),
                 breakeven_hit_rate=("_breakeven", "mean")).reset_index()
-    out["hit_rate"] = (out["wins"] / out["n"]).round(4)
+    out["hit_rate"] = (out["wins"] / out["n"].where(out["n"] > 0)).round(4)
     # Sin stake no hay ROI: 0.0 se leia como "equilibrio" cuando significa "no se
     # arriesgo nada" (auditoria 2026-07-29, B-10).
     out["realized_roi"] = (out["pnl"] / out["staked"].where(out["staked"] > 0)).round(4)
@@ -273,14 +281,14 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
     if df.empty:
         lines += ["(sin apuestas liquidadas todavia)", "", f"> {DISCLAIMER}"]
     else:
-        graded = df[df["result"].isin(["win", "loss"])]
-        staked = graded["stake"].sum()
-        # Numerador y denominador del MISMO conjunto. Antes el numerador salia de
-        # `df` (todas las filas) y el denominador de `graded`; hoy coinciden
-        # porque `settle.py:92-93` asigna pnl 0.0 a push y void, pero la
-        # discrepancia era latente (N4-B-6/A-11).
-        pnl = float(graded["pnl"].sum())
-        overall_roi = float(pnl / staked) if staked else 0.0
+        # ROI canonico (`settle.realized_roi_parts`, AUD-002): numerador y
+        # denominador sobre el MISMO conjunto, win/loss y MEDIAS (linea
+        # asiatica de cuarto, AUD-MED-002). Aqui las medias quedaban fuera de
+        # ambos lados mientras el ledger de banca y `runner.realized_roi` las
+        # contaban: tres cifras distintas para el mismo `settled`.
+        graded = df[staked_mask(df["result"])]
+        pnl, staked = realized_roi_parts(df)
+        overall_roi = pnl / staked if staked else 0.0
         # `n_staked` NO es opcional: `_segment_audit` ya lo expone porque el
         # hit_rate se mide sobre TODAS las liquidadas y el ROI solo sobre las que
         # llevaron stake. Sin el, "ROI realizado -15,3%" al lado de "1.090
@@ -291,7 +299,7 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
                         .fillna(0.0) > 0).sum())
         lines += [
             "## Global",
-            f"Apuestas liquidadas (win/loss): {len(graded)} | "
+            f"Apuestas liquidadas (win/loss/medias): {len(graded)} | "
             f"con stake > 0: {n_staked} | "
             f"pushes/void: {len(df) - len(graded)}",
             f"Stake total: {staked:.2f} | PnL: {pnl:.2f} | "

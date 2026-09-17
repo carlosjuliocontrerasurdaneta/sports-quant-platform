@@ -97,7 +97,10 @@ def train(root: Path, manifest_path: Path, report_path: Path, out: Path,
             raise ValueError("only approved local blocks supported")
         if pd.Timestamp(c["discovery_through"], tz="UTC") >= begin:
             raise ValueError("forward start overlaps discovery")
-    code_hash = fingerprint(root)
+    # La huella es del CODIGO (src/sqp + configs), no del directorio de datos:
+    # `load_protocol` la recalcula sobre ROOT, y con `--data-root` distinto la
+    # captura fallaba siempre con 'code/configuration changed' (AUD-007).
+    code_hash = fingerprint(ROOT)
     out.mkdir(parents=True, exist_ok=False)
     (out / "captures").mkdir()
     (out / "training").mkdir()
@@ -134,7 +137,7 @@ def train(root: Path, manifest_path: Path, report_path: Path, out: Path,
                             "family": meta["family"], "n_train": fitted["n_train"],
                             "train_through": fitted["train_through"]})
             print(f"trained {c['id']}: {fitted['n_train']} rows", flush=True)
-    if utc_now() >= begin or fingerprint(root) != code_hash:
+    if utc_now() >= begin or fingerprint(ROOT) != code_hash:
         raise ValueError("training crossed start boundary or code changed")
     protocol = {
         "schema_version": 1, "status": "FROZEN_SHADOW_ONLY", "created_at": utc_now().isoformat(),
