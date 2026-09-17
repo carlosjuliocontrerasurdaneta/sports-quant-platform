@@ -380,3 +380,10 @@ Format:
 - Affected files: src/sqp/models/distributions.py, src/sqp/markets/settlement_math.py, src/sqp/settlement/{settle,runner}.py, src/sqp/backtesting/roi_engine.py, src/sqp/audit/{html_report,report}.py, src/sqp/config.py, configs/default.yaml, src/sqp/evaluation/feature_shadow.py, .claude/hooks/_targets.py
 - Proposed fix: ver audit/latest/BACKLOG.md, CHANGES.md y STATUS.md.
 - Status: VERIFICADO (verificación independiente `fable`, 2026-09-17: APTO CON PENDIENTES; `audit/latest/VERIFICATION.md`). AUD-001..004/006/007 verificado-corregido, AUD-005 verificado-mitigado (decisión del operador sobre cablear el line shopping). Producción `C:\dev\3` en `953cf4f`. Ver `Obsidian/Bitácora/2026-09-17.md`.
+
+- ID: KI-052
+- Severity: Media
+- Description: **Dashboard: columna Partido con `event_id` en vez de equipos** (regresión de AUD-MED-001, 2026-09-10 → 2026-09-17). `load_all_candidates` hacía `merge` con `predictions_<liga>.csv` sin sufijos; como `candidates_*.csv` ya traía `home`/`away`, quedaban `home_x`/`home_y` y `match_label` caía al identificador. 182 filas afectadas el 2026-09-17; sin impacto en stakes, liquidación ni probabilidades (solo etiqueta de informe).
+- Affected files: src/sqp/audit/report.py, tests/test_reports.py
+- Proposed fix: aplicado en `5f344be` (merge con `suffixes=("", "_pred")` y relleno de huecos).
+- Status: RESUELTO (`5f344be`, producción sincronizada, dashboard regenerado). Detectado por el operador, no por la auditoría integral del mismo día.
