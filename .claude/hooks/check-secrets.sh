@@ -41,9 +41,17 @@ while IFS= read -r file; do
   # de abajo -- tokens con prefijo reconocible, sin nombre de variable -- esta
   # pensado justo para texto en prosa, que es donde una clave se pega sin pensar.
   case "$ruta" in
-    # audit/ y audits/: informes que CITAN codigo y evidencias de otros agentes,
-    # ajenos al turno y sin secretos del proyecto (AUD-007, audit-2026-09-18).
-    */data/*|*/historical/*|*/exports/*|*/logs/*|*/audit/*|*/audits/*) continue ;;
+    */data/*|*/historical/*|*/exports/*|*/logs/*) continue ;;
+  esac
+  # audit/ y audits/ DE LA RAIZ: informes que CITAN codigo y evidencias de otros
+  # agentes, ajenos al turno y sin secretos del proyecto (AUD-007,
+  # audit-2026-09-18). Anclado a la raiz a proposito: un `*/audit/*` sin anclar
+  # tambien casaba con `src/sqp/audit/` (paquete de PRODUCCION) y dejaba ese
+  # codigo sin escanear (revision cruzada de Codex al cierre, 2026-09-18).
+  raiz="${proyecto//\\//}"
+  rel="${ruta#"$raiz"/}"
+  case "$rel" in
+    audit/*|audits/*) continue ;;
   esac
   hits=$(python "$proyecto/.claude/hooks/_secret_literals.py" "$file" 2>/dev/null || true)
   if [ -n "$hits" ]; then

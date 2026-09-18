@@ -68,6 +68,15 @@ revisión se usó como revisión de clase (routing), no como ronda V2.
 | `python scripts/sync_agent_instructions.py --check` | 0 | synchronized (skill editada) | — |
 | `git diff --check` | 0 | sin espacios finales; ficheros normalizados a LF | — |
 
+## Revisión cruzada de Codex al cierre (hook Stop)
+
+`codex review` sobre los commits del turno señaló que la exclusión `*/audit/*`
+de `check-secrets.sh` (AUD-007) también casaba con `src/sqp/audit/` (código de
+producción). Confirmado y corregido: exclusión anclada a la raíz del proyecto;
+`tests/test_audit_hooks.py::test_audit_reports_are_excluded_from_the_scan`
+verifica ahora que `src/sqp/audit/html_report.py` y
+`scripts/audit_team_names.py` siguen bloqueando (rc 2). Lote hooks: 55 passed.
+
 ## No ejecutado
 
 BATs (inspeccionados: no cambian), `pip-audit` (CI), `codex review`, run real

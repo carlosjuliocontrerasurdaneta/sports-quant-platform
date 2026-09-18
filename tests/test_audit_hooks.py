@@ -122,9 +122,13 @@ def test_audit_reports_are_excluded_from_the_scan(tmp_path):
         result = _run(tmp_path, ".claude/hooks/check-secrets.sh",
                       {"tool_input": {"file_path": str(target)}})
         assert result.returncode == 0, result.stderr
-    # ...pero un fichero de codigo con el mismo literal sigue bloqueando.
-    src = tmp_path / "src" / "x.py"
-    src.parent.mkdir(parents=True)
-    src.write_text('ODDS_API_KEY="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"', encoding="utf-8")
-    assert _run(tmp_path, ".claude/hooks/check-secrets.sh",
-                {"tool_input": {"file_path": str(src)}}).returncode == 2
+    # ...pero un fichero de codigo con el mismo literal sigue bloqueando, y el
+    # paquete de PRODUCCION `src/sqp/audit/` NO queda excluido: la exclusion esta
+    # anclada a la raiz (revision cruzada de Codex al cierre, 2026-09-18: un
+    # `*/audit/*` sin anclar dejaba ese codigo sin escanear).
+    for rel in ("src/x.py", "src/sqp/audit/html_report.py", "scripts/audit_team_names.py"):
+        src = tmp_path / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text('ODDS_API_KEY="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"', encoding="utf-8")
+        assert _run(tmp_path, ".claude/hooks/check-secrets.sh",
+                    {"tool_input": {"file_path": str(src)}}).returncode == 2, rel

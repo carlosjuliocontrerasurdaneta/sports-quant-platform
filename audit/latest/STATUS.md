@@ -12,7 +12,7 @@ sin alterar las de remediación.
 | AUD-004 | MEDIUM | P2 | **parcial**: código corregido (`scheduled_tasks` en health, runbook); host bloqueado (elevación denegada por el clasificador) | pendiente | `tests/test_health_scheduled_tasks.py` 7 passed; `health_check` real → WARN con el comando; consulta real al Programador OK (5 tareas, rc 0) | **operador (elevado)**: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`; KI-054 |
 | AUD-005 | LOW | P3 | corregido, pendiente de verificación (`gate_allowed_markets`) | pendiente | test del pestillo/test consumido: tabla dice `mlb|h2h`, registro dice ninguno | ticket menor: doble `evaluate_markets` por run |
 | AUD-006 | LOW | P3 | corregido, pendiente de verificación (`markets_for_family`) | pendiente | `tests/test_closing_capture_markets.py` 4 passed; HEAD reproducía `['h2h,spreads,totals']` en tenis | comprobar el coste por captura de tenis en el log de mañana (5 créditos) |
-| AUD-007 | LOW | P3 | corregido, pendiente de verificación (hook + detector) | pendiente | `tests/test_audit_hooks.py` 60 passed (3 nuevos); `EVIDENCE.json:315` → 0 coincidencias; `src/` con literal → rc 2 | ninguna |
+| AUD-007 | LOW | P3 | corregido, pendiente de verificación (hook + detector) | pendiente | `tests/test_audit_hooks.py` 60 passed (3 nuevos); `EVIDENCE.json:315` → 0 coincidencias; `src/` con literal → rc 2; exclusión anclada a la raíz tras la revisión de Codex (`src/sqp/audit/` sigue escaneado; 55 passed en `test_audit_hooks`+`test_hook_targets`) | ninguna |
 
 ## Heredado / informativo
 
