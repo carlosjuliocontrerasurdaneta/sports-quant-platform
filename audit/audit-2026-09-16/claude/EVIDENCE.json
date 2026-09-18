@@ -1,0 +1,58 @@
+{
+  "round_id": "audit-2026-09-16",
+  "auditor": "claude",
+  "model": "claude-opus-5",
+  "diagnosis_date_utc": "2026-09-17",
+  "base_commit": "44e48f26045f734fc479a127a9eb35f776c6483c",
+  "local_origin_main_ref": "96a4749beb03ded8eb9c69be95a1a8c5e521d53b",
+  "remote_main_head_via_gh": "a2ee66c (2026-09-17T03:50:29Z)",
+  "working_tree": "dirty: 57 entries pre-existing; guard scope (src scripts configs *.bat) clean",
+  "python": "3.14.4",
+  "platform": "win32",
+  "context_contamination": "none during main analysis; audit/latest/openai/reproduce.py and audit/audit-2026-09-13/ read only at step 7",
+  "commands": [
+    {"cmd": "python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -m \"not slow\" -x -q", "exit_code": 0, "result": "ERROR at setup of tests/audit/test_history_loader.py::test_load_history_unions_closed_and_open (PermissionError WinError 5 cleaning .codex-tmp/pytest/openai-20260916-retry); pytest stopped after 1 failure", "classification": "ENVIRONMENTAL_FAILURE", "finding": "CLAUDE-004"},
+    {"cmd": "python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m \"not slow\" -q", "exit_code": 0, "result": "1936 passed, 225 deselected", "classification": "OK"},
+    {"cmd": "ruff check src scripts tests", "exit_code": 0, "result": "All checks passed!"},
+    {"cmd": "mypy src", "exit_code": 0, "result": "Success: no issues found in 105 source files"},
+    {"cmd": "python scripts/sync_agent_instructions.py --check", "exit_code": 0, "result": "Agent instructions: synchronized (working tree)"},
+    {"cmd": "git archive HEAD | tar -x -C <scratchpad>/head-clean && python scripts/sync_agent_instructions.py --check", "exit_code": 1, "result": "FileNotFoundError .claude/automation/audit-workflow.md", "classification": "PRE_EXISTING_FAILURE", "finding": "CLAUDE-003"},
+    {"cmd": "<head-clean> pytest -q -p no:cacheprovider tests/test_agent_instruction_sync.py", "exit_code": 1, "result": "1 failed, 4 passed, 5 errors", "classification": "PRE_EXISTING_FAILURE", "finding": "CLAUDE-003"},
+    {"cmd": "<head-clean> pytest -q -p no:cacheprovider tests/test_tennis_params.py tests/test_claude_model_routing.py tests/test_claude_system_contract.py", "exit_code": 1, "result": "1 failed (test_no_code_actually_handles_surface), 69 passed", "classification": "PRE_EXISTING_FAILURE", "finding": "CLAUDE-003"},
+    {"cmd": "gh run list --branch main --limit 3", "exit_code": 0, "result": "completed success x3; latest a2ee66c 2026-09-17T03:50:35Z"},
+    {"cmd": "gh api repos/{owner}/{repo}/compare/96a4749...main", "exit_code": 0, "result": "ahead_by 6, behind_by 0; files: .claude/CLAUDE.md, .claude/memory/*, Obsidian/*, audit/model_vs_market_20260917.md", "finding": "CLAUDE-003"},
+    {"cmd": "gh api repos/{owner}/{repo}/compare/44e48f2...main", "exit_code": 1, "result": "404 Not Found (local HEAD not on remote)", "finding": "CLAUDE-003"},
+    {"cmd": "Get-ScheduledTask -TaskName 'SQP_*' | Get-ScheduledTaskInfo", "exit_code": 0, "result": "Backfill S4U rc0 09-14; Capture_Close S4U rc0 09-17 08:30; Dashboard Interactive 267014; Diario_Completo S4U rc1 09-16 12:00 next 09-17 12:00; Validate_OOS S4U rc0 09-17 00:00"},
+    {"cmd": "echo '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat README.md\"}}' | python .claude/hooks/_targets.py --with-git", "exit_code": 0, "result": "returns the whole dirty tree; .claude/.tests-pending armed 2026-09-17 08:52", "finding": "CLAUDE-006"},
+    {"cmd": "python (inline): poisson_match_probs vs masses via settle._grade, lam 1.5/1.0, grid 30", "exit_code": 0, "result": "spreads -0.25: 0.488 vs 0.561; +0.25: 0.512 vs 0.439; -0.75: 0.488 vs 0.418; +0.75: 0.512 vs 0.582; totals 2.25 O/U: 0.456/0.544 vs 0.523/0.477; 2.75 O/U: 0.456/0.544 vs 0.391/0.609", "classification": "REPRODUCED", "finding": "CLAUDE-001"},
+    {"cmd": "python (inline): settle_candidates half_win -> realized_roi vs roi_engine._summarize", "exit_code": 0, "result": "0.5 vs 0.0 (staked 0, pnl 10); mixed with win: 0.75 vs 1.5", "classification": "REPRODUCED", "finding": "CLAUDE-002"},
+    {"cmd": "python (inline aggregates) over data/calibration/graded_*.csv and data/bets/settled_*.csv", "exit_code": 0, "result": "graded stream 26802 rows, 574 quarter-line rows (432 overstated side / 142 understated); candidates ledger 1648 rows: win 591, loss 996, push 24, void 34, half_win 3 (stake 0)"},
+    {"cmd": "python (inline) json.load data/bets/prediction_gate.json", "exit_code": 0, "result": "generated_at 2026-09-16T20:20:05Z, min_n 300, alpha 0.00122 (0.05/41), n_cortes_evaluados 48, allowed 0"},
+    {"cmd": "python (inline) sha256 compare audit/audit-2026-09-13 vs audit/latest/history/round-audit-2026-09-13-preserved-20260916", "exit_code": 0, "result": "9/9 files equal"},
+    {"cmd": "ls -la .codex-tmp/pytest/openai-20260916-retry; Get-Acl", "exit_code": 1, "result": "Permission denied / UnauthorizedAccessException", "finding": "CLAUDE-004"}
+  ],
+  "denied_by_permission_classifier": [
+    "tail/ls of logs/ (diario_completo.log, run_status/*.json)",
+    "ls -la .env; grep .env.example"
+  ],
+  "not_executed": ["pytest -m slow (225 tests)", "pip-audit (network)", "any .bat", "codex review", "docker build"],
+  "source_hashes": {
+    "audit/latest/openai/reproduce.py": "412b81d7717edc2354f6e6edd84fe8a483467b5dd6b28463e07af9856bcb1f67",
+    "audit/latest/MANIFEST.json (pre-diagnosis, preserved in history/manifest-20260917T121805Z/)": "7f5cc8da1f2e8dd0224276480138a5631fbc6e968d27a4c873f323b0661a0959"
+  },
+  "findings": [
+    {"id": "CLAUDE-001", "severity": "HIGH", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P1", "file": "src/sqp/models/distributions.py:236-239,253-259", "title": "Quarter-line pricing ignores half-win/half-loss settlement"},
+    {"id": "CLAUDE-002", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P2", "file": "src/sqp/backtesting/roi_engine.py:411-430; src/sqp/audit/html_report.py:177-179; src/sqp/audit/report.py:276-280", "title": "Realized ROI defined three incompatible ways after half results", "related": ["AUD-MED-002"]},
+    {"id": "CLAUDE-003", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P1", "file": "commits 44e48f2, 72d07d8; .claude/automation/audit-workflow.md (untracked)", "title": "HEAD not self-consistent and diverged from origin/main"},
+    {"id": "CLAUDE-004", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P2", "file": ".codex-tmp/pytest/openai-20260916-retry", "title": "Inaccessible basetemp residue breaks canonical pytest command"},
+    {"id": "CLAUDE-005", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "STATICALLY_VERIFIED", "priority": "P2", "file": "configs/default.yaml:150-163; src/sqp/pipeline/probabilities.py:368; src/sqp/pipeline/daily.py:890", "title": "execution.books documented as activable but never consumed", "related": ["OPENAI-003 (reclassified)"]},
+    {"id": "CLAUDE-006", "severity": "LOW", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P3", "file": ".claude/hooks/mark-tests-pending.sh; .claude/hooks/_targets.py (source 3)", "title": "Read-only Bash arms tests sentinel whenever tree is dirty", "related": ["AUD-MED-007"]},
+    {"id": "CLAUDE-007", "severity": "LOW", "confidence": "HIGH", "evidence": "STATICALLY_VERIFIED", "priority": "P3", "file": "src/sqp/evaluation/feature_shadow.py:100,137,168", "title": "load_protocol fingerprints ROOT while train fingerprints --data-root"}
+  ],
+  "openai_hypotheses_revalidated": {
+    "OPENAI-001": "confirmed independently -> CLAUDE-001",
+    "OPENAI-002": "confirmed independently -> CLAUDE-002",
+    "OPENAI-003": "recorded decision (commit 9dfb4cc); kept only as documentation mismatch -> CLAUDE-005"
+  },
+  "coverage_summary": {"REVISADA": 12, "REVISADA_PARCIALMENTE": 6, "EXCLUIDA": 1, "NO_VERIFICABLE": 1}
+}

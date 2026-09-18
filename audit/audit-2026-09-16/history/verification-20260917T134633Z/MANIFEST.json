@@ -1,0 +1,165 @@
+{
+  "round_id": "audit-2026-09-16",
+  "started_utc": "2026-09-16T20:51:00Z",
+  "diagnosis_claude_utc": "2026-09-17T11:30:00Z/2026-09-17T12:20:00Z",
+  "consolidated_utc": "2026-09-17T12:25:00Z",
+  "finished_utc": null,
+  "status": "remediacion cerrada (pendiente de verificacion independiente)",
+  "scope": "auditoria integral del repositorio (src/sqp, scripts, BAT, configs, tests, CI, hooks, .claude contratos; datos solo por agregados) sobre el working tree actual; cambios locales sin commitear incluidos y separados de la base",
+  "base_commit": "44e48f26045f734fc479a127a9eb35f776c6483c",
+  "branch": "main (ahead 2 de la referencia local origin/main=96a4749; el remoto real va 6 commits por delante de 96a4749 y no contiene HEAD local)",
+  "working_tree": "sucio: 57 entradas en git status (34 tracked modificados/borrados/renombrados, 14 sin seguimiento) al inicio del diagnostico Claude; guard scope (src scripts configs *.bat) limpio; ninguna entrada producida por la auditoria salvo audit/latest/",
+  "python_version": "3.14.4",
+  "platform": "win32",
+  "previous_round": {
+    "round_id": "audit-2026-09-13",
+    "preserved_at": "audit/audit-2026-09-13/",
+    "preservation_check": "sha256 de 9 ficheros iguales entre audit/audit-2026-09-13 y audit/latest/history/round-audit-2026-09-13-preserved-20260916 (revalidado 2026-09-17); git registra los 9 como renames al 100 %",
+    "note": "leida solo en el paso 7 del diagnostico (comparacion historica)"
+  },
+  "round_continuation": "la ronda se inicializo el 2026-09-16 con claude/ vacio y sin REPORT de ningun auditor; el diagnostico Claude del 2026-09-17 la continua sin reiniciarla ni archivarla (misma base_commit). El MANIFEST previo se preservo en audit/latest/history/manifest-20260917T121805Z/MANIFEST.json (sha256 7f5cc8da1f2e8dd0224276480138a5631fbc6e968d27a4c873f323b0661a0959)",
+  "auditors_available": [
+    "claude"
+  ],
+  "auditors_absent": [
+    "openai: sin openai/REPORT.md ni EVIDENCE.json; solo openai/reproduce.py (3 hipotesis, revalidadas por Claude)"
+  ],
+  "second_opinion": false,
+  "source_reports": {
+    "audit/latest/claude/REPORT.md": {
+      "sha256": "8365d56c71e011981b5abd6706c7ae15bb05f8a3867be0bc48885a1617352640",
+      "ids": [
+        "CLAUDE-001",
+        "CLAUDE-002",
+        "CLAUDE-003",
+        "CLAUDE-004",
+        "CLAUDE-005",
+        "CLAUDE-006",
+        "CLAUDE-007"
+      ]
+    },
+    "audit/latest/claude/EVIDENCE.json": {
+      "sha256": "c9e8e10f8578c295487b261ba6e0c092e543476a9a840fe07d9df9b746247605"
+    },
+    "audit/latest/openai/reproduce.py": {
+      "sha256": "412b81d7717edc2354f6e6edd84fe8a483467b5dd6b28463e07af9856bcb1f67",
+      "ids": [
+        "OPENAI-001",
+        "OPENAI-002",
+        "OPENAI-003"
+      ],
+      "note": "script de reproduccion sin informe; no es un REPORT"
+    }
+  },
+  "deliverables": {
+    "audit/latest/FINDINGS.md": "7a2da7bc2e68a9b418f3fc0fdf8c29329229c1b7d9cad27241c744bac0c92d1b",
+    "audit/latest/BACKLOG.md": "d9e26a1c31c3db0f89671c10cfc4ebec0f0b1f3fef66c28751c6969ec50d77ef",
+    "audit/latest/CHANGES.md": "5253037ed0454c23d00c7c5b20e58257fcc17ad8c44563d7659bf1af0e51d8ad",
+    "audit/latest/VALIDATION.md": "421d3d7ba9fa07bb17f95686c710a36e5b3abcbbca6915cd372af769eb677712",
+    "audit/latest/STATUS.md": "9de9bb84b9ad325eb02fcf02b5dc7c55d1533172d843444416860957033eb299"
+  },
+  "id_map": {
+    "AUD-001": [
+      "CLAUDE-001",
+      "OPENAI-001"
+    ],
+    "AUD-002": [
+      "CLAUDE-002",
+      "OPENAI-002"
+    ],
+    "AUD-003": [
+      "CLAUDE-003"
+    ],
+    "AUD-004": [
+      "CLAUDE-004"
+    ],
+    "AUD-005": [
+      "CLAUDE-005",
+      "OPENAI-003 (reclasificado: decision registrada 9dfb4cc)"
+    ],
+    "AUD-006": [
+      "CLAUDE-006"
+    ],
+    "AUD-007": [
+      "CLAUDE-007"
+    ]
+  },
+  "counts": {
+    "confirmed": 7,
+    "critical": 0,
+    "high": 1,
+    "medium": 4,
+    "low": 2,
+    "p0": 0,
+    "p1": 2,
+    "dismissed": 1,
+    "not_verifiable": 3,
+    "observations": 4
+  },
+  "tests_initial": {
+    "command": "pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m \"not slow\"",
+    "result": "1936 passed, 225 deselected, exit 0",
+    "canonical_basetemp_note": "--basetemp=.codex-tmp/pytest falla en setup por residuo inaccesible (AUD-004, ENVIRONMENTAL_FAILURE)",
+    "ruff": "All checks passed",
+    "mypy": "Success: no issues found in 105 source files",
+    "ci_remote": "verde en origin/main a2ee66c (2026-09-17T03:50Z); HEAD local no esta en el remoto"
+  },
+  "tests_final": {
+    "command": "pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m \"not slow\" -q",
+    "result": "exit 0, 100% (1958 seleccionados / 225 deselected)",
+    "ruff": "All checks passed",
+    "mypy": "Success: no issues found in 105 source files",
+    "post_merge": "sync_agent_instructions.py --check rc 0; 107 tests de contratos .claude passed"
+  },
+  "files_modified": [
+    ".claude/hooks/_targets.py",
+    "configs/default.yaml",
+    "src/sqp/audit/html_report.py",
+    "src/sqp/audit/report.py",
+    "src/sqp/backtesting/roi_engine.py",
+    "src/sqp/config.py",
+    "src/sqp/evaluation/feature_shadow.py",
+    "src/sqp/markets/settlement_math.py",
+    "src/sqp/models/distributions.py",
+    "src/sqp/settlement/runner.py",
+    "src/sqp/settlement/settle.py",
+    "tests/test_distributions.py",
+    "tests/test_feature_shadow.py",
+    "tests/test_hook_targets.py",
+    "tests/test_line_shopping.py",
+    "tests/test_realized_roi_consistency.py (nuevo)",
+    "Obsidian/Bitacora/2026-09-17.md",
+    "Obsidian/Tareas.md",
+    ".claude/memory/{session-summaries,known-issues,project-decisions}.md",
+    ".claude/automation/runtime/current-task.md"
+  ],
+  "files_written_by_audit": [
+    "audit/latest/claude/REPORT.md",
+    "audit/latest/claude/EVIDENCE.json",
+    "audit/latest/FINDINGS.md",
+    "audit/latest/BACKLOG.md",
+    "audit/latest/MANIFEST.json",
+    "audit/latest/history/manifest-20260917T121805Z/MANIFEST.json"
+  ],
+  "bookkeeping_excluded": "current-task.md actualizado en la fase de remediacion (Edit); Obsidian y .claude/memory actualizados (/memoria-guardar)",
+  "final_result": null,
+  "final_result_rationale": "remediacion validada (suite, ruff, mypy, revision fable de AUD-001) y publicada; el veredicto APTO/NO APTO corresponde a la fase de verificacion independiente, no ejecutada. AUD-004 corregido a las 13:40Z (residuo eliminado con elevacion UAC por orden del operador).",
+  "not_available": [
+    "openai/REPORT.md",
+    "verificacion (VERIFICATION.md)",
+    "suite slow",
+    "pip-audit local",
+    "logs/ (permiso denegado)",
+    ".env (permiso denegado)"
+  ],
+  "remediation_utc": "2026-09-17T12:30:00Z/2026-09-17T13:15:00Z",
+  "remediation_authorization": "operador en sesion: 'Si, hazlo' sobre todos los confirmados AUD-001..007, incluido commit+push",
+  "remediation_commits": [
+    "f93bdc1 (trabajo coherente del 2026-09-16; cierra la inconsistencia de HEAD)",
+    "4f06b4f (AUD-001, 002, 005, 006, 007)",
+    "31cfdb0 (merge origin/main; 3 conflictos Obsidian resueltos)"
+  ],
+  "pushed": "origin/main a2ee66c..31cfdb0; CI run 35224249563 success (3.11-3.14, windows)",
+  "production_tree_note": "la tarea programada ejecuta C:/dev/3/sports-quant-platform (a2ee66c, guard scope limpio), no este clon (C:/dev/6); git pull en produccion pendiente del operador",
+  "escalation": "AUD-001 revisado en fable (Agent model=fable, clase parametro de modelo): 0 defectos; barrido 18432 combinaciones sin excepcion; 1 sugerencia menor aplicada; 1 hallazgo adyacente sin ticket (normal_margin_probs, delta <= 0.25 pp)"
+}
