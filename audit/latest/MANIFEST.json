@@ -191,5 +191,15 @@
   },
   "blocked": [
     "AUD-004 host: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` requiere consola elevada; el clasificador de permisos denego ejecutarlo (KI-054)"
-  ]
+  ],
+  "remediation_commits": {
+    "branch": "audit/remediacion-20260918 (publicada)",
+    "commits": [
+      "c56fdf5 fix(audit-2026-09-18): AUD-001..007",
+      "ef48a62 audit: entregables + bookkeeping",
+      "d5ee9bd audit: ronda audit-2026-09-16 preservada"
+    ],
+    "merged_to_main": "ff-only, HEAD d5ee9bd, push a origin/main",
+    "ci_remote": "run 35351675211 success"
+  }
 }
