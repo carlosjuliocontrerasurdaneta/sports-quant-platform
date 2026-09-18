@@ -507,3 +507,13 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Resultado:** CLAUDE (`fable`) FINDINGS ×1, CODEX (`gpt-6-astra`) FINDINGS ×2; gate CONSENSUS BLOCKED (ambos VERIFICATION_FAILED por el test de superficie de tenis, resuelto en main por `f93bdc1`; árbol MOVED solo por `.rev-tmp/` de pytest). Adjudicación `fable` con reproducción propia: REV-A-001 HIGH (comparador MLB sin abridor en `research.py`/`feature_shadow.py`), B-001 HIGH (`concat` sin `ignore_index` → `IndexError` en `capture_store()` con dos ligas), B-002 MEDIUM (ya resuelto en main). 0 rechazados, 0 inciertos. Capturador shadow PID 8760 muerto desde 2026-09-16 05:38Z. Nada corregido ni revertido: clase model-change + contradice decisión registrada → decisión del operador (KI-053, `Tareas.md`).
 
 **Archivos:** `audit/cross_review_v2_20260917_72d07d8_adjudication.md` (nuevo), `.claude/memory/known-issues.md` (KI-053), `Obsidian/Bitácora/2026-09-17.md`, `Obsidian/Tareas.md`. Sin cambios de código.
+
+## 2026-09-17 — KI-053 resuelto hacia delante: `72d07d8` se mantiene, REV-A-001 y B-001 corregidos (`0d6ac8f`), experimento shadow v2 no recuperable
+
+**Trabajo realizado:** orden del operador («Sí, hazlo») sobre las tres decisiones de KI-053. Decisión registrada: mantener `72d07d8` en producción (ya corrió rc=0, suite y dos revisiones sin fuga; revertir era más disruptivo). Rama `fix/ki-053-feature-shadow`: `StartersStore.attach_frame()`; `with_starters()` en `feature_shadow` usado por descubrimiento (`evaluate_feature_blocks.py`), `train()` y `capture()` (fichero obligatorio para béisbol, archivado con `starters_sha256`); `build_research_dataset` pasa abridores al `Event` y sanea NaN/blancos; fixtures con `home_starter`/`away_starter` opcionales; `capture_store` con `ignore_index=True`. `docs/FEATURE-SHADOW.md` documenta que las capturas desde `data/odds/` no traen abridores (MLB prospectivo neutro al abridor).
+
+**Validación:** 3 tests discriminantes verificados contra HEAD~ (AssertionError, `IndexError` original, join ausente) y pasan con la corrección; suite completa **2191 passed, 1 skipped** (15:42); ruff y mypy limpios. Fusionado a `main` en ff (`6a31c5f`); producción lo ejecutará en el run del 18/09 12:00. Sin push.
+
+**Abierto:** experimento `feature_shadow_20260915_v2` no recuperable (1 captura, copia congelada con B-001, huella que rechaza parches); lanzar uno nuevo es decisión del operador (`Tareas.md`).
+
+**Archivos:** `src/sqp/{features/research,evaluation/feature_shadow,storage/starters}.py`, `scripts/evaluate_feature_blocks.py`, `tests/test_feature_{research,shadow}.py`, `docs/FEATURE-SHADOW.md`, memoria y Obsidian.
