@@ -20,7 +20,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Operación y rama de Codex 2026-09-16
 
-- [ ] 2026-09-21 — Reactivar el review gate de Codex al parar (`/codex:setup --enable-review-gate`) cuando vuelva la cuota (21/09 17:50); desactivado el 17/09 por orden del operador porque sin cuota el hook fallaría en cada parada.
+- [x] 2026-09-17 — Review gate de Codex reactivado (`/codex:setup --enable-review-gate`, `reviewGateEnabled: true`, codex-cli 0.154.0 autenticado) al avisar el operador de que la cuota volvió antes del 21/09.
 - [x] 2026-09-17 — `SQP_Validate_OOS_Cdev` lanzada a mano por orden del operador: rc=0 (sustituye el 1 rancio del 01/09); 33/34 ligas validadas, `audit/model_vs_market_20260917.md`. Ver [[Bitácora/2026-09-17]].
 - [x] 2026-09-17 — Diario de las 12:00 terminado OK: `SQP_Diario_Completo_Cdev` rc=0 (12:00:01 → ~12:10), `pipeline_health.json` `status: OK` 15:10Z, 0 centinelas en `logs/run_status/`, 13 `candidates_*.csv` y `report_latest.html` regenerados. Primer run correcto desde el 14/09 y primero con el código corregido de la ronda `audit-2026-09-16`.
 - [x] 2026-09-17 — Dashboard: la columna Partido mostraba el `event_id` (hash) — regresión de AUD-MED-001 (10/09) en `load_all_candidates` (colisión `home_x/home_y` en el merge con `predictions_*.csv`). Corregido en `5f344be` con test discriminante; dashboard regenerado sin red. Detectado por el operador. Ver [[Bitácora/2026-09-17]].
