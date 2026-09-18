@@ -499,3 +499,11 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Limitación:** `logs/` no legible desde la sesión (deny del clasificador); verificación por `LastTaskResult` y `ServedStore`.
 
 **Archivos:** `.claude/automation/runtime/current-task.md`, `Obsidian/Bitácora/2026-09-17.md`. Sin cambios de código. Aviso del operador en esta sesión: Codex vuelve a tener cuota → adelantar la reactivación del review gate y el cross-review de `codex/feature-signal-shadow` previstos para el 21/09.
+
+## 2026-09-17 — Codex con cuota: review gate reactivado; cross-review V2 `32a572de` sobre `72d07d8` INCOMPLETE con 2 HIGH + 1 MEDIUM; KI-053
+
+**Trabajo realizado:** aviso del operador de que Codex tiene cuota → `/codex:setup --enable-review-gate` (`reviewGateEnabled: true`). Al montar el cross-review de `codex/feature-signal-shadow` se descubrió que la rama está desfasada: su contenido ya está en `main` como `72d07d8` (Codex, 16/09 01:26), arrastrado por la fusión `31cfdb0` de la remediación de esta mañana, y **producción lo ejecuta desde el run de las 12:00** contra la decisión del 16/09 (rama de investigación sin entrada a main). La ronda se re-dirigió a `72d07d8` sobre `96a4749` en un worktree de scratch.
+
+**Resultado:** CLAUDE (`fable`) FINDINGS ×1, CODEX (`gpt-6-astra`) FINDINGS ×2; gate CONSENSUS BLOCKED (ambos VERIFICATION_FAILED por el test de superficie de tenis, resuelto en main por `f93bdc1`; árbol MOVED solo por `.rev-tmp/` de pytest). Adjudicación `fable` con reproducción propia: REV-A-001 HIGH (comparador MLB sin abridor en `research.py`/`feature_shadow.py`), B-001 HIGH (`concat` sin `ignore_index` → `IndexError` en `capture_store()` con dos ligas), B-002 MEDIUM (ya resuelto en main). 0 rechazados, 0 inciertos. Capturador shadow PID 8760 muerto desde 2026-09-16 05:38Z. Nada corregido ni revertido: clase model-change + contradice decisión registrada → decisión del operador (KI-053, `Tareas.md`).
+
+**Archivos:** `audit/cross_review_v2_20260917_72d07d8_adjudication.md` (nuevo), `.claude/memory/known-issues.md` (KI-053), `Obsidian/Bitácora/2026-09-17.md`, `Obsidian/Tareas.md`. Sin cambios de código.
