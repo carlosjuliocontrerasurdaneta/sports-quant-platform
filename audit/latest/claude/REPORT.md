@@ -1,343 +1,316 @@
-# Diagnóstico independiente — Claude (Opus 5) — ronda `audit-2026-09-16`
+# Diagnóstico independiente — auditor Claude — ronda `audit-2026-09-18`
 
-- Fecha del diagnóstico: 2026-09-17 (UTC 11:30–12:20). Ronda inicializada el
-  2026-09-16 con `claude/` vacío; se continúa la misma ronda sin reiniciarla ni
-  archivarla (contrato: «un segundo auditor de la misma ronda no reinicia»).
-- Base Git: `44e48f26045f734fc479a127a9eb35f776c6483c` (main, ahead 2 de la
-  referencia local `origin/main` = `96a4749`). Árbol sucio: 57 entradas
-  (34 tracked modificados/borrados/renombrados, 14 sin seguimiento), todas
-  preexistentes y separadas de esta auditoría; `git status --porcelain -- src
-  scripts configs *.bat` vacío (el guard de árbol de `DIARIO_COMPLETO.bat` pasa).
-- Intérprete: Python 3.14.4 (numpy 2.4.4, pandas 3.0.2, scikit-learn 1.9.0).
-- Modelo: `claude-opus-5`, sin subagentes (validación por segundo método en la
-  misma sesión: lectura estática + reproducción con las funciones del proyecto
-  + medición sobre datos, sólo agregados).
-- Contaminación de contexto: durante el análisis principal NO se leyó ningún
-  informe histórico ni `audit/latest/openai/reproduce.py`. Ese script (único
-  residuo del auditor OpenAI; no hay `openai/REPORT.md`) se leyó al cerrar las
-  conclusiones propias (paso 7) y sus tres hipótesis se trataron como
-  `TOOL_DETECTED` y se revalidaron con código propio. La ronda anterior
-  (`audit/audit-2026-09-13/`) se leyó sólo en el paso 7.
-- Alcance: auditoría integral sobre el working tree (src/sqp, scripts, BAT,
-  configs, tests, CI, hooks, `.claude` contratos, datos sólo por agregados).
-  Cambios locales sin commitear incluidos.
+Fecha: 2026-09-18 (08:30–09:30 UTC-3). Modelo: `claude-opus-5` (sesión única,
+sin subagentes). Base: `59521643440213f6a7982b10e71d349a8d8dd088` (`main`,
+sincronizado con `origin/main`: 0 por detrás / 0 por delante). Python 3.14.4,
+win32. Contrato: `.claude/automation/audit-workflow.md`; loop
+`.claude/loops/audit.md`; referencias de `.claude/skills/full-audit/references/`.
 
 ## Resumen
 
-7 hallazgos confirmados: 1 HIGH, 4 MEDIUM, 2 LOW. P0: 0. P1: 2. Sin
-`CRITICAL`. La cadena dinero (odds → no-vig → edge → Kelly → liquidación →
-ledger) está intacta para líneas enteras y de medio punto; el defecto de mayor
-impacto es que el **pricing de líneas asiáticas de cuarto ignora la liquidación
-a medias** que `settle.py` ya aplica desde AUD-MED-002 (CLAUDE-001), con
-desviaciones de 7–13 pp que invierten el signo del EV en esos mercados.
+- **Confirmados: 4** (MEDIUM 2, LOW 2). P0: 0. P1: 0. P2: 2. P3: 2.
+- Observaciones informativas: 6. Descartes: 2. No verificables: 3.
+- Validaciones: suite completa **2191 passed, 1 skipped** (24:58, bajo carga
+  concurrente); `ruff check` 0; `mypy src` 0 (105 ficheros); CI remoto
+  **success** en HEAD (run 35301664397, 2026-09-18T03:02Z);
+  `sync_agent_instructions.py --check` sincronizado;
+  `validate_claude_model_routing.py` OK.
+- Estado de los controles (no solo su configuración): 5 tareas `SQP_*` con
+  último rc 0x0; gate de predicción default-deny (0/48 habilitados); monitor
+  de degradación con 11 pausas vivas; 4 calibradores live sin defecto
+  estructural; historial del Programador de tareas **deshabilitado**.
+- Ninguna afirmación de rentabilidad: hit rate, ROI esperado y ROI realizado
+  se distinguen en todo el informe; ninguno se demuestra positivo.
 
-Nada de esto autoriza correcciones. La auditoría no demuestra ventaja
-predictiva ni rentabilidad: el gate de predicción tiene 0/48 cortes permitidos
-y todo el stake real es 0.
+## Alcance, independencia y limitaciones
 
-## Inventario y matriz de cobertura
+- Alcance: `src/sqp` (19.470 líneas, 105 módulos), `scripts/` (62),
+  BAT/PS1/CMD operativos, `configs/`, `tests/` (133 ficheros), CI, hooks,
+  sistema `.claude/` (34 skills, 11 agentes, 17 comandos, 30 loops), datos
+  operativos **solo por agregados** (nombres, tamaños, cabeceras, conteos).
+- Ronda ya inicializada por el coordinador (00:04 local) con
+  `previous_round=audit-2026-09-16` preservada en `audit/audit-2026-09-16/`;
+  **verificado por hash**: 22 ficheros idénticos a `HEAD:audit/latest/*`.
+  No se reinició ni archivó la ronda; `claude/` estaba vacío.
+- Contaminación declarada: el contexto de sesión incluye la memoria del
+  proyecto (conclusiones de rondas anteriores, KI-053, decisiones). No se leyó
+  `openai/REPORT.md` ni `audit/audit-2026-09-16/` hasta fijar conclusiones
+  propias (paso 7). El hook `check-secrets.sh` señaló `openai/EVIDENCE.json:315`
+  en cada comando; se inspeccionó **solo esa línea** con valor enmascarado
+  (ver DESCARTE-1), sin leer hallazgos.
+- Lectura denegada de `.env` y de `logs/` por vía directa (deny list del
+  harness). Los logs se consultaron mediante scripts que devuelven únicamente
+  agregados (fechas de cabecera, conteos), conforme a `CLAUDE.md`.
+- Escritura no intencionada: `scripts/health_check.py` reescribe
+  `data/output/pipeline_health.json` (artefacto de monitorización regenerable,
+  ignorado por git) al ejecutarse; se ejecutó a las 09:01:42 para leer el
+  estado. No se tocó ningún dato productivo, fuente, test ni configuración.
+- No ejecutado: `pip-audit`, BATs, `codex review`, backfills, backtests,
+  `train_*`. Sin subagentes (regla de `CLAUDE.md`).
+- `.claude/automation/runtime/current-task.md` no se actualizó (fuera de los
+  destinos de escritura del diagnóstico); su contenido es de 2026-09-13
+  (`Status: closed`), por lo que el paso 1 de `/verification-gate` no dispone
+  de criterios de aceptación vigentes para esta ronda.
+
+## Matriz de cobertura
 
 | Área | Prio | Estado | Componentes | Método | Validación / estado observado | Limitaciones |
 |---|---|---|---|---|---|---|
-| Mercado y riesgo (odds, vig, edge, Kelly, settlement_math) | P0 | REVISADA | `markets/odds.py`, `vig.py`, `edge.py`, `settlement_math.py`, `risk/kelly.py` | lectura completa + reproducción numérica | suite verde | — |
-| Pricing por familia (Poisson/Normal) | P0 | REVISADA | `models/distributions.py`, `sports/adapters.py`, `pipeline/probabilities.py` | lectura + reproducción con `_grade` vs `poisson_match_probs` | **CLAUDE-001** | Normal (NBA/NFL) no reproducido para cuartos: no se cotizan |
-| Liquidación y ledger | P0 | REVISADA | `settlement/settle.py`, `runner.py`, `risk/bankroll.py` (cabecera) | lectura + reproducción de medias | **CLAUDE-002** | `bankroll.py` sólo parcialmente leído |
-| Pipeline diario | P0 | REVISADA | `pipeline/daily.py` (run_league, merge, freshness), `closing_capture.py`, BATs | lectura selectiva | guard de árbol pasa; gate 0/48 permitidos | `revalidation.py`, `intraday_scan.py`, `cleanup.py` no leídos en esta ronda (REVISADA_PARCIALMENTE) |
-| Gate de predicción / degradación | P0 | REVISADA_PARCIALMENTE | `risk/prediction_gate.py` | lectura de umbrales y latch; registro actual (`generated_at` 2026-09-16T20:20Z, 48 cortes, 0 allowed, min_n 300, α 0,05/41) | — | `degradation.py`, `clv_gate.py` no leídos |
-| Features / ML / research (commit 72d07d8) | P1 | REVISADA | `features/temporal.py`, `builders.py`, `mlb.py`, `research.py`, `evaluation/compare.py`, `feature_shadow.py`, `models/ml_train.py`, `storage/feature_store.py` | diff completo + lectura | tests de research/shadow verdes; ML no alimenta picks (verificado: sin `joblib`/blend ML en `daily.py`) | **CLAUDE-007**; OBS-1 |
-| Calibración | P1 | REVISADA_PARCIALMENTE | `calibration/*` | sólo consumidores de `isin(["win","loss"])` y config (`method: auto`, `auto_promote: false`) | — | `calibrator.py` (991 líneas) no leído íntegro |
-| Proveedores / cuota | P1 | REVISADA_PARCIALMENTE | `providers/*.py` timeouts, `closing_capture.py` presupuesto | grep de `timeout=` (todos acotados) + lectura | — | `odds_api.py`/`odds_cache.py` no leídos íntegros |
-| Almacenamiento / atomicidad | P1 | REVISADA_PARCIALMENTE | `results_store.py`, `_persist_settled` (lock), `atomic.py` por uso | lectura | — | `served_store.py`, `lock.py` no leídos |
-| Seguridad / secretos | P1 | REVISADA | `.gitignore`, `git ls-files` (0 ficheros de credenciales), hooks `check-secrets`, timeouts | inspección | — | `.env`/`.env.example` no inspeccionables (permiso denegado) |
-| CI/CD (estado) | P1 | REVISADA | `.github/workflows/ci.yml`; `gh run list` | inventario + estado | **verde** en `origin/main` (a2ee66c, 2026-09-17T03:50Z); pero HEAD local no está en CI (**CLAUDE-003**) | acciones sin pin a SHA (B-02, persistente) |
-| Tareas programadas (estado) | P1 | REVISADA | `Get-ScheduledTask SQP_*` | estado 2026-09-17 | S4U las 4 batch; `Diario_Completo` rc=1 el 09-16 12:00 (guard, corregido por 44e48f2), próximo 09-17 12:00; `Validate_OOS` rc=0 09-17 00:00; `Capture_Close` rc=0; `Backfill` rc=0 09-14 | `logs/` no inspeccionable (permiso denegado): último log del diario no leído |
-| Centinela / salud | P1 | REVISADA_PARCIALMENTE | `run_status.py`, `health.py`, `data/output/pipeline_health.json` | lectura + estado | `status: OK` a 2026-09-16T20:20Z | `logs/run_status/*.json` no legibles (permiso) |
-| Hooks Claude | P2 | REVISADA | `.claude/settings.json`, `hooks/*.sh`, `_targets.py` | cableado + reproducción | **CLAUDE-006** | — |
-| Skills / loops / prompts / routing | P2 | REVISADA | `.claude/automation/audit-workflow.md`, `loops/audit.md`, `skills/full-audit/**`, `audits/prompts/*` | `sync_agent_instructions.py --check` (sincronizado, rc 0); escaneo de referencias rotas (9, todas históricas en `memory/`) | **CLAUDE-003** (fuentes sin trackear) | — |
-| BAT operacionales | P1 | REVISADA | `DIARIO_COMPLETO`, `RUN_DIARIO_ALL`, `SETTLE_ALL`, `CAPTURE_CLOSE`, `BACKFILL_ALL`, `VALIDATE_OOS` | lectura | — | `REFRESH_ML`, `INSTALL_LOCAL`, `DEMO_INDEPENDENT`, `REVIEW_CALIBRATION_MLB_H2H` no leídos |
-| Dependencias | P2 | REVISADA | `pyproject.toml`, `requirements.lock` (25 pins), `pip-audit` bloqueante en CI | inventario + CI verde | — | `pip-audit` no ejecutado localmente (red) |
-| Docker | P3 | REVISADA | `Dockerfile` | lectura | documentado como demo; nadie la construye | no construida |
-| Tests | P1 | REVISADA | 143 ficheros; suite rápida | `pytest -m "not slow"`: **1936 passed** (exit 0) | ruff 0, mypy 0 | `slow` (225) no ejecutados; ver CLAUDE-004 |
-| Datos (integridad) | P0 | REVISADA_PARCIALMENTE | `settled_*.csv`, `graded_*.csv`, `prediction_gate.json` | agregados programáticos | 1.648 filas candidates (591 win/996 loss/24 push/34 void/3 half_win); 26.802 filas graded; 574 líneas de cuarto | sin scan de duplicados ni esquema completo |
-| Obsidian / docs | P3 | EXCLUIDA | `Obsidian/**`, `docs/**` | — | — | fuera del alcance técnico; sólo se comprobó que `docs/prompts` v2→v3 no tiene consumidores |
-| `logs/`, `.env` | — | NO_VERIFICABLE | — | — | — | acceso denegado por el clasificador de permisos de la sesión |
+| Ejecución principal (run diario) | P0 | REVISADA | `scripts/run_all.py`, `pipeline/daily.py` (run_league, _finalize, caps), `pipeline/probabilities.py`, `risk/kelly.py`, `markets/edge.py` | lectura completa; trazado de flujo cuotas→consenso→no-vig→ajustes→calibración→edge→Kelly→gates→stake 0 | suite 2191 passed; `run_diario.log`: cabeceras 10,12,13,14,17-09 | no se ejecutó el run |
+| Liquidación | P0 | REVISADA | `settlement/settle.py`, `settlement/runner.py`, `scripts/settle_all.py`, `pipeline/cleanup.py` | lectura completa de grading, dedup, superseded, voids, lock | tests de liquidación en suite; `settle_all.log` cabeceras 10,12,13,14,17-09 | — |
+| Gates y riesgo | P0 | REVISADA | `risk/prediction_gate.py`, `risk/degradation.py`, `risk/bankroll.py`, `configs/default.yaml`, `Settings.load` | lectura; config efectiva impresa sin secretos; registros leídos por agregados | `prediction_gate.json` 17/09 15:09Z: 0/48 allowed, K=41, n_cortes=48; `degradation_pause.json` 11 pausas; `clv_gate.json` 0/50 | — |
+| Calibración | P0 | REVISADA | `calibration/calibrator.py`, `calibration/data.py`, `calibration/pergame.py`, registro live/staging | lectura; `structural_defect` ejecutado sobre los 4 live | 4/4 sin defecto; **CLAUDE-001** | promoción no ejecutada |
+| Modelos / adaptadores / backtest | P1 | REVISADA_PARCIALMENTE | `sports/adapters.py` (MLB), `backtesting/engine.py`, `features/mlb.py`, `models/ml_predict.py` | lectura de walk-forward (observe tras cambio de día, warmup) y del adaptador MLB | leakage no detectado en el walk-forward; `ml_predict` sin consumidores en el camino de picks (OBS-4) | `distributions.py`, `roi_engine.py`, `tuning.py` no releídos línea a línea |
+| Proveedores / cuota | P1 | REVISADA | `providers/odds_api.py`, `pipeline/closing_capture.py`, `pipeline/budget.py`, `pipeline/revalidation.py` | lectura de timeouts (30 s), reintentos, cache TTL 6 h acotado a 90 min en el run, `force_refresh` en cierre | `capture_close.log`: 88 capturas, 1.320 créditos (15/captura) → **CLAUDE-003** | ESPN / MLB statsapi no releídos |
+| Almacenamiento / atomicidad / concurrencia | P0 | REVISADA | `storage/lock.py`, `storage/served_store.py`, `storage/atomic.py` (por consumidores), `_persist_settled` | lectura de lock O_EXCL + stale + Windows PermissionError; RMW bajo lock en los 4 escritores | — | `odds_store.py`, `feature_store.py` no releídos |
+| BAT / tareas programadas | P0 | REVISADA | `DIARIO_COMPLETO.bat`, `RUN_DIARIO_ALL.bat`, `SETTLE_ALL.bat`, `CAPTURE_CLOSE.bat`, `rotate_log.cmd` | lectura + `Get-ScheduledTask/Info` + agregados de logs | 5 tareas Ready, último rc 0x0; Diario 17/09 12:00; Capture: instancia de 23:30 reanudada a 08:39 (**OBS-2**); historial del Programador OFF (**CLAUDE-002**) | `BACKFILL_ALL.bat`, `VALIDATE_OOS.bat`, `REFRESH_ML.bat` no leídos |
+| CI/CD | P1 | REVISADA | `.github/workflows/ci.yml` | lectura + `gh run list` | **success** en HEAD (35301664397); acciones sin pin a SHA (B-02 heredado, persistente) | — |
+| Hooks de Claude Code | P1 | REVISADA | `settings.json`, 7 hooks, `_targets.py`, `_secret_literals.py` | lectura; observación del comportamiento real en sesión | **CLAUDE-004**; marcador `.tests-pending` (00:19) arma la suite al Stop de una sesión de solo lectura (OBS-3) | duración del subconjunto `not slow` en medición al cierre |
+| Skills / loops / routing | P1 | REVISADA_PARCIALMENTE | 34 skills, comandos, loops, `MODEL_ROUTING`, prompts generados | frontmatter presente en 34/34; referencias `.claude/**` resueltas (solo rutas de runtime ausentes, esperado); `--check` sincronizado; routing OK | — | contenido de cada skill no revisado línea a línea |
+| Tests | P1 | REVISADA | `tests/` | suite completa; inventario de skip/xfail (35 condicionales de entorno, 1 skipped real) | 2191 passed; sin xfail | flakiness no medida |
+| Seguridad / secretos | P0 | REVISADA | `.gitignore`, ficheros versionados escaneados con el detector del proyecto, hooks | escaneo de todos los `.py/.yaml/.json/.bat/.ps1/.sh/.md/.lock` versionados | 0 secretos reales; 5 coincidencias en tests son fixtures del propio detector; `.env` ignorado (`.gitignore:4`) | `.env` no legible (por diseño) |
+| Dependencias | P2 | REVISADA_PARCIALMENTE | `pyproject.toml`, `requirements.lock`, CI `pip-audit` | lectura | `pip-audit` corre en CI (verde) | no ejecutado en local |
+| Datos operativos | P0 | REVISADA_PARCIALMENTE | `data/bets`, `data/calibration`, `data/predictions`, `data/models`, `data/odds` | solo nombres, tamaños y agregados JSON | `data/odds` 953 MB; 881/1578 liquidadas sin cierre (55,8 %) | contenido de CSV no cargado (regla del proyecto) |
+| Rendimiento | P2 | REVISADA_PARCIALMENTE | `apply_calibration` (defecto estructural por llamada), carga de odds inerte | lectura | sin defecto demostrable | no perfilado |
+| Documentación / Obsidian | P3 | REVISADA_PARCIALMENTE | `Obsidian/Tareas.md:104`, `Conocimiento/Calibración.md`, docstrings | solo lo necesario para CLAUDE-001 | contradicción registrada en CLAUDE-001 | resto EXCLUIDA (fuera del comportamiento del sistema) |
+| Docker / Makefile | P3 | REVISADA | `Dockerfile`, `Makefile` | lectura | demo por defecto, usuario no root | no construido |
+| Orquestación de especialistas | — | NO_APLICABLE | — | un solo auditor, sin delegación (regla de `CLAUDE.md`) | — | — |
+| `logs/`, `.env` | — | NO_VERIFICABLE (directo) | — | agregados por script | — | acceso directo denegado |
 
 ## Hallazgos confirmados
 
-### CLAUDE-001 — El pricing de líneas asiáticas de cuarto ignora la liquidación a medias
-- Categoría: cuantitativo (probabilidad/EV). Severidad **HIGH**. Confianza HIGH. Evidencia **REPRODUCED**.
-- Archivo: `src/sqp/models/distributions.py:236-239` y `:253-259`
-  (`poisson_match_probs`); consumidores `sports/adapters.py:107-123`
-  (`PoissonAdapter.estimate`: fútbol, hockey, béisbol) y
-  `pipeline/probabilities.py:185-187`.
-- Activación: cualquier línea `±x.25 / ±x.75` (spreads) o `x.25 / x.75`
-  (totales) cotizada por el proveedor. Medido en `data/calibration/graded_*.csv`:
-  574 de 26.802 filas (2,1 %), todas `spreads` de fútbol (-0,25/+0,25: 376;
-  -0,75/+0,75: 140; ±1,25: 54; ±2,25: 2); en el ledger de candidates, 26 de 1.648.
-- Problema: `cover` se calcula como `P(m > -line)` y `push` como
-  `P(m == -line)`; con línea de cuarto `push` es siempre 0 y la probabilidad
-  servida trata la línea como si fuera entera. La liquidación (`settle.py`,
-  AUD-MED-002 desde 2026-09-13) sí reparte el stake entre las dos líneas
-  adyacentes (`split_asian_line`), así que modelo y liquidación describen
-  contratos distintos.
-- Evidencia (reproducción con funciones del proyecto, λ = 1,5 / 1,0, rejilla 30):
+### CLAUDE-001 — El registro live de calibración contiene la clave sandbox `mlb_h2h_pergame`; `mlb_h2h` se sirve en crudo mientras health y dashboard lo cuentan como calibrado
 
-  | mercado | modelo | prob. de decisión coherente con `_grade` | EV@1,95 modelo | EV@1,95 real |
-  |---|---|---|---|---|
-  | spreads local −0,25 | 0,488 | 0,561 | −0,049 | +0,081 |
-  | spreads visitante +0,25 | 0,512 | 0,439 | −0,001 | −0,125 |
-  | spreads local −0,75 | 0,488 | 0,418 | −0,049 | −0,163 |
-  | spreads visitante +0,75 | 0,512 | 0,582 | −0,001 | +0,119 |
-  | totals Over 2,25 | 0,456 | 0,523 | −0,110 | +0,018 |
-  | totals Under 2,25 | 0,544 | 0,477 | +0,060 | −0,061 |
-  | totals Over 2,75 | 0,456 | 0,391 | −0,110 | −0,212 |
-  | totals Under 2,75 | 0,544 | 0,609 | +0,060 | +0,167 |
+- Categoría: contrato / calibración. Severidad: **MEDIUM**. Confianza: HIGH.
+  Evidencia: **STATICALLY_VERIFIED**. Prioridad: P2.
+- Archivos: `data/models/calibration_methods.json` (claves
+  `mlb_h2h_pergame, mlb_spreads, mlb_totals, wnba_spreads`);
+  `data/models/promotion_log.csv:102`
+  (`2026-08-23T04:31:09Z,mlb_h2h_pergame,promoted,beta`);
+  `data/models/staging/calibration_methods.json` (sigue conteniendo la clave);
+  `src/sqp/calibration/pergame.py:20-23,54-57`; `calibrator.py:976-991`
+  (`calibration_key` → `"mlb_h2h"`), `calibrator.py:745-790`
+  (`promote_calibrators(keys=None)` promueve **todo** staging);
+  `src/sqp/monitoring/health.py:80-103` (`_live_calibration_markets` →
+  `["h2h_pergame","spreads","totals"]`); `audit/html_report.py:259-275`
+  (`En produccion: 4`); `Obsidian/Tareas.md:104` («candidato per-game
+  `mlb_h2h_pergame` (staged)»).
+- Activación: cualquier `scripts/promote_calibration.py` sin `--keys`
+  (promoción completa) adopta la clave sandbox; ya ocurrió el 2026-08-23.
+- Problema: `pergame.py` fija el contrato «entrenamiento bajo la clave SANDBOX
+  `<liga>_h2h_pergame` y SOLO en staging: produccion aplica `<liga>_h2h`, asi
+  que un candidato per-game jamas llega a live por este camino; adoptarlo es
+  una decision aparte». `promote_calibrators` no distingue la clave sandbox y
+  la promovió. Producción resuelve `calibrate_probability(p, "mlb", "h2h")` →
+  `calibration_key` = `mlb_h2h` → ausente del registro → **no-op** (crudo).
+- Esperado: o bien la adopción explícita (copia a `mlb_h2h` tras la
+  evaluación cruzada que exige el docstring), o bien que el registro live no
+  contenga claves que ningún consumidor resuelve.
+- Observado: registro live con 4 entradas, de las que 1 es inerte;
+  `health_check.py` imprime `mlb … calibration=True` y `_live_calibration_markets`
+  devuelve un «mercado» `h2h_pergame`; el dashboard cuenta 4 «En produccion»;
+  `Tareas.md` lo sigue llamando staged.
+- Causa raíz: la promoción opera sobre el registro de staging completo y la
+  clave sandbox se escribe en ese mismo registro (`train_pergame_calibrator`).
+- Consecuencia: el moneyline MLB —el mercado para el que se construyó el
+  calibrador per-game (sobreconfianza en bins 0,5–0,7, `Conocimiento/Calibración.md:22`)—
+  se sirve sin calibrar, con el operador y las vistas creyendo lo contrario.
+  Impacto acotado hoy: el gate de predicción usa `model_probability` pura y
+  todos los stakes son 0 (default-deny), así que no afecta al dinero ni al
+  gate; afecta a `p_decision`, al `estimated_edge` servido y al ranking de
+  picks de `mlb|h2h`.
+- Controles existentes: `structural_defect` (no aplica, el mapa es válido);
+  `_orphan_calibration_entries` (no aplica: el artefacto existe). Ninguno
+  detecta una clave sin consumidor.
+- Corrección mínima (requiere decisión del operador — parámetro de modelo):
+  (a) `promote_calibrators` rechaza claves con `PERGAME_SUFFIX` salvo bandera
+  explícita de adopción que las instale bajo `<liga>_h2h`; (b) demover
+  `mlb_h2h_pergame` del registro live (o adoptarla) y reflejarlo en
+  `promotion_log.csv`; (c) `_live_calibration_markets` y la tarjeta del
+  dashboard ignoran o marcan claves que `calibration_key` nunca produce; (d)
+  actualizar `Tareas.md:104`.
+- Pruebas: test que promueva un staging con `x_h2h_pergame` y verifique que
+  el live no la contiene sin la bandera; test de `_live_calibration_markets`
+  con la clave sandbox → no listada; test de `calibrate_probability("mlb","h2h")`
+  con solo `mlb_h2h_pergame` en el registro → no-op documentado.
+- Aceptación: el registro live solo contiene claves resolubles por
+  `calibration_key`; health/dashboard coinciden con lo que sirve el pipeline.
+- Limitaciones: no se reproduce en ejecución (bastaría llamar a
+  `calibrate_probability(0.6,"mlb","h2h")` y comparar con
+  `apply_calibration` bajo la clave sandbox; no se hizo para no cargar
+  artefactos pickle adicionales).
 
-  Dirección: se **sobreestiman** los lados que ganan a medias en la línea
-  entera adyacente (+x,25, −x,75, Under x,25, Over x,75) en ≈ ½·P(empate) o
-  ½·P(margen exacto), y se subestiman los opuestos. En fútbol P(empate) ≈ 0,25
-  → sesgo ≈ 12 pp, seis veces `min_edge` (0,02).
-- Esperado: probabilidad de decisión `win_units/(win_units+loss_units)` y EV
-  `win_units·(d−1) − loss_units` como ya define `markets/settlement_math.py`
-  (API «de investigación» que no llega al pricing).
-- Observado: edge fabricado en un lado y suprimido en el otro; en el stream
-  graduado, 432 de las 574 filas de cuarto están en el lado sobreestimado
-  (ambos lados se sirven, así que no es selección; en candidates 15/26).
-- Causa raíz: `poisson_match_probs` sólo conoce `win/push/loss`; AUD-MED-002
-  corrigió la liquidación sin tocar el pricing.
-- Consecuencia: probabilidad estimada, edge, EV del tipster, Kelly y
-  `model_probability` del gate de predicción inválidos para esas líneas. Las
-  etiquetas de calibración anteriores al 2026-09-13 se graduaron con la misma
-  semántica de línea entera (coherentes con el modelo pero no con el contrato
-  real); las posteriores excluyen las medias (`isin(["win","loss"])`).
-- Controles existentes: `max_plausible_edge` (0,075) recorta parte del edge
-  fabricado; el gate mantiene stake 0. Ninguno corrige la probabilidad.
-- Corrección mínima: en `poisson_match_probs` (o en `PoissonAdapter.estimate`),
-  cuando `line*4` sea entero y `line*2` no, descomponer con `split_asian_line`,
-  acumular masas `win/half_win/push/half_loss/loss` y devolver la probabilidad
-  de decisión de `SettlementProbabilities`; documentar que `p·d−1` sólo iguala
-  al EV cuando no hay masa push. Revisar también `estimate_f5` (adapters:210).
-- Pruebas: test paramétrico que compare `poisson_match_probs` con la masa
-  obtenida vía `_grade` para ±0,25/±0,75/2,25/2,75 (tolerancia 1e-9); test de
-  no regresión para líneas enteras y de medio punto (byte-idéntico).
-- Criterio de aceptación: desviación ≤ 1e-9 frente a la liquidación para cuartos;
-  líneas no-cuarto sin cambio; `test_settlement_math` verde.
-- Limitaciones: no se midió el impacto en ROI realizado porque el ledger sólo
-  tiene 3 medias (stake 0). Escalado: cambia un parámetro de modelo → clase
-  «modelo/estrategia» del principio rector; la decisión de aplicar es del operador.
+### CLAUDE-002 — El historial del Programador de tareas está deshabilitado: una tarea que no llega a lanzarse no deja rastro diagnosticable
 
-### CLAUDE-002 — El ROI realizado se define de tres formas incompatibles tras introducir `half_win`/`half_loss`
-- Categoría: cuantitativo (métrica publicable). Severidad **MEDIUM**. Confianza HIGH. Evidencia **REPRODUCED**.
-- Archivos: `src/sqp/backtesting/roi_engine.py:411-430` (`_summarize`),
-  `src/sqp/audit/html_report.py:177-179`, `src/sqp/audit/report.py:276-280`,
-  `src/sqp/settlement/runner.py:681-690` (`realized_roi`, referencia).
-- Activación: cualquier fila `half_win`/`half_loss` con stake > 0 (backtests
-  con Kelly histórico ya la producen; el ledger real la producirá al salir del
-  shadow). Hoy: 3 `half_win` en `settled_ligue1/seriea.csv`, stake 0 → impacto
-  numérico nulo, defecto latente.
-- Problema: `runner.realized_roi` incluye las medias en numerador y
-  denominador; `roi_engine._summarize` y `html_report` suman **todo** el `pnl`
-  pero sólo el stake de `win/loss`; `audit/report.py` excluye las medias de
-  ambos.
-- Evidencia (reproducción): una `half_win` (stake 20, precio 2,0) →
-  `realized_roi` = 0,50; `_summarize` = 0,00 (`staked` 0, `pnl` 10). Mezcla
-  con una `win` → 0,75 vs **1,50** (ROI duplicado).
-- Consecuencia: `scripts/validate_oos.py` (mensual, `VALIDATE_OOS.bat`),
-  `backtest_roi.py`, `oos_pitcher_mlb.py` y la tarjeta «ROI realizado» del
-  dashboard publican cifras con conjuntos distintos en numerador y denominador.
-- Causa raíz: remediación AUD-MED-002 (2026-09-13) actualizó `realized_roi` y
-  dejó el resto de consumidores con `isin(["win","loss"])` + `pnl.sum()` global.
-- Corrección mínima: una única función canónica (p. ej. `realized_roi` en
-  `settlement/runner.py`) reutilizada por `_summarize`, `html_report` y
-  `report.py`; decidir explícitamente si las medias cuentan (recomendado: sí,
-  ambos lados, como el ledger de banca).
-- Pruebas: caso de una media sola y mezcla media+win en los tres consumidores;
-  candado que impida `pnl` global con `stake` filtrado.
-- Aceptación: mismo ROI en los cuatro puntos para el mismo `settled`.
+- Categoría: observabilidad / control. Severidad: **MEDIUM**. Confianza: HIGH.
+  Evidencia: **STATICALLY_VERIFIED** (estado del sistema). Prioridad: P2.
+- Evidencia: `Get-WinEvent -ListLog 'Microsoft-Windows-TaskScheduler/Operational'`
+  → `IsEnabled=False Records=2`; consulta de eventos de 9 días → «No se
+  encontraron eventos». `Get-ScheduledTaskInfo` conserva solo `LastRunTime`
+  y `LastTaskResult`. Cabeceras de `logs/run_diario.log` y `settle_all.log`:
+  10, 12, 13, 14, 17-09; `diario_completo.log`: 10, 12 (×2), 13, 14, 17-09.
+  Es decir, **no hay rastro de lanzamiento el 11, 15 ni 16-09**, y la causa
+  (máquina apagada, tarea no disparada, fallo previo al primer `echo`) no puede
+  establecerse desde el sistema.
+- Activación: cualquier día en que `SQP_Diario_Completo_Cdev` no complete su
+  primera línea de log.
+- Esperado: el propio Programador registra inicio/fin/código por instancia
+  (eventos 100/102/103/201/203), independientemente del BAT.
+- Observado: el único registro independiente del proceso es
+  `pipeline_liveness` (health), que se ejecuta al iniciar sesión
+  (`open_dashboard.ps1`) o dentro del propio run; dice **que** no hubo run,
+  no **por qué**.
+- Causa raíz: el log operativo del Programador está desactivado (valor por
+  defecto de Windows en algunas ediciones).
+- Consecuencia: repetición del patrón documentado en AUD-MED-001 (2026-09-08):
+  «la ausencia de rastro convierte un fallo en un fallo indiagnosticable».
+  Tres días sin run en ocho (11, 15, 16-09) sin causa establecida.
+- Controles existentes: `pipeline_liveness` (detecta), `:log` del BAT (solo
+  si el BAT arranca), `run_status` (solo desde la rama `:error`).
+- Corrección mínima: habilitar el historial
+  (`wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`, requiere
+  elevación; documentarlo en el runbook de `set_tasks_unattended.ps1`) y que
+  `health_check`/`open_dashboard.ps1` lean `NumberOfMissedRuns`/`LastTaskResult`
+  de las 5 tareas para incluirlos en `pipeline_health.json`.
+- Pruebas: manual (no automatizable en CI): tras habilitar, `Get-WinEvent`
+  devuelve eventos 100/102 de la siguiente ejecución.
+- Aceptación: una ausencia de run queda explicada por el registro del
+  Programador o por el propio log del BAT.
+- Limitaciones: la causa de los tres días sin run no se pudo establecer
+  (NOT_VERIFIABLE); el 15/16-09 consta en memoria como incidente conocido,
+  el 11-09 no.
 
-### CLAUDE-003 — HEAD no es autoconsistente y diverge del remoto: dos commits sin publicar dependen de ficheros sin trackear
-- Categoría: integridad del repositorio / CI. Severidad **MEDIUM**. Confianza HIGH. Evidencia **REPRODUCED**.
-- Archivos: commit `44e48f2` (`scripts/sync_agent_instructions.py`,
-  `tests/test_agent_instruction_sync.py`) depende de
-  `.claude/automation/audit-workflow.md` y `loop-guardrails.md` (sin trackear)
-  y de los prompts regenerados de `audits/prompts/` (modificados, sin
-  commitear); commit `72d07d8` añade `surface_elo` a `features/research.py`
-  y rompe `tests/test_tennis_params.py::test_no_code_actually_handles_surface`
-  (la corrección está sólo en el working tree).
-- Evidencia: extracción limpia de HEAD (`git archive`) en scratchpad →
-  `sync_agent_instructions.py --check` rc 1 (`FileNotFoundError:
-  audit-workflow.md`); `pytest tests/test_agent_instruction_sync.py` → 1 failed,
-  5 errors; `test_tennis_params.py` → 1 failed. Con el working tree completo la
-  suite pasa (1936).
-- Divergencia: `gh api compare 96a4749...main` → remoto 6 commits por delante
-  (todos docs/Obsidian/memoria); HEAD local (2 commits con código) no existe en
-  el remoto (404); `origin/main` local obsoleto (`96a4749`). `Obsidian/Tareas.md`
-  y `Bitácora.md` modificados en ambos lados → conflicto al sincronizar.
-- Consecuencia: al hacer push, CI en rojo; la máquina de producción ejecuta
-  código (`feature_store.py`, `builders.py`, `ml_train.py`) que ninguna puerta
-  ha validado en 3.11–3.13/Windows; el guard de árbol del BAT avisará hoy
-  «6 commits por detrás» tras su `fetch`.
-- Causa raíz: el guard de árbol (`src scripts configs *.bat`) presionó a
-  commitear `scripts/` sin sus fuentes en `.claude/` (mensaje del propio commit).
-- Corrección mínima: un commit coherente con las fuentes sin trackear, los
-  prompts regenerados y los dos tests corregidos; `git fetch` + rebase/merge
-  resolviendo los dos ficheros Obsidian; push y comprobar CI. Requiere
-  autorización (commit/push).
-- Pruebas: `sync_agent_instructions.py --check` y la suite sobre un checkout
-  limpio del commit resultante; `gh run list` verde.
+### CLAUDE-003 — La captura de cierre en tenis pide tres mercados (15 créditos) cuando el run diario solo genera h2h (5 créditos)
 
-### CLAUDE-004 — Residuo inaccesible en `.codex-tmp/pytest/` rompe el comando canónico de validación
-- Categoría: entorno de validación. Severidad **MEDIUM**. Confianza HIGH. Evidencia **REPRODUCED** (ENVIRONMENTAL_FAILURE).
-- Archivo: directorio `.codex-tmp/pytest/openai-20260916-retry` (creado
-  2026-09-16 17:50, ACL ilegible incluso para el propietario: `ls` y
-  `Get-Acl` → acceso denegado).
-- Evidencia: `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -m
-  "not slow" -x` → primer test con `tmp_path` falla en setup:
-  `PermissionError: [WinError 5]` al limpiar el basetemp. Es exactamente el
-  comando de `Makefile:test`, `AGENTS.md` y el contrato de auditoría (KI-037).
-  Con `--basetemp=.codex-tmp/pytest-claude-20260917` la suite pasa.
-- Consecuencia: cualquier auditor o remediador que siga el comando documentado
-  obtiene un fallo ambiental antes del primer test con fixture temporal.
-- Corrección mínima: eliminar el directorio con privilegios (`takeown`/`icacls`
-  o desde el sandbox que lo creó) — decisión del operador; alternativamente
-  documentar un sub-basetemp por auditor.
+- Categoría: cuota / integración externa. Severidad: **LOW**. Confianza: HIGH.
+  Evidencia: **STATICALLY_VERIFIED**. Prioridad: P3.
+- Archivos: `src/sqp/pipeline/closing_capture.py:118`
+  (`client.fetch_odds(league, sport_key)` sin `markets`);
+  `providers/odds_api.py:288` (default `"h2h,spreads,totals"`);
+  `pipeline/daily.py:704` (`markets = "h2h" if family == "tennis"`);
+  `pipeline/budget.py:33-38` (coste = mercados × regiones).
+- Evidencia: `capture_close.log` (agregado): 88 capturas con crédito, 1.320
+  créditos → 15 por captura (5 regiones × 3 mercados) en todas las ligas;
+  22 capturas de tenis (`tennis_wta_guadalajara_open` 19, `tennis_wta_us_open` 3)
+  = 330 créditos frente a 110 si se pidiera solo h2h.
+- Esperado: la captura de cierre pide los mismos mercados que generó picks
+  (h2h en tenis).
+- Consecuencia: ~220 créditos de más en el periodo del log (~8 días) sobre un
+  plan de 20.000/mes y un tope diario de cierre de 300; además el snapshot de
+  cierre de tenis incluye mercados que ningún pick usa.
+- Corrección mínima: pasar `markets` según `_league_meta(league)["family"]`
+  (reutilizar la regla de `daily.py`). Prueba: test de `capture_closing` con
+  cliente falso que registre `markets` para una liga de tenis.
+- Limitaciones: The Odds API cobra por mercado ofrecido; si un torneo no
+  ofrece spreads/totals el sobrecoste real sería menor (no verificado).
 
-### CLAUDE-005 — `execution.books` se documenta como activable pero el pipeline nunca lo consume
-- Categoría: configuración/contrato. Severidad **MEDIUM** (condicionada). Confianza HIGH. Evidencia **STATICALLY_VERIFIED**.
-- Archivos: `configs/default.yaml:150-163` («`books` vacío = DESACTIVADO…»),
-  `src/sqp/config.py:489-493` (carga `ExecutionConfig`, valida `max_uplift`),
-  `src/sqp/pipeline/probabilities.py:368-420` (`_execution_prices`),
-  `src/sqp/pipeline/daily.py:794,890,954` (siempre `consensus_median`).
-- Evidencia: `_execution_prices` no tiene ningún llamador fuera de
-  `tests/test_line_shopping.py`. El commit `9dfb4cc` registra la decisión
-  «NO se cablea en daily.py» — es una decisión documentada, no un olvido — pero
-  el yaml y `Settings` presentan la clave como operativa.
-- Consecuencia: si el operador declara casas accesibles (`books` o
-  `EXECUTION_BOOKS`), el precio de ejecución no cambia y no hay aviso. Hoy
-  `books: []` → impacto nulo.
-- Corrección mínima (sin contradecir la decisión): anotar en el yaml y en
-  `Settings.validate` que la clave está **sin cablear** y avisar si se
-  declara no vacía; o cablearla bajo decisión explícita del operador (cambia
-  precios de ejecución → clase de escalado).
-- Pruebas: test que fije el estado elegido (aviso o cableado).
+### CLAUDE-004 — `check-secrets.sh` con `--with-git` re-escanea en cada comando todo el `git status` y marca como secreto código fuente embebido en JSON
 
-### CLAUDE-006 — Con el árbol sucio, cualquier `Bash` de solo lectura arma el centinela de tests
-- Categoría: hooks/operación. Severidad **LOW**. Confianza HIGH. Evidencia **REPRODUCED**.
-- Archivos: `.claude/hooks/mark-tests-pending.sh` (`_targets.py --with-git`,
-  fuente 3), `.claude/hooks/run-tests-on-stop.sh` (suite completa `-m "not
-  slow"`, timeout 600 s).
-- Evidencia: `echo '{"tool_name":"Bash","tool_input":{"command":"cat
-  README.md"}}' | python .claude/hooks/_targets.py --with-git` devuelve el
-  árbol sucio entero (incl. `tests/*.py`); `.claude/.tests-pending` armado a
-  las 08:52 de hoy por esta sesión de solo lectura.
-- Consecuencia: cada `Stop` de una sesión de auditoría paga la suite (~7 min)
-  mientras existan modificaciones preexistentes en `src/tests/scripts` — el
-  mismo coste que AUD-MED-007 eliminó para la fuente 2, reintroducido por la
-  fuente 3. Es una elección documentada («sobre-disparar es barato») cuyo coste
-  real con un árbol crónicamente sucio no se midió.
-- Corrección mínima: en la fuente 3 considerar sólo ficheros cuyo estado en
-  `git status` cambió durante el turno (comparar contra un snapshot al
-  `PreToolUse`), o excluir la fuente 3 cuando el comando no contiene operadores
-  de escritura.
+- Categoría: hooks / falso positivo persistente. Severidad: **LOW**.
+  Confianza: HIGH. Evidencia: **REPRODUCED** (en esta sesión). Prioridad: P3.
+- Archivos: `.claude/hooks/check-secrets.sh` (`_targets.py --with-git` en
+  `PostToolUse` para `Edit|Write|Bash`), `.claude/hooks/_secret_literals.py:8-12`
+  (`ASSIGNMENT` acepta valores sin comillas de ≥8 caracteres).
+- Evidencia: en >15 comandos Bash de esta sesión el hook devolvió
+  `audit/latest/openai/EVIDENCE.json:315: literal sospechoso`. La línea 315 es
+  un campo `"output"` de 20.006 caracteres con código fuente de `odds_api.py`
+  escapado; la coincidencia es la asignación `self.<clave> = <clave>` de
+  `odds_api.py:80` seguida de `\r\n` escapado (el valor capturado es el propio
+  identificador más los 4 caracteres de escape, 11 en total). No es un
+  secreto (DESCARTE-1). El fichero no es de esta sesión ni fue tocado por ella.
+  Al escribir este informe, el hook marcó también las dos líneas que citaban
+  la coincidencia: reproducción adicional.
+- Esperado: el hook señala ficheros que el turno escribió; un identificador
+  asignado a sí mismo no es un literal.
+- Consecuencia: alarma repetida que no cambia con ninguna acción del auditor
+  (el fichero pertenece al otro auditor) — el mismo modo de fallo que el
+  proyecto documenta en `discovery-coverage.md` («una alarma que suena sin
+  motivo es una alarma que se aprende a ignorar»). Un secreto real en un
+  fichero nuevo quedaría enterrado entre repeticiones.
+- Corrección mínima: (a) excluir `audit/**` del escaneo (como ya se excluyen
+  `data/`, `logs/`), o escanear solo ficheros cuyo hash cambió desde el último
+  aviso; (b) en `ASSIGNMENT`, descartar valores que sean identificadores
+  iguales al nombre asignado o que contengan `\r`/`\n` escapados.
+- Pruebas: extender `tests/test_audit_hooks.py` con la línea reproducida
+  (la asignación `self.<clave> = <clave>` de `odds_api.py:80` seguida de
+  `\r\n` escapado, dentro de una cadena JSON) → 0 hallazgos.
 
-### CLAUDE-007 — `feature_shadow.load_protocol` huella `ROOT` mientras `train` huella `--data-root`
-- Categoría: lógica (herramienta de investigación). Severidad **LOW**. Confianza HIGH. Evidencia **STATICALLY_VERIFIED**.
-- Archivos: `src/sqp/evaluation/feature_shadow.py:100,137` (`fingerprint(root)`)
-  vs `:168` (`fingerprint(ROOT)`); `scripts/feature_shadow.py:25,46-53`
-  (`--data-root`, por defecto `ROOT`).
-- Activación: `--data-root` distinto de `ROOT` (p. ej. espejo de datos sin
-  `src/sqp`): `train` persiste la huella del árbol de datos y `capture`/
-  `evaluate` fallan siempre con «experiment code/configuration changed».
-- Corrección mínima: `fingerprint(ROOT)` en ambos sitios (la huella es del
-  código, no del directorio de datos) y un test con `root` ≠ `ROOT`.
+## Observaciones informativas (no defectos)
 
-## Inferidos / no verificables
-
-- **NV-1** Estado del último run del diario (`logs/diario_completo.log`,
-  `logs/run_status/*.json`): acceso denegado en esta sesión. Evidencia indirecta:
-  `Get-ScheduledTaskInfo` rc=1 el 2026-09-16 12:00 y `pipeline_health.json`
-  `status: OK` a las 20:20Z del mismo día.
-- **NV-2** `.env` de producción (presencia, `KELLY_FRACTION`): no inspeccionable.
-- **NV-3** Suite `slow` (225 tests) no ejecutada en esta ronda.
-
-## Observaciones (no defectos)
-
-- **OBS-1** Diferencia train/serve introducida por `72d07d8`: los datasets ML
-  excluyen resultados del mismo día UTC; el run diario ajusta ratings con
-  scores completados del mismo día (`_fetch_recent_scores`). Sin impacto en
-  picks (el ML no los alimenta); a tener en cuenta si algún día se promueve.
-- **OBS-2** Gate de predicción: 48 cortes evaluados con K=41 pre-registrado
-  (límite 50). El FWER efectivo es 48·α ≈ 5,9 %; a 2 cortes del re-pre-registro.
-- **OBS-3** `test_pricing_prompt_formulas.py` evalúa con `eval` fórmulas
-  extraídas de Markdown del repositorio (entrada controlada; aceptable).
-- **OBS-4** `SQP_Dashboard_Cdev` LastTaskResult 267014 (0x41306, terminada por
-  el usuario): esperado para una tarea interactiva.
+- **OBS-1** Gate de predicción: 48 cortes evaluados con `K=41` fijo
+  (`PREDICTION_GATE_K`), umbral de re-pre-registro 50. FWER bajo el nulo
+  ≈ 1−(1−0,05/41)^48 ≈ 5,7 % (dentro del +22 % aceptado). 6 cortes son torneos
+  de tenis (n máx. 110, nunca alcanzan 300 dentro de un torneo); dos torneos
+  más disparan el aviso de re-pre-registro. Mayor n: `mlb|h2h` y `mlb|spreads`
+  231/300.
+- **OBS-2** Disponibilidad de la máquina: `capture_close.log` registra 26, 5,
+  17, 25, 17, 0, 6, 28 capturas los días 10–17-09 (máximo teórico 48/día);
+  ninguna entre 00:00 y 08:30 del 18-09; la instancia lanzada a las 23:30 del
+  17-09 escribió su primera línea Python a las 08:39 del 18-09 (proceso
+  suspendido ~9 h). Consecuencia medible: 881 de 1.578 liquidadas (55,8 %)
+  sin cierre emparejado (`clv_20260917.md`) → CLV informativo y revalidación
+  pre-partido sin cobertura nocturna. No es defecto de código; es un límite
+  operativo del host (INFERRED en cuanto a la causa).
+- **OBS-3** `.claude/.tests-pending` existe desde las 00:19 (otra sesión); el
+  hook Stop ejecutará `pytest -m "not slow"` (sin `-p no:cacheprovider`) al
+  cerrar esta sesión de solo lectura. AUD-006 (ronda anterior) redujo el
+  disparo, pero el marcador persiste entre sesiones. Estado del control:
+  el subconjunto `not slow` tardó **489,8 s (1967 passed, 225 deselected)**
+  bajo carga concurrente, frente al timeout de 600 s del hook: cabe, con un
+  margen del 18 % que una máquina ocupada puede consumir.
+- **OBS-4** `models/ml_predict.py` y los `*_moneyline_model.joblib` no tienen
+  consumidor en el camino de picks; `health_check` los reporta
+  (`moneyline_model=True`) como si fueran vivos. Código experimental separado
+  de producción, coherente con la política; la tarjeta es engañosa a la lectura.
+- **OBS-5** `apply_calibration` ejecuta `structural_defect` (tres barridos)
+  en **cada** llamada por candidato; correcto y seguro, coste no medido.
+- **OBS-6** B-02 heredado persiste: acciones del CI en `@v4`/`@v5` sin pin a SHA.
 
 ## Descartes
 
-- **OPENAI-003 («line shopping ignorado») como defecto de pipeline**: la no
-  integración es una decisión registrada (`9dfb4cc`). Se conserva únicamente la
-  contradicción documental (CLAUDE-005).
-- Grading de líneas de cuarto en `settle.py`: verificado correcto
-  (−0,75/+1 → half_win; 2,25/Under/2 → half_loss).
-- `remove_vig_power`, `kelly_fraction_stake`, `adjusted_edge`: sin defecto
-  (finitud, rangos y fallback documentados).
-- Referencias rotas en `.claude/**`: 9, todas en `memory/` a entregables de
-  fases pasadas o ficheros runtime; no afectan a skills activas.
-- Borrado de `docs/prompts/*-pricing-v2.md`: sin consumidores fuera de
-  manifiestos históricos (`BUILD_INFO.json`, hashes de rondas anteriores).
+- **DESCARTE-1** «Secreto en `audit/latest/openai/EVIDENCE.json:315`»
+  (TOOL_DETECTED por el hook): DISMISSED. Valor capturado = identificador
+  `api_key` + `\r\n` escapado dentro de código fuente citado. Sin secreto.
+- **DESCARTE-2** Coincidencias del detector en `tests/test_audit_hooks.py:29-31,49`
+  y `tests/test_portable_setup.py:36`: fixtures del propio detector y de
+  `.env` temporal; DISMISSED.
 
-## Comparación con la ronda anterior (`audit-2026-09-13`, leída en el paso 7)
+## No verificables
 
-| ID previo | Estado | Evidencia propia |
-|---|---|---|
-| AUD-HIGH-001 (repositorio) | corregido; **nuevo riesgo** CLAUDE-003 | Git operativo, CI verde en remoto; divergencia local/remoto |
-| AUD-HIGH-002 (tareas «solo interactivo») | corregido | `LogonType S4U` en las 4 tareas batch (2026-09-17) |
-| AUD-MED-002 (medias) | corregido en liquidación; **incompleto** aguas abajo | CLAUDE-002; y ahora incoherente con el pricing: CLAUDE-001 |
-| AUD-MED-005 (`:lista` en `:error_run`) | corregido | `DIARIO_COMPLETO.bat` |
-| AUD-MED-007 (`_targets.py`) | corregido parcialmente | CLAUDE-006 (fuente 3) |
-| B-01 (`VALIDATE_OOS`) | corregido | rc=0 el 2026-09-17 00:00 |
-| B-02 (pin de acciones CI) | persistente | `ci.yml` usa `@v4/@v5` |
-| B-08 (`record_run_failure` sin lock) | resuelto por diseño | ficheros por etapa, sin sección crítica |
-| CL-02 (`wnba_totals_calibration_iso.joblib`) | persistente (inerte) | sigue en `data/models/` |
+- **NV-1** Causa de los días sin run (11, 15, 16-09): sin historial del
+  Programador (CLAUDE-002).
+- **NV-2** Contenido de `.env` (por diseño); la configuración efectiva se
+  imprimió desde `Settings.load()` sin secretos y coincide con `default.yaml`.
+- **NV-3** Coste real de spreads/totals en torneos de tenis en The Odds API
+  (CLAUDE-003 asume el modelo de `budget.py`).
 
-## Validaciones y comandos
+## Comparación histórica (ronda `audit-2026-09-16`, leída tras fijar conclusiones)
 
-| Comando | Resultado | Clasificación |
-|---|---|---|
-| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -m "not slow" -x` | ERROR setup (`PermissionError` en basetemp) | ENVIRONMENTAL_FAILURE → CLAUDE-004 |
-| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m "not slow"` | 1936 passed, 225 deselected, exit 0 | OK |
-| `ruff check src scripts tests` | All checks passed | OK |
-| `mypy src` | Success: 105 ficheros | OK |
-| `python scripts/sync_agent_instructions.py --check` | synchronized, rc 0 (working tree) / rc 1 (HEAD limpio) | OK / CLAUDE-003 |
-| `pytest tests/test_agent_instruction_sync.py` sobre `git archive HEAD` | 1 failed, 5 errors | PRE_EXISTING_FAILURE (HEAD) → CLAUDE-003 |
-| `pytest tests/test_tennis_params.py …` sobre `git archive HEAD` | 1 failed | PRE_EXISTING_FAILURE (HEAD) → CLAUDE-003 |
-| `gh run list --branch main --limit 3` | success ×3 (último 2026-09-17T03:50Z) | OK |
-| `gh api compare 96a4749...main` | ahead_by 6 / behind 0; `compare 44e48f2...main` → 404 | CLAUDE-003 |
-| `Get-ScheduledTask SQP_*` | ver matriz | OK |
-| Reproducción pricing vs `_grade` (código propio) | tabla CLAUDE-001 | REPRODUCED |
-| Reproducción ROI medias | 0,5 vs 0,0; 0,75 vs 1,5 | REPRODUCED |
+- AUD-001..AUD-007: `STATUS.md` los declara verificados-corregidos o cerrados
+  por decisión. No se reabre ninguno: el código actual conserva
+  `realized_roi_parts` como definición única (AUD-002), HEAD es
+  autoconsistente y sincronizado (AUD-003), `.codex-tmp` sin residuo (AUD-004),
+  `execution.books` avisa y no cablea (AUD-005), `--with-git` solo en escritura
+  para el marcador de tests (AUD-006; OBS-3 es su residuo entre sesiones).
+- Heredado B-02: persistente (OBS-6). CL-02: cerrado (confirmado:
+  `data/models/retired/wnba_totals_calibration_iso.joblib`).
+- CLAUDE-001..004: **nuevos** (la ronda del 13-09 listó `mlb_h2h_pergame/beta`
+  en el registro live sin señalarlo).
+- Adyacente de la ronda anterior (pricing Normal con líneas de cuarto, ≤0,32 pp):
+  no revalidado en esta ronda (fuera del recorrido).
 
-No se ejecutaron: suite `slow`, `pip-audit` local, BAT alguno, `codex review`.
-No se instalaron dependencias ni se consumió cuota de pago. Ningún fichero del
-proyecto fue modificado fuera de `audit/latest/` (y el registro de tarea).
+## Plan priorizado
 
-## Plan priorizado (propuesta; requiere autorización por ID)
+1. P2 CLAUDE-001 — decisión del operador (adoptar o demover) + candado en
+   `promote_calibrators` + coherencia de health/dashboard/Tareas.
+2. P2 CLAUDE-002 — habilitar historial del Programador (elevación) + exponer
+   `LastTaskResult`/`NumberOfMissedRuns` en `pipeline_health.json`.
+3. P3 CLAUDE-003 — `markets` por familia en `capture_closing`.
+4. P3 CLAUDE-004 — excluir `audit/**` del hook y endurecer `ASSIGNMENT`.
 
-1. **P1 CLAUDE-003** — commit coherente + sincronizar con `origin/main` + push + CI verde.
-2. **P1 CLAUDE-001** — probabilidad de decisión coherente con la liquidación para líneas de cuarto (clase de escalado: parámetro de modelo).
-3. **P2 CLAUDE-002** — una sola definición de ROI realizado; antes del `VALIDATE_OOS` del 2026-10-01.
-4. **P2 CLAUDE-004** — eliminar el residuo inaccesible (operador).
-5. **P2 CLAUDE-005** — aviso/documentación de `execution.books` sin cablear (o cableado bajo decisión).
-6. **P3 CLAUDE-006**, **P3 CLAUDE-007**.
+## Riesgos residuales
 
-## Riesgos residuales y limitaciones
-
-- Un solo auditor: sin segunda opinión independiente (el auditor OpenAI dejó
-  sólo un script; sus hipótesis se revalidaron aquí, dos confirmadas y una
-  reclasificada).
-- Cobertura parcial declarada en la matriz (calibrador, revalidación,
-  degradación, served_store, odds_api, BATs secundarios).
-- `logs/` y `.env` no verificables por permisos de la sesión.
-- Esta auditoría no demuestra ventaja predictiva, rentabilidad ni ausencia de
-  defectos en áreas no revisadas.
+- El gate de predicción sigue en default-deny; nada de lo anterior cambia esa
+  situación ni la debe cambiar sin el criterio pre-registrado.
+- La cobertura de cierre (~44 %) limita cualquier medición futura de CLV.
+- Auditoría completa ≠ código corregido ni ventaja predictiva demostrada.

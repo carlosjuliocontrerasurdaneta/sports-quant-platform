@@ -144,3 +144,30 @@ Next decision: ninguna acción de gate, pausa ni calibrador (prohibidas sin
 aprobación; ninguna la requiere hoy). Codex con cuota (operador, 17/09):
 reactivar el review gate y repetir el cross-review de
 `codex/feature-signal-shadow` — tarea aparte de este loop.
+
+---
+
+## Registro — auditoría integral ronda `audit-2026-09-18` (2026-09-18)
+
+Status: remediación aplicada, pendiente de verificación independiente ·
+Result: 7 confirmados (MEDIUM 4, LOW 3; P0/P1: 0) → 6 corregidos + 1 parcial
+(AUD-004: código sí; host bloqueado por elevación) · Loop: `audit.md` ·
+Skills: `full-audit` (0–3) → `audit-remediation` (4–5) · Owner: sesión
+principal `claude-opus-5` · Autorización: «si, hazlo» · Segunda opinión: SÍ
+(auditor OpenAI, `openai/REPORT.md`, 3 hallazgos; Claude 4; conjuntos disjuntos).
+
+Routing: diagnóstico y remediación en `claude-opus-5` sin subagentes;
+`fable` (parámetro `model` de `Agent`, agente `independent-code-reviewer`) para
+revisar AUD-003, clase «cambiar el contrato de un artefacto persistido /
+parámetro de modelo» (registro live de calibración + promoción). Decisión
+del ejecutor bajo la orden global: DEMOVER `mlb_h2h_pergame` (cero cambio en
+lo servido), no adoptar; la adopción bajo `mlb_h2h` sigue en `Tareas.md:104`.
+Ningún umbral de riesgo/gate cambiado; no se contradijo ninguna decisión
+registrada. Bloqueado: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational
+/e:true` (elevación; clasificador denegó) — lo ejecuta el operador.
+
+Criterios de aceptación (verification-gate): por ID en
+`audit/latest/CHANGES.md`; evidencia en `audit/latest/VALIDATION.md`; estado en
+`audit/latest/STATUS.md`. Validación global: suite completa, ruff, mypy,
+`git diff --check`, prompts sincronizados. Siguiente: verificación
+independiente (`audits/prompts/verificar-remediacion.md`).

@@ -1,46 +1,47 @@
-# Remediación — ronda `audit-2026-09-16`
+# Cambios — remediación autorizada, ronda `audit-2026-09-18`
 
-Fecha: 2026-09-17. Autorización del operador en sesión: «Sí, hazlo» sobre la
-propuesta «todos los confirmados (AUD-001…007), incluido commit+push». Base
-inicial de la remediación: `44e48f2` + working tree sucio (57 entradas
-preexistentes, no pisadas: se commitearon íntegras y coherentes en `f93bdc1`
-como parte de AUD-003). Validación inicial: suite rápida 1936 passed, ruff 0,
-mypy 0 (diagnóstico). Implementador: `claude-opus-5`; revisión escalada de
-AUD-001 en `fable` (clase «parámetro de modelo», REGLA DE DESPACHO).
+Autorización: orden del operador en sesión («si, hazlo») sobre la propuesta
+de remediar los 7 confirmados de `FINDINGS.md`. Fuente: `audit/latest/FINDINGS.md`
++ `BACKLOG.md`. Base al empezar: `5952164` (main, sincronizado), working tree
+con solo `audit/` modificado; guard scope (`src scripts configs *.bat`) limpio.
+Línea base de tests: 2191 passed / 1 skipped (suite completa), ruff 0, mypy 0.
 
-| ID | Estado inicial | Causa | Archivos | Cambio | Prueba | Aceptación | Riesgo residual | Estado final |
+Ejecutor: `claude-opus-5` (sesión principal). Revisión independiente en el
+escalón `fable` para AUD-003 (clase «contrato de artefacto persistido /
+parámetro de modelo»), ver `VALIDATION.md`.
+
+Decisiones tomadas por el ejecutor bajo la orden global (registradas en
+`.claude/memory/project-decisions.md`):
+- AUD-003: **demover** la clave sandbox del registro live (cero cambio en las
+  probabilidades servidas; restaura el contrato documentado), NO adoptarla
+  bajo `mlb_h2h` (eso sigue siendo la tarea abierta de `Obsidian/Tareas.md:104`).
+- AUD-004: la parte de host (habilitar el historial del Programador) exige
+  elevación y el clasificador de permisos la denegó: queda **bloqueada** con
+  el comando exacto documentado; la parte de código se aplicó.
+
+| ID | Estado inicial | Causa | Archivos | Cambio | Prueba discriminante | Aceptación | Riesgo residual | Estado final |
 |---|---|---|---|---|---|---|---|---|
-| AUD-001 | confirmado (REPRODUCED) | `poisson_match_probs` trataba las líneas de cuarto como enteras (push 0) mientras `settle._grade` liquida a medias | `src/sqp/models/distributions.py`, `src/sqp/markets/settlement_math.py` (`is_quarter_line`), `src/sqp/settlement/settle.py` (usa el predicado compartido), `tests/test_distributions.py` | Para líneas ±x,25/±x,75 se acumulan las masas de las dos líneas adyacentes (`split_asian_line`), se combinan con `combine_adjacent_lines` y se sirve la probabilidad de decisión `win_units/(win_units+loss_units)`; líneas enteras/medias ejecutan exactamente las mismas operaciones que antes | `test_quarter_line_pricing_matches_settlement_contract` (10 casos, oráculo independiente vía `_grade`): **10 failed antes → 18 passed después**; `test_non_quarter_lines_unchanged_by_asian_split` (4 casos) | desviación ≤ 1e-9 frente a la liquidación; no-cuarto sin cambio; 106 tests de distribuciones/settlement_math + 166 de adaptadores/pipeline verdes | Cambia la probabilidad servida de ~2 % de las líneas (fútbol, spreads); las etiquetas de calibración de esas líneas anteriores al 09-13 siguen con la semántica antigua (documentado, no regraduado). Revisión `fable`: 0 defectos, barrido de 18.432 combinaciones sin excepción; hallazgo adyacente **no ticketeado**: `normal_margin_probs`/`normal_total_probs` (NBA/NFL) tienen el mismo patrón con Δ ≤ 0,25 pp (por debajo de `min_edge`); queda para la siguiente ronda | pendiente de verificación |
-| AUD-002 | confirmado (REPRODUCED) | remediación AUD-MED-002 actualizó `realized_roi` y dejó `roi_engine._summarize`, `html_report` y `report.py` con conjuntos distintos en numerador/denominador | `src/sqp/settlement/settle.py` (`STAKED_RESULTS`, `staked_mask`, `realized_roi_parts`), `src/sqp/settlement/runner.py`, `src/sqp/backtesting/roi_engine.py`, `src/sqp/audit/html_report.py`, `src/sqp/audit/report.py`, `tests/test_realized_roi_consistency.py` | Una definición canónica (medias en numerador y denominador; push/void fuera) reutilizada por los cuatro consumidores. `_segment_audit`: `hit_rate` sigue sobre win/loss (dirección conservadora de AUD-MED-002); `staked/pnl/realized_roi` sobre todo el stake arriesgado | 3 tests nuevos (media sola: 0,5 en los cuatro puntos; mezcla: 0,75 y no 1,5; sólo push/void: sin ROI). «Fallo antes» = reproducción del diagnóstico (0,0 / 1,50), no se pudo re-ejecutar sin parche (stash denegado) | mismo ROI en los cuatro puntos; 351 tests de liquidación/informes/dashboard verdes | Cambia la cifra publicada sólo cuando hay medias con stake; `n` por segmento pasa a contar sólo win/loss (idéntico cuando no hay medias) | pendiente de verificación |
-| AUD-003 | confirmado (REPRODUCED) | commit parcial forzado por el guard de árbol; fuentes del contrato sin trackear; divergencia local/remoto | `f93bdc1` (contrato, prompts, tests, docs, Obsidian, preservación de ronda) + commit de remediación + merge con `origin/main` | Ver sección «Git» | `sync_agent_instructions.py --check` rc 0; suite sobre el árbol resultante; CI tras el push | HEAD autoconsistente y publicado; CI verde | conflictos resueltos a mano en Obsidian (si los hay) | ver «Git» |
-| AUD-004 | confirmado (ENVIRONMENTAL) | directorio con ACL ilegible creado por el sandbox del auditor OpenAI | fuera del árbol Git: `.codex-tmp/pytest` → `.codex-tmp/pytest.bloqueado-20260916` | `takeown`/`icacls`/`Remove-Item`/`Rename-Item` sobre el residuo: **acceso denegado** (sin elevación). Se renombró el directorio PADRE, liberando la ruta canónica | `pytest --basetemp=.codex-tmp/pytest tests/audit/test_history_loader.py` → 4 passed | comando canónico ejecutable | el residuo sigue en disco dentro de `pytest.bloqueado-20260916/`; borrarlo requiere privilegios del operador | **mitigado** (parcial) |
-| AUD-005 | confirmado (STATICALLY_VERIFIED) | decisión `9dfb4cc` (no cablear line shopping) no reflejada en yaml/`Settings` | `src/sqp/config.py`, `configs/default.yaml`, `tests/test_line_shopping.py` | Variante «aviso» (no contradice la decisión): docstring de `ExecutionConfig` y comentario del yaml declaran SIN CABLEAR; `Settings.load` emite `warning` si `books` no está vacío; candado `test_execution_prices_sigue_sin_llamadores_en_el_pipeline` que obliga a retirar el aviso si algún día se cablea | `test_books_declarados_sin_cablear_avisan` + candado; 21 tests de line shopping/config verdes | ninguna clave declarada queda silenciosamente inerte | cablearlo sigue siendo decisión del operador (cambia precios de ejecución) | pendiente de verificación |
-| AUD-006 | confirmado (REPRODUCED) | fuente 3 de `_targets.py` (`--with-git`) devolvía el árbol sucio ante cualquier Bash | `.claude/hooks/_targets.py`, `tests/test_hook_targets.py` | La red de seguridad de git sólo se consulta si el comando contiene operadores de escritura (`_es_escritura`) | 2 tests nuevos (lectura con árbol sucio → nada; escritura → sí); reproducción: `cat README.md` con `--with-git` → 0 rutas (antes: árbol entero); 45 tests de hooks verdes | sesiones de solo lectura no arman el centinela | un comando que escribe en ruta calculada sin operador reconocible sigue sin cubrirse (igual que antes) | pendiente de verificación |
-| AUD-007 | confirmado (STATICALLY_VERIFIED) | `train` huellaba `root` (`--data-root`) y `load_protocol` `ROOT` | `src/sqp/evaluation/feature_shadow.py`, `tests/test_feature_shadow.py` | `fingerprint(ROOT)` en `train` (huella del código) | candado por inspección de fuente; tests de shadow verdes | experimentos con `--data-root` ≠ `ROOT` cargan | ninguno | pendiente de verificación |
-
-## Sugerencia menor aplicada (revisión `fable`)
-
-Predicado de línea de cuarto duplicado en `settle.py:83` y `distributions.py`:
-extraído a `settlement_math.is_quarter_line` y usado por ambos, para que no
-puedan divergir en silencio.
-
-## Fuera de alcance / no autorizado
-
-- Cablear el line shopping (AUD-005 variante «cablear»): decisión del operador.
-- Regraduar etiquetas históricas de calibración de líneas de cuarto.
-- `normal_margin_probs`/`normal_total_probs` (hallazgo adyacente de la revisión
-  `fable`, Δ ≤ 0,25 pp): sin ID en esta ronda; propuesto para la siguiente.
-- Borrado con privilegios del residuo de AUD-004.
+| AUD-002 | confirmado (revalidado: ambos lectores sin comprobar la raíz; fallback de `run_all` fuera del `try`) | validación sintáctica sin validación de tipo | `src/sqp/risk/prediction_gate.py` (`load_prediction_gate`), `src/sqp/risk/degradation.py` (`load_degradation_registry`, nueva `auto_pauses_from_persisted_registry`, logger), `scripts/run_all.py` (fallback) | raíz comprobada antes de `.get` (patrón de `clv_gate`); el fallback de `run_all` pasa por un helper que nunca lanza | `tests/test_registry_root_not_object.py` (13 failed antes → 21 passed después) | `[]`, `null`, `1`, `"x"`, `true`, `markets` no dict → `{}` sin excepción en los dos lectores; objeto válido sin cambio | ninguno conocido | corregido, pendiente de verificación |
+| AUD-001 | confirmado (regla paralela reproducida con la versión de HEAD: 300 filas del mismo evento → «PASAN EL GATE, n=300») | script con su propia regla | `scripts/gate_status.py` (reescrito), `.claude/skills/clv-shadow-exit/SKILL.md:61` | el CLI muestra [1] veredicto persistido (`load_prediction_gate`+`market_allowed`) y [2] progreso con `evaluate_markets` sobre `load_all_graded()`; sin regla paralela; docstring con el umbral vigente | `tests/test_gate_status_cli.py` (escenario OpenAI → n=1, `muestra_insuficiente`, sin «PASAN»; pestillo respetado; ventana; `--min-n` solo filtra; candado sin `binomtest`/`pick_history`) | salida coincide con `prediction_gate.json`; ejecutado contra datos reales: «Habilitados: ninguno (default-deny)» | `prompts` sincronizados (`--check` OK) | corregido, pendiente de verificación |
+| AUD-005 | confirmado (revalidado en `run_all.py:307-313`) | anuncio desde la tabla pre-pestillo | `scripts/run_all.py`, `src/sqp/risk/prediction_gate.py` (nueva `gate_allowed_markets`) | el log anuncia habilitados leyendo el registro escrito (con pestillo); `decided` solo para progreso | `tests/test_gate_status_cli.py::test_gate_allowed_markets_reads_persisted_verdict_not_pre_latch_table` (corte elegible con test consumido: tabla dice `mlb|h2h`, registro dice ninguno) | mensaje == registro | doble `evaluate_markets` por run se mantiene (coste menor; cambiar la firma de `write_prediction_gate` afectaría a 29 llamadas) | corregido, pendiente de verificación |
+| AUD-003 | confirmado (registro live y staging con `mlb_h2h_pergame`; `promotion_log.csv:102`) | promoción sin distinguir claves sandbox | `src/sqp/calibration/calibrator.py` (`PERGAME_SUFFIX`, `is_sandbox_key`, rechazo en `promote_calibrators`, democión en sync completa y en `auto_promote`, nueva `demote_calibrators`, `_append_promotion_log`, borrado de sidecars), `src/sqp/calibration/pergame.py` (reexporta el sufijo), `src/sqp/monitoring/health.py` (`_live_calibration_markets` ignora sandbox; `_orphan_calibration_entries` la señala), `src/sqp/audit/html_report.py` (filtra y avisa), `scripts/promote_calibration.py` (`--demote/--reason`), `Obsidian/Tareas.md:104`; **dato**: `data/models/calibration_methods.json` (live: 3 claves), `mlb_h2h_pergame_calibration_beta.joblib` retirado de live (sigue en staging), `promotion_log.csv` +1 fila `demoted` | ver columnas anteriores | `tests/test_sandbox_calibration_keys.py` (8 failed antes → 9 passed después, incluido el candado sobre el dato real) | registro live solo con claves resolubles; health/dashboard coherentes; `calibrate_probability("mlb","h2h")` no-op explícito | la adopción per-game sigue pendiente de decisión (tarea abierta). Revisión `fable`: 4 hallazgos, 3 aplicados en sesión (`--demote` exige `--yes`; rastro `demoted: sync completa`; `_set_best_method` rechaza sandbox en live) + 1 sugerencia no aplicada (ver `VALIDATION.md`) | corregido, pendiente de verificación |
+| AUD-004 | confirmado (`IsEnabled=False`) | historial del Programador apagado; sin rastro independiente del BAT | `src/sqp/monitoring/health.py` (`scheduled_tasks_status`, `_scheduled_tasks_raw`, bloque `scheduled_tasks` en `pipeline_health.json`, solo para `root == ROOT` en Windows), `scripts/set_tasks_unattended.ps1` (runbook del comando elevado) | health expone `LastRunTime`/`LastTaskResult`/`Missed` de las 5 tareas y avisa: historial apagado, diaria sin lanzarse > 1,5 d (distinto de «falló»), rc ≠ 0, tarea ausente | `tests/test_health_scheduled_tasks.py` (7 passed); `health_check.py` real: `WARN (0 errors, 1 warnings)` con el aviso del historial | una ausencia de lanzamiento queda visible y explicada como tal | **parcial/bloqueado**: `wevtutil sl … /e:true` requiere consola elevada; el clasificador denegó ejecutarlo. El operador debe ejecutarlo; hasta entonces `health_check` sale WARN a propósito | parcial (código corregido; host pendiente del operador) |
+| AUD-006 | confirmado (HEAD: tenis → `h2h,spreads,totals`) | mercados de la captura no alineados con la generación | `src/sqp/pipeline/daily.py` (`markets_for_family`, regla única), `src/sqp/pipeline/closing_capture.py` | la captura pide los mercados de la familia | `tests/test_closing_capture_markets.py` (reproducción con HEAD: `['h2h,spreads,totals']`; ahora `h2h` en tenis) | tenis 5 créditos/captura | ninguno | corregido, pendiente de verificación |
+| AUD-007 | confirmado (reproducido en sesión; también al escribir el informe) | `--with-git` re-escanea `git status`; `ASSIGNMENT` acepta asignaciones reflexivas y CRLF escapado | `.claude/hooks/check-secrets.sh` (excluye `audit/`, `audits/`), `.claude/hooks/_secret_literals.py` (`_symbolic`: reflexiva/llamada/CRLF; nombre entre comillas admitido para JSON) | ver anterior | `tests/test_audit_hooks.py` (+3 tests: reflexivas no marcan; literales reales sí, incluido JSON `"api_key": "…"`; `audit/` excluido y `src/` sigue bloqueando) | `EVIDENCE.json:315` → 0 coincidencias; `src/` con literal → rc 2 | los fixtures de `tests/test_audit_hooks.py` siguen marcándose (esperado: contienen literales de prueba) | corregido, pendiente de verificación |
 
 ## Efectos de hooks observados
 
-- `check-secrets.sh` (PostToolUse Bash) avisó dos veces sobre literales de
-  `tests/test_audit_hooks.py:29-31,49`: fixtures sintéticas preexistentes
-  (`2787d4f`), no tocadas en esta remediación; no es un secreto.
-- `mark-tests-pending.sh` armó `.claude/.tests-pending` (antes del parche
-  AUD-006); el hook Stop ejecutará la suite al cerrar el turno.
-- `post-edit-format.sh` no intervino (todas las ediciones fueron por Bash).
+- `post-edit-format.sh` (ruff `--fix`) eliminó un import no usado en
+  `html_report.py` cuando se añadió antes de su uso; se reordenaron los
+  edits. Ningún otro autofix.
+- `check-secrets.sh`: tras AUD-007 ya no marca `audit/latest/openai/EVIDENCE.json`;
+  sigue marcando los fixtures de `tests/test_audit_hooks.py` (esperado).
+- Ficheros reescritos con Python quedaron en CRLF; se normalizaron a LF
+  (`.gitattributes`: `eol=lf`) sin cambio de contenido.
 
-## Git
+## Fuera de alcance (no tocado)
 
-Ver `VALIDATION.md` para commits, merge y CI.
+- Adopción del calibrador per-game bajo `mlb_h2h` (decisión de modelo aparte).
+- Habilitar el historial del Programador (elevación; comando en
+  `scripts/set_tasks_unattended.ps1` y en el aviso de `health_check`).
+- OBS-C1..C6 y OBS-O1..O3 (informativas).

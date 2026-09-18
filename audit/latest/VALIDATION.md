@@ -1,65 +1,74 @@
-# Validación de la remediación — ronda `audit-2026-09-16`
+# Validación — remediación, ronda `audit-2026-09-18`
 
-Fecha: 2026-09-17. Intérprete: Python 3.14.4 (win32). Basetemp propio
-`.codex-tmp/pytest-claude-20260917` salvo donde se indica.
+Todas las ejecuciones con `-p no:cacheprovider` y `--basetemp` bajo `.codex-tmp/`
+(ignorado). Python 3.14.4, win32. Base `5952164`.
 
-## Línea base (antes de corregir)
+## Línea base (antes de editar)
 
-| Comando | Resultado |
-|---|---|
-| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m "not slow"` | 1936 passed, 225 deselected, exit 0 |
-| `ruff check src scripts tests` | 0 |
-| `mypy src` | 0 (105 ficheros) |
-| Base Git | `44e48f2`; working tree sucio (57 entradas preexistentes) |
+| Comando | rc | Resultado |
+|---|---:|---|
+| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -x` (suite completa) | 0 | 2191 passed, 1 skipped, 24:58 |
+| `ruff check src scripts tests` | 0 | All checks passed |
+| `mypy src` | 0 | 105 ficheros sin errores |
 
-## Por lote
+## Fallo antes / éxito después, por ID
 
-| ID | Comando | Antes | Después | Clasificación |
-|---|---|---|---|---|
-| AUD-001 | `pytest tests/test_distributions.py` | **10 failed**, 8 passed (los 10 casos de cuarto; los 4 de no-regresión pasan) | 18 passed | NEW test discriminante |
-| AUD-001 | `pytest tests/test_distributions.py tests/test_settlement_math.py tests/test_distribution_validation.py` | — | 106 passed | OK |
-| AUD-001 | `pytest -m "not slow" tests/test_{audit_pipeline_isolation,decision_probability,decision_probability_views,f5,independent_pricing,mlb_features,pipeline_demo,pricing_prompt_formulas,probable_pitchers_series,soccer_avg_goals}.py` | — | 166 passed, 5 deselected | OK |
-| AUD-001 | Revisión escalada `fable` (Agent `independent-code-reviewer`, `model: "fable"`) | — | 0 defectos; 18.432 combinaciones (λ∈[0,05;6], dc_rho, dispersion_k, score_rho, spreads −3,75…3,75, totales 0,25…9,75, max_goals∈{1,2,3,15}) sin excepción; slack `1−w−p` = 0,0 exacto; `pytest` 18 + 136 + 85 passed; ruff/mypy 0 sobre los ficheros tocados | OK; 1 hallazgo adyacente no ticketeado (Normal, Δ ≤ 0,25 pp) |
-| AUD-002 | Reproducción del diagnóstico (funciones del proyecto) | `realized_roi` 0,5 vs `_summarize` 0,0; mezcla 0,75 vs 1,50 | — | REPRODUCED (antes) |
-| AUD-002 | `pytest tests/test_realized_roi_consistency.py` | no ejecutable sin parche (`stash` denegado por el clasificador; el módulo nuevo `realized_roi_parts` no existe en HEAD) | 3 passed | NEW test |
-| AUD-002 | `pytest -m "not slow"` sobre tests de liquidación/ROI/informes/dashboard/backtest/bankroll (grep `settle|roi|report|html|dashboard|backtest|segment|audit|bankroll|ledger`) | — | 351 passed, 9 deselected (249 s) | OK |
-| AUD-003 | `git archive HEAD` (44e48f2) → `sync_agent_instructions.py --check` / `pytest tests/test_agent_instruction_sync.py` / `tests/test_tennis_params.py` | rc 1 / 1 failed + 5 errors / 1 failed | tras `f93bdc1`: `--check` rc 0; 107 passed (`test_claude_system_contract`, `test_claude_model_routing`, `test_agent_instruction_sync`, `test_hook_targets`) tras el merge | PRE_EXISTING_FAILURE corregida |
-| AUD-004 | `pytest --basetemp=.codex-tmp/pytest tests/audit/test_history_loader.py` | `PermissionError [WinError 5]` en setup | 4 passed (padre renombrado a `.codex-tmp/pytest.bloqueado-20260916`) | ENVIRONMENTAL, mitigada |
-| AUD-004 | `takeown`, `icacls`, `Remove-Item`, `Rename-Item` sobre el residuo | — | acceso denegado (sin elevación) | bloqueado parcial (operador) |
-| AUD-005 | `pytest tests/test_line_shopping.py tests/test_config_yaml_keys.py` | — | 21 passed (2 nuevos) | NEW test |
-| AUD-006 | `echo '{"tool_name":"Bash","tool_input":{"command":"cat README.md"}}' \| python .claude/hooks/_targets.py --with-git \| wc -l` | árbol sucio entero (≥ 5 rutas) | 0 | REPRODUCED → corregido |
-| AUD-006 | `pytest tests/test_hook_targets.py tests/test_audit_hooks.py` | — | 45 passed (2 nuevos) | OK |
-| AUD-007 | `pytest tests/test_feature_shadow.py tests/test_distributions.py tests/test_settlement_math.py tests/test_settle_candidates.py` | — | 77 passed (1 nuevo) | OK |
+| ID | Evidencia «antes» | Evidencia «después» |
+|---|---|---|
+| AUD-002 | `tests/test_registry_root_not_object.py` sobre HEAD: **13 failed**, 8 passed (6 gate + 6 degradación + helper inexistente) | 21 passed; `test_degradation.py` + `test_prediction_gate.py`: 93 passed |
+| AUD-001 | `gate_status.py` de HEAD (`git show`) con 300 filas del mismo evento: «PASAN EL GATE … mlb\|h2h 300 hit_rate 1.0 … Pasan: 1» | `tests/test_gate_status_cli.py` 6 passed (n=1, `muestra_insuficiente`, sin «PASAN»); CLI contra datos reales: «Habilitados para stake real: ninguno (default-deny)»; `test_prediction_gate.py` 61 passed (incluye el candado del umbral en documentos) |
+| AUD-005 | test `test_gate_allowed_markets_reads_persisted_verdict_not_pre_latch_table`: la tabla pre-pestillo anunciaba `mlb\|h2h` con test consumido (aserción explícita del comportamiento antiguo) | `gate_allowed_markets` → `[]`; 67 passed en el lote |
+| AUD-006 | `closing_capture.py` de HEAD con cliente falso en tenis: `['h2h,spreads,totals']` | `tests/test_closing_capture_markets.py` 4 passed; `test_frescura_cuotas_diario.py` + `test_clv.py`: 31 passed |
+| AUD-007 | 3 tests nuevos en `tests/test_audit_hooks.py`: **5 failed** (reflexivas/llamadas marcadas; `"api_key": "…"` en JSON no detectado; `audit/` escaneado) | 60 passed (`test_audit_hooks`, `test_hook_targets`, `test_portable_setup`); `python .claude/hooks/_secret_literals.py audit/latest/openai/EVIDENCE.json` → 0 coincidencias; el hook dejó de marcar ese fichero en los comandos siguientes |
+| AUD-003 | `tests/test_sandbox_calibration_keys.py` sobre HEAD: **8 failed**, 1 passed | 12 passed (incl. candado sobre `data/models/calibration_methods.json` real, invariante en `_set_best_method`, rastro de sync y dry-run del CLI); lote `test_pergame_calibration` + `test_calibration_live` + `test_calibrator`: 72 passed; lote con `test_health` + `test_html_report`: 73 passed (2:58) |
+| AUD-004 | — (control de host; sin test «antes») | `tests/test_health_scheduled_tasks.py` 7 passed; `test_health.py` 20 passed; `health_check.py` real → `WARN (0 errors, 1 warnings)`: aviso del historial con el comando; consulta real al Programador: 5 tareas, último rc 0 |
 
-## Global (tras todos los lotes, antes del merge)
+## Dato de producción (AUD-003)
 
-| Comando | Resultado |
-|---|---|
-| `ruff check src scripts tests` | 1 error (E741 en el test nuevo) → corregido → All checks passed |
-| `mypy src` | Success: no issues found in 105 source files |
-| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-claude-20260917 -m "not slow" -q` | exit 0, 100 % (1958 seleccionados / 225 deselected) |
+`python scripts/promote_calibration.py --demote mlb_h2h_pergame --reason "AUD-003 …"`
+(ejecutado antes de que el CLI exigiera `--yes`; ahora lo exige):
+registro live antes `{mlb_h2h_pergame, mlb_spreads, mlb_totals, wnba_spreads}`
+→ después `{mlb_spreads, mlb_totals, wnba_spreads}`; `mlb_h2h_pergame_calibration_beta.joblib`
+retirado de `data/models/` (sigue en `staging/`); `promotion_log.csv` +1
+(`demoted: AUD-003 …`). Reproducible por el candado
+`test_live_registry_on_disk_has_no_sandbox_key`.
 
-## Git
+## Revisión independiente `fable` (AUD-003, clase «contrato de artefacto persistido»)
 
-| Paso | Resultado |
-|---|---|
-| `f93bdc1` contrato de auditoría: fuentes canónicas, prompts regenerados y tests (completa 44e48f2) | 45 ficheros del trabajo preexistente del 2026-09-16 |
-| `4f06b4f` remediación: AUD-001, 002, 005, 006, 007 | 16 ficheros, 5 tests nuevos |
-| `git fetch` → `HEAD..origin/main` = 6, `origin/main..HEAD` = 3 | divergencia confirmada |
-| `git merge origin/main` → `31cfdb0` | 3 conflictos en Obsidian (`Bitácora.md`, `Bitácora/2026-09-16.md`, `Tareas.md`) resueltos conservando ambos lados; `sync --check` rc 0 y 107 tests de contratos `.claude` verdes tras el merge |
-| `git push origin main` | `a2ee66c..31cfdb0` |
-| CI | run 35224249563: **success** (test 3.11, 3.12, 3.13, 3.14 y test-windows; `alerta-ci-rojo` skipped) |
+Agente `independent-code-reviewer` con `model: fable`, solo lectura. Verificó
+(a) probabilidades/umbrales servidos intactos; (b) sin bypass en los llamadores
+actuales; (c) sidecars borrados junto al `.joblib` (mejora respecto a HEAD);
+(d) sin colisión de sufijo con mercados reales; (e) esquema del log conservado;
+(f) test discriminante. Emitió 4 hallazgos, **todos atendidos en la misma
+sesión**:
 
-## Corrección al diagnóstico
+1. MEDIUM — `--demote` mutaba producción sin confirmación → ahora exige
+   `--yes` (dry-run por defecto); test `test_cli_demote_is_dry_run_without_yes`.
+2. LOW-MEDIUM — la democión por sincronización completa no dejaba rastro →
+   `promote_calibrators(keys=None)` escribe `demoted: sync completa (...)`;
+   test `test_full_sync_demotion_leaves_a_trail_in_promotion_log`.
+3. LOW — el invariante vivía solo en la promoción → `_set_best_method`
+   rechaza claves sandbox en live (`ValueError`); test
+   `test_set_best_method_refuses_sandbox_key_in_live`.
+4. Sugerencia (duplicación de la escritura del log): no aplicada (fuera del
+   alcance mínimo; `_append_promotion_log` queda disponible para unificar).
 
-La tarea `SQP_Diario_Completo_Cdev` ejecuta `C:\dev\3\sports-quant-platform`
-(`a2ee66c` = `origin/main`, guard scope limpio), **no este clon**
-(`C:\dev\6`). La consecuencia «producción ejecuta código no validado» de
-AUD-003 era incorrecta: el árbol divergente era el clon de trabajo. Producción
-recibirá AUD-001/002/005/006/007 cuando `C:\dev\3` haga `git pull`, acción
-sobre producción que queda para el operador.
+Nota de proceso: el agente señaló que no recibió `run_id`/`review_tree` del
+protocolo Cross-Review V2 y por eso no escribió `claude-body.json`; esta
+revisión se usó como revisión de clase (routing), no como ronda V2.
+
+## Validación global (después)
+
+| Comando | rc | Resultado | Clasificación |
+|---|---:|---|---|
+| `pytest -q … --basetemp=.codex-tmp/pytest` (suite completa, 1.ª pasada tras la remediación) | 0 | 2246 passed, 2 failed, 1 skipped (15:35) | los 2 fallos (`test_cross_review_e2e_v2.py::test_a_gitignore_edit_still_moves_the_snapshot`, `::test_info_exclude_is_still_able_to_hide_content`) = **ENVIRONMENTAL_FAILURE**: `WinError 267` en `.codex-tmp/pytest/...` porque el revisor `fable` ejecutó pytest con el MISMO `--basetemp` en paralelo (pytest vacía el basetemp al arrancar). Reejecutados aislados: 2 passed |
+| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-final` (suite completa, 2.ª pasada tras los ajustes de la revisión) | 0 | **2251 passed, 1 skipped** (13:58) | PASS (60 tests nuevos respecto a la línea base de 2191) |
+| `ruff check src scripts tests` | 0 | All checks passed | — |
+| `mypy src` | 0 | 105 ficheros sin errores | — |
+| `python scripts/sync_agent_instructions.py --check` | 0 | synchronized (skill editada) | — |
+| `git diff --check` | 0 | sin espacios finales; ficheros normalizados a LF | — |
 
 ## No ejecutado
 
-Suite `slow` (225), `pip-audit` local (lo ejecuta el CI), BATs, `codex review`
-(sin cuota hasta el 21/09 según la bitácora remota).
+BATs (inspeccionados: no cambian), `pip-audit` (CI), `codex review`, run real
+del pipeline. La corrección queda **pendiente de verificación independiente**.
