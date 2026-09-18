@@ -13,6 +13,18 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\set_tasks_unattended.ps1
 #   powershell ... -File scripts\set_tasks_unattended.ps1 -WhatIf   # solo muestra
 #
+# HISTORIAL DEL PROGRAMADOR (AUD-004, auditoria integral 2026-09-18). El log
+# `Microsoft-Windows-TaskScheduler/Operational` estaba DESHABILITADO: cuando una
+# tarea no llega a lanzarse (maquina apagada, disparador que no salta), no queda
+# ningun rastro fuera del BAT -- y el BAT no arranco. Los dias 11, 15 y 16-09
+# quedaron sin causa diagnosticable por eso. Habilitarlo exige una consola
+# ELEVADA (no basta con que la cuenta sea admin; ver .claude/memory):
+#   wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+# Comprobar:  (Get-WinEvent -ListLog 'Microsoft-Windows-TaskScheduler/Operational').IsEnabled
+# `scripts\health_check.py` avisa mientras siga apagado (bloque `scheduled_tasks`
+# de data\output\pipeline_health.json, que ademas expone LastRunTime/LastTaskResult
+# de las 5 tareas como rastro independiente del BAT).
+#
 # Reversion: el mismo script con -Revert (vuelve a Interactive).
 # Sale con 1 si CUALQUIER tarea no queda en el estado pedido (revision cruzada
 # 2026-09-13: un `Set-ScheduledTask` denegado era un error no terminante y el

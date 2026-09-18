@@ -47,7 +47,9 @@ from sqp.backtesting.engine import walk_forward_backtest
 from sqp.calibration.calibrator import train_calibration
 from sqp.calibration.metrics import brier_score, expected_calibration_error
 
-PERGAME_SUFFIX = "_h2h_pergame"
+# Sufijo definido en `calibrator` (AUD-003): la promocion lo rechaza y la
+# sincronizacion completa lo demueve del registro live.
+PERGAME_SUFFIX = _cal.PERGAME_SUFFIX
 DEFAULT_WARMUP = 60
 
 

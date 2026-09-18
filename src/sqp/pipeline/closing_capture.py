@@ -96,7 +96,7 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
     skips a league when the API's known `requests_remaining` is below
     `min_remaining` (never starves the morning run). Best-effort per league.
     """
-    from sqp.pipeline.daily import _league_meta
+    from sqp.pipeline.daily import _league_meta, markets_for_family
     from sqp.providers.odds_api import OddsAPIClient
     from sqp.storage.odds_store import OddsStore
 
@@ -132,8 +132,10 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
                         client.requests_remaining, min_remaining, league)
             continue
         try:
-            sport_key = _league_meta(league)["sport_key"]
-            events = client.fetch_odds(league, sport_key)
+            meta = _league_meta(league)
+            # Mismos mercados que el run diario (AUD-006): en tenis solo h2h.
+            events = client.fetch_odds(league, meta["sport_key"],
+                                       markets_for_family(meta["family"]))
             delta = client.requests_last or 0
             if delta:
                 # Persistencia incremental por liga: un crash a mitad del loop

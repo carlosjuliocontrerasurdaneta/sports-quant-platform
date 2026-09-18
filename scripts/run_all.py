@@ -30,7 +30,8 @@ from sqp.pipeline.cleanup import (prune_stale_candidates,
 from sqp.pipeline.daily import (_LEAGUE_ID, apply_global_exposure_cap,
                                 run_league)
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
-from sqp.risk.prediction_gate import evaluate_markets, write_prediction_gate
+from sqp.risk.prediction_gate import (evaluate_markets, gate_allowed_markets,
+                                      write_prediction_gate)
 from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.run_all")
@@ -176,8 +177,7 @@ def main() -> int:
     # pausa estática del yaml. Best-effort: si el monitor falla, se aplican las
     # auto-pausas del último registro persistido (conservador) y el run sigue.
     if args.mode != "demo" and settings.degradation_enabled:
-        from sqp.risk.degradation import (load_degradation_registry,
-                                          paused_from_registry,
+        from sqp.risk.degradation import (auto_pauses_from_persisted_registry,
                                           run_degradation_monitor)
         try:
             reg_path, transitions, auto_paused = run_degradation_monitor(
@@ -197,8 +197,11 @@ def main() -> int:
         except Exception as exc:
             log.warning("Monitor de degradación falló (%s); se aplican las "
                         "auto-pausas del último registro persistido.", exc)
-            auto_paused = paused_from_registry(
-                load_degradation_registry(ROOT / "data" / "bets"))
+            # El fallback NO puede volver a lanzar: hasta AUD-002
+            # (audit-2026-09-18) llamaba al lector fuera de este `try`, y un
+            # registro con raiz no objeto abortaba el run entero antes de la
+            # primera liga. El helper absorbe cualquier fallo y avisa.
+            auto_paused = auto_pauses_from_persisted_registry(ROOT / "data" / "bets")
         for lg, mks in auto_paused.items():
             settings.paused_markets[lg] = sorted(
                 set(settings.paused_markets.get(lg, [])) | set(mks))
@@ -305,8 +308,14 @@ def main() -> int:
             graded = ServedStore(ROOT).load_all_graded()
             decided = evaluate_markets(graded)
             write_prediction_gate(graded, ROOT / "data" / "bets")
-            ok = ([f"{r.league}|{r.market}" for r in decided.itertuples()
-                   if r.allowed] if not decided.empty else [])
+            # El veredicto se lee del REGISTRO recien escrito, no de `decided`:
+            # `write_prediction_gate` aplica el pestillo del pre-registro
+            # (`_apply_latch`) y un corte con test de entrada consumido o
+            # pestillo armado queda `allowed=false` aunque cumpla los criterios
+            # estadisticos hoy. Anunciarlo desde la tabla previa lo daba por
+            # habilitado (AUD-005, ronda audit-2026-09-18). `decided` se
+            # conserva solo para el resumen de progreso.
+            ok = gate_allowed_markets(ROOT / "data" / "bets")
             log.info("Gate de prediccion -> habilitados para stake real: %s "
                      "(evaluados: %d)",
                      ", ".join(ok) if ok else "ninguno (default-deny)",

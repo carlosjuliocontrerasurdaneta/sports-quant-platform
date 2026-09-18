@@ -35,6 +35,22 @@ log = get_logger(__name__)
 
 MODELS_DIR = ROOT / "data" / "models"
 
+# Claves SANDBOX: se entrenan bajo un sufijo que `calibration_key` NUNCA produce
+# (produccion resuelve "<liga>_<mercado>", p. ej. "mlb_h2h"), asi que un mapa
+# registrado bajo ellas en el registro live no lo aplica nadie. Viven en
+# staging como candidatos de investigacion (`calibration/pergame.py`); adoptar
+# uno es una decision aparte que lo instala bajo la clave real. La promocion
+# completa (`keys=None`) no las distinguia y el 2026-08-23 instalo
+# `mlb_h2h_pergame` en live: `mlb_h2h` se servia en crudo mientras health y
+# dashboard contaban un calibrador vivo (AUD-003, ronda audit-2026-09-18).
+PERGAME_SUFFIX = "_h2h_pergame"
+SANDBOX_SUFFIXES: tuple[str, ...] = (PERGAME_SUFFIX,)
+
+
+def is_sandbox_key(key: str) -> bool:
+    """True si ``key`` es una clave de investigacion que produccion no resuelve."""
+    return any(str(key).endswith(s) for s in SANDBOX_SUFFIXES)
+
 
 def _staging_dir():
     """Where a retrain writes CANDIDATE calibrators. Kept separate from the live
@@ -375,6 +391,12 @@ def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> 
     like the model files: a retrain whose calibrators stop helping drops the group
     from the registry, so ``method='auto'`` falls back to a no-op for it.
     Read-modify-write a single JSON; training is sequential."""
+    if method is not None and not staging and is_sandbox_key(key):
+        # Invariante en el ORIGEN, no solo en la promocion (revision `fable`
+        # de AUD-003): ninguna ruta -- ni `train_calibration(staging=False)`
+        # ni un uso interactivo -- puede registrar una clave sandbox en live.
+        raise ValueError(f"{key!r} es una clave sandbox ({', '.join(SANDBOX_SUFFIXES)}): "
+                         "solo puede vivir en staging; produccion no la resuelve.")
     reg = _load_method_registry(staging=staging)
     if method is None:
         reg.pop(key, None)
@@ -775,6 +797,15 @@ def promote_calibrators(keys: list[str] | None = None,
     targets = staged if keys is None else {k: v for k, v in staged.items() if k in keys}
     promoted: list[str] = []
     for key, method in targets.items():
+        if is_sandbox_key(key):
+            # Nunca a live bajo esta clave (AUD-003): produccion no la resuelve
+            # y solo serviria para que las vistas cuenten un calibrador que no
+            # se aplica. Adoptarla es una decision aparte, bajo la clave real.
+            log.warning("[%s] promocion RECHAZADA: clave sandbox (%s); produccion "
+                        "resuelve '<liga>_<mercado>' y no la aplicaria. Adoptar "
+                        "un candidato per-game es una decision aparte.",
+                        key, ", ".join(SANDBOX_SUFFIXES))
+            continue
         # No lo salta `force`: ver el docstring. Un mapa degenerado no es una
         # muestra fina que uno pueda decidir asumir, es un artefacto invalido.
         defecto = calibrator_defect(key, str(method), staging=True)
@@ -800,13 +831,28 @@ def promote_calibrators(keys: list[str] | None = None,
                     shutil.copyfile(str(sidecar), str(_hash_sidecar(dst)))
         _set_best_method(key, method)
         promoted.append(key)
+    demoted_sync: list[tuple[str, str]] = []
     if keys is None:  # full sync: demote live markets no longer recommended
         for key in list(_load_method_registry()):
-            if key not in staged:
+            # Una clave sandbox en live se demueve aunque siga en staging:
+            # nadie la aplica y su presencia desinforma (AUD-003).
+            if key not in staged or is_sandbox_key(key):
                 _set_best_method(key, None)
                 for name in ("iso", "beta"):
                     _model_path(key, name).unlink(missing_ok=True)
+                    _hash_sidecar(_model_path(key, name)).unlink(missing_ok=True)
+                demoted_sync.append((key, "clave sandbox" if is_sandbox_key(key)
+                                     else "ausente en staging"))
     _load_calibrator.cache_clear()
+    if demoted_sync and _log:
+        # Rastro de la democion por sincronizacion: hasta la revision `fable`
+        # de AUD-003 este bloque borraba sin escribir en promotion_log.csv,
+        # a diferencia de `demote_calibrators` y `auto_promote_calibrators`.
+        now = pd.Timestamp.now(tz="UTC").isoformat()
+        _append_promotion_log([{"timestamp": now, "key": k,
+                                "action": f"demoted: sync completa ({motivo})",
+                                "method": "", "n_val": None, "n_val_events": None}
+                               for k, motivo in demoted_sync])
     # Log every manual promotion so the audit trail matches auto_promote_calibrators.
     # _log=False when called from auto_promote_calibrators, which handles its own
     # consolidated log (promoted + demoted + skipped in one write) to avoid double
@@ -838,6 +884,53 @@ def promote_calibrators(keys: list[str] | None = None,
         # produccion y cuando.
         atomic_write_csv(new_df, log_path)
     return promoted
+
+
+def _append_promotion_log(entries: list[dict]) -> None:
+    """Rastro append-only de promociones/demociones (misma alineacion de
+    columnas que usan las dos rutas de promocion)."""
+    if not entries:
+        return
+    log_path = MODELS_DIR / "promotion_log.csv"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    new = pd.DataFrame(entries)
+    if log_path.exists():
+        try:
+            prior = pd.read_csv(log_path)
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            prior = pd.DataFrame()
+        cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
+        new = pd.concat([prior.reindex(columns=cols), new.reindex(columns=cols)],
+                        ignore_index=True)
+    atomic_write_csv(new, log_path)
+
+
+def demote_calibrators(keys: list[str], *, reason: str = "") -> list[str]:
+    """Retira ``keys`` del registro LIVE (metodo, artefactos y sidecars) y deja
+    rastro ``demoted`` en ``promotion_log.csv``. Acto explicito y acotado: es
+    la ruta para retirar una clave sin ejecutar una promocion completa (que
+    adoptaria todo staging). Idempotente: una clave ausente no hace nada.
+    Devuelve las claves realmente demovidas."""
+    live = _load_method_registry()
+    demoted: list[str] = []
+    for key in keys:
+        if key not in live:
+            continue
+        _set_best_method(key, None)
+        for name in ("iso", "beta"):
+            _model_path(key, name).unlink(missing_ok=True)
+            _hash_sidecar(_model_path(key, name)).unlink(missing_ok=True)
+        demoted.append(key)
+        log.warning("[%s] calibrador DEMOVIDO del registro live%s.", key,
+                    f": {reason}" if reason else "")
+    _load_calibrator.cache_clear()
+    if demoted:
+        now = pd.Timestamp.now(tz="UTC").isoformat()
+        _append_promotion_log([{"timestamp": now, "key": k,
+                                "action": f"demoted: {reason}" if reason else "demoted",
+                                "method": "", "n_val": None, "n_val_events": None}
+                               for k in demoted])
+    return demoted
 
 
 def auto_promote_calibrators(results: list[dict], *,
@@ -872,11 +965,13 @@ def auto_promote_calibrators(results: list[dict], *,
         else:
             skipped.append((key, r))
     promoted = promote_calibrators(keys=[k for k, _ in eligible], _log=False) if eligible else []
-    demoted = [k for k in _load_method_registry() if k not in staged]
+    demoted = [k for k in _load_method_registry()
+               if k not in staged or is_sandbox_key(k)]   # sandbox: AUD-003
     for key in demoted:
         _set_best_method(key, None)
         for name in ("iso", "beta"):
             _model_path(key, name).unlink(missing_ok=True)
+            _hash_sidecar(_model_path(key, name)).unlink(missing_ok=True)
     _load_calibrator.cache_clear()
     now = pd.Timestamp.now(tz="UTC").isoformat()
     # El log se construye sobre lo REALMENTE promovido, no sobre lo elegible.

@@ -94,10 +94,14 @@ def _live_calibration_markets(models_dir: Path, league: str) -> list[str]:
         return []
     if not isinstance(methods, dict):
         return []
+    from sqp.calibration.calibrator import is_sandbox_key
     prefix = f"{league}_"
     out: list[str] = []
     for key, method in methods.items():
-        if not str(key).startswith(prefix):
+        if not str(key).startswith(prefix) or is_sandbox_key(str(key)):
+            # Una clave sandbox no es un mercado que produccion resuelva: hasta
+            # el 2026-09-18 aqui salia un "mercado" `h2h_pergame` y el informe
+            # decia calibration=True con `mlb_h2h` servido en crudo (AUD-003).
             continue
         suffix = {"isotonic": "iso", "beta": "beta"}.get(str(method))
         if suffix and (models_dir / f"{key}_calibration_{suffix}.joblib").exists():
@@ -126,8 +130,14 @@ def _orphan_calibration_entries(models_dir: Path) -> list[str]:
         return ["<registro calibration_methods.json ilegible>"]
     if not isinstance(methods, dict):
         return ["<registro calibration_methods.json con formato inesperado>"]
+    from sqp.calibration.calibrator import is_sandbox_key
     huerfanas = []
     for key, method in methods.items():
+        if is_sandbox_key(str(key)):
+            # Registrada pero sin consumidor: `calibration_key` nunca produce
+            # esta clave, asi que el pipeline no la aplica (AUD-003).
+            huerfanas.append(f"{key} (clave sandbox: produccion no la resuelve)")
+            continue
         suffix = {"isotonic": "iso", "beta": "beta"}.get(str(method))
         if suffix is None:
             huerfanas.append(f"{key} (metodo desconocido: {method})")
@@ -257,6 +267,121 @@ def pipeline_liveness(root: Path = ROOT,
             "max_age_days": max_age_days}
 
 
+SCHEDULED_TASKS = ("SQP_Diario_Completo_Cdev", "SQP_Capture_Close_Cdev",
+                   "SQP_Backfill_Cdev", "SQP_Validate_OOS_Cdev", "SQP_Dashboard_Cdev")
+DAILY_TASK = "SQP_Diario_Completo_Cdev"
+_TASK_RUNNING = 0x41301
+_TASKS_PS = (
+    "$ErrorActionPreference='Stop'; "
+    "$h = $null; try { $h = (Get-WinEvent -ListLog "
+    "'Microsoft-Windows-TaskScheduler/Operational').IsEnabled } catch {}; "
+    "$t = @(Get-ScheduledTask -TaskName 'SQP_*' | ForEach-Object { "
+    "$i = Get-ScheduledTaskInfo -TaskName $_.TaskName; "
+    "[pscustomobject]@{Task=$_.TaskName; State=[string]$_.State; "
+    "LastRun=$(if ($i.LastRunTime) { $i.LastRunTime.ToString('o') } else { $null }); "
+    "LastResult=[int64]$i.LastTaskResult; Missed=[int]$i.NumberOfMissedRuns} }); "
+    "[pscustomobject]@{history_enabled=$h; tasks=$t} | ConvertTo-Json -Depth 3 -Compress"
+)
+
+
+def _scheduled_tasks_raw(timeout_s: float = 30.0) -> str | None:
+    """JSON con el estado de las tareas SQP_* segun el Programador (solo
+    lectura). ``None`` si no hay PowerShell, no hay acceso o expira."""
+    import subprocess
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
+                            "-Command", _TASKS_PS],
+                           capture_output=True, text=True, timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("no se pudo consultar el Programador de tareas: %s", exc)
+        return None
+    if r.returncode != 0 or not r.stdout.strip():
+        log.warning("no se pudo consultar el Programador de tareas (rc=%s): %s",
+                    r.returncode, (r.stderr or "").strip()[:200])
+        return None
+    return r.stdout
+
+
+def scheduled_tasks_status(raw: str | None, *, now: datetime | None = None,
+                           max_age_days: float = RUN_MAX_AGE_DAYS) -> dict:
+    """Estado observado de las tareas programadas y los avisos que merece.
+
+    COMPLEMENTA a `pipeline_liveness`, que mira los ARTEFACTOS: aquel dice que
+    no hubo run; este dice si la tarea se LANZO y con que codigo. Los dias
+    11, 15 y 16-09 no hubo cabecera en ningun log y nada del sistema decia por
+    que: el historial del Programador (`Microsoft-Windows-TaskScheduler/
+    Operational`) estaba deshabilitado y solo persiste `LastRunTime`/
+    `LastTaskResult` (AUD-004, ronda audit-2026-09-18). Mientras el historial
+    siga apagado, este bloque es el unico rastro independiente del BAT.
+
+    ``raw`` es el JSON de `_scheduled_tasks_raw` (inyectable en tests). Sin
+    acceso al Programador se devuelve ``available=False`` y un aviso: "no se
+    pudo comprobar" no es "esta bien".
+    """
+    now = now or datetime.now(timezone.utc)
+    out: dict = {"available": False, "history_enabled": None, "tasks": {},
+                 "warnings": []}
+    if not raw:
+        out["warnings"].append("no se pudo consultar el estado de las tareas "
+                               "programadas SQP_* (sin PowerShell o sin acceso)")
+        return out
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        out["warnings"].append("respuesta ilegible del Programador de tareas")
+        return out
+    if not isinstance(payload, dict):
+        out["warnings"].append("respuesta inesperada del Programador de tareas")
+        return out
+    out["available"] = True
+    hist = payload.get("history_enabled")
+    out["history_enabled"] = bool(hist) if hist is not None else None
+    if hist is False:
+        out["warnings"].append(
+            "historial del Programador de tareas DESHABILITADO: una tarea que no "
+            "llegue a lanzarse no deja rastro diagnosticable. Habilitar (elevado): "
+            "wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true")
+    tasks = payload.get("tasks")
+    if isinstance(tasks, dict):
+        tasks = [tasks]
+    for t in tasks or []:
+        if not isinstance(t, dict) or not t.get("Task"):
+            continue
+        name = str(t["Task"])
+        last_raw = t.get("LastRun")
+        last = None
+        if last_raw:
+            try:
+                last = datetime.fromisoformat(str(last_raw))
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+            except ValueError:
+                last = None
+        rc = t.get("LastResult")
+        try:
+            rc = int(rc) if rc is not None else None
+        except (TypeError, ValueError):
+            rc = None
+        entry = {"state": t.get("State"), "last_run": last.isoformat() if last else None,
+                 "last_result": rc, "missed": t.get("Missed")}
+        out["tasks"][name] = entry
+        if rc not in (None, 0, _TASK_RUNNING):
+            out["warnings"].append(f"{name}: ultimo resultado 0x{rc:X}")
+        if name == DAILY_TASK:
+            if last is None:
+                out["warnings"].append(f"{name}: sin ultima ejecucion registrada")
+            elif (now - last) > timedelta(days=max_age_days):
+                edad = (now - last).total_seconds() / 86400.0
+                out["warnings"].append(
+                    f"{name}: no se LANZA desde hace {edad:.1f} dias (ultima "
+                    f"{last.isoformat()}); la maquina estaba apagada/suspendida o "
+                    f"el disparador no salto -- distinto de un run que fallo")
+    for name in SCHEDULED_TASKS:
+        if name not in out["tasks"]:
+            out["warnings"].append(f"{name}: tarea no encontrada en el Programador")
+    return out
+
+
 def generate_health_report(root: Path = ROOT) -> dict:
     data = root / "data"
     leagues: dict[str, dict] = {}
@@ -333,6 +458,19 @@ def generate_health_report(root: Path = ROOT) -> dict:
             f"dias (artefacto mas reciente: {liveness['artifact']}, umbral "
             f"{liveness['max_age_days']:.1f}d); re-ejecutar DIARIO_COMPLETO.bat "
             f"y revisar por que la tarea programada no completo")
+
+    # Estado de las tareas programadas (AUD-004): rastro independiente del BAT.
+    # Solo en Windows (donde viven las tareas); en otro SO se declara no
+    # disponible sin convertirlo en aviso permanente.
+    # Solo para la instalacion REAL (`root == ROOT`): las tareas son del host,
+    # no de un arbol temporal, y consultar PowerShell en cada test seria lento
+    # y dependeria del estado de la maquina.
+    import os as _os
+    tareas = (scheduled_tasks_status(_scheduled_tasks_raw())
+              if _os.name == "nt" and Path(root).resolve() == Path(ROOT).resolve()
+              else {"available": False, "history_enabled": None, "tasks": {},
+                    "warnings": []})
+    warnings.extend(f"tareas programadas: {w}" for w in tareas["warnings"])
 
     served_expired, served_expired_total = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):
@@ -411,6 +549,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
         "served_pending_expired": served_expired,
         "served_pending_expired_total": served_expired_total,
         "pipeline_liveness": liveness,
+        "scheduled_tasks": tareas,
         "status": "ERROR" if errors else ("WARN" if warnings else "OK"),
         "errors": errors,
         "warnings": warnings,

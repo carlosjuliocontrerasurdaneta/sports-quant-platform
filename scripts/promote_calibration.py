@@ -9,6 +9,8 @@ itself. This script is the deliberate, separate promotion step:
   python scripts/promote_calibration.py                 # dry-run: show diff + preview
   python scripts/promote_calibration.py --yes           # promote ALL staged candidates
   python scripts/promote_calibration.py --keys mlb_h2h  # promote only these keys
+  python scripts/promote_calibration.py --demote mlb_h2h_pergame --reason "..." --yes
+                                                        # retire a live key (AUD-003)
 
 By default it is a DRY RUN: it prints, per (league_market) key, the live method
 vs the staged candidate and a probability-grid preview of what the candidate
@@ -67,7 +69,33 @@ def main() -> int:
     ap.add_argument("--min-n-val", type=int, default=None,
                     help="Minimum out-of-sample events required for promotion "
                     "(default: AUTO_PROMOTE_MIN_N_VAL from calibrator).")
+    ap.add_argument("--demote", type=str, default=None,
+                    help="Comma-separated LIVE keys to retire (registry, "
+                    "artifacts, sidecars) with a 'demoted' trail in "
+                    "promotion_log.csv. Does not touch staging nor promote.")
+    ap.add_argument("--reason", type=str, default="",
+                    help="Reason recorded with --demote.")
     args = ap.parse_args()
+
+    if args.demote:
+        from sqp.calibration.calibrator import demote_calibrators
+        keys = [k.strip() for k in args.demote.split(",") if k.strip()]
+        live_now = _load_method_registry()
+        presentes = [k for k in keys if k in live_now]
+        ausentes = [k for k in keys if k not in live_now]
+        for k in presentes:
+            print(f"[{k}] live={live_now[k]} -> se RETIRARIA (registro, .joblib, .sha256)")
+        for k in ausentes:
+            print(f"[{k}] no esta en el registro live: nada que retirar")
+        if not args.yes:
+            # Misma regla que el resto del script (revision `fable` de AUD-003):
+            # tocar el registro live exige confirmacion explicita; sin --yes es
+            # un dry-run que solo muestra lo que se borraria.
+            print("\nDRY RUN. Para retirar de verdad: --demote ... --yes")
+            return 0
+        demoted = demote_calibrators(keys, reason=args.reason)
+        print(f"Demovidos del registro live: {demoted or 'ninguno (no estaban)'}")
+        return 0
 
     staged = _load_method_registry(staging=True)
     live = _load_method_registry()

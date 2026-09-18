@@ -27,7 +27,10 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.report import graded_in_window, load_all_settled
+from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_csv, atomic_write_json
+
+log = get_logger("sqp.risk.degradation")
 
 DEGRADATION_FILENAME = "degradation_pause.json"
 DEGRADATION_LOG_FILENAME = "degradation_log.csv"
@@ -174,10 +177,33 @@ def load_degradation_registry(bets_dir: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        markets = json.loads(path.read_text(encoding="utf-8")).get("markets")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # Raiz comprobada antes de `.get` (AUD-002, audit-2026-09-18): una raiz
+        # no objeto lanzaba AttributeError fuera del `except`. Aqui pesaba mas
+        # que en el gate: el fallback de `run_all.py` volvia a llamar a este
+        # lector FUERA de su `try` y abortaba el run entero antes de la primera
+        # liga. Mismo patron que `risk.clv_gate.load_clv_gate`.
+        markets = payload.get("markets") if isinstance(payload, dict) else None
     except (OSError, json.JSONDecodeError):
         return {}
     return markets if isinstance(markets, dict) else {}
+
+
+def auto_pauses_from_persisted_registry(bets_dir: Path) -> dict[str, list[str]]:
+    """Auto-pausas vigentes segun el ULTIMO registro persistido, sin recalcular.
+
+    Es el camino de degradacion de `run_all.py` cuando el monitor falla: se
+    aplican las pausas ya conocidas (conservador) y el run sigue. Nunca lanza:
+    un registro ilegible o con forma inesperada equivale a "sin auto-pausas",
+    y se deja constancia en el log, porque abortar el run del dinero por un
+    fichero de observabilidad es el modo de fallo que AUD-002 documento.
+    """
+    try:
+        return paused_from_registry(load_degradation_registry(bets_dir))
+    except Exception as exc:  # defensa final: el consumidor no debe caer
+        log.warning("registro de degradacion ilegible (%s); se continua sin "
+                    "auto-pausas.", exc)
+        return {}
 
 
 def paused_from_registry(markets: dict[str, dict]) -> dict[str, list[str]]:

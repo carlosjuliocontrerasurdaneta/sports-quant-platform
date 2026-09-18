@@ -41,7 +41,9 @@ while IFS= read -r file; do
   # de abajo -- tokens con prefijo reconocible, sin nombre de variable -- esta
   # pensado justo para texto en prosa, que es donde una clave se pega sin pensar.
   case "$ruta" in
-    */data/*|*/historical/*|*/exports/*|*/logs/*) continue ;;
+    # audit/ y audits/: informes que CITAN codigo y evidencias de otros agentes,
+    # ajenos al turno y sin secretos del proyecto (AUD-007, audit-2026-09-18).
+    */data/*|*/historical/*|*/exports/*|*/logs/*|*/audit/*|*/audits/*) continue ;;
   esac
   hits=$(python "$proyecto/.claude/hooks/_secret_literals.py" "$file" 2>/dev/null || true)
   if [ -n "$hits" ]; then

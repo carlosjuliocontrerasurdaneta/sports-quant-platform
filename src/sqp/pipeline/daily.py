@@ -60,6 +60,17 @@ DISCLAIMER = ("This output contains estimated probabilities only. It does not "
 _LEAGUE_ID = re.compile(r"[a-z0-9_]+")
 
 
+def markets_for_family(family: str) -> str:
+    """Mercados que se piden a The Odds API para una familia de deporte.
+
+    Regla UNICA para el run diario y la captura de cierre: el tenis solo
+    cotiza picks de `h2h`, y pedir spreads/totals ahi cuesta 3x creditos por
+    captura sin que ningun pick los use (AUD-006, ronda audit-2026-09-18: la
+    captura usaba el default del cliente y gastaba 15 creditos por pase de
+    tenis frente a los 5 del run)."""
+    return "h2h" if family == "tennis" else "h2h,spreads,totals"
+
+
 def _league_meta(league: str) -> dict:
     if not _LEAGUE_ID.fullmatch(league or ""):
         raise KeyError(
@@ -714,7 +725,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         else:
             log.info("[%s] Ratings built from %d results (%d stored + %d recent).",
                      league, len(results), len(history), len(recent))
-        markets = "h2h" if family == "tennis" else "h2h,spreads,totals"
+        markets = markets_for_family(family)
         events = client.fetch_odds(league, meta["sport_key"], markets)
         # Antiguedad de la respuesta que fundamenta estos precios. 0.0 si vino de
         # la red; en modo offline la cache se sirve a cualquier edad, y esa edad

@@ -235,7 +235,7 @@ def _calibration_pending_block() -> str:
     from sqp.calibration.calibrator import (AUTO_PROMOTE_MIN_N_VAL,
                                             _load_method_registry,
                                             _load_staging_meta,
-                                            calibrator_defect)
+                                            calibrator_defect, is_sandbox_key)
 
     def colapsados(reg: dict, *, staging: bool) -> dict[str, str]:
         """Mismo predicado que el gate de entrenamiento y que la promocion.
@@ -258,7 +258,12 @@ def _calibration_pending_block() -> str:
 
     live = _load_method_registry(staging=False)
     staged = _load_method_registry(staging=True)
-    if not staged and not live:
+    # Claves sandbox (`<liga>_h2h_pergame`): produccion no las resuelve, asi que
+    # ni cuentan como "en produccion" ni son candidatos promovibles (AUD-003).
+    sandbox_live = sorted(k for k in live if is_sandbox_key(k))
+    live = {k: v for k, v in live.items() if not is_sandbox_key(k)}
+    staged = {k: v for k, v in staged.items() if not is_sandbox_key(k)}
+    if not staged and not live and not sandbox_live:
         return ""
     nuevos = sorted(k for k in staged if k not in live)
     cambian = sorted(k for k in staged if k in live and staged[k] != live[k])
@@ -278,6 +283,13 @@ def _calibration_pending_block() -> str:
              _card("Servidos SIN calibrar", str(len(nuevos)),
                    "con candidato aceptado esperando"),
              "</div>"]
+    if sandbox_live:
+        detalle = ", ".join(f"<code>{html.escape(k)}</code>" for k in sandbox_live)
+        parts.append(
+            f'<p class="note"><strong>Clave sandbox en el registro live:</strong> '
+            f'{detalle}. Produccion resuelve <code>&lt;liga&gt;_&lt;mercado&gt;</code> '
+            f'y no la aplica: ese mercado se sirve en crudo. Retirarla con '
+            f'<code>python scripts/promote_calibration.py --demote CLAVE --yes</code>.</p>')
     if live_pobres:
         detalle = ", ".join(f"<code>{html.escape(k)}</code> ({html.escape(d)})"
                             for k, d in sorted(live_pobres.items()))

@@ -58,7 +58,10 @@ stake real.
   RECHAZA. Constantes en
   `src/sqp/risk/prediction_gate.py`; registro `data/bets/prediction_gate.json`,
   reescrito por `scripts/update_prediction_gate.py`. Default-deny.
-  Consulta rápida del estado: `python scripts/gate_status.py`.
+  Consulta rápida del estado: `python scripts/gate_status.py` (muestra el
+  veredicto PERSISTIDO del registro y, aparte, el progreso con el criterio
+  canónico `evaluate_markets`; hasta el 2026-09-18 evaluaba una regla paralela
+  sobre `pick_history` y anunciaba aprobaciones falsas, AUD-001).
 - **Las dos puertas son default-deny y se acumulan**: un mercado necesita que la
   puerta HABILITADA lo permita. Un CLV mediano positivo con el prediction gate
   denegando **no** hace elegible al mercado.

@@ -541,10 +541,28 @@ def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        markets = json.loads(path.read_text(encoding="utf-8")).get("markets")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # La RAIZ se comprueba antes de `.get`: un JSON valido con raiz lista,
+        # numero o null lanzaba AttributeError, que el `except` no atrapa, y
+        # eso abortaba `run_league` de TODAS las ligas (dia sin picks) en vez
+        # de degradar a default-deny. `risk.clv_gate.load_clv_gate` ya lo hacia
+        # asi desde el 2026-09-10; este lector no (AUD-002, ronda
+        # audit-2026-09-18, reproducido por OpenAI).
+        markets = payload.get("markets") if isinstance(payload, dict) else None
     except (OSError, json.JSONDecodeError):
         return {}
     return markets if isinstance(markets, dict) else {}
+
+
+def gate_allowed_markets(bets_dir: Path) -> list[str]:
+    """Claves "liga|mercado" habilitadas segun el registro PERSISTIDO (con el
+    pestillo aplicado), ordenadas. Es lo que debe anunciarse como "habilitado
+    para stake real": la tabla de `evaluate_markets` es elegibilidad
+    estadistica previa al pestillo, no autorizacion (AUD-005,
+    audit-2026-09-18)."""
+    gate = load_prediction_gate(bets_dir)
+    return sorted(key for key in gate if "|" in key
+                  and market_allowed(gate, *key.split("|", 1)))
 
 
 def market_allowed(gate: dict[str, dict], league: str, market: str) -> bool:
