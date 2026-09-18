@@ -160,3 +160,60 @@ def test_protocol_fingerprint_is_of_the_code_not_of_the_data_root(monkeypatch):
     src = inspect.getsource(fs.train)
     assert "fingerprint(ROOT)" in src and "fingerprint(root)" not in src
     assert "fingerprint(ROOT)" in inspect.getsource(fs.load_protocol)
+
+
+def test_capture_store_merges_odds_files_that_share_index_labels(tmp_path, monkeypatch):
+    """KI-053 / B-001: two leagues with one eligible row each (both at index 0)
+    and a positive horizon raised IndexError inside capture_store."""
+    monkeypatch.setattr(shadow, "utc_now", lambda: pd.Timestamp("2025-03-01T12:00Z"))
+    monkeypatch.setattr(shadow, "load_protocol", lambda *a: {
+        "start": "2025-03-02T00:00Z", "end_exclusive": "2025-04-01T00:00Z",
+        "event_horizon_days": 7, "candidates": [{"league": "nba"}, {"league": "nhl"}]})
+    monkeypatch.setattr(shadow, "captured_rows", lambda *a: [])
+    handed = []
+    monkeypatch.setattr(shadow, "capture", lambda root, exp, path: handed.append(pd.read_csv(path)) or {"n_predictions": 2})
+    odds = tmp_path / "data/odds"
+    odds.mkdir(parents=True)
+    for league in ("nba", "nhl"):
+        pd.DataFrame([{"event_id": f"{league}-1", "commence_time": "2025-03-03T00:00:00Z",
+                       "captured_at": "2025-03-01T10:00:00Z", "home": "A", "away": "B"}]
+                     ).to_csv(odds / f"odds_{league}_2025-03.csv", index=False)
+    assert shadow.capture_store(tmp_path, tmp_path)["n_predictions"] == 2
+    assert sorted(handed[0].league) == ["nba", "nhl"]
+
+
+def test_baseball_training_and_capture_join_the_starters(tmp_path, monkeypatch):
+    """KI-053 / REV-A-001: MLB history reaches the comparator with starters and
+    the starters file is archived; without the file training is refused."""
+    monkeypatch.setattr(shadow, "ROOT", tmp_path)
+    monkeypatch.setattr(shadow, "utc_now", lambda: pd.Timestamp("2025-03-01T12:00Z"))
+    store = tmp_path / "data/historical"
+    store.mkdir(parents=True)
+    source = store / "results_mlb.csv"
+    history().to_csv(source, index=False)
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts/feature_shadow.py").write_text('# fixture')
+    report = tmp_path / "report.json"
+    report.write_text('{}')
+    c = {"id": "mlb/h2h/schedule", "league": "mlb", "target": "h2h", "block": "schedule",
+         "source_sha256": shadow.digest(source), "window": 20, "status": "AWAITING_FORWARD_PROTOCOL",
+         "discovery_through": "2025-01-24"}
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(json.dumps({"candidates": [c], "discovery_report_sha256": shadow.digest(report)}))
+    seen = {}
+    real = shadow.build_research_dataset
+
+    def spy(results, *a, **k):
+        seen["starters"] = results.home_starter.dropna().unique().tolist()
+        return real(results, *a, **k)
+    monkeypatch.setattr(shadow, "build_research_dataset", spy)
+    with pytest.raises(ValueError, match="starters file required"):
+        shadow.train(tmp_path, manifest, report, tmp_path / "no_starters", "2025-03-02T00:00Z", "2025-03-04T00:00Z")
+    starters = store / "starters_mlb.csv"
+    pd.DataFrame([{"game_id": g, "home_starter": "Ace", "away_starter": "Scrub"}
+                  for g in history().game_id]).to_csv(starters, index=False)
+    out = tmp_path / "isolated"
+    p = shadow.train(tmp_path, manifest, report, out, "2025-03-02T00:00Z", "2025-03-04T00:00Z")
+    assert seen["starters"] == ["Ace"]
+    assert (out / "training/starters_mlb.csv").exists()
+    assert p["candidates"][0]["starters_sha256"] == shadow.digest(starters)

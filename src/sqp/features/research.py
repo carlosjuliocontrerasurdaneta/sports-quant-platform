@@ -121,6 +121,14 @@ def sporting_interactions(values: dict, family: str) -> dict[str, float]:
     return out
 
 
+STARTER_COLS = ("home_starter", "away_starter")
+
+
+def _clean_starters(values: pd.Series) -> list[str | None]:
+    """Non-empty strings pass through; NaN/None/blank become None."""
+    return [v.strip() if isinstance(v, str) and v.strip() else None for v in values]
+
+
 def build_research_dataset(results: pd.DataFrame, league: str, family: str,
                            league_params: dict | None = None, *,
                            snapshots: pd.DataFrame | None = None,
@@ -137,6 +145,12 @@ def build_research_dataset(results: pd.DataFrame, league: str, family: str,
     if not np.isfinite(d[["home_score", "away_score"]].to_numpy(float)).all():
         raise ValueError("results require finite scores")
     d["_fixture"] = False
+    # Starting pitchers are pregame information (probable/confirmed starter) and
+    # the largest single factor of BaseballAdapter. Optional columns; a missing
+    # or blank starter is None so the adapter stays neutral instead of rating
+    # the literal string "nan" (KI-053, REV-A-001).
+    for col in STARTER_COLS:
+        d[col] = _clean_starters(d[col]) if col in d else None
     if fixtures is not None:
         required = {"date", "game_id", "home", "away"}
         if not required.issubset(fixtures) or fixtures[list(required)].isna().any().any():
@@ -149,6 +163,8 @@ def build_research_dataset(results: pd.DataFrame, league: str, family: str,
         future["_fixture"] = True
         future["home_score"] = np.nan
         future["away_score"] = np.nan
+        for col in STARTER_COLS:
+            future[col] = _clean_starters(future[col]) if col in future else None
         d = ordered_games(pd.concat([d, future], ignore_index=True))
     # Composite identity supports legacy blank IDs without merging games.
     d["event_id"] = [f"{league}|{day}|{gid}|{h}|{a}" for day, gid, h, a in
@@ -162,7 +178,7 @@ def build_research_dataset(results: pd.DataFrame, league: str, family: str,
         for i, r in d.iterrows():
             identity = f"{league}|{r.date}|{r.game_id}|{'|'.join(sorted((r.home, r.away)))}"
             if hashlib.sha256(identity.encode()).digest()[0] % 2:
-                for left, right in (("home", "away"), ("home_score", "away_score")):
+                for left, right in (("home", "away"), ("home_score", "away_score"), tuple(STARTER_COLS)):
                     left_value, right_value = d.at[i, left], d.at[i, right]
                     d.at[i, left], d.at[i, right] = right_value, left_value
                 for name in SPORTING_INPUTS[family]:
@@ -178,7 +194,8 @@ def build_research_dataset(results: pd.DataFrame, league: str, family: str,
         pending = []
         for i, r in group.iterrows():
             h, a = adapter.normalize(r["home"]), adapter.normalize(r["away"])
-            ev = Event(str(r.event_id), "research", league, r.home, r.away, day)
+            ev = Event(str(r.event_id), "research", league, r.home, r.away, day,
+                       home_pitcher=r["home_starter"], away_pitcher=r["away_starter"])
             est = adapter.estimate(ev, None, None)
             ph, pa = est.home_win_estimated_probability, est.away_win_estimated_probability
             draw = est.draw_estimated_probability or 0.0

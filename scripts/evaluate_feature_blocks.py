@@ -14,7 +14,7 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.evaluation.feature_blocks import evaluate_blocks
-from sqp.evaluation.feature_shadow import fingerprint
+from sqp.evaluation.feature_shadow import fingerprint, with_starters
 from sqp.features.research import build_research_dataset
 from sqp.pipeline.daily import _league_meta
 from sqp.storage.atomic import atomic_write_json
@@ -45,6 +45,8 @@ def main() -> int:
             path = ROOT / "data/historical" / f"results_{league}.csv"
             source_bytes = path.read_bytes()
             raw = pd.read_csv(BytesIO(source_bytes), dtype={"game_id": str})
+            # Same comparator as training/capture: MLB baselines rate the starter.
+            raw, starters_hash = with_starters(ROOT, league, meta["family"], raw)
             fip_hash = snapshot_hash = None
             fip_path = path.with_name(f"starter_fip_{league}.csv")
             if meta["family"] == "baseball" and fip_path.exists():
@@ -66,7 +68,8 @@ def main() -> int:
                                              snapshots=snapshots, window=args.window)
             report = evaluate_blocks(dataset, n_splits=args.folds, n_boot=args.n_boot, seed=args.seed)
             report.update(source_sha256=hashlib.sha256(source_bytes).hexdigest(),
-                          snapshot_sha256=snapshot_hash, fip_sha256=fip_hash, window=args.window)
+                          snapshot_sha256=snapshot_hash, fip_sha256=fip_hash,
+                          starters_sha256=starters_hash, window=args.window)
             failed |= any(t["status"] != "MEASURED" for t in report["tasks"].values())
         except (ValueError, KeyError, FileNotFoundError) as exc:
             failed = True

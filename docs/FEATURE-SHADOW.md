@@ -33,6 +33,11 @@ sin capturas publicadas. La ejecución vigente es `feature_shadow_20260915_v2`.
 - Cada candidato se compara con su referencia aprendida y el adaptador operativo.
   Error Brier para ganador; MAE del marcador total. Log loss y calibración son
   descriptivos para ganador. El total no es una probabilidad de Over/Under.
+- Béisbol: el adaptador operativo puntúa al abridor, así que descubrimiento,
+  entrenamiento y captura unen `starters_<liga>.csv` al histórico (el fichero es
+  obligatorio y se archiva con su `starters_sha256`). Un fixture prospectivo sin
+  `home_starter`/`away_starter` se compara con abridor neutro: para MLB eso NO
+  es el comparador de producción, que usa abridores probables (KI-053, REV-A-001).
 - Pesos congelados. El estado deportivo usa resultados locales de días UTC
   anteriores a la captura y al evento, archivados con cada lote.
 - Se conserva la primera captura anterior al inicio por candidato, proveedor e ID.
@@ -81,8 +86,10 @@ league,game_id,home,away,start_time,source
 nba,example-game,Team A,Team B,2026-10-20T23:00:00Z,example-provider
 ```
 
+Columnas opcionales `home_starter,away_starter` (béisbol: abridores probables).
 Se rechazan columnas de resultados, identidades vacías/duplicadas y horas sin
 zona. Se filtran eventos ya iniciados, fuera de ventana o ligas no seleccionadas.
+Las capturas desde `data/odds/` (`watch`/`capture-store`) no traen abridores.
 El ejemplo es ilustrativo y no forma parte de las capturas reales.
 
 Los lotes archivan fixtures, históricos usados, features efectivamente pasadas

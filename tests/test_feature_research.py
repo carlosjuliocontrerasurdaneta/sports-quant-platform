@@ -218,3 +218,21 @@ def test_sim_comparison_uses_configured_adapter_and_daily_boundary():
     changed = _sim_probs(d, "mlb")
     assert p[0] == changed[0] and p[1] == changed[1]
     assert p[2] != changed[2]
+
+
+def test_baseball_comparator_rates_the_starting_pitcher():
+    """KI-053 / REV-A-001: the research baseline for MLB must see the starter
+    (the operational adapter's largest single factor). Before the fix `Event`
+    was built without pitchers and the baseline was byte-identical with or
+    without starters in the input."""
+    d = games()
+    d["home_score"], d["away_score"] = 5, 1          # the home starter suppresses runs
+    plain = build_research_dataset(d, "mlb", "baseball").frame
+    with_ace = d.assign(home_starter="Ace", away_starter="Scrub")
+    rated = build_research_dataset(with_ace, "mlb", "baseball").frame
+    assert not np.allclose(plain.base_home.to_numpy(), rated.base_home.to_numpy())
+    assert (rated.base_home.iloc[-1] > plain.base_home.iloc[-1])
+    # Unknown/blank starters are None for the adapter, never the string "nan".
+    blank = d.assign(home_starter=[np.nan, "", " "] * (len(d) // 3), away_starter=None)
+    neutral = build_research_dataset(blank, "mlb", "baseball").frame
+    assert np.allclose(plain.base_home.to_numpy(), neutral.base_home.to_numpy())

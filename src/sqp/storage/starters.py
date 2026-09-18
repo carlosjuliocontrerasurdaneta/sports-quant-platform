@@ -158,3 +158,18 @@ class StartersStore:
             if r["home_starter"] and r["away_starter"]:
                 attached += 1
         return attached
+
+    def attach_frame(self, league: str, results: pd.DataFrame) -> pd.DataFrame:
+        """Frame version of attach(): a copy of `results` with home_starter/
+        away_starter (None where the starter is unknown or the file is absent).
+
+        The research/shadow tooling (KI-053, REV-A-001) reads results_*.csv
+        directly, which never carries starters, so its MLB comparator ran
+        pitcher-neutral. Everything that builds an MLB `Event` must go through
+        the same join as the feature store (`_mlb_results_df`)."""
+        rows = results.to_dict("records")
+        self.attach(league, rows)
+        out = results.copy()
+        out["home_starter"] = [r.get("home_starter") for r in rows]
+        out["away_starter"] = [r.get("away_starter") for r in rows]
+        return out

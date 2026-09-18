@@ -21,6 +21,7 @@ from sqp.evaluation.feature_blocks import _learner
 from sqp.features.research import build_research_dataset
 from sqp.pipeline.daily import _league_meta
 from sqp.storage.atomic import atomic_write_json
+from sqp.storage.starters import StartersStore
 
 
 def utc_now() -> pd.Timestamp:
@@ -124,6 +125,7 @@ def train(root: Path, manifest_path: Path, report_path: Path, out: Path,
         raw = pd.read_csv(archived, dtype={"game_id": str})
         if pd.to_datetime(raw.date, utc=True).max() >= utc_now().normalize():
             raise ValueError("training history must end before today UTC")
+        raw, starters_hash = with_starters(root, league, meta["family"], raw, archive=out / "training")
         windows = {c["window"] for c in selected}
         if len(windows) != 1:
             raise ValueError("mixed windows in a league")
@@ -135,7 +137,8 @@ def train(root: Path, manifest_path: Path, report_path: Path, out: Path,
             joblib.dump(fitted, out / filename)
             records.append({**c, "artifact": filename, "artifact_sha256": digest(out / filename),
                             "family": meta["family"], "n_train": fitted["n_train"],
-                            "train_through": fitted["train_through"]})
+                            "train_through": fitted["train_through"],
+                            "starters_sha256": starters_hash})
             print(f"trained {c['id']}: {fitted['n_train']} rows", flush=True)
     if utc_now() >= begin or fingerprint(ROOT) != code_hash:
         raise ValueError("training crossed start boundary or code changed")
@@ -175,8 +178,33 @@ def load_protocol(root: Path, experiment: Path) -> dict:
     return p
 
 
+def with_starters(root: Path, league: str, family: str, history: pd.DataFrame,
+                  archive: Path | None = None) -> tuple[pd.DataFrame, str | None]:
+    """Join starting pitchers into a baseball history frame (KI-053, REV-A-001).
+
+    The operational adapter rates starters, so an MLB comparator built from
+    results_*.csv alone is pitcher-neutral and misrepresents production. For
+    baseball the starters file is REQUIRED (an absent file would silently
+    reproduce the defect); other families return the frame untouched. When
+    `archive` is given the starters file is copied next to the history so the
+    protocol keeps every input it depended on, and its digest is returned.
+    """
+    if family != "baseball":
+        return history, None
+    store = StartersStore(root)
+    path = store.path(league)
+    if not path.exists():
+        raise ValueError(f"{league}: starters file required for the baseball comparator: {path.name}")
+    raw = path.read_bytes()
+    if archive is not None:
+        (archive / path.name).write_bytes(raw)
+    return store.attach_frame(league, history), hashlib.sha256(raw).hexdigest()
+
+
 def capture(root: Path, experiment: Path, fixtures_path: Path) -> dict:
     """CSV fixtures: league,game_id,home,away,start_time,source. No result fields.
+    Optional home_starter/away_starter (baseball): the probable starters, so the
+    prospective comparator sees the same pregame information as production.
 
     IDs are source-scoped. Archives retain inputs and oriented participants.
     No remote requests, stakes, live model registry writes, or retrospective rows.
@@ -187,8 +215,10 @@ def capture(root: Path, experiment: Path, fixtures_path: Path) -> dict:
     from io import BytesIO
     fixtures = pd.read_csv(BytesIO(raw), dtype={"game_id": str})
     required = {"league", "game_id", "home", "away", "start_time", "source"}
-    if set(fixtures) != required or fixtures.isna().any().any():
-        raise ValueError("fixtures require exactly league,game_id,home,away,start_time,source")
+    optional = {"home_starter", "away_starter"}
+    if not required <= set(fixtures) <= required | optional or fixtures[list(required)].isna().any().any():
+        raise ValueError("fixtures require exactly league,game_id,home,away,start_time,source"
+                         " (optional: home_starter,away_starter)")
     for col in required:
         if fixtures[col].astype(str).str.strip().eq("").any():
             raise ValueError("empty fixture field")
@@ -218,7 +248,8 @@ def capture(root: Path, experiment: Path, fixtures_path: Path) -> dict:
         history = pd.read_csv(BytesIO(history_bytes), dtype={"game_id": str})
         dates = pd.to_datetime(history.date, utc=True)
         history = history.loc[dates < now.normalize()]
-        future = group[["date", "game_id", "home", "away"]]
+        history, _ = with_starters(root, league, meta["family"], history, archive=batch)
+        future = group[["date", "game_id", "home", "away"] + [c for c in sorted(optional) if c in group]]
         dataset = build_research_dataset(history, league, meta["family"], meta.get("league_params"),
                                          window=selected[0]["window"], fixtures=future)
         frame = dataset.frame.loc[dataset.frame.target_h2h.isna()].copy()
@@ -302,7 +333,11 @@ def capture_store(root: Path, experiment: Path) -> dict:
             frames.append(d[["league", "game_id", "home", "away", "start_time", "source", "_observed"]])
     cols = ["league", "game_id", "home", "away", "start_time", "source"]
     if frames:
-        fixtures = pd.concat(frames).sort_values("_observed").drop_duplicates(["league", "source", "game_id"], keep="last")
+        # ignore_index: each odds CSV restarts its index at 0, and the horizon
+        # filter below indexes `start` by label -- duplicate labels expanded the
+        # selector beyond the table and raised IndexError (KI-053, B-001).
+        fixtures = (pd.concat(frames, ignore_index=True).sort_values("_observed")
+                    .drop_duplicates(["league", "source", "game_id"], keep="last"))
         fixtures = fixtures.loc[[tuple(r) not in seen for r in fixtures[["league", "source", "game_id"]].to_numpy()], cols]
         start = pd.to_datetime(fixtures.start_time, utc=True)
         fixtures = fixtures.loc[(start >= pd.Timestamp(p["start"])) & (start < pd.Timestamp(p["end_exclusive"]))]
