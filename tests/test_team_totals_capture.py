@@ -120,20 +120,55 @@ def test_captura_excluye_eventos_comenzados_y_fuera_de_horizonte(entorno):
     assert (pd.to_datetime(df["captured_at"]) < pd.to_datetime(df["commence_time"])).all()
 
 
+def _cap(side, price, p, commence="2026-09-21T02:10:00Z", event_id="e"):
+    return dict(captured_at="c", event_id=event_id, commence_time=commence, home="H", away="A",
+                team="H", side=side, point=4.5, price_decimal=price, bookmaker="bk",
+                model_probability=p, home_pitcher=None, away_pitcher=None)
+
+
 def test_grade_y_consenso_liquidan_por_carreras_y_quitan_el_vig():
-    caps = pd.DataFrame([
-        dict(captured_at="c", event_id="e", commence_time="2026-09-21T02:10:00Z", home="H", away="A",
-             team="H", side="over", point=4.5, price_decimal=2.0, bookmaker="bk", model_probability=0.55,
-             home_pitcher=None, away_pitcher=None),
-        dict(captured_at="c", event_id="e", commence_time="2026-09-21T02:10:00Z", home="H", away="A",
-             team="H", side="under", point=4.5, price_decimal=1.8, bookmaker="bk", model_probability=0.45,
-             home_pitcher=None, away_pitcher=None),
-    ])
-    # Partido nocturno: fecha UTC 09-21, fecha oficial MLB 09-20.
-    results = [{"date": "2026-09-20", "home": "H", "away": "A", "home_score": 5, "away_score": 1}]
+    caps = pd.DataFrame([_cap("over", 2.0, 0.55), _cap("under", 1.8, 0.45)])
+    # Nocturno de la costa oeste: fecha UTC 09-21, fecha oficial (ET) 09-20. La
+    # serie sigue el 09-21: la clave UTC habria graduado con el partido siguiente.
+    results = [{"date": "2026-09-20", "home": "H", "away": "A", "home_score": 5, "away_score": 1},
+               {"date": "2026-09-21", "home": "H", "away": "A", "home_score": 0, "away_score": 9}]
     g = tt.grade_captures(caps, results)
     assert list(g["result"]) == ["win", "loss"] and list(g["team_runs"]) == [5.0, 5.0]
     c = tt.consensus_novig(g)
     over = c[c["side"] == "over"].iloc[0]
     assert over["implied_probability_novig"] == pytest.approx((1 / 2.0) / (1 / 2.0 + 1 / 1.8))
     assert c["implied_probability_novig"].sum() == pytest.approx(1.0)
+
+
+def test_grade_no_gradua_un_doubleheader_ni_sin_resultado():
+    caps = pd.DataFrame([_cap("over", 2.0, 0.55, commence="2026-09-20T17:10:00Z", event_id="g1"),
+                         _cap("over", 2.0, 0.55, commence="2026-09-20T23:10:00Z", event_id="g2"),
+                         _cap("over", 2.0, 0.55, commence="2026-09-25T23:10:00Z", event_id="fut")])
+    results = [{"date": "2026-09-20", "home": "H", "away": "A", "home_score": 5, "away_score": 1},
+               {"date": "2026-09-20", "home": "H", "away": "A", "home_score": 2, "away_score": 3}]
+    g = tt.grade_captures(caps, results)
+    # Dos partidos con la misma clave y el evento no dice cual es: ninguno se
+    # gradua, antes que asignar el resultado del otro partido.
+    assert g["team_runs"].isna().all() and g["result"].isna().all()
+
+
+def test_captura_salta_el_evento_que_comienza_durante_el_bucle(entorno):
+    t0 = datetime(2026, 9, 20, 15, tzinfo=timezone.utc)
+    ticks = iter([t0, t0, datetime(2026, 9, 20, 23, 30, tzinfo=timezone.utc)])
+    events = [{"id": "a", "home_team": "H", "away_team": "A", "commence_time": "2026-09-20T22:00:00Z"},
+              {"id": "b", "home_team": "H2", "away_team": "A2", "commence_time": "2026-09-20T23:10:00Z"}]
+    client = _Client(events)
+    s = tt.capture_team_totals(object(), league="mlb", client=client, root=entorno,
+                               clock=lambda: next(ticks))
+    # `a` se pide a las 15:00; al llegar a `b` el reloj marca 23:30 y ya comenzo.
+    assert client.fetched == ["a"] and s["skipped"] == ["b"] and s["events"] == 1
+    df = tt.load_captures(entorno, "mlb")
+    assert (pd.to_datetime(df["captured_at"]) < pd.to_datetime(df["commence_time"])).all()
+
+
+def test_captura_no_vuelve_a_persistir_una_respuesta_cacheada(entorno):
+    now = datetime(2026, 9, 20, 15, tzinfo=timezone.utc)
+    client = _Client(_events(1))
+    client.last_response_cached = True
+    s = tt.capture_team_totals(object(), league="mlb", client=client, root=entorno, now=now)
+    assert s["events"] == 0 and s["rows"] == 0 and tt.load_captures(entorno, "mlb").empty

@@ -23,7 +23,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -46,6 +47,12 @@ MAX_CREDITS_PER_MONTH = 1400
 MIN_REMAINING = 500  # no se toca el colchon del run diario
 CREDITS_PREFIX = ".team_totals_credits_"
 HORIZON_HOURS = 30  # partidos de hoy y de manana temprano; una captura por dia
+
+# La fecha oficial MLB es la fecha LOCAL del partido; un nocturno de la costa
+# oeste comienza tras las 00:00Z y su fecha UTC va un dia por delante. La fecha
+# en hora del Este resuelve el caso sin adivinar, salvo partidos que pasen de
+# medianoche ET, que quedan sin graduar antes que mal graduados.
+MLB_TZ = ZoneInfo("America/New_York")
 
 COLUMNS = ["captured_at", "event_id", "commence_time", "home", "away", "team",
            "side", "point", "price_decimal", "bookmaker", "model_probability",
@@ -154,15 +161,24 @@ def _fit_adapter(league: str, root: Path):
 
 def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
                         root: Path | None = None, now: datetime | None = None,
-                        pitcher_provider=None) -> dict[str, Any]:
+                        pitcher_provider=None,
+                        clock: Callable[[], datetime] | None = None) -> dict[str, Any]:
     """Una captura de team_totals para los partidos no comenzados del horizonte.
 
     Devuelve un resumen con eventos capturados, filas, creditos gastados y el
     motivo de parada si el presupuesto corta. Nunca lanza por un evento
     concreto: se registra y se sigue con el siguiente.
+
+    `clock` da la hora ANTES de cada peticion: el `captured_at` de cada fila es
+    el de su propia llamada, y un evento que comience mientras el bucle avanza
+    (abridores, reintentos) se salta en vez de sellarse como prepartido. `now`
+    fija el reloj (tests); sin ninguno de los dos, UTC real.
     """
     root = root or ROOT
-    now = now or datetime.now(timezone.utc)
+    if clock is None:
+        fixed = now
+        clock = (lambda: fixed) if fixed is not None else (lambda: datetime.now(timezone.utc))
+    now = clock()
     day = now.strftime("%Y-%m-%d")
     odds_dir = root / "data" / "odds"
     summary: dict[str, Any] = {"league": league, "day": day, "events": 0, "rows": 0,
@@ -206,7 +222,6 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
     except Exception as exc:  # best-effort, igual que el run diario
         log.warning("team_totals: abridores no disponibles: %s", exc)
 
-    captured_at = now.isoformat(timespec="seconds")
     spent = 0
     for eo in events:
         if already_day + spent >= MAX_CREDITS_PER_DAY or already_month + spent >= MAX_CREDITS_PER_MONTH:
@@ -218,6 +233,15 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
         if remaining is not None and remaining < MIN_REMAINING:
             summary["stop"] = f"requests_remaining {remaining} < {MIN_REMAINING}"
             summary["skipped"].append(eo.event.event_id)
+            continue
+        # Guard prepartido por EVENTO y en el instante de la peticion (KI-019):
+        # el filtro del horizonte se hizo con la hora de arranque del bucle.
+        at = clock()
+        start = _parse_utc(eo.event.start_time)
+        if start is None or start <= at:
+            summary["skipped"].append(eo.event.event_id)
+            log.info("team_totals: [%s] comenzado antes de la peticion; no se captura",
+                     eo.event.event_id)
             continue
         try:
             fetched = client.fetch_event_odds(league, meta["sport_key"], eo.event.event_id, MARKET)
@@ -231,6 +255,11 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
         spent += delta
         if not fetched:
             continue
+        if getattr(client, "last_response_cached", False):
+            # La respuesta ya se persistio en la peticion que la origino; volver
+            # a sellarla con la hora de ahora falsearia `captured_at`.
+            continue
+        captured_at = at.isoformat(timespec="seconds")
         # Cuotas del proveedor sobre el evento con los abridores ya adjuntos.
         eo.lines = fetched[0].lines
         lam_h, lam_a = adapter._rates(eo.event)
@@ -261,26 +290,28 @@ def grade_captures(captures: pd.DataFrame, results: list[dict], normalize=None) 
     lineas medias.
     """
     nk = normalize or (lambda s: str(s or "").strip().lower())
-    runs: dict[tuple[str, str, str], tuple[float, float]] = {}
+    runs: dict[tuple[str, str, str], list[tuple[float, float]]] = {}
     for r in results:
         try:
-            runs[(str(r.get("date"))[:10], nk(r["home"]), nk(r["away"]))] = (
-                float(r["home_score"]), float(r["away_score"]))
+            runs.setdefault((str(r.get("date"))[:10], nk(r["home"]), nk(r["away"])), []).append(
+                (float(r["home_score"]), float(r["away_score"])))
         except (KeyError, TypeError, ValueError):
             continue
     out = captures.copy()
     team_runs: list[float | None] = []
     for row in out.itertuples(index=False):
-        key = (str(row.commence_time)[:10], nk(row.home), nk(row.away))
-        scores = runs.get(key)
-        if scores is None:
-            # Un partido nocturno de la costa oeste comienza tras las 00:00Z:
-            # la fecha UTC va un dia por delante de la fecha oficial MLB.
-            prev = (_parse_utc(row.commence_time) or datetime.min.replace(tzinfo=timezone.utc)) - timedelta(days=1)
-            scores = runs.get((prev.strftime("%Y-%m-%d"), nk(row.home), nk(row.away)))
-        if scores is None:
+        start = _parse_utc(row.commence_time)
+        if start is None:
             team_runs.append(None)
             continue
+        key = (start.astimezone(MLB_TZ).strftime("%Y-%m-%d"), nk(row.home), nk(row.away))
+        found = runs.get(key, [])
+        # Un doubleheader deja dos resultados con la misma clave y el evento no
+        # dice cual es: sin graduar antes que graduado con el otro partido.
+        if len(found) != 1:
+            team_runs.append(None)
+            continue
+        scores = found[0]
         team_runs.append(scores[0] if nk(row.team) == nk(row.home) else scores[1])
     out["team_runs"] = team_runs
     over = out["team_runs"] > out["point"]
