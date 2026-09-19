@@ -181,26 +181,102 @@ def test_validate_rechaza_un_uplift_no_positivo_o_absurdo():
     s.validate()
 
 
-def test_books_declarados_sin_cablear_avisan(monkeypatch, caplog):
-    """AUD-005 (auditoria integral 2026-09-17): `_execution_prices` no tiene
-    ningun llamador en el pipeline (decision 9dfb4cc), asi que una lista de
-    casas no vacia no cambia precios. Que al menos lo diga."""
-    import logging
+def _run_live(tmp_path, monkeypatch, books, seed_book="better_book", uplift=1.06):
+    """run_league en live con un doble de cliente: eventos sinteticos NBA mas
+    una casa extra que cotiza h2h un `uplift` por encima de demo_book."""
+    import copy
     from sqp.config import Settings
-    monkeypatch.setenv("EXECUTION_BOOKS", "accessible,other")
-    with caplog.at_level(logging.WARNING, logger="sqp.config"):
-        s = Settings.load()
-    assert s.execution.books == ("accessible", "other")
-    assert any("NO esta cableado" in r.getMessage() for r in caplog.records)
+    from sqp.pipeline import daily
+    from sqp.providers.synthetic import SyntheticProvider
+
+    eventos = SyntheticProvider("basketball").fetch_odds("nba", three_way=False)
+    for eo in eventos:
+        for ln in list(eo.lines):
+            if ln.market == "h2h":
+                mejor = copy.copy(ln)
+                mejor.bookmaker, mejor.price_decimal = seed_book, round(ln.price_decimal * uplift, 3)
+                eo.lines.append(mejor)
+
+    class _Cliente:
+        last_response_cached = True   # no persiste snapshot de cuotas
+        last_response_age_s = 0.0
+        cache_ttl = 60.0
+
+        def is_sport_active(self, sport_key):      # noqa: ARG002
+            return True
+
+        def fetch_odds(self, *a, **k):             # noqa: ARG002
+            return eventos
+
+    # Historial sintetico: sin >=10 partidos por equipo el adaptador marca el
+    # evento como poco fiable y no se sirve ninguna linea.
+    equipos = sorted({t for eo in eventos for t in (eo.event.home, eo.event.away)})
+    historial = []
+    for i in range(12):
+        for j, h in enumerate(equipos):
+            a = equipos[(j + 1 + i) % len(equipos)]
+            if a != h:
+                historial.append({"date": f"2026-0{1 + i % 8}-{10 + j:02d}", "home": h, "away": a,
+                                  "home_score": 100 + (i + j) % 7, "away_score": 98 + (i * j) % 9})
+
+    class _Resultados:
+        def __init__(self, *a, **k):
+            pass
+
+        def load(self, league):               # noqa: ARG002
+            return sorted(historial, key=lambda r: r["date"])
+
+    monkeypatch.setattr(daily, "ROOT", tmp_path)
+    monkeypatch.setattr(daily, "OddsAPIClient", lambda *a, **k: _Cliente())
+    monkeypatch.setattr(daily, "_fetch_recent_scores", lambda *a, **k: [])
+    monkeypatch.setattr(daily, "ResultsStore", _Resultados)
+    if books:
+        monkeypatch.setenv("EXECUTION_BOOKS", ",".join(books))
+    else:
+        monkeypatch.delenv("EXECUTION_BOOKS", raising=False)
+    ajustes = Settings.load()
+    assert ajustes.execution.books == tuple(books)
+    daily.run_league("nba", ajustes, mode="live")
+    import glob
+    import pandas as pd
+    servidas = sorted(glob.glob(str(tmp_path / "data" / "calibration" / "served_nba*.csv")))
+    assert servidas, "el run live no escribio el stream servido"
+    return pd.concat([pd.read_csv(f) for f in servidas], ignore_index=True)
 
 
-def test_execution_prices_sigue_sin_llamadores_en_el_pipeline():
-    """Candado del estado registrado: si alguien cablea el line shopping, este
-    test y el aviso de `Settings.load` deben retirarse juntos."""
-    from pathlib import Path
-    import sqp
-    raiz = Path(sqp.__file__).parent
-    llamadores = [f for f in raiz.rglob("*.py")
-                  if f.name != "probabilities.py"
-                  and "_execution_prices(" in f.read_text(encoding="utf-8")]
-    assert llamadores == [], f"line shopping cableado en {llamadores}: retirar el aviso AUD-005"
+# --- 4. Cableado en el pipeline (2026-09-19): capa ADITIVA de ejecucion ------
+
+def test_con_books_vacio_la_ejecucion_repite_la_mediana(tmp_path, monkeypatch):
+    """Default-deny: sin casas declaradas las dos columnas nuevas repiten la
+    mediana del consenso y nada mas cambia."""
+    df = _run_live(tmp_path, monkeypatch, books=())
+    assert {"execution_price", "execution_book"} <= set(df.columns)
+    assert (df["execution_book"] == CONSENSUS).all()
+    assert df["execution_price"].to_numpy() == pytest.approx(df["price_decimal"].to_numpy())
+
+
+def test_con_casa_accesible_la_ejecucion_toma_su_precio_sin_tocar_la_seleccion(tmp_path, monkeypatch):
+    """INVARIANTE: `price_decimal`, no-vig y edge son los de la mediana en ambos
+    runs (byte-identicos); solo cambian `execution_price` y `execution_book`."""
+    base = _run_live(tmp_path / "a", monkeypatch, books=())
+    con = _run_live(tmp_path / "b", monkeypatch, books=("better_book",))
+    clave = ["event_id", "market", "selection", "line"]
+    m = base.merge(con, on=clave, suffixes=("_base", "_con"))
+    assert len(m) == len(base) == len(con)
+    for col in ("price_decimal", "implied_probability_novig", "estimated_edge",
+                "calibrated_probability", "stake"):
+        assert m[f"{col}_base"].to_numpy() == pytest.approx(m[f"{col}_con"].to_numpy(),
+                                                             nan_ok=True), col
+    h2h = m["market"] == "h2h"
+    assert (m.loc[h2h, "execution_book_con"] == "better_book").all()
+    assert (m.loc[h2h, "execution_price_con"] > m.loc[h2h, "price_decimal_con"]).all()
+    # Mercados que la casa accesible no cotiza: manda la mediana.
+    assert (m.loc[~h2h, "execution_book_con"] == CONSENSUS).all()
+
+
+def test_execution_prices_esta_cableado_en_daily():
+    """Candado inverso al que hubo hasta el 2026-09-19 (AUD-005): si alguien
+    retira la llamada, las dos columnas nuevas quedarian huerfanas."""
+    from sqp.pipeline import daily
+    import inspect
+    assert "_execution_prices(" in inspect.getsource(daily.run_league)

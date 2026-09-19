@@ -93,6 +93,12 @@ class BetCandidate:
     # estimated_edge when the penalty is off. edge_penalty is the EV deducted;
     # books_count is how many bookmakers quoted the staked line.
     adjusted_edge: float = float("nan")
+    # Capa de ejecucion (2026-09-19): precio y casa donde se COBRARIA el pick
+    # entre las casas accesibles (`execution.books`). `price_decimal` sigue
+    # siendo la mediana del consenso y es lo que dimensiona el stake y liquida.
+    # Default NaN/"" para leer `candidates_*.csv` anteriores sin romper.
+    execution_price: float = float("nan")
+    execution_book: str = ""
     edge_penalty: float = 0.0
     books_count: int = 0
     flags: str = ""  # e.g. "edge_exceeds_max_plausible": flagged, not staked

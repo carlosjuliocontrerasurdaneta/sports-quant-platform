@@ -17,7 +17,7 @@ from sqp.markets.edge import adjusted_edge
 # 2026-07-02, M2); se re-importan aquí para conservar la API histórica de
 # daily (scripts/clv_analysis.py y tests importan varios de estos nombres).
 from sqp.pipeline.probabilities import (_consensus_lines, _consensus_counts,
-                                        _consensus_spread,
+                                        _consensus_spread, _execution_prices,
                                         _novig_probs, _spread_novig,
                                         _pick_main_lines, _decision_probability,
                                         adjust_model_probability,
@@ -805,6 +805,16 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
         cons = _consensus_lines(eo)
         cons_n = _consensus_counts(eo)
         cons_spread = _consensus_spread(eo)
+        # Capa de EJECUCION (cableada el 2026-09-19 por decision del operador;
+        # cierra AUD-005): donde se COBRARIA cada linea entre las casas
+        # accesibles declaradas en `execution.books`. Es ADITIVA: la
+        # estimacion, el no-vig, el edge, la seleccion, el stake y `price_decimal`
+        # siguen sobre la mediana del consenso, asi que con `books` vacio la
+        # salida es identica al historico salvo las dos columnas nuevas
+        # (`execution_price`, `execution_book`). Cobrar de verdad a ese precio
+        # (Kelly y liquidacion sobre el) es una decision aparte del operador.
+        exec_px = _execution_prices(eo, cons, settings.execution.books,
+                                    max_uplift=settings.execution.max_uplift)
         h2h_fair = _novig_probs(cons, "h2h", three_way=three_way)
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
@@ -841,6 +851,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
             price = cons.get(key)
             if price is None or p_model is None or warn:
                 continue
+            exec_price, exec_book = exec_px.get(key, (float(price), "consensus_median"))
             if key[0] == "spreads":
                 fair = _spread_novig(cons, eo.event.home, eo.event.away, spread).get(key[1])
             else:
@@ -899,6 +910,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 "game_date": str(eo.event.start_time)[:10],
                 "market": key[0], "selection": key[1], "line": key[2],
                 "price_decimal": price, "bookmaker": "consensus_median",
+                "execution_price": exec_price, "execution_book": exec_book,
                 "model_probability": round(p_model, 4),
                 "adjusted_probability": round(_p_adj, 4),
                 "estimated_probability": round(p_used, 4),
@@ -963,6 +975,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 event_id=eo.event.event_id, league=league, market=key[0],
                 selection=key[1], line=key[2], price_decimal=price,
                 bookmaker="consensus_median",
+                execution_price=exec_price, execution_book=exec_book,
                 # Sin estas dos, la guarda anti-fabricacion de `settle._grade`
                 # no se activa nunca en la ruta del dinero (AUD-MED-001).
                 home=eo.event.home, away=eo.event.away,

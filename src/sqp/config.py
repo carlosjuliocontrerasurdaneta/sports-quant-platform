@@ -206,14 +206,13 @@ class ExecutionConfig:
     `max_uplift` acota cuanto puede superar el mejor precio a la mediana antes
     de tratarse como cotizacion obsoleta o error de origen en vez de valor.
 
-    SIN CABLEAR EN EL PIPELINE (auditoria integral 2026-09-17, AUD-005).
-    `pipeline.probabilities._execution_prices` implementa el line shopping y
-    `9dfb4cc` decidio a proposito NO llamarlo desde `pipeline.daily`, que
-    ejecuta siempre a `consensus_median`. Declarar casas aqui (o via
-    `EXECUTION_BOOKS`) no cambia ningun precio: `Settings.load` lo AVISA en vez
-    de callarse, porque un ajuste de configuracion que no hace nada y no lo
-    dice es como se cuelan las suposiciones. Cablearlo cambia el precio de
-    ejecucion y es una decision del operador, no de una auditoria.
+    CABLEADO el 2026-09-19 por decision del operador (cierra AUD-005, que
+    registraba que `9dfb4cc` dejo `_execution_prices` sin llamadores): cada
+    linea servida y cada candidato llevan `execution_price` y `execution_book`.
+    Es una capa ADITIVA: `price_decimal` sigue siendo la mediana del consenso y
+    es lo que estima, selecciona, dimensiona el stake y liquida. Con `books`
+    vacio las dos columnas repiten la mediana. Cobrar de verdad al precio de
+    ejecucion (Kelly y liquidacion sobre el) sigue siendo decision aparte.
     """
     books: tuple[str, ...] = ()
     max_uplift: float = 0.15
@@ -505,14 +504,11 @@ class Settings:
                                        ex.get("max_uplift", 0.15))),
         )
         if s.execution.books:
-            # AUD-005: el line shopping no esta cableado en `pipeline.daily`
-            # (decision 9dfb4cc); una lista no vacia no cambia ningun precio.
             from sqp.logging_config import get_logger
-            get_logger("sqp.config").warning(
-                "execution.books=%s declarado, pero el line shopping NO esta "
-                "cableado en el pipeline: todos los picks siguen ejecutandose a "
-                "consensus_median. Cablear `_execution_prices` en pipeline.daily "
-                "es una decision del operador (ver ExecutionConfig).",
+            get_logger("sqp.config").info(
+                "execution.books=%s: line shopping activo como capa de ejecucion "
+                "(execution_price/execution_book); price_decimal, stake y "
+                "liquidacion siguen sobre consensus_median.",
                 ",".join(s.execution.books))
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                             for lg, mk in (cfg.get("paused_markets") or {}).items()}

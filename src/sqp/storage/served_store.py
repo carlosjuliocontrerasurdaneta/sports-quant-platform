@@ -34,7 +34,11 @@ COLUMNS = ["league", "event_id", "home", "away", "start_time", "game_date",
            "model_probability", "adjusted_probability",
            "estimated_probability", "calibrated_probability",
            "implied_probability_novig", "estimated_edge", "books_count",
-           "stake", "data_label", "flags", "generated_at"]
+           "stake", "data_label", "flags", "generated_at",
+           # Capa de ejecucion (2026-09-19): precio y casa donde se COBRARIA.
+           # `price_decimal` sigue siendo la mediana del consenso. Ficheros
+           # anteriores se reconcilian por union de columnas (guard de abajo).
+           "execution_price", "execution_book"]
 
 # One row per market side per run DAY: a re-run the same day must not duplicate,
 # while serving the same event on consecutive days keeps both genuine serves

@@ -158,10 +158,11 @@ bankroll:
 # INVARIANTE: el benchmark no-vig se calcula siempre sobre el consenso completo;
 # de-vigear precios best-of-N daria suma < 1 y fabricaria edge inexistente.
 # Env vars EXECUTION_BOOKS / EXECUTION_MAX_UPLIFT (cuando estan) ganan sobre esto.
-# SIN CABLEAR (auditoria integral 2026-09-17, AUD-005): `_execution_prices`
-# existe y esta probado, pero 9dfb4cc decidio no llamarlo desde pipeline/daily.py,
-# que ejecuta SIEMPRE a consensus_median. Declarar casas aqui no cambia ningun
-# precio; `Settings.load` lo avisa. Cablearlo es decision del operador.
+# CABLEADO el 2026-09-19 (decision del operador; cierra AUD-005): cada linea
+# servida y cada candidato llevan `execution_price` y `execution_book`. Capa
+# ADITIVA: price_decimal, edge, seleccion, stake y liquidacion siguen sobre
+# consensus_median. Con `books` vacio las dos columnas repiten la mediana.
+# Cobrar de verdad al precio de ejecucion es una decision aparte.
 execution:
   books: []
   max_uplift: 0.15

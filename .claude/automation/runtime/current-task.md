@@ -191,3 +191,16 @@ resultado en `docs/research/2026-09-19-resultado-suelo-de-precio.md`).
   como decisión provisional de la sesión `opus`, **pendiente de revisión en
   `fable` antes de que ninguna de sus consecuencias toque `configs/` o
   producción**. Ninguna lo hace hoy.
+
+## Registro de enrutamiento — line shopping cableado como capa de ejecución (2026-09-19)
+
+Orden del operador («Sí, hazlo», tras elegir el orden de frentes). Sesión
+principal `claude-opus-5`. Clase de escalado: **cambiar el contrato de un
+artefacto persistido** (`served_*.csv` y `candidates_*.csv` ganan
+`execution_price`/`execution_book`; cierra AUD-005 del 17/09). Despacho
+`Agent(model="fable")` para revisión independiente solo lectura del diff antes
+del commit. No se toca ningún parámetro de riesgo, modelo, umbral ni gate:
+`price_decimal`, no-vig, edge, selección, stake y liquidación siguen sobre la
+mediana del consenso; `execution.books` queda vacío (default-deny).
+Veredicto `fable`: **aprobar**, 0 defectos P0/P1/MEDIUM, 1 LOW cosmético (fallback
+defensivo inalcanzable en `daily.py`, se conserva). Codex: sin hallazgos.
