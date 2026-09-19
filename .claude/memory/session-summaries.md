@@ -589,3 +589,15 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Cierre:** `f2cad65`, `74693ef`, `c50cb91` en `origin/main`; CI run 35423887091 **success** sobre `c50cb91` (el de `74693ef` cancelado por el push siguiente). Árbol limpio antes del run de las 11:00.
 
 **Pendiente:** line shopping como capa de ejecución; evaluar el gate cuando `--report` muestre ≥300 graduadas (~4 capturas); vigilar la línea `team_totals:` en `logs/run_diario.log` tras el run de las 11:00; F5 bloqueado.
+
+## 2026-09-19 (3) — «Sí, hazlo» (2): line shopping cableado como capa aditiva de ejecución
+
+**Trabajo realizado:** `_execution_prices` (existía desde `9dfb4cc`, sin llamadores; AUD-005) cableado en `daily.run_league`: cada fila servida y cada `BetCandidate` llevan `execution_price`/`execution_book`. Invariantes: `price_decimal`, no-vig, edge, selección, stake y liquidación siguen sobre la mediana; con `execution.books: []` la salida es idéntica salvo las dos columnas. `served_store.COLUMNS` y `BetCandidate` ampliados al final con defaults; `Settings.load` informa en vez de avisar; textos de `ExecutionConfig`/`default.yaml`. Tests: 2 candados retirados, 3 nuevos (`tests/test_line_shopping.py`, 16 passed). Antes, medición de coste de la captura de team_totals (24 s, 2 créditos/partido, 0 tokens) que gastó 20 créditos extra por relanzarla; `consensus_novig` conserva una captura por selección (`9c79258`).
+
+**Enrutamiento:** clase «contrato de artefacto persistido» → `Agent(model="fable")` solo lectura: **aprobar**, 1 LOW cosmético. Codex: sin hallazgos. Registrado en `current-task.md`.
+
+**Validación:** suite `not slow` 2040 passed; ruff y mypy limpios; CI success sobre `6575fa8` (run 35425896411). El fallo del hook (`TimeoutExpired` en `test_audit_pipeline_isolation`) fue contención del host; aislado 2/2.
+
+**Archivos:** `src/sqp/pipeline/daily.py`, `src/sqp/storage/served_store.py`, `src/sqp/domain/models.py`, `src/sqp/config.py`, `configs/default.yaml`, `tests/test_line_shopping.py`, `src/sqp/pipeline/team_totals_capture.py`, `scripts/collect_team_totals_mlb.py`, `Obsidian/Bitácora/2026-09-19.md`, `current-task.md`, memoria.
+
+**Pendiente (operador):** declarar las casas accesibles (`execution.books` o `EXECUTION_BOOKS`); sin lista la capa es inerte. Decidir aparte si Kelly/liquidación pasan al precio de ejecución. **Pendiente (sistema):** tiempos reales de llegada de información; arnés walk-forward spreads/totals; gate de team_totals con ≥300 graduadas; F5 bloqueado.
