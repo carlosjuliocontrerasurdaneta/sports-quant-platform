@@ -110,7 +110,11 @@ DIARIO_COMPLETO.bat
 - aplica **calibración por (liga, mercado)** si está activa (`configs/default.yaml`),
   **penalización de EV** por desacuerdo modelo-mercado y **banca dinámica** (Kelly sobre
   el balance corriente del ledger);
-- escribe el **reporte consolidado** (`data/predictions/report_<día>.md` + dashboard HTML).
+- escribe el **reporte consolidado** (`data/predictions/report_<día>.md` + dashboard HTML);
+- (`DIARIO_COMPLETO.bat`, best-effort) captura una vez al día las cuotas de **team_totals MLB**
+  con la probabilidad pura del motor sellada (`scripts/collect_team_totals_mlb.py`, Fase 1 del
+  pre-registro de derivados; tope 45 créditos/día y 1.400/mes con auto-stop; stake 0).
+  `--report` liquida y resume sin gastar cuota.
 
 Otros BAT: `BACKFILL_ALL.bat` (resultados históricos, semanal), `REFRESH_ML.bat`
 (mantenimiento ML, **manual** desde 2026-08-29: su tarea semanal se retiró porque

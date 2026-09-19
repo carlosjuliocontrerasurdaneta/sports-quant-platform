@@ -137,3 +137,27 @@ Pasar la Fase 0 no es edge; es la condición mínima para que valga la pena gast
 créditos. Pasar la Fase 1 no es rentabilidad garantizada: el edge en derivados
 puede evaporarse por line shopping, límites de cuenta y selección adversa, y F5
 exige modelado aún no construido. No se promete beneficio en ninguna fase.
+
+## Estado — Fase 1 INICIADA el 2026-09-19
+
+- **Aprobación explícita del gasto:** operador, 2026-09-19 («Sí, hazlo», en
+  respuesta a la petición nominal de aprobar la cuota de derivados MLB).
+  Cuota al autorizar: 10.979 créditos restantes del mes.
+- **Implementación:** `sqp.pipeline.team_totals_capture` +
+  `scripts/collect_team_totals_mlb.py`, enganchado best-effort a
+  `DIARIO_COMPLETO.bat` (`:lista`). Endpoint por evento de The Odds API
+  (`/events/{id}/odds`, mercado `team_totals`, 2 créditos/evento con
+  `us,eu`); lista de eventos por `/events` (gratis). Tope 45/día y 1.400/mes
+  con auto-stop y contador propio (`data/odds/.team_totals_credits_<día>`).
+- **Probabilidad del motor sellada en la captura:** marginal por equipo
+  (`score_pmf(lam_equipo)`) con abridores probables adjuntos, la misma
+  cantidad que pasó la Fase 0. Solo líneas medias. Solo eventos no comenzados.
+- **Primera captura (2026-09-19 01:57Z):** 13 eventos, 244 filas, 6 casas,
+  líneas 2,5–6,5, 94 selecciones (evento, equipo, línea, lado), 26 créditos.
+  A ese ritmo el `n ≥ 300` del gate se alcanza en ~4 capturas; la temporada
+  regular termina el 2026-09-27 y la postemporada añade partidos hasta
+  finales de octubre.
+- **Liquidación:** `--report` gradúa contra `results_mlb.csv` (sin cuota) y
+  muestra el avance; **no decide**. El gate sigue siendo la regla de salida
+  del `prediction_gate`, evaluada aparte y con `stake 0` durante toda la fase.
+- **F5 (Fase 2) sigue bloqueada**: no se ha ejecutado backfill alguno.

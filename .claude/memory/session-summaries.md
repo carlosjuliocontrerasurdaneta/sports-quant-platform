@@ -575,3 +575,13 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Cierre:** commit `b31329a` publicado en `origin/main` (CI run 35421924818 en curso al cerrar; ver resultado en el siguiente arranque). La revisión cruzada de Codex del turno evaluó `HEAD` previo (`25afb66`), no estos cambios; los verá sobre `b31329a`.
 
 **Pendiente:** revisión en `fable` de la interpretación antes de cualquier consecuencia sobre `configs/`; palabra explícita del operador para el gasto de cuota de derivados MLB; arrancar el line shopping como capa de ejecución; KI-054/KI-055 siguen abiertos.
+
+## 2026-09-19 (2) — «Sí, hazlo»: Fase 1 de derivados MLB (team_totals) en marcha
+
+**Trabajo realizado:** aprobación explícita del gasto registrada; cuota medida antes de gastar (10.979 restantes). Construida la captura forward de team_totals con la probabilidad pura del motor sellada: `MarketLine.description`, `OddsAPIClient.list_events/fetch_event_odds`, `closing_capture` con `prefix` de contador, `sqp/pipeline/team_totals_capture.py`, `scripts/collect_team_totals_mlb.py`, gancho best-effort en `DIARIO_COMPLETO.bat :lista`, README, 5 tests. Primera captura real: 13 eventos, 244 filas, 94 selecciones, 26 créditos (tope 45/día, 1.400/mes con auto-stop).
+
+**Validación:** ruff + mypy limpios; 86 tests (BAT, cliente, closing_capture, nuevo) en verde.
+
+**Archivos:** `src/sqp/domain/models.py`, `src/sqp/providers/odds_api.py`, `src/sqp/pipeline/closing_capture.py`, `src/sqp/pipeline/team_totals_capture.py` (nuevo), `scripts/collect_team_totals_mlb.py` (nuevo), `tests/test_team_totals_capture.py` (nuevo), `DIARIO_COMPLETO.bat`, `README.md`, `docs/research/2026-08-24-preregistro-mercados-derivados.md` (estado), `Obsidian/{Bitácora/2026-09-19.md,Tareas.md}`, memoria. Datos nuevos: `data/odds/team_totals_mlb_202609.csv`, `data/odds/.team_totals_credits_2026-09-19`.
+
+**Pendiente:** commitear ANTES del run de las 11:00 (guard de árbol del BAT); line shopping como capa de ejecución; evaluar el gate con ≥300 graduadas; F5 bloqueado.

@@ -56,13 +56,20 @@ def leagues_with_imminent_bets(predictions_dir: Path, now: datetime,
     return out
 
 
-def _credits_file(odds_dir: Path, day: str) -> Path:
-    return odds_dir / f".closing_credits_{day}"
+CREDITS_PREFIX = ".closing_credits_"
 
 
-def spent_today(odds_dir: Path, day: str) -> int:
-    """Credits already spent on closing capture today (0 if absent/corrupt)."""
-    p = _credits_file(odds_dir, day)
+def _credits_file(odds_dir: Path, day: str, prefix: str = CREDITS_PREFIX) -> Path:
+    return odds_dir / f"{prefix}{day}"
+
+
+def spent_today(odds_dir: Path, day: str, prefix: str = CREDITS_PREFIX) -> int:
+    """Credits already spent on closing capture today (0 if absent/corrupt).
+
+    ``prefix`` names the counter: each budgeted collector keeps its own file so
+    the closing-capture budget and, e.g., the team_totals budget never share a
+    total."""
+    p = _credits_file(odds_dir, day, prefix)
     if not p.exists():
         return 0
     try:
@@ -71,16 +78,16 @@ def spent_today(odds_dir: Path, day: str) -> int:
         return 0
 
 
-def add_spent(odds_dir: Path, day: str, credits: int) -> int:
+def add_spent(odds_dir: Path, day: str, credits: int, prefix: str = CREDITS_PREFIX) -> int:
     """Add credits (negative ignored) to today's total and persist. Returns total.
 
     Lock + tmp/replace: el contador es read-modify-write compartido entre pases
     horarios; sin serializar, dos escrituras concurrentes o un crash a mitad
     podian perder gasto acumulado (auditoria 2026-07-24, M-23)."""
-    p = _credits_file(odds_dir, day)
+    p = _credits_file(odds_dir, day, prefix)
     p.parent.mkdir(parents=True, exist_ok=True)
     with locked(p):
-        total = spent_today(odds_dir, day) + max(0, int(credits))
+        total = spent_today(odds_dir, day, prefix) + max(0, int(credits))
         # `atomic_write_json` da el temporal unico y el fsync; el contador es un
         # entero, que es JSON valido y se relee igual con `int(...)`.
         atomic_write_json(total, p)

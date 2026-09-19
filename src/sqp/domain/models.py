@@ -24,6 +24,9 @@ class MarketLine:
     outcome: str              # team name | Draw | Over | Under
     price_decimal: float
     point: float | None = None  # spread or total line
+    # Additional markets qualify the outcome: in team_totals ``outcome`` is
+    # Over/Under and ``description`` names the team. None for h2h/spreads/totals.
+    description: str | None = None
 
 
 @dataclass

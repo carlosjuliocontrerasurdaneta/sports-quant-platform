@@ -284,6 +284,14 @@ REM desde el Programador de tareas, vive dentro de una sesion de Claude. El
 REM dashboard resalta los A en verde y los B en ambar.
 "%SQP_PYTHON%" scripts\tipster_report.py >> logs\run_diario.log 2>&1
 if %ERRORLEVEL% neq 0 echo [AVISO] tipster_report.py fallo (no bloqueante) >> logs\run_diario.log
+
+REM Fase 1 del pre-registro de derivados (docs/research/2026-08-24-preregistro-
+REM mercados-derivados.md): una captura diaria de team_totals MLB con la
+REM probabilidad pura del motor sellada, tope 45 creditos/dia y 1.400/mes con
+REM auto-stop dentro del script. Gasto autorizado por el operador el
+REM 2026-09-19. Stake 0: no produce picks. Best-effort, como todo :lista.
+"%SQP_PYTHON%" scripts\collect_team_totals_mlb.py --mode live >> logs\run_diario.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] collect_team_totals_mlb.py fallo (no bloqueante) >> logs\run_diario.log
 goto :eof
 
 :error_arbol

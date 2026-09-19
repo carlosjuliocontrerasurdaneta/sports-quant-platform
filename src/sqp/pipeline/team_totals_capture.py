@@ -1,0 +1,312 @@
+"""Fase 1 del pre-registro de mercados derivados (2026-08-24): team_totals MLB.
+
+Recoleccion FORWARD de cuotas de team_totals contra el libro, con la
+probabilidad PURA del motor sellada en el instante de captura. El motor no
+expone este mercado: la probabilidad es la marginal por equipo que ya calcula
+el adaptador (`score_pmf(lam_equipo)`), la misma que paso la Fase 0
+(`scripts/research/measure_team_totals_calibration.py`). Sin este fichero no
+se puede medir edge realizado hacia atras: The Odds API solo sirve mercados
+adicionales por evento y no los guarda en el historico del proyecto.
+
+Guardarrailes copiados del pre-registro, no reinventados:
+
+  - tope de creditos `<= 45/dia` y `<= 1.400/mes`, con auto-stop;
+  - stake 0 siempre: este modulo no produce candidatos ni picks;
+  - solo eventos NO comenzados (`captured_at < commence_time`, KI-019);
+  - fuera de muestra: la fecha de captura es posterior al pre-registro por
+    construccion.
+
+Autorizacion explicita del operador para el gasto: 2026-09-19 («Sí, hazlo»),
+registrada en `Obsidian/Bitácora/2026-09-19.md`.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from sqp.config import ROOT, Settings
+from sqp.domain.models import Event, EventOdds
+from sqp.logging_config import get_logger
+from sqp.markets.odds import is_usable_price
+from sqp.models.distributions import score_pmf
+from sqp.pipeline.closing_capture import add_spent, spent_today
+from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.lock import locked
+from sqp.storage.results_store import ResultsStore
+
+log = get_logger("sqp.team_totals")
+
+MARKET = "team_totals"
+# Pre-registro 2026-08-24, Fase 1: tope de creditos con auto-stop.
+MAX_CREDITS_PER_DAY = 45
+MAX_CREDITS_PER_MONTH = 1400
+MIN_REMAINING = 500  # no se toca el colchon del run diario
+CREDITS_PREFIX = ".team_totals_credits_"
+HORIZON_HOURS = 30  # partidos de hoy y de manana temprano; una captura por dia
+
+COLUMNS = ["captured_at", "event_id", "commence_time", "home", "away", "team",
+           "side", "point", "price_decimal", "bookmaker", "model_probability",
+           "home_pitcher", "away_pitcher"]
+
+
+def tail_over(lam: float, line: float, max_score: int, dispersion_k: float | None) -> float:
+    """P(carreras del equipo > linea) desde la marginal del motor. Las lineas
+    son medias, asi que no hay masa de push."""
+    pmf = score_pmf(lam, max_score, dispersion_k)
+    thr = int(line) + 1
+    return sum(pmf[thr:]) / max(1e-12, sum(pmf))
+
+
+def team_total_rows(eo: EventOdds, lam_home: float, lam_away: float, *,
+                    max_score: int, dispersion_k: float | None,
+                    captured_at: str) -> list[dict[str, Any]]:
+    """Una fila por (casa, equipo, lado, linea) con la probabilidad del motor.
+
+    Solo lineas medias (`.5`): una linea entera introduce push y la Fase 0 no
+    la calibro. Los precios degenerados se conservan (igual que `odds_store`),
+    el consenso los descarta al leer via `is_usable_price`.
+    """
+    ev = eo.event
+    lam_by_team = {ev.home: lam_home, ev.away: lam_away}
+    rows: list[dict[str, Any]] = []
+    for ln in eo.lines:
+        if ln.market != MARKET or ln.point is None or ln.description not in lam_by_team:
+            continue
+        side = str(ln.outcome).lower()
+        if side not in ("over", "under"):
+            continue
+        point = float(ln.point)
+        if abs(point - round(point)) != 0.5:
+            continue
+        p_over = tail_over(lam_by_team[ln.description], point, max_score, dispersion_k)
+        rows.append({
+            "captured_at": captured_at, "event_id": ev.event_id,
+            "commence_time": ev.start_time, "home": ev.home, "away": ev.away,
+            "team": ln.description, "side": side, "point": point,
+            "price_decimal": float(ln.price_decimal), "bookmaker": ln.bookmaker,
+            "model_probability": p_over if side == "over" else 1.0 - p_over,
+            "home_pitcher": ev.home_pitcher, "away_pitcher": ev.away_pitcher,
+        })
+    return rows
+
+
+def _parse_utc(s: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def spent_this_month(odds_dir: Path, day: str) -> int:
+    """Suma de los contadores diarios del mes de `day` (YYYY-MM-DD)."""
+    total = 0
+    for p in odds_dir.glob(f"{CREDITS_PREFIX}{day[:7]}-*"):
+        total += spent_today(odds_dir, p.name[len(CREDITS_PREFIX):], CREDITS_PREFIX)
+    return total
+
+
+def store_path(root: Path, league: str, month: str) -> Path:
+    return root / "data" / "odds" / f"team_totals_{league}_{month}.csv"
+
+
+def append_rows(root: Path, league: str, rows: list[dict[str, Any]]) -> int:
+    """Persiste las filas en el fichero mensual propio de team_totals. Es un
+    artefacto NUEVO: no toca el contrato de `odds_<liga>_<mes>.csv`."""
+    if not rows:
+        return 0
+    df = pd.DataFrame(rows)[COLUMNS]
+    p = store_path(root, league, str(rows[0]["captured_at"])[:7].replace("-", ""))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with locked(p):
+        if p.exists():
+            prior = pd.read_csv(p)
+            if list(prior.columns) != COLUMNS:
+                cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
+                atomic_write_csv(pd.concat([prior.reindex(columns=cols),
+                                            df.reindex(columns=cols)], ignore_index=True), p)
+                return len(df)
+        df.to_csv(p, mode="a", header=not p.exists(), index=False)
+    return len(df)
+
+
+def _fit_adapter(league: str, root: Path):
+    """Mismo ajuste que la ruta live de `daily.run_league` para beisbol."""
+    from sqp.pipeline.daily import _league_meta
+    from sqp.sports.registry import get_adapter
+    from sqp.storage.starter_fip import StarterFIPStore
+    from sqp.storage.starters import StartersStore
+
+    meta = _league_meta(league)
+    if meta["family"] != "baseball":
+        raise ValueError(f"team_totals Fase 1 esta pre-registrada solo para beisbol; "
+                         f"{league!r} es {meta['family']!r}")
+    adapter = get_adapter(league, meta["family"], meta.get("league_params"))
+    results = ResultsStore(root).load(league)
+    if results:
+        StartersStore(root).attach(league, results)
+        StarterFIPStore(root).attach(league, results)
+        adapter.fit_results(results)
+    return adapter, meta
+
+
+def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
+                        root: Path | None = None, now: datetime | None = None,
+                        pitcher_provider=None) -> dict[str, Any]:
+    """Una captura de team_totals para los partidos no comenzados del horizonte.
+
+    Devuelve un resumen con eventos capturados, filas, creditos gastados y el
+    motivo de parada si el presupuesto corta. Nunca lanza por un evento
+    concreto: se registra y se sigue con el siguiente.
+    """
+    root = root or ROOT
+    now = now or datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    odds_dir = root / "data" / "odds"
+    summary: dict[str, Any] = {"league": league, "day": day, "events": 0, "rows": 0,
+                               "credits_spent": 0, "skipped": [], "stop": None}
+    already_day = spent_today(odds_dir, day, CREDITS_PREFIX)
+    already_month = spent_this_month(odds_dir, day)
+    if already_day >= MAX_CREDITS_PER_DAY or already_month >= MAX_CREDITS_PER_MONTH:
+        summary["stop"] = (f"presupuesto agotado antes de empezar: {already_day}/{MAX_CREDITS_PER_DAY} "
+                           f"hoy, {already_month}/{MAX_CREDITS_PER_MONTH} este mes")
+        log.warning("team_totals: %s", summary["stop"])
+        return summary
+
+    if client is None:
+        from sqp.providers.odds_api import OddsAPIClient
+        client = OddsAPIClient(settings.odds_api_key, settings.regions, settings.odds_format)
+    adapter, meta = _fit_adapter(league, root)
+    max_score = int(adapter.params.get("max_score", 15))
+    disp_k = adapter.params.get("dispersion_k")
+
+    horizon_end = now + timedelta(hours=HORIZON_HOURS)
+    upcoming = []
+    for e in client.list_events(meta["sport_key"]):
+        t = _parse_utc(e.get("commence_time"))
+        if t is None or t <= now or t > horizon_end:
+            continue
+        upcoming.append(e)
+    if not upcoming:
+        summary["stop"] = "sin eventos no comenzados en el horizonte"
+        return summary
+
+    # Abridores probables ANTES de pedir cuotas: la lambda que se sella lleva
+    # la misma informacion que produccion tenia a esa hora.
+    events = [EventOdds(event=Event(event_id=str(e["id"]), sport_key=meta["sport_key"],
+                                    league=league, home=e["home_team"], away=e["away_team"],
+                                    start_time=str(e["commence_time"]), data_label="real"))
+              for e in upcoming]
+    try:
+        from sqp.pipeline.daily import _attach_probable_pitchers
+        _attach_probable_pitchers(events, league, adapter.normalize,
+                                  provider=pitcher_provider, root=root)
+    except Exception as exc:  # best-effort, igual que el run diario
+        log.warning("team_totals: abridores no disponibles: %s", exc)
+
+    captured_at = now.isoformat(timespec="seconds")
+    spent = 0
+    for eo in events:
+        if already_day + spent >= MAX_CREDITS_PER_DAY or already_month + spent >= MAX_CREDITS_PER_MONTH:
+            summary["stop"] = (f"tope de creditos alcanzado ({already_day + spent}/{MAX_CREDITS_PER_DAY} "
+                               f"hoy, {already_month + spent}/{MAX_CREDITS_PER_MONTH} mes)")
+            summary["skipped"].append(eo.event.event_id)
+            continue
+        remaining = getattr(client, "requests_remaining", None)
+        if remaining is not None and remaining < MIN_REMAINING:
+            summary["stop"] = f"requests_remaining {remaining} < {MIN_REMAINING}"
+            summary["skipped"].append(eo.event.event_id)
+            continue
+        try:
+            fetched = client.fetch_event_odds(league, meta["sport_key"], eo.event.event_id, MARKET)
+        except Exception as exc:
+            log.warning("team_totals: [%s] fallo al pedir cuotas: %s", eo.event.event_id, exc)
+            summary["skipped"].append(eo.event.event_id)
+            continue
+        delta = int(getattr(client, "requests_last", 0) or 0)
+        if delta:
+            add_spent(odds_dir, day, delta, CREDITS_PREFIX)
+        spent += delta
+        if not fetched:
+            continue
+        # Cuotas del proveedor sobre el evento con los abridores ya adjuntos.
+        eo.lines = fetched[0].lines
+        lam_h, lam_a = adapter._rates(eo.event)
+        rows = team_total_rows(eo, lam_h, lam_a, max_score=max_score,
+                               dispersion_k=disp_k, captured_at=captured_at)
+        n = append_rows(root, league, rows)
+        summary["events"] += 1
+        summary["rows"] += n
+    summary["credits_spent"] = spent
+    log.info("team_totals: [%s] %d eventos, %d filas, %d creditos (%d hoy / %d mes)%s",
+             league, summary["events"], summary["rows"], spent, already_day + spent,
+             already_month + spent, f"; parada: {summary['stop']}" if summary["stop"] else "")
+    return summary
+
+
+def load_captures(root: Path, league: str) -> pd.DataFrame:
+    files = sorted((root / "data" / "odds").glob(f"team_totals_{league}_*.csv"))
+    if not files:
+        return pd.DataFrame(columns=COLUMNS)
+    return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+
+
+def grade_captures(captures: pd.DataFrame, results: list[dict], normalize=None) -> pd.DataFrame:
+    """Liquida cada fila contra las carreras reales del equipo (sin cuota extra).
+
+    Empareja por (fecha UTC del partido, casa, visitante) normalizados. Las filas
+    sin resultado quedan con `result` NaN; no hay push porque solo se guardan
+    lineas medias.
+    """
+    nk = normalize or (lambda s: str(s or "").strip().lower())
+    runs: dict[tuple[str, str, str], tuple[float, float]] = {}
+    for r in results:
+        try:
+            runs[(str(r.get("date"))[:10], nk(r["home"]), nk(r["away"]))] = (
+                float(r["home_score"]), float(r["away_score"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    out = captures.copy()
+    team_runs: list[float | None] = []
+    for row in out.itertuples(index=False):
+        key = (str(row.commence_time)[:10], nk(row.home), nk(row.away))
+        scores = runs.get(key)
+        if scores is None:
+            # Un partido nocturno de la costa oeste comienza tras las 00:00Z:
+            # la fecha UTC va un dia por delante de la fecha oficial MLB.
+            prev = (_parse_utc(row.commence_time) or datetime.min.replace(tzinfo=timezone.utc)) - timedelta(days=1)
+            scores = runs.get((prev.strftime("%Y-%m-%d"), nk(row.home), nk(row.away)))
+        if scores is None:
+            team_runs.append(None)
+            continue
+        team_runs.append(scores[0] if nk(row.team) == nk(row.home) else scores[1])
+    out["team_runs"] = team_runs
+    over = out["team_runs"] > out["point"]
+    out["result"] = None
+    has = out["team_runs"].notna()
+    out.loc[has & (out["side"] == "over"), "result"] = over[has & (out["side"] == "over")].map(
+        {True: "win", False: "loss"})
+    out.loc[has & (out["side"] == "under"), "result"] = (~over[has & (out["side"] == "under")]).map(
+        {True: "win", False: "loss"})
+    return out
+
+
+def consensus_novig(graded: pd.DataFrame) -> pd.DataFrame:
+    """Probabilidad implicita sin vig por (evento, equipo, linea, lado): mediana
+    entre casas del par Over/Under de cada casa, con el devig proporcional."""
+    d = graded[graded["price_decimal"].map(is_usable_price)].copy()
+    d["implied"] = 1.0 / d["price_decimal"]
+    key = ["captured_at", "event_id", "team", "point", "bookmaker"]
+    pair_sum = d.groupby(key)["implied"].transform("sum")
+    pair_n = d.groupby(key)["implied"].transform("size")
+    d = d[pair_n == 2].copy()
+    d["novig"] = d["implied"] / pair_sum[pair_n == 2]
+    agg = (d.groupby(["captured_at", "event_id", "team", "point", "side"])
+            .agg(implied_probability_novig=("novig", "median"), books_count=("novig", "size"),
+                 price_median=("price_decimal", "median"), model_probability=("model_probability", "first"),
+                 result=("result", "first"), commence_time=("commence_time", "first"),
+                 home=("home", "first"), away=("away", "first"))
+            .reset_index())
+    return agg

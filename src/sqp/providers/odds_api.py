@@ -274,7 +274,8 @@ class OddsAPIClient:
                             degenerate += 1
                         lines.append(MarketLine(
                             market=mk["key"], bookmaker=bm["key"], outcome=oc["name"],
-                            price_decimal=price, point=oc.get("point")))
+                            price_decimal=price, point=oc.get("point"),
+                            description=oc.get("description")))
             out.append(EventOdds(event=event, lines=lines))
         if degenerate:
             # Agregado por llamada, no por linea: con 1.611 casos en el historico
@@ -289,6 +290,26 @@ class OddsAPIClient:
         raw = self._get(f"/sports/{sport_key}/odds", cache=True, regions=self.regions,
                         markets=markets, oddsFormat=self.odds_format)
         return self._parse_events(cast(list, raw), sport_key, league_id)
+
+    def list_events(self, sport_key: str) -> list[dict]:
+        """Upcoming events (id, commence_time, home_team, away_team) for a sport.
+
+        /events does not consume request quota, so it is the free way to learn
+        the event ids that the per-event endpoint needs.
+        """
+        return cast("list[dict]", self._get(f"/sports/{sport_key}/events"))
+
+    def fetch_event_odds(self, league_id: str, sport_key: str, event_id: str,
+                         markets: str) -> list[EventOdds]:
+        """Odds for ONE event: the only endpoint that serves additional markets
+        such as ``team_totals``. Costs ``markets x regions`` credits per call
+        (read ``requests_last`` after calling), so callers must budget per event.
+        """
+        raw = self._get(f"/sports/{sport_key}/events/{event_id}/odds", cache=True,
+                        regions=self.regions, markets=markets, oddsFormat=self.odds_format)
+        if not isinstance(raw, dict) or "id" not in raw:
+            return []
+        return self._parse_events([raw], sport_key, league_id)
 
     def fetch_historical_odds(self, sport_key: str, date_iso: str, league_id: str | None = None,
                               markets: str = "h2h,spreads,totals") -> dict:

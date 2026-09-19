@@ -8,6 +8,10 @@ actualizada: 2026-09-17
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
 
+## Derivados MLB — Fase 1 en marcha (2026-09-19)
+
+- [ ] 2026-09-19 — **Fase 1 team_totals MLB INICIADA** (gasto autorizado por el operador el 2026-09-19). Captura diaria desde `DIARIO_COMPLETO.bat :lista` (`scripts/collect_team_totals_mlb.py --mode live`, 2 créditos/evento, tope 45/día y 1.400/mes). Primera captura: 13 eventos, 94 selecciones, 26 créditos. **Cuando `--report` muestre ≥300 graduadas** (~4 capturas), evaluar el gate con la misma regla del `prediction_gate` (test de signo pareado modelo puro vs no-vig, p<0,05, EV plano >0); stake 0 hasta entonces. Vigilar en el log diario la línea `team_totals:` y el contador `data/odds/.team_totals_credits_*`. Ver [[Bitácora/2026-09-19]].
+
 ## Auditoría integral 2026-09-18 (ronda `audit-2026-09-18`)
 
 - [x] 2026-09-18 — Diagnóstico con DOS auditores (OpenAI 3 + Claude 4, disjuntos), consolidación (`audit/latest/FINDINGS.md`: MEDIUM 4, LOW 3, P0/P1 0) y remediación autorizada («si, hazlo») de AUD-001…007; 6 corregidos + AUD-004 parcial. Ver [[Bitácora/2026-09-18]].
