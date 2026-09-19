@@ -259,6 +259,16 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
             # La respuesta ya se persistio en la peticion que la origino; volver
             # a sellarla con la hora de ahora falsearia `captured_at`.
             continue
+        # La cuota es de cuando LLEGA la respuesta, no de cuando se pidio: con
+        # reintentos o red lenta el partido puede haber comenzado entre medias
+        # y el libro ya estaria en vivo. Se comprueba otra vez y se sella con
+        # la hora de llegada; el credito ya gastado se cuenta igual.
+        at = clock()
+        if start <= at:
+            summary["skipped"].append(eo.event.event_id)
+            log.warning("team_totals: [%s] la respuesta llego tras el comienzo; "
+                        "cuotas descartadas (credito gastado: %d)", eo.event.event_id, delta)
+            continue
         captured_at = at.isoformat(timespec="seconds")
         # Cuotas del proveedor sobre el evento con los abridores ya adjuntos.
         eo.lines = fetched[0].lines

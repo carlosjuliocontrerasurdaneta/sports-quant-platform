@@ -154,7 +154,10 @@ def test_grade_no_gradua_un_doubleheader_ni_sin_resultado():
 
 def test_captura_salta_el_evento_que_comienza_durante_el_bucle(entorno):
     t0 = datetime(2026, 9, 20, 15, tzinfo=timezone.utc)
-    ticks = iter([t0, t0, datetime(2026, 9, 20, 23, 30, tzinfo=timezone.utc)])
+    t1 = datetime(2026, 9, 20, 15, 0, 5, tzinfo=timezone.utc)
+    late = datetime(2026, 9, 20, 23, 30, tzinfo=timezone.utc)
+    # Reloj: arranque, antes/despues de la peticion de `a`, antes de la de `b`.
+    ticks = iter([t0, t0, t1, late])
     events = [{"id": "a", "home_team": "H", "away_team": "A", "commence_time": "2026-09-20T22:00:00Z"},
               {"id": "b", "home_team": "H2", "away_team": "A2", "commence_time": "2026-09-20T23:10:00Z"}]
     client = _Client(events)
@@ -164,6 +167,22 @@ def test_captura_salta_el_evento_que_comienza_durante_el_bucle(entorno):
     assert client.fetched == ["a"] and s["skipped"] == ["b"] and s["events"] == 1
     df = tt.load_captures(entorno, "mlb")
     assert (pd.to_datetime(df["captured_at"]) < pd.to_datetime(df["commence_time"])).all()
+    # `captured_at` es la hora de LLEGADA de la respuesta, no la de la peticion.
+    assert df["captured_at"].unique().tolist() == [t1.isoformat(timespec="seconds")]
+
+
+def test_captura_descarta_la_respuesta_que_llega_tras_el_comienzo(entorno):
+    t0 = datetime(2026, 9, 20, 21, 59, tzinfo=timezone.utc)
+    after = datetime(2026, 9, 20, 22, 0, 30, tzinfo=timezone.utc)
+    ticks = iter([t0, t0, after])  # arranque, antes de pedir, al llegar la respuesta
+    events = [{"id": "a", "home_team": "H", "away_team": "A", "commence_time": "2026-09-20T22:00:00Z"}]
+    client = _Client(events, cost=2)
+    s = tt.capture_team_totals(object(), league="mlb", client=client, root=entorno,
+                               clock=lambda: next(ticks))
+    # Se pidio antes del comienzo pero la respuesta llego despues: no se
+    # persiste (podria ser el libro en vivo) y el credito gastado se cuenta.
+    assert client.fetched == ["a"] and s["skipped"] == ["a"] and s["events"] == 0
+    assert s["credits_spent"] == 2 and tt.load_captures(entorno, "mlb").empty
 
 
 def test_captura_no_vuelve_a_persistir_una_respuesta_cacheada(entorno):
