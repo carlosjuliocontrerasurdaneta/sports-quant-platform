@@ -171,3 +171,23 @@ Criterios de aceptación (verification-gate): por ID en
 `audit/latest/STATUS.md`. Validación global: suite completa, ruff, mypy,
 `git diff --check`, prompts sincronizados. Siguiente: verificación
 independiente (`audits/prompts/verificar-remediacion.md`).
+
+---
+
+## Registro de enrutamiento — pre-registro del suelo de precio (2026-09-19)
+
+Sesión principal en `claude-opus-5`, sin despachos. Pregunta del operador
+(«¿qué falta para cumplir el objetivo? elige las mejores opciones») resuelta
+**midiendo primero**: la ventana del pre-registro del 2026-08-25 alcanzó la
+muestra (824 picks / 424 eventos) y se ejecutó una sola vez con el diseño
+congelado (`scripts/research/measure_price_floor_preregistration.py`,
+resultado en `docs/research/2026-09-19-resultado-suelo-de-precio.md`).
+
+- Clase de la medición: lectura de datos guardados; ningún parámetro de
+  riesgo, modelo, umbral ni gate tocado; nada desplegado. No dispara escalado.
+- Clase de la interpretación (primaria ACEPTA, contraprueba NO → no se adopta)
+  y de la priorización estratégica que sale de ella: **estrategia**. Es
+  materia del escalón `fable` según la REGLA DE DESPACHO. Queda registrada aquí
+  como decisión provisional de la sesión `opus`, **pendiente de revisión en
+  `fable` antes de que ninguna de sus consecuencias toque `configs/` o
+  producción**. Ninguna lo hace hoy.

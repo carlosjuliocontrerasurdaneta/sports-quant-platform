@@ -561,3 +561,15 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Archivos:** `.claude/{commands,skills,loops,agents,automation,ORCHESTRATOR.md,CLAUDE.md}`, `scripts/sync_agent_instructions.py`, `scripts/research/*`, `tests/test_claude_{system_contract,model_routing}.py`, `tests/test_agent_instruction_sync.py`, `docs/CLAUDE-CODEX-INTEGRATION.md`, `docs/FEATURE-RESEARCH.md`, `docs/research/*` (3), `README`/`REPO_DESCRIPTION` sin cambio.
 
 **Pendiente:** decisión del operador sobre el roster de 9 agentes sin despacho (recablear `model-routing.json`); KI-055; KI-054.
+
+## 2026-09-19 — Qué falta para el objetivo; pre-registro del suelo de precio ejecutado (no se adopta)
+
+**Trabajo realizado:** tres preguntas del operador (objetivo, qué falta, «elige las mejores opciones») respondidas midiendo: muestra de los dos pre-registros pendientes (1.936 eventos graduados, 24,9/día → «el modelo manda» ≈ 2026-11-17) y ejecución única del pre-registro del suelo de precio al alcanzar la ventana 824 picks / 424 eventos. Script nuevo `scripts/research/measure_price_floor_preregistration.py` (solo lectura, n_boot 4000, seed 42).
+
+**Resultado:** primaria ACEPTA (−17,80 % → −11,25 %, Δ +6,56 pp IC95 [+1,61, +11,47]); contraprueba NO superada (efecto = retirar `p_novig < 0,32`, ROI −40 %; Δ condicionado en Q2 cruza cero); escalera de `min_edge` sigue invertida en ventana nueva. **Decisión: no adoptar**; diagnóstico registrado. Priorización elegida: line shopping como capa de ejecución → captura de tiempos de llegada de información → derivados MLB (requiere aprobación explícita del gasto) → arnés walk-forward spreads/totals; `min_edge` sin tocar.
+
+**Validación:** `ruff check` limpio sobre el script; ejecución reproducible. Sin cambios en `src/`, `configs/` ni producción.
+
+**Archivos:** `scripts/research/measure_price_floor_preregistration.py`, `docs/research/2026-09-19-resultado-suelo-de-precio.md`, `Obsidian/Bitácora/2026-09-19.md`, `Obsidian/Tareas.md`, `.claude/automation/runtime/current-task.md`, memoria (esta entrada, `project-decisions.md`).
+
+**Pendiente:** revisión en `fable` de la interpretación antes de cualquier consecuencia sobre `configs/`; palabra explícita del operador para el gasto de cuota de derivados MLB; arrancar el line shopping como capa de ejecución; KI-054/KI-055 siguen abiertos.
