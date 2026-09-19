@@ -572,4 +572,6 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 
 **Archivos:** `scripts/research/measure_price_floor_preregistration.py`, `docs/research/2026-09-19-resultado-suelo-de-precio.md`, `Obsidian/Bitácora/2026-09-19.md`, `Obsidian/Tareas.md`, `.claude/automation/runtime/current-task.md`, memoria (esta entrada, `project-decisions.md`).
 
+**Cierre:** commit `b31329a` publicado en `origin/main` (CI run 35421924818 en curso al cerrar; ver resultado en el siguiente arranque). La revisión cruzada de Codex del turno evaluó `HEAD` previo (`25afb66`), no estos cambios; los verá sobre `b31329a`.
+
 **Pendiente:** revisión en `fable` de la interpretación antes de cualquier consecuencia sobre `configs/`; palabra explícita del operador para el gasto de cuota de derivados MLB; arrancar el line shopping como capa de ejecución; KI-054/KI-055 siguen abiertos.
