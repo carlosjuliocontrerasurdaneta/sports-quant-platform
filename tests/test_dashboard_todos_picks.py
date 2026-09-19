@@ -11,6 +11,7 @@ entregable invisible no es un entregable.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 import pandas as pd
@@ -93,3 +94,23 @@ class TestEstaEnElDashboard:
         assert 'data-tab="picks"' not in txt, (
             "la pestana recortada volvio: dos listas de picks confunden, y la "
             "que manda es la COMPLETA (los gates quitan el stake, no la lista)")
+
+    def test_el_panel_inicial_es_el_de_la_pestana_activa(self, tmp_path):
+        """Al abrir la pagina se ve la lista COMPLETA, no el recorte.
+
+        `fae6cdc` quito la pestana `picks` y renombro `todos` a "Picks del Dia",
+        pero dejo `class="panel active"` en el panel viejo (`#picks`, el recorte
+        por `min_edge`). Resultado: al cargar se veian ~10 filas bajo un rotulo
+        que prometia la lista completa, y al cambiar de pestana y volver
+        aparecian las ~136 reales (2026-09-18, reportado por el operador). El
+        panel visible al cargar tiene que ser el que senala la pestana activa,
+        y solo ese."""
+        page = html_dashboard(predictions_dir=tmp_path / "pred",
+                              bets_dir=tmp_path / "bets", make_latest=False)
+        txt = (tmp_path / "pred" / __import__("os").path.basename(page)).read_text(
+            encoding="utf-8")
+        m = re.search(r'class="tab active" data-tab="([a-z]+)"', txt)
+        assert m, "no hay pestana activa"
+        activos = re.findall(r'class="panel active" id="([a-z]+)"', txt)
+        assert activos == [m.group(1)], (
+            f"pestana activa {m.group(1)!r} pero paneles activos {activos!r}")

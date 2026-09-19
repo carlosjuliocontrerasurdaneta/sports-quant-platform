@@ -1058,7 +1058,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <div class="tab" data-tab="history">Historial</div>
 </nav>
 <main>
-  <section class="panel active" id="picks">
+  <section class="panel" id="picks">
     <div class="stats" id="statsBar"></div>
     <p class="gen"><strong>Los candidatos del dia</strong>: las caras que
       superaron <code>min_edge</code> y llegaron al motor de riesgo. Es un
@@ -1074,7 +1074,7 @@ _TEMPLATE = """<!DOCTYPE html>
     </div>
     <table class="grid" id="picksTable"><thead></thead><tbody></tbody></table>
   </section>
-  <section class="panel" id="todos">
+  <section class="panel active" id="todos">
     <div class="stats" id="statsTodos"></div>
     <p class="gen"><strong>Todas las caras priceadas</strong>, ordenadas por
       probabilidad estimada. <code>Breakeven = 1/cuota</code> es el acierto que la

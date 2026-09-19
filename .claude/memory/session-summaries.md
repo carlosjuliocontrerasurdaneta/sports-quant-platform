@@ -541,3 +541,11 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Archivos:** `.claude/settings.json` (1 token), `Obsidian/Bitácora/2026-09-18.md`, memoria (esta entrada, KI-055). Fuera del repo: `~/.claude/settings.json`, `~/.claude.json`.
 
 **Pendiente:** decidir sobre KI-055 (retirar el MCP `codex` y reescribir la Forma 1 sobre el plugin `codex:codex-rescue`, o buscar sustituto de `mcp-server`); documentar o desactivar la puerta Stop del plugin (`/codex:setup`); disparo de prueba del centinela tocando `configs/`; `graphify update .`; KI-054 (comando elevado) sigue del operador.
+
+## 2026-09-18 (noche) — Tablero: `#picks` seguía siendo el panel activo inicial tras `fae6cdc`
+
+**Trabajo realizado:** pregunta del operador (10 picks al abrir, 136 tras cambiar de pestaña). Diagnóstico en la plantilla: la nav solo tiene `data-tab="todos"` («Picks del Dia») pero `<section class="panel active" id="picks">` (recorte por `min_edge`) seguía activo al cargar; el clic en cualquier pestaña activaba el `#todos` correcto. Fix: `active` inicial a `#todos`. Test discriminante en `tests/test_dashboard_todos_picks.py` (verificado fallando antes, pasando después). `report_latest.html` regenerado con `html_dashboard(data/predictions, data/bets)` (misma función que `run_all.py`).
+
+**Validación:** `test_dashboard_todos_picks.py` + `test_html_report.py` + `test_picks_del_dia.py` → 60 passed; ruff y mypy limpios sobre los ficheros tocados.
+
+**Archivos:** `src/sqp/audit/html_report.py` (2 líneas), `tests/test_dashboard_todos_picks.py`, `Obsidian/Bitácora/2026-09-18.md`, memoria. Derivado: `data/predictions/report_latest.html` (+ `report_20260919.html`, nombre por día UTC, comportamiento previo).
