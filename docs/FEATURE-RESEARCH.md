@@ -131,7 +131,7 @@ quedaron integradas en el árbol principal el 2026-09-16; el experimento existen
 continúa con su código congelado, según [FEATURE-SHADOW.md](FEATURE-SHADOW.md).
 
 ```powershell
-python -B scripts/prepare_feature_candidates.py --report audit/feature_blocks_20260915.json --out audit/feature_candidates_new.json
+python -B scripts/research/prepare_feature_candidates.py --report audit/feature_blocks_20260915.json --out audit/feature_candidates_new.json
 ```
 
 El comando exige que el código haya permanecido estable durante la evaluación

@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-08-22  
 **Pre-registro:** docs/research/2026-08-22-preregistro-timing-starters.md  
-**Script:** `scripts/timing_experiment.py`  
+**Script:** `scripts/research/timing_experiment.py`  
 **Veredicto:** BLOQUEADO — pero revela el siguiente paso concreto
 
 ---
@@ -88,7 +88,7 @@ Implementar `pitcher_confirmation_log_mlb.csv` en el run diario:
 2. La función abre/crea `data/historical/pitcher_confirmation_log_mlb.csv`
    y añade filas solo para pitchers nuevos o cambiados.
 3. Acumular >= 30 partidos (aprox. 10–15 días hábiles de MLB).
-4. Re-ejecutar `scripts/timing_experiment.py`.
+4. Re-ejecutar `scripts/research/timing_experiment.py`.
 
 **Costo estimado:** ~40 líneas de código + 2 semanas de acumulación.
 

@@ -12,7 +12,7 @@ sqp/audit/intraday_gate.py. Un PASS habilita CONSTRUIR la generación intradía
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import pandas as pd
 
 from sqp.audit.clv import CLOSE_MAX_AGE_MIN

@@ -12,7 +12,7 @@ medición de no-regresión **nunca se había ejecutado ni registrado**. Es decir
 entrenamiento llevaba cinco días corriendo sobre un objetivo cuya no-regresión no
 se había verificado, contra lo que manda la propia regla de decisión.
 
-Medición: `scripts/measure_calibration_target.py` (nuevo, solo lee datos
+Medición: `scripts/research/measure_calibration_target.py` (nuevo, solo lee datos
 guardados, no toca el registro live ni consume cuota de API).
 
 ## Resultado
@@ -63,7 +63,7 @@ doce coeficientes de ajuste.
    coeficientes de ajuste hasta que este cambio esté promovido. Es justo al
    activarlos cuando los dos objetivos divergen — y sólo entonces esta prueba
    tendría potencia.
-2. **Re-ejecutar** `scripts/measure_calibration_target.py` cuando la fracción
+2. **Re-ejecutar** `scripts/research/measure_calibration_target.py` cuando la fracción
    divergente sea material. El script imprime esa fracción en cada corrida, así
    que la falta de potencia es visible sin releer este documento.
 3. No se promueve nada: la promoción sigue exigiendo aprobación humana explícita

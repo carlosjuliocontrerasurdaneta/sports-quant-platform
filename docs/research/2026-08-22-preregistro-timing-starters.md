@@ -2,7 +2,7 @@
 
 **Fecha de pre-registro:** 2026-08-22  
 **Autor:** Carlos Contreras (pre-registrado antes de analizar los datos)  
-**Script de análisis:** `scripts/timing_experiment.py`  
+**Script de análisis:** `scripts/research/timing_experiment.py`  
 **Commit de referencia:** pendiente (debe commitearse antes del primer análisis)
 
 ---
