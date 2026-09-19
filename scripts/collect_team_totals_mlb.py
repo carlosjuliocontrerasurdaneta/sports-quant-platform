@@ -46,7 +46,7 @@ def report(league: str) -> int:
     cons = consensus_novig(graded)
     done = cons[cons["result"].isin(["win", "loss"])]
     n_sel = len(cons)
-    print(f"[{league}] capturas: {caps['captured_at'].nunique()} | eventos: {caps['event_id'].nunique()} "
+    print(f"[{league}] filas de cuotas: {len(caps)} | eventos: {caps['event_id'].nunique()} "
           f"| selecciones (evento, equipo, linea, lado): {n_sel} | graduadas: {len(done)} "
           f"(gate n>={GATE_MIN_N}: {len(done) / GATE_MIN_N:.0%})")
     if done.empty:

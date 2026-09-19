@@ -336,7 +336,12 @@ def grade_captures(captures: pd.DataFrame, results: list[dict], normalize=None) 
 
 def consensus_novig(graded: pd.DataFrame) -> pd.DataFrame:
     """Probabilidad implicita sin vig por (evento, equipo, linea, lado): mediana
-    entre casas del par Over/Under de cada casa, con el devig proporcional."""
+    entre casas del par Over/Under de cada casa, con el devig proporcional.
+
+    Una fila por seleccion: si un evento se capturo mas de una vez (relanzar el
+    script el mismo dia gasta cuota y anade otra captura), se conserva la
+    PRIMERA, que es la que menos mira hacia el cierre. Contar cada captura
+    como una seleccion repetiria el error del stream servido (2,19x)."""
     d = graded[graded["price_decimal"].map(is_usable_price)].copy()
     d["implied"] = 1.0 / d["price_decimal"]
     key = ["captured_at", "event_id", "team", "point", "bookmaker"]
@@ -350,4 +355,6 @@ def consensus_novig(graded: pd.DataFrame) -> pd.DataFrame:
                  result=("result", "first"), commence_time=("commence_time", "first"),
                  home=("home", "first"), away=("away", "first"))
             .reset_index())
-    return agg
+    agg = agg.sort_values("captured_at", kind="stable").drop_duplicates(
+        ["event_id", "team", "point", "side"], keep="first")
+    return agg.reset_index(drop=True)

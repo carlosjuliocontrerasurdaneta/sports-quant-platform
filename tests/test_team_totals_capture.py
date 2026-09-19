@@ -191,3 +191,13 @@ def test_captura_no_vuelve_a_persistir_una_respuesta_cacheada(entorno):
     client.last_response_cached = True
     s = tt.capture_team_totals(object(), league="mlb", client=client, root=entorno, now=now)
     assert s["events"] == 0 and s["rows"] == 0 and tt.load_captures(entorno, "mlb").empty
+
+
+def test_consenso_conserva_una_captura_por_seleccion_la_primera():
+    caps = pd.DataFrame([_cap("over", 2.0, 0.55), _cap("under", 1.8, 0.45)])
+    later = caps.copy()
+    later["captured_at"], later["price_decimal"] = "d", 1.5
+    g = tt.grade_captures(pd.concat([later, caps], ignore_index=True), [])
+    c = tt.consensus_novig(g)
+    assert len(c) == 2 and set(c["captured_at"]) == {"c"}
+    assert c.loc[c["side"] == "over", "price_median"].item() == 2.0
