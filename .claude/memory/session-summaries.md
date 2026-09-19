@@ -549,3 +549,15 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Validación:** `test_dashboard_todos_picks.py` + `test_html_report.py` + `test_picks_del_dia.py` → 60 passed; ruff y mypy limpios sobre los ficheros tocados.
 
 **Archivos:** `src/sqp/audit/html_report.py` (2 líneas), `tests/test_dashboard_todos_picks.py`, `Obsidian/Bitácora/2026-09-18.md`, memoria. Derivado: `data/predictions/report_latest.html` (+ `report_20260919.html`, nombre por día UTC, comportamiento previo).
+
+## 2026-09-18 (noche, 2) — Sistema de instrucciones: comandos, loops→skills, agentes, scripts/research
+
+**Trabajo realizado:** medición de uso (contadores del harness + 50 sesiones + referencias vivas) y ejecución del plan aprobado en cuatro commits: `6fbf201` (9 comandos retirados), `56edbcd` (24 loops fundidos en sus skills; `model-routing.json` `loop`→`skill`; sincronizador y 5 tests adaptados; prosa de ORCHESTRATOR/router/guardrails/CLAUDE.md/MODEL_ROUTING/CLAUDE-CODEX-INTEGRATION), `c56ba17` (5 agentes retirados, 27→22), `495d2e6` (9 scripts a `scripts/research/`, `parents[1]`→`parents[2]`, 4 docs actualizadas; al cierre `prepare_feature_candidates.py` volvió a `scripts/` porque `test_feature_integration.py` lo carga por ruta — la suite completa lo detectó, la criba por referencias no).
+
+**Resultado:** una capa menos (skill = loop); `.claude/loops/quant/` conserva solo router y `STATES.md`; `.claude/` pasa de 7.955 a 7.663 líneas de Markdown. Sin cambios en `src/`. Se conservan a propósito: 4 skills de deporte sin uso (temporadas que empiezan), `route-task`, `tipster`, los 9 agentes que nombra la tabla de rutas, el protocolo V1 de revisión (dependencia de V2 y con tests).
+
+**Validación:** 585 passed (13 ficheros de test que tocan `.claude/`, 9:30 min); suite `not slow` completa: 1 fallo (ruta del script movido) corregido y re-ejecutada en verde; `scripts/sync_agent_instructions.py --check` sincronizado; ruff limpio en scripts/tests tocados. `graphify update .` ejecutado.
+
+**Archivos:** `.claude/{commands,skills,loops,agents,automation,ORCHESTRATOR.md,CLAUDE.md}`, `scripts/sync_agent_instructions.py`, `scripts/research/*`, `tests/test_claude_{system_contract,model_routing}.py`, `tests/test_agent_instruction_sync.py`, `docs/CLAUDE-CODEX-INTEGRATION.md`, `docs/FEATURE-RESEARCH.md`, `docs/research/*` (3), `README`/`REPO_DESCRIPTION` sin cambio.
+
+**Pendiente:** decisión del operador sobre el roster de 9 agentes sin despacho (recablear `model-routing.json`); KI-055; KI-054.

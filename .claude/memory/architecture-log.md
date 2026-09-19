@@ -187,3 +187,12 @@ liquidación no cambian.
 **Validación:** `pytest` 625 passed (desde 612 con 5 en rojo), `ruff check` limpio, `mypy src` 89 archivos sin issues, `pip check` limpio, `compileall` OK, health check WARN(1). `pip-audit` no ejecutado localmente (lo cubre el CI). `ruff format` declarado NO adoptado.
 
 **Riesgo:** `gh` no autenticado en el entorno, así que el resultado del CI de la rama no se verificó y no se abrió PR; la rama `fix/claude-audit-20260804` no está mergeada a `main`.
+
+## 2026-09-18 — Loops fundidos en skills: el sistema de instrucciones pierde una capa
+
+**Tipo:** arquitectura operativa de Claude Code
+**Módulos afectados:** `.claude/skills/*/SKILL.md` (19 skills reciben el cuerpo de su loop), `.claude/loops/` (24 ficheros borrados; quedan `quant/00-quant-operations-router.md` y `quant/STATES.md`), `.claude/agents/` (3 checklists plegados; 5 agentes retirados), `.claude/commands/` (9 retirados), `.claude/automation/model-routing.json` (`loop` → `skill`), `scripts/sync_agent_instructions.py`, `scripts/research/`, tests de contrato.
+**Cambio:** una skill operativa es ahora autocontenida: frontmatter con la frase disparadora + bloque de guardarraíles (`## Reglas comunes` quant / `## Common guardrails` general, regenerado desde `loop-guardrails.md`) + el loop. La tabla de rutas apunta a skills; el router 00 sigue siendo el índice quant.
+**Razón:** 15 skills eran un puntero de una línea al loop; cada capa duplicada es un sitio más donde la política deriva sin que un test lo vea (KI-021, AUD-MED-014, AUD-MED-002 son ejemplos de esa deriva).
+**Validación:** `QUANT_SKILLS`/`GENERAL_SKILLS` fijan el conjunto; bloques idénticos; router == json == disco; `test_no_skill_still_points_at_a_deleted_loop`; sync `--check` limpio; suites en verde.
+**Riesgo:** las referencias históricas a `.claude/loops/*.md` en memoria, bitácoras y auditorías se dejan como registro; `BUILD_INFO.json` es un snapshot y no se regenera.
