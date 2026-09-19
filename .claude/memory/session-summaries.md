@@ -584,4 +584,8 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 
 **Archivos:** `src/sqp/domain/models.py`, `src/sqp/providers/odds_api.py`, `src/sqp/pipeline/closing_capture.py`, `src/sqp/pipeline/team_totals_capture.py` (nuevo), `scripts/collect_team_totals_mlb.py` (nuevo), `tests/test_team_totals_capture.py` (nuevo), `DIARIO_COMPLETO.bat`, `README.md`, `docs/research/2026-08-24-preregistro-mercados-derivados.md` (estado), `Obsidian/{Bitácora/2026-09-19.md,Tareas.md}`, memoria. Datos nuevos: `data/odds/team_totals_mlb_202609.csv`, `data/odds/.team_totals_credits_2026-09-19`.
 
-**Pendiente:** commitear ANTES del run de las 11:00 (guard de árbol del BAT); line shopping como capa de ejecución; evaluar el gate con ≥300 graduadas; F5 bloqueado.
+**Revisión cruzada (Codex, puerta de cierre):** 3 hallazgos válidos corregidos: liquidación por fecha oficial ET sin doubleheaders (`74693ef`), guard prepartido por evento y re-comprobado al LLEGAR la respuesta con `captured_at` = hora de llegada (`74693ef`, `c50cb91`). 9 tests en el fichero; los nuevos fallan contra `f2cad65`.
+
+**Cierre:** `f2cad65`, `74693ef`, `c50cb91` en `origin/main`; CI run 35423887091 **success** sobre `c50cb91` (el de `74693ef` cancelado por el push siguiente). Árbol limpio antes del run de las 11:00.
+
+**Pendiente:** line shopping como capa de ejecución; evaluar el gate cuando `--report` muestre ≥300 graduadas (~4 capturas); vigilar la línea `team_totals:` en `logs/run_diario.log` tras el run de las 11:00; F5 bloqueado.
