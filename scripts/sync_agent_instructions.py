@@ -67,44 +67,51 @@ def generated_files(root: Path = ROOT) -> dict[Path, str]:
     ids = [r["id"] for r in routes]
     if len(ids) != len(set(ids)):
         raise ValueError("Duplicate route IDs")
+    # `skill` es el playbook de la ruta (un directorio de .claude/skills/); null
+    # cuando la ruta se cubre solo con su agente primario. Hasta el 2026-09-18 la
+    # clave era `loop` (.claude/loops/*.md): los loops se fundieron en las skills
+    # que los apuntaban, y los tres sin skill en su agente primario.
     for route in [*routes, config["default"]]:
-        if not (root / ".claude/loops" / route["loop"]).is_file():
-            raise ValueError(f"Unknown loop: {route['loop']}")
-    table = ["| Ruta | Loop | Agente principal | Apoyo |", "|---|---|---|---|"]
+        skill = route["skill"]
+        if skill is not None and not (root / ".claude/skills" / skill / "SKILL.md").is_file():
+            raise ValueError(f"Unknown skill: {skill}")
+    table = ["| Ruta | Skill | Agente principal | Apoyo |", "|---|---|---|---|"]
     for route in [*routes, config["default"] | {"id": "default", "support_agents": []}]:
+        skill = f"`{route['skill']}`" if route["skill"] else "—"
         table.append(
-            f"| `{route['id']}` | `{route['loop']}` | {route['primary_agent']} | "
+            f"| `{route['id']}` | {skill} | {route['primary_agent']} | "
             + ", ".join(route.get("support_agents", [])) + " |"
         )
     routing = (
         "Catálogo derivado de `.claude/automation/model-routing.json`. La política de\n"
         "modelos está en `MODEL_ROUTING.md`; esta tabla no cambia el modelo activo\n"
-        "ni autoriza delegación, escrituras o ejecución del loop.\n\n" + "\n".join(table)
+        "ni autoriza delegación, escrituras o ejecución de la skill.\n\n" + "\n".join(table)
     )
     for name in (".claude/ORCHESTRATOR.md", ".claude/automation/decision-engine.md"):
         path = Path(name)
         outputs[path] = replace_region((root / path).read_text(encoding="utf-8"), "routes", routing)
 
-    quant = [r for r in routes if r["loop"].startswith("quant/")]
-    qtable = ["| Ruta | Loop |", "|---|---|"]
-    qtable.extend(f"| `{r['id']}` | `{Path(r['loop']).name}` |" for r in quant)
-    path = Path(".claude/loops/quant/00-quant-operations-router.md")
-    outputs[path] = replace_region((root / path).read_text(encoding="utf-8"), "quant-routes", "\n".join(qtable))
+    quant = [r for r in routes if r["id"].startswith("quant-")]
+    qtable = ["| Ruta | Skill |", "|---|---|"]
+    qtable.extend(f"| `{r['id']}` | `{r['skill']}` |" for r in quant)
+    router = Path(".claude/loops/quant/00-quant-operations-router.md")
+    outputs[router] = replace_region((root / router).read_text(encoding="utf-8"), "quant-routes", "\n".join(qtable))
 
+    # Los bloques de guardarrailes viven expandidos en cada skill operativa (y en
+    # el router) para funcionar al cargarse aisladas; loop-guardrails.md es la
+    # unica fuente. Una skill sin bloque no es operativa y se deja en paz.
     guards = (root / ".claude/automation/loop-guardrails.md").read_text(encoding="utf-8")
-    for path in sorted((root / ".claude/loops").rglob("*.md")):
-        if path.name == "STATES.md":
-            continue
+    carriers = [root / router, *sorted((root / ".claude/skills").glob("*/SKILL.md"))]
+    for path in carriers:
         rel = path.relative_to(root)
         text = outputs.get(rel, path.read_text(encoding="utf-8"))
-        quant_loop = path.parent.name == "quant"
-        heading = "Reglas comunes" if quant_loop else "Common guardrails"
-        pattern = rf"(## {heading}\n\n)(?:- [^\n]*\n)+"
-        replacement = section(guards, "quant" if quant_loop else "general") + "\n"
-        updated, count = re.subn(pattern, lambda m: m[1] + replacement, text)
-        if count != 1:
-            raise ValueError(f"Missing/ambiguous guardrail block: {rel}")
-        outputs[rel] = updated
+        for heading, name in (("Reglas comunes", "quant"), ("Common guardrails", "general")):
+            pattern = rf"(## {heading}\n\n)(?:- [^\n]*\n)+"
+            replacement = section(guards, name) + "\n"
+            text, count = re.subn(pattern, lambda m, r=replacement: m[1] + r, text)
+            if count > 1:
+                raise ValueError(f"Ambiguous guardrail block ({heading}): {rel}")
+        outputs[rel] = text
     return outputs
 
 

@@ -1,9 +1,10 @@
 # Guardarraíles comunes de loops
 
 Editar solo esta fuente y ejecutar `python scripts/sync_agent_instructions.py --write`.
-Cada loop conserva el bloque expandido para funcionar al cargarse aisladamente.
-`--check` y los tests comprueban la sincronización; las reglas de dominio siguen
-en cada loop. Las reglas de autoridad de `CLAUDE.md`/`AGENTS.md` prevalecen.
+Cada skill operativa (las de `.claude/skills/` con bloque `## Reglas comunes` o
+`## Common guardrails`) y el router quant conservan el bloque expandido para
+funcionar al cargarse aisladamente. `--check` y los tests comprueban la
+sincronización; las reglas de dominio siguen en cada skill. Las reglas de autoridad de `CLAUDE.md`/`AGENTS.md` prevalecen.
 
 <!-- section: general -->
 - Follow `.claude/CLAUDE.md`, repository rules, and data-access restrictions.

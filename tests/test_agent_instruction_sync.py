@@ -20,6 +20,7 @@ SPEC.loader.exec_module(SYNC)
 @pytest.fixture
 def tree(tmp_path):
     shutil.copytree(ROOT / ".claude/loops", tmp_path / ".claude/loops")
+    shutil.copytree(ROOT / ".claude/skills", tmp_path / ".claude/skills")
     for name in ("audit-workflow.md", "model-routing.json", "decision-engine.md", "loop-guardrails.md"):
         dest = tmp_path / ".claude/automation" / name
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -68,10 +69,10 @@ def test_invalid_route_prevents_partial_writes(tree):
     prompt.write_text("stale", encoding="utf-8")
     config = tree / ".claude/automation/model-routing.json"
     data = json.loads(config.read_text(encoding="utf-8"))
-    data["routes"][0]["loop"] = "does-not-exist.md"
+    data["routes"][0]["skill"] = "does-not-exist"
     config.write_text(json.dumps(data), encoding="utf-8")
     before = snapshot(tree)
-    with pytest.raises(ValueError, match="Unknown loop"):
+    with pytest.raises(ValueError, match="Unknown skill"):
         SYNC.sync(tree, write=True)
     assert snapshot(tree) == before
 
@@ -79,7 +80,7 @@ def test_invalid_route_prevents_partial_writes(tree):
 def test_routing_change_updates_all_three_views(tree):
     config = tree / ".claude/automation/model-routing.json"
     data = json.loads(config.read_text(encoding="utf-8"))
-    route = next(r for r in data["routes"] if r["loop"].startswith("quant/"))
+    route = next(r for r in data["routes"] if r["id"].startswith("quant-"))
     route["id"] = "fixture-quant-route"
     config.write_text(json.dumps(data), encoding="utf-8")
     assert set(SYNC.sync(tree, write=True)) == {
@@ -94,7 +95,13 @@ def test_guardrails_remain_self_contained_in_each_general_loop(tree):
     source = tree / ".claude/automation/loop-guardrails.md"
     source.write_text(source.read_text(encoding="utf-8").replace(
         "<!-- section: general -->", "<!-- section: general -->\n- Fixture safety rule."), encoding="utf-8")
-    expected = {p.relative_to(tree) for p in (tree / ".claude/loops").glob("*.md")}
+    # Los loops generales viven fundidos en sus skills desde el 2026-09-18: son
+    # las skills que llevan el bloque "## Common guardrails".
+    expected = {
+        p.relative_to(tree) for p in (tree / ".claude/skills").glob("*/SKILL.md")
+        if "## Common guardrails\n" in p.read_text(encoding="utf-8")
+    }
+    assert len(expected) == 7
     assert set(SYNC.sync(tree, write=True)) == expected
     for path in expected:
         assert "- Fixture safety rule." in (tree / path).read_text(encoding="utf-8")

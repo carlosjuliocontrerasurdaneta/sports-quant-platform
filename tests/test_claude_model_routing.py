@@ -146,12 +146,14 @@ def test_every_route_references_an_existing_loop_and_agents():
         if "name:" in text
     }
     for route in [CONFIG["default"], *CONFIG["routes"]]:
-        loop = route.get("loop")
-        if loop:
-            path = ROOT / ".claude" / "loops" / loop
+        # `skill` es el playbook (su cuerpo es el loop); null = solo agentes.
+        assert "skill" in route, f"ruta {route.get('id', 'default')}: sin clave skill"
+        skill = route["skill"]
+        if skill:
+            path = ROOT / ".claude" / "skills" / skill / "SKILL.md"
             assert path.exists(), (
-                f"ruta {route.get('id', 'default')}: loop inexistente "
-                f".claude/loops/{loop}"
+                f"ruta {route.get('id', 'default')}: skill inexistente "
+                f".claude/skills/{skill}"
             )
         for agent in [route.get("primary_agent"), *(route.get("support_agents") or [])]:
             if agent:
@@ -162,24 +164,25 @@ def test_every_route_references_an_existing_loop_and_agents():
 
 
 def test_quantitative_prompts_route_to_the_specialized_loops():
+    # (ruta, skill): prediccion diaria y liquidacion comparten `daily-operations`.
     expected = {
-        "Genera las predicciones diarias": "quant/01-daily-prediction.md",
-        "Actualiza un pick por cambio prepartido material": "quant/02-pregame-refresh.md",
-        "Liquida los resultados de los partidos terminados": "quant/03-postgame-settlement.md",
-        "Ejecuta la auditoría cuantitativa diaria": "quant/04-daily-audit.md",
-        "Diagnostica las pérdidas de los picks": "quant/05-loss-diagnosis.md",
-        "Monitorea la calibración sin promover artefactos": "quant/06-calibration-monitor.md",
-        "Revisa el drift de datos y rendimiento": "quant/07-drift-monitor.md",
-        "Recupera un problema de calidad de datos cuantitativos": "quant/08-data-quality-recovery.md",
-        "Compara champion versus challenger": "quant/09-champion-challenger.md",
-        "Ejecuta una recalibración controlada": "quant/10-controlled-recalibration.md",
-        "Analiza la transición de temporada": "quant/11-season-transition.md",
-        "Contén un incidente cuantitativo": "quant/12-quant-incident.md",
-        "Realiza la mejora continua semanal cuantitativa": "quant/13-weekly-continuous-improvement.md",
+        "Genera las predicciones diarias": ("quant-daily-prediction", "daily-operations"),
+        "Actualiza un pick por cambio prepartido material": ("quant-pregame-refresh", "pregame-refresh"),
+        "Liquida los resultados de los partidos terminados": ("quant-settlement", "daily-operations"),
+        "Ejecuta la auditoría cuantitativa diaria": ("quant-daily-audit", "daily-audit"),
+        "Diagnostica las pérdidas de los picks": ("quant-loss-diagnosis", "loss-diagnosis"),
+        "Monitorea la calibración sin promover artefactos": ("quant-calibration-monitor", "review-calibration"),
+        "Revisa el drift de datos y rendimiento": ("quant-drift-monitor", "drift-monitor"),
+        "Recupera un problema de calidad de datos cuantitativos": ("quant-data-recovery", "data-quality-recovery"),
+        "Compara champion versus challenger": ("quant-champion-challenger", "champion-challenger"),
+        "Ejecuta una recalibración controlada": ("quant-controlled-recalibration", "controlled-recalibration"),
+        "Analiza la transición de temporada": ("quant-season-transition", "season-transition"),
+        "Contén un incidente cuantitativo": ("quant-incident", "quant-incident"),
+        "Realiza la mejora continua semanal cuantitativa": ("quant-weekly-improvement", "weekly-improvement"),
     }
-    for prompt, loop in expected.items():
+    for prompt, (route_id, skill) in expected.items():
         route = MODULE.classify(prompt, CONFIG)
-        assert route["loop"] == loop, (prompt, route["id"], route["loop"])
+        assert (route["id"], route["skill"]) == (route_id, skill), (prompt, route["id"], route["skill"])
 
 
 def test_quant_incident_precedes_generic_incident_in_decision_engine():
@@ -205,10 +208,10 @@ def test_router_finds_configuration_from_nested_working_directory(tmp_path):
 
 def test_general_calibration_and_calibrator_changes_follow_decision_engine():
     analysis = MODULE.classify("Analiza exclusivamente la calibración", CONFIG)
-    assert analysis["loop"] == "calibration.md"
+    assert (analysis["id"], analysis["skill"]) == ("calibration-only", "review-calibration")
 
     change = MODULE.classify("Cambia el calibrador activo", CONFIG)
-    assert change["loop"] == "model.md"
+    assert (change["id"], change["skill"]) == ("modeling", "model-change")
 
 
 def test_bug_routes_to_sonnet_python_engineer():

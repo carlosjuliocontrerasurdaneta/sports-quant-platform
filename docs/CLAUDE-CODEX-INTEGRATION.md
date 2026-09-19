@@ -142,7 +142,7 @@ no Claude.
 | Permisos de comandos | `.claude/settings.json` → `permissions.allow/deny` | Edit directo o skill `update-config` |
 | Skills del proyecto | `.claude/skills/<nombre>/SKILL.md` | Crear/editar archivos markdown |
 | Hooks automáticos | `.claude/settings.json` → `hooks` | Edit directo o skill `update-config` |
-| Loops operacionales | `.claude/loops/` y `.claude/loops/quant/` | Editar los `.md` correspondientes |
+| Loops operacionales | `.claude/skills/<nombre>/SKILL.md` (el cuerpo de la skill es el loop; el router y `STATES.md` siguen en `.claude/loops/quant/`) | Editar la skill; el bloque de guardarraíles se regenera con `scripts/sync_agent_instructions.py --write` |
 | Backlog autónomo | `.claude/automation/backlog.md` | Añadir filas con status `ready` |
 | Política de autonomía | `.claude/automation/autonomy-policy.md` | Editar con cuidado — rige lo que Claude puede hacer sin aprobación |
 

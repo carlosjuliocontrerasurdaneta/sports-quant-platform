@@ -1,7 +1,7 @@
 {
   "version": 2,
   "default": {
-    "loop": "feature.md",
+    "skill": "feature-engineering",
     "primary_agent": "python-engineer",
     "model": "sonnet",
     "support_agents": [
@@ -23,7 +23,7 @@
         "todo el repositorio",
         "full audit"
       ],
-      "loop": "audit.md",
+      "skill": "full-audit",
       "primary_agent": "principal-orchestrator",
       "model": "opus",
       "support_agents": [
@@ -46,7 +46,7 @@
         "liquidación incorrecta",
         "liquidacion incorrecta"
       ],
-      "loop": "quant/12-quant-incident.md",
+      "skill": "quant-incident",
       "primary_agent": "principal-orchestrator",
       "model": "opus",
       "support_agents": [
@@ -65,7 +65,7 @@
         "outage",
         "emergencia"
       ],
-      "loop": "incident.md",
+      "skill": "incident",
       "primary_agent": "principal-orchestrator",
       "model": "opus",
       "support_agents": [
@@ -84,7 +84,7 @@
         "generar picks diarios",
         "daily prediction"
       ],
-      "loop": "quant/01-daily-prediction.md",
+      "skill": "daily-operations",
       "primary_agent": "sports-quant-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -102,7 +102,7 @@
         "pregame refresh",
         "refresh pregame"
       ],
-      "loop": "quant/02-pregame-refresh.md",
+      "skill": "pregame-refresh",
       "primary_agent": "line-movement-analyst",
       "model": "sonnet",
       "support_agents": [
@@ -121,7 +121,7 @@
         "partidos terminados",
         "postgame settlement"
       ],
-      "loop": "quant/03-postgame-settlement.md",
+      "skill": "daily-operations",
       "primary_agent": "sports-quant-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -139,7 +139,7 @@
         "auditoria diaria cuantitativa",
         "daily quant audit"
       ],
-      "loop": "quant/04-daily-audit.md",
+      "skill": "daily-audit",
       "primary_agent": "sports-quant-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -158,7 +158,7 @@
         "perdidas de los picks",
         "loss diagnosis"
       ],
-      "loop": "quant/05-loss-diagnosis.md",
+      "skill": "loss-diagnosis",
       "primary_agent": "sports-quant-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -177,7 +177,7 @@
         "descalibración persistente",
         "descalibracion persistente"
       ],
-      "loop": "quant/06-calibration-monitor.md",
+      "skill": "review-calibration",
       "primary_agent": "calibration-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -195,7 +195,7 @@
         "drift monitoring",
         "performance drift"
       ],
-      "loop": "quant/07-drift-monitor.md",
+      "skill": "drift-monitor",
       "primary_agent": "ml-engineer",
       "model": "sonnet",
       "support_agents": [
@@ -212,7 +212,7 @@
         "recuperacion de calidad de datos",
         "data quality recovery"
       ],
-      "loop": "quant/08-data-quality-recovery.md",
+      "skill": "data-quality-recovery",
       "primary_agent": "data-engineer",
       "model": "sonnet",
       "support_agents": [
@@ -231,7 +231,7 @@
         "candidato y campeón",
         "candidato y campeon"
       ],
-      "loop": "quant/09-champion-challenger.md",
+      "skill": "champion-challenger",
       "primary_agent": "backtest-reviewer",
       "model": "sonnet",
       "support_agents": [
@@ -248,7 +248,7 @@
         "recalibracion controlada",
         "controlled recalibration"
       ],
-      "loop": "quant/10-controlled-recalibration.md",
+      "skill": "controlled-recalibration",
       "primary_agent": "calibration-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -265,7 +265,7 @@
         "season transition",
         "inicio de temporada"
       ],
-      "loop": "quant/11-season-transition.md",
+      "skill": "season-transition",
       "primary_agent": "sports-quant-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -283,7 +283,7 @@
         "revision cuantitativa semanal",
         "weekly continuous improvement"
       ],
-      "loop": "quant/13-weekly-continuous-improvement.md",
+      "skill": "weekly-improvement",
       "primary_agent": "principal-orchestrator",
       "model": "sonnet",
       "support_agents": [
@@ -304,7 +304,7 @@
         "revision de calibracion",
         "calibration-only"
       ],
-      "loop": "calibration.md",
+      "skill": "review-calibration",
       "primary_agent": "calibration-auditor",
       "model": "sonnet",
       "support_agents": [
@@ -328,7 +328,7 @@
         "cambiar probabilidades",
         "cambio de probabilidad"
       ],
-      "loop": "model.md",
+      "skill": "model-change",
       "primary_agent": "ml-engineer",
       "model": "sonnet",
       "support_agents": [
@@ -351,7 +351,7 @@
         "roi histórico",
         "roi historico"
       ],
-      "loop": "backtest.md",
+      "skill": null,
       "primary_agent": "backtest-reviewer",
       "model": "sonnet",
       "support_agents": [
@@ -369,7 +369,7 @@
         "modularidad",
         "acoplamiento"
       ],
-      "loop": "refactor.md",
+      "skill": null,
       "primary_agent": "backend-architect",
       "model": "sonnet",
       "support_agents": [
@@ -389,7 +389,7 @@
         "parser",
         "fuente de datos"
       ],
-      "loop": "provider.md",
+      "skill": "provider-integration",
       "primary_agent": "provider-integrator",
       "model": "sonnet",
       "support_agents": [
@@ -410,7 +410,7 @@
         "no funciona",
         "traceback"
       ],
-      "loop": "bugfix.md",
+      "skill": "bugfix",
       "primary_agent": "python-engineer",
       "model": "sonnet",
       "support_agents": [
@@ -429,7 +429,7 @@
         "inyección",
         "inyeccion"
       ],
-      "loop": "refactor.md",
+      "skill": null,
       "primary_agent": "security-reviewer",
       "model": "sonnet",
       "support_agents": [
@@ -447,7 +447,7 @@
         "tag",
         "publicar"
       ],
-      "loop": "release.md",
+      "skill": null,
       "primary_agent": "devops-engineer",
       "model": "sonnet",
       "support_agents": [
@@ -466,7 +466,7 @@
         "runbook",
         "docstring"
       ],
-      "loop": "documentation.md",
+      "skill": "documentation",
       "primary_agent": "documentation-writer",
       "model": "haiku",
       "support_agents": []

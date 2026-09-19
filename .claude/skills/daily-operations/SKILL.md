@@ -81,8 +81,116 @@ Al revisar la liquidación (`SETTLE_ALL.bat` → `scripts/settle_all.py`):
   corridas idempotentes (re-correr no debe duplicar).
 - No abrir históricos completos: usar solo el final de los logs y encabezados.
 
-## Loop de referencia
+## Loop: Daily Prediction Loop
 
-Antes de ejecutar, leer y seguir el loop correspondiente:
-- Predicción diaria → `.claude/loops/quant/01-daily-prediction.md`
-- Liquidación post-partido → `.claude/loops/quant/03-postgame-settlement.md`
+## Reglas comunes
+
+- Cumplir `.claude/CLAUDE.md`, `.claude/ORCHESTRATOR.md` y `.claude/automation/autonomy-policy.md`.
+- Ejecutar `/memoria-cargar` al inicio y actualizar `.claude/automation/runtime/current-task.md`.
+- No promover modelos, calibradores ni cambios de producción sin aprobación humana explícita.
+- No usar información posterior al inicio del evento para evaluar o reconstruir una predicción previa.
+- Mantener snapshots inmutables, trazabilidad de versiones y evidencia de cada comando.
+- Presupuesto predeterminado: 8 iteraciones; detenerse ante guardrails o evidencia insuficiente.
+- Finalizar con `/verification-gate` y `/memoria-guardar`.
+- Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
+
+## Objetivo
+Generar probabilidades estimadas reproducibles y congelar snapshots antes del inicio de cada evento.
+
+## Precondiciones
+- La cohorte anterior debe liquidarse antes de generar la nueva. **El run diario
+  SOBRESCRIBE `data/predictions/candidates_*.csv`**, así que ejecutarlo antes de
+  liquidar destruye la cohorte pendiente (queda recuperable en
+  `data/predictions/archive/`, pero el orden correcto es el inverso). Ver
+  `README.md`, "Orden crítico".
+- Registrar si la liquidación ya se ejecutó para evitar repetirla.
+- `configs/default.yaml` legible y `Settings.validate()` sin error.
+
+## Inputs
+- Cuotas de The Odds API (proveedor de **pago**).
+- `data/historical/results_<liga>.csv` para el ajuste de ratings.
+
+## Comandos
+1. `python scripts/claude_project_health.py` y `python scripts/health_check.py`.
+2. Verificar frescura de datos, cuotas, lesiones y alineaciones.
+3. Elegir exactamente una ruta:
+   - Si la liquidación todavía no se ejecutó, usar `DIARIO_COMPLETO.bat`, que
+     encadena SETTLE → RUN en el orden seguro.
+   - Si la liquidación ya se ejecutó y quedó evidencia, usar únicamente
+     `RUN_DIARIO_ALL.bat`; no repetir settlement.
+   Ambas rutas consumen cuota de API de pago y requieren aprobación humana salvo
+   que corran como una tarea programada ya aprobada.
+4. Validar probabilidades `[0,1]`, duplicados, signos y timestamps.
+5. Congelar event_id, mercado, línea, cuota, probabilidad, edge, fuentes y versiones.
+
+## Artefactos
+Los artefactos por liga son obligatorios para las ligas seleccionadas para
+ejecución. Registrar por separado las ligas activas excluidas por el guard de
+cuota; no usar sus archivos antiguos como evidencia de generación actual.
+
+- `data/predictions/predictions_<liga>.csv` y `candidates_<liga>.csv`
+- `data/predictions/report_<día>.md` y el dashboard HTML
+- `data/calibration/served_<liga>.csv` (stream servido, base del calibrador)
+
+## Validaciones
+Pruebas focalizadas de pipeline, odds, edge y decisión.
+
+## Criterios de salida
+Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos de este loop:
+- `BLOCKED`: el batch termina con código ≠ 0; leakage detectado; evento ya
+  iniciado; datos críticos no frescos; `predictions_<liga>.csv` de una liga
+  seleccionada ausente o ilegible. Un fallo transitorio del proveedor que
+  provoca salida ≠ 0 sigue siendo `BLOCKED`, aunque otras ligas se generen.
+- `DEGRADED`: una liga activa se omitió por el guard de cuota, todos los comandos
+  requeridos terminaron con código 0 y las ligas seleccionadas dejaron los
+  artefactos actuales y validaciones satisfactorias. Nombrar ligas omitidas,
+  causa, ligas generadas y sus conteos. Si no se generó ninguna liga activa,
+  no se cumplió el objetivo: `BLOCKED`.
+- `PASS`: artefactos escritos para todas las ligas activas y validaciones en verde.
+
+## Acciones que requieren aprobación humana
+Cambiar stakes, bankroll o exposición; modificar `prediction_gate` (el gate rector
+actual — `shadow_mode` fue levantado el 2026-08-16 y ya no es el control activo);
+o gastar cuota de API fuera de la ejecución programada.
+
+## Loop: Postgame Settlement Loop
+
+## Objetivo
+Liquidar picks de forma determinista contra el snapshot original.
+
+## Precondiciones
+- Existe el snapshot de la cohorte. Un archivo de candidatos vacío es un caso
+  válido y debe cerrar con evidencia de `n_emitidos = 0`; un snapshot ausente es
+  `BLOCKED`.
+- Debe correr ANTES del run diario del día (ver loop 01, orden crítico).
+
+## Comandos
+1. `SETTLE_ALL.bat`. **Consume cuota de proveedores externos: requiere aprobación
+   humana salvo que corra como la tarea programada ya aprobada.**
+2. Verificar resultado oficial y reglas del mercado.
+3. Clasificar `WIN`, `LOSS`, `PUSH`, `VOID` o `PENDING`.
+4. Evitar doble liquidación (dedup en `sqp.settlement.runner`).
+5. Reconciliar `emitidos = WIN + LOSS + PUSH + VOID + PENDING`.
+6. Guardar score, proveedor y regla aplicada.
+
+## Artefactos
+- `data/bets/settled_<liga>.csv` cuando existen liquidaciones persistidas.
+- `data/calibration/served_<liga>.csv` con las filas graduadas cuando existe
+  stream servido para la cohorte.
+- Para una cohorte vacía inicial, ambos archivos pueden no existir. Registrar
+  en `current-task.md` la ruta y legibilidad del snapshot, `n_emitidos = 0` y
+  ausencia comprobada de pendientes tanto servidos como archivados/desplazados.
+  Un CSV ilegible o un snapshot ausente no demuestran una cohorte vacía.
+
+## Criterios de salida
+Definiciones exactas en `.claude/loops/quant/STATES.md`. Específicos:
+- `BLOCKED`: score inconsistente, identidad de equipo/jugador ambigua, snapshot
+  ausente, o la reconciliación no cuadra.
+- `DEGRADED`: quedan `PENDING` por resultados aún no publicados; registrar cuántos
+  y de qué liga.
+- `PASS`: reconciliación cuadrada, sin pendientes y artefactos aplicables
+  legibles. Para una cohorte válida con `n_emitidos = 0` y sin pendientes
+  servidos ni archivados/desplazados, basta la evidencia de vacío anterior;
+  no exigir ni crear un `settled_<liga>.csv` o stream servido artificial.
+- `DONE`: además, la cohorte finita queda cerrada sin pendientes y se cumplen las
+  condiciones generales de `DONE`.

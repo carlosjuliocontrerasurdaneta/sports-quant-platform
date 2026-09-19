@@ -47,8 +47,8 @@ para aparentar exhaustividad. No asumir que un agente existe por estar nombrado.
 
 ## Ejecución y entrega
 
-1. Inspeccionar Git y preservar cambios preexistentes. Aplicar el loop
-   `.claude/loops/audit.md` como entrada operacional al mismo contrato.
+1. Inspeccionar Git y preservar cambios preexistentes. Aplicar la sección
+   «Loop: Audit Loop» de esta skill como entrada operacional al mismo contrato.
 2. Revisar con independencia y buscar controles/contraejemplos antes de confirmar.
 3. Guardar el informe individual en el subdirectorio del auditor de la ronda.
 4. Si esta invocación debe producir el backlog final, ejecutar la fase
@@ -62,3 +62,31 @@ Conservar rondas anteriores antes de reemplazar entregables, según el contrato.
 Durante diagnóstico no ejecutar bookkeeping que escriba fuera de sus destinos
 autorizados; registrar la limitación. Auditoría completa no significa código
 corregido, pruebas no ejecutadas aprobadas ni ventaja predictiva demostrada.
+
+## Loop: Audit Loop
+
+Entrada operacional de solo lectura para auditorías integrales. La fuente del
+procedimiento es `.claude/automation/audit-workflow.md`; la skill `full-audit`
+selecciona las referencias especializadas según el alcance.
+
+## Common guardrails
+
+- Follow `.claude/CLAUDE.md`, repository rules, and data-access restrictions.
+- Do not commit, push, deploy, release, or promote artifacts without explicit approval.
+- Prefer the smallest reversible change.
+- Maintain `.claude/automation/runtime/current-task.md`.
+- Stop at the iteration budget or any human approval gate.
+
+## Pasos
+
+1. Leer instrucciones aplicables y las secciones comunes/diagnóstico del contrato.
+2. Identificar ronda y auditor; preservar la ronda anterior antes de reemplazarla
+   según «Rondas, archivos y compatibilidad». No reiniciar la ronda al sumar auditor.
+3. Inventariar, auditar y revalidar con independencia; no leer conclusiones de
+   auditores previos durante la fase principal. Declarar contexto contaminado.
+4. Persistir solo los entregables autorizados de la fase. Si se requiere backlog,
+   consolidar después del diagnóstico según el contrato común.
+5. Entregar y terminar el diagnóstico. Correcciones autorizadas continúan mediante
+   `audit-remediation`, no dentro de este loop.
+6. Finish through `/verification-gate`, sujeto a los límites de escritura del
+   diagnóstico. Registrar cualquier bookkeeping excluido; no editar el proyecto.

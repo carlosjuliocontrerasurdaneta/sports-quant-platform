@@ -6,7 +6,9 @@ El enrutamiento tiene tres capas independientes:
 2. El parámetro `model` de la herramienta `Agent` asigna el modelo de cada
    subagente en el momento de delegar, con precedencia sobre su frontmatter
    (ver la REGLA DE DESPACHO, abajo). Si no se pasa, rige el frontmatter.
-3. `model-routing.json` mapea la solicitud a un loop y a sus subagentes. Se
+3. `model-routing.json` mapea la solicitud a una skill (su cuerpo es el loop;
+   hasta el 2026-09-18 la clave era `loop` y apuntaba a `.claude/loops/`) y a
+   sus subagentes. Se
    consulta **bajo demanda** desde `/route-task`, con el clasificador
    `.claude/automation/route_classifier.py`. **No hay inyección automática**: el
    hook `UserPromptSubmit` que la hacía se **retiró el 2026-09-01**, porque

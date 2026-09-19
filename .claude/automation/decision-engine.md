@@ -10,35 +10,35 @@ una coincidencia de keyword nunca autoriza modificar ni ampliar el encargo.
 <!-- generated: routes -->
 Catálogo derivado de `.claude/automation/model-routing.json`. La política de
 modelos está en `MODEL_ROUTING.md`; esta tabla no cambia el modelo activo
-ni autoriza delegación, escrituras o ejecución del loop.
+ni autoriza delegación, escrituras o ejecución de la skill.
 
-| Ruta | Loop | Agente principal | Apoyo |
+| Ruta | Skill | Agente principal | Apoyo |
 |---|---|---|---|
-| `full-audit` | `audit.md` | principal-orchestrator | repository-cartographer, backend-architect, sports-quant-auditor, qa-engineer, security-reviewer |
-| `quant-incident` | `quant/12-quant-incident.md` | principal-orchestrator | sports-quant-auditor, leakage-detector, qa-engineer |
-| `incident` | `incident.md` | principal-orchestrator | qa-engineer, security-reviewer, devops-engineer |
-| `quant-daily-prediction` | `quant/01-daily-prediction.md` | sports-quant-auditor | provider-integrator, qa-engineer |
-| `quant-pregame-refresh` | `quant/02-pregame-refresh.md` | line-movement-analyst | odds-market-auditor, sports-quant-auditor |
-| `quant-settlement` | `quant/03-postgame-settlement.md` | sports-quant-auditor | data-engineer, qa-engineer |
-| `quant-daily-audit` | `quant/04-daily-audit.md` | sports-quant-auditor | calibration-auditor, backtest-reviewer |
-| `quant-loss-diagnosis` | `quant/05-loss-diagnosis.md` | sports-quant-auditor | leakage-detector, odds-market-auditor |
-| `quant-calibration-monitor` | `quant/06-calibration-monitor.md` | calibration-auditor | backtest-reviewer, risk-manager |
-| `quant-drift-monitor` | `quant/07-drift-monitor.md` | ml-engineer | data-engineer, sports-quant-auditor |
-| `quant-data-recovery` | `quant/08-data-quality-recovery.md` | data-engineer | provider-integrator, qa-engineer |
-| `quant-champion-challenger` | `quant/09-champion-challenger.md` | backtest-reviewer | calibration-auditor, leakage-detector, risk-manager |
-| `quant-controlled-recalibration` | `quant/10-controlled-recalibration.md` | calibration-auditor | backtest-reviewer, risk-manager |
-| `quant-season-transition` | `quant/11-season-transition.md` | sports-quant-auditor | feature-engineer, ml-engineer |
-| `quant-weekly-improvement` | `quant/13-weekly-continuous-improvement.md` | principal-orchestrator | sports-quant-auditor, calibration-auditor, ml-engineer |
-| `calibration-only` | `calibration.md` | calibration-auditor | backtest-reviewer, risk-manager |
-| `modeling` | `model.md` | ml-engineer | feature-engineer, leakage-detector, calibration-auditor, backtest-reviewer, risk-manager |
-| `backtest` | `backtest.md` | backtest-reviewer | leakage-detector, sports-quant-auditor |
-| `architecture` | `refactor.md` | backend-architect | repository-cartographer, python-engineer, qa-engineer |
-| `provider` | `provider.md` | provider-integrator | data-engineer, leakage-detector, qa-engineer |
-| `bugfix` | `bugfix.md` | python-engineer | repository-cartographer, qa-engineer |
-| `security` | `refactor.md` | security-reviewer | python-engineer, qa-engineer |
-| `release` | `release.md` | devops-engineer | qa-engineer, security-reviewer |
-| `documentation` | `documentation.md` | documentation-writer |  |
-| `default` | `feature.md` | python-engineer |  |
+| `full-audit` | `full-audit` | principal-orchestrator | repository-cartographer, backend-architect, sports-quant-auditor, qa-engineer, security-reviewer |
+| `quant-incident` | `quant-incident` | principal-orchestrator | sports-quant-auditor, leakage-detector, qa-engineer |
+| `incident` | `incident` | principal-orchestrator | qa-engineer, security-reviewer, devops-engineer |
+| `quant-daily-prediction` | `daily-operations` | sports-quant-auditor | provider-integrator, qa-engineer |
+| `quant-pregame-refresh` | `pregame-refresh` | line-movement-analyst | odds-market-auditor, sports-quant-auditor |
+| `quant-settlement` | `daily-operations` | sports-quant-auditor | data-engineer, qa-engineer |
+| `quant-daily-audit` | `daily-audit` | sports-quant-auditor | calibration-auditor, backtest-reviewer |
+| `quant-loss-diagnosis` | `loss-diagnosis` | sports-quant-auditor | leakage-detector, odds-market-auditor |
+| `quant-calibration-monitor` | `review-calibration` | calibration-auditor | backtest-reviewer, risk-manager |
+| `quant-drift-monitor` | `drift-monitor` | ml-engineer | data-engineer, sports-quant-auditor |
+| `quant-data-recovery` | `data-quality-recovery` | data-engineer | provider-integrator, qa-engineer |
+| `quant-champion-challenger` | `champion-challenger` | backtest-reviewer | calibration-auditor, leakage-detector, risk-manager |
+| `quant-controlled-recalibration` | `controlled-recalibration` | calibration-auditor | backtest-reviewer, risk-manager |
+| `quant-season-transition` | `season-transition` | sports-quant-auditor | feature-engineer, ml-engineer |
+| `quant-weekly-improvement` | `weekly-improvement` | principal-orchestrator | sports-quant-auditor, calibration-auditor, ml-engineer |
+| `calibration-only` | `review-calibration` | calibration-auditor | backtest-reviewer, risk-manager |
+| `modeling` | `model-change` | ml-engineer | feature-engineer, leakage-detector, calibration-auditor, backtest-reviewer, risk-manager |
+| `backtest` | — | backtest-reviewer | leakage-detector, sports-quant-auditor |
+| `architecture` | — | backend-architect | repository-cartographer, python-engineer, qa-engineer |
+| `provider` | `provider-integration` | provider-integrator | data-engineer, leakage-detector, qa-engineer |
+| `bugfix` | `bugfix` | python-engineer | repository-cartographer, qa-engineer |
+| `security` | — | security-reviewer | python-engineer, qa-engineer |
+| `release` | — | devops-engineer | qa-engineer, security-reviewer |
+| `documentation` | `documentation` | documentation-writer |  |
+| `default` | `feature-engineering` | python-engineer |  |
 <!-- endgenerated: routes -->
 
 ## Health-driven priority

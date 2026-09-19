@@ -12,24 +12,24 @@
 - Cerrar declarando `PASS`, `DEGRADED`, `BLOCKED` o `DONE` según las definiciones exactas de `.claude/loops/quant/STATES.md`, con la evidencia que lo justifica en `current-task.md`.
 
 ## Objetivo
-Seleccionar exactamente un loop cuantitativo primario.
+Seleccionar exactamente una skill cuantitativa primaria; su cuerpo es el loop (hasta el 2026-09-18 los loops eran ficheros aparte en este directorio y las skills solo los apuntaban).
 
 <!-- generated: quant-routes -->
-| Ruta | Loop |
+| Ruta | Skill |
 |---|---|
-| `quant-incident` | `12-quant-incident.md` |
-| `quant-daily-prediction` | `01-daily-prediction.md` |
-| `quant-pregame-refresh` | `02-pregame-refresh.md` |
-| `quant-settlement` | `03-postgame-settlement.md` |
-| `quant-daily-audit` | `04-daily-audit.md` |
-| `quant-loss-diagnosis` | `05-loss-diagnosis.md` |
-| `quant-calibration-monitor` | `06-calibration-monitor.md` |
-| `quant-drift-monitor` | `07-drift-monitor.md` |
-| `quant-data-recovery` | `08-data-quality-recovery.md` |
-| `quant-champion-challenger` | `09-champion-challenger.md` |
-| `quant-controlled-recalibration` | `10-controlled-recalibration.md` |
-| `quant-season-transition` | `11-season-transition.md` |
-| `quant-weekly-improvement` | `13-weekly-continuous-improvement.md` |
+| `quant-incident` | `quant-incident` |
+| `quant-daily-prediction` | `daily-operations` |
+| `quant-pregame-refresh` | `pregame-refresh` |
+| `quant-settlement` | `daily-operations` |
+| `quant-daily-audit` | `daily-audit` |
+| `quant-loss-diagnosis` | `loss-diagnosis` |
+| `quant-calibration-monitor` | `review-calibration` |
+| `quant-drift-monitor` | `drift-monitor` |
+| `quant-data-recovery` | `data-quality-recovery` |
+| `quant-champion-challenger` | `champion-challenger` |
+| `quant-controlled-recalibration` | `controlled-recalibration` |
+| `quant-season-transition` | `season-transition` |
+| `quant-weekly-improvement` | `weekly-improvement` |
 <!-- endgenerated: quant-routes -->
 
 Registrar la elección, razón, alcance y criterio de salida en `current-task.md`.

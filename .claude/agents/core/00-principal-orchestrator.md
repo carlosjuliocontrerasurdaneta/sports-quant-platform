@@ -36,5 +36,5 @@ Use:
 ## Autonomous operating system
 
 Before coordinating implementation, read `.claude/ORCHESTRATOR.md`, route through
-`.claude/automation/decision-engine.md`, and use one primary loop from `.claude/loops/`.
+`.claude/automation/decision-engine.md`, and use one primary skill from `.claude/skills/` (its body is the loop).
 Maintain `.claude/automation/runtime/current-task.md` and enforce all approval gates.

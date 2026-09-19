@@ -8,6 +8,26 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+SKILLS = ROOT / ".claude/skills"
+ROUTER = ROOT / ".claude/loops/quant/00-quant-operations-router.md"
+
+# Hasta el 2026-09-18 los loops eran ficheros de `.claude/loops/` y las skills
+# solo los apuntaban ("Leer y seguir ..."); se fundieron en las skills. Una skill
+# es OPERATIVA (lleva un loop) si conserva el bloque de guardarrailes expandido.
+QUANT_SKILLS = {
+    "champion-challenger", "controlled-recalibration", "daily-audit",
+    "daily-operations", "data-quality-recovery", "drift-monitor",
+    "loss-diagnosis", "pregame-refresh", "quant-incident", "review-calibration",
+    "season-transition", "weekly-improvement",
+}
+GENERAL_SKILLS = {
+    "bugfix", "documentation", "feature-engineering", "full-audit", "incident",
+    "model-change", "provider-integration",
+}
+
+
+def _skill(name: str) -> Path:
+    return SKILLS / name / "SKILL.md"
 
 
 def _load_health_module():
@@ -54,9 +74,7 @@ def test_orchestrator_defines_supporting_loop_handoffs():
 
 
 def test_daily_audit_does_not_require_stake_for_clv():
-    loop = (ROOT / ".claude/loops/quant/04-daily-audit.md").read_text(
-        encoding="utf-8"
-    )
+    loop = _skill("daily-audit").read_text(encoding="utf-8")
     assert "CLV solo es válido" not in loop
     normalized = " ".join(loop.split())
     assert "CLV requiere una cuota de entrada" in normalized
@@ -64,9 +82,9 @@ def test_daily_audit_does_not_require_stake_for_clv():
 
 def test_all_general_loops_finish_through_verification_gate():
     missing = [
-        path.name
-        for path in (ROOT / ".claude/loops").glob("*.md")
-        if "/verification-gate" not in path.read_text(encoding="utf-8")
+        name
+        for name in sorted(GENERAL_SKILLS)
+        if "/verification-gate" not in _skill(name).read_text(encoding="utf-8")
     ]
     assert missing == []
 
@@ -89,36 +107,59 @@ def _guardrail_block(path: Path, heading: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# El bloque de reglas comunes esta duplicado en cada loop a proposito: un loop
-# se carga solo, asi que debe ser autocontenido. El riesgo no es la duplicacion
-# sino la deriva -- que una copia cambie y las demas no.
+# El bloque de reglas comunes esta duplicado en cada skill operativa a
+# proposito: una skill se carga sola, asi que debe ser autocontenida. El riesgo
+# no es la duplicacion sino la deriva -- que una copia cambie y las demas no.
 # ---------------------------------------------------------------------------
 
 
-def test_quant_loops_share_an_identical_common_rules_block():
-    blocks = {
-        p.name: _guardrail_block(p, "## Reglas comunes")
-        for p in sorted((ROOT / ".claude/loops/quant").glob("*.md"))
-        if p.name != "STATES.md"
+def _carriers(heading: str) -> set[str]:
+    """Skills que llevan el bloque `heading` (ademas del router, para quant)."""
+    return {
+        p.parent.name
+        for p in SKILLS.glob("*/SKILL.md")
+        if _guardrail_block(p, heading)
     }
-    assert all(blocks.values()), f"loop sin bloque de reglas comunes: {blocks}"
-    assert len(set(blocks.values())) == 1, "las reglas comunes derivaron entre loops"
 
 
-def test_general_loops_share_an_identical_guardrail_block():
-    blocks = {
-        p.name: _guardrail_block(p, "## Common guardrails")
-        for p in sorted((ROOT / ".claude/loops").glob("*.md"))
+def test_quant_skills_share_an_identical_common_rules_block():
+    assert _carriers("## Reglas comunes") == QUANT_SKILLS, (
+        "el conjunto de skills quant cambio: actualizar QUANT_SKILLS y el router"
+    )
+    blocks = {name: _guardrail_block(_skill(name), "## Reglas comunes") for name in QUANT_SKILLS}
+    blocks["00-quant-operations-router.md"] = _guardrail_block(ROUTER, "## Reglas comunes")
+    assert all(blocks.values()), f"skill sin bloque de reglas comunes: {blocks}"
+    assert len(set(blocks.values())) == 1, "las reglas comunes derivaron entre skills"
+
+
+def test_general_skills_share_an_identical_guardrail_block():
+    assert _carriers("## Common guardrails") == GENERAL_SKILLS, (
+        "el conjunto de skills generales cambio: actualizar GENERAL_SKILLS"
+    )
+    blocks = {name: _guardrail_block(_skill(name), "## Common guardrails") for name in GENERAL_SKILLS}
+    assert all(blocks.values()), f"skill sin bloque de guardrails: {blocks}"
+    assert len(set(blocks.values())) == 1, "los guardrails derivaron entre skills"
+
+
+def test_no_skill_still_points_at_a_deleted_loop():
+    """La fusion del 2026-09-18 no deja punteros a ficheros que ya no existen."""
+    stale = {
+        p.parent.name: sorted(set(hits))
+        for p in SKILLS.glob("*/SKILL.md")
+        if (hits := [
+            m for m in re.findall(r"\.claude/loops/[A-Za-z0-9_./-]+\.md", p.read_text(encoding="utf-8"))
+            if not (ROOT / m).is_file()
+        ])
     }
-    assert all(blocks.values()), f"loop sin bloque de guardrails: {blocks}"
-    assert len(set(blocks.values())) == 1, "los guardrails derivaron entre loops"
+    assert stale == {}
 
 
 # ---------------------------------------------------------------------------
-# Hay dos tablas de enrutamiento a los loops quant: `model-routing.json`, que
-# consume el hook `route-model.py`, y la tabla del router 00, que lee el
-# orquestador ya dentro del contexto quant. Deben apuntar al mismo conjunto: un
-# loop nuevo registrado solo en una de las dos queda inalcanzable o invisible.
+# Hay dos tablas de enrutamiento a las skills quant: `model-routing.json`, que
+# consume el clasificador `route_classifier.py`, y la tabla del router 00, que
+# lee el orquestador ya dentro del contexto quant. Deben apuntar al mismo
+# conjunto: una skill nueva registrada solo en una de las dos queda
+# inalcanzable o invisible.
 # ---------------------------------------------------------------------------
 
 
@@ -127,35 +168,30 @@ def test_quant_router_table_matches_model_routing_config():
         (ROOT / ".claude/automation/model-routing.json").read_text(encoding="utf-8")
     )
     routed = {
-        route["loop"]
+        route["skill"]
         for route in config["routes"]
-        if route.get("loop", "").startswith("quant/")
+        if route["id"].startswith("quant-")
     }
-    router = ROOT / ".claude/loops/quant/00-quant-operations-router.md"
+    region = ROUTER.read_text(encoding="utf-8").split("<!-- generated: quant-routes -->", 1)[1]
+    region = region.split("<!-- endgenerated: quant-routes -->", 1)[0]
     tabulated = {
-        f"quant/{name}"
-        for name in re.findall(r"`(\d\d-[a-z0-9-]+\.md)`", router.read_text(encoding="utf-8"))
-    }
-    on_disk = {
-        f"quant/{p.name}"
-        for p in (ROOT / ".claude/loops/quant").glob("*.md")
-        if p.name not in {"STATES.md", router.name}
+        name for _, name in re.findall(r"\| `([a-z0-9-]+)` \| `([a-z0-9-]+)` \|", region)
     }
     assert tabulated == routed, (
         f"la tabla del router 00 y model-routing.json divergieron: "
         f"solo en la tabla {sorted(tabulated - routed)}, "
         f"solo en el json {sorted(routed - tabulated)}"
     )
-    assert on_disk == routed, (
-        f"loops quant sin ruta declarada: {sorted(on_disk - routed)}; "
-        f"rutas a loops inexistentes: {sorted(routed - on_disk)}"
+    assert QUANT_SKILLS == routed, (
+        f"skills quant sin ruta declarada: {sorted(QUANT_SKILLS - routed)}; "
+        f"rutas a skills inexistentes: {sorted(routed - QUANT_SKILLS)}"
     )
 
 
 def test_quant_loop_common_spelling_is_consistent():
     bad = [
         p.name
-        for p in (ROOT / ".claude/loops/quant").glob("*.md")
+        for p in [ROUTER, ROUTER.with_name("STATES.md"), *(_skill(n) for n in QUANT_SKILLS)]
         if " segun " in p.read_text(encoding="utf-8")
     ]
     assert bad == []
