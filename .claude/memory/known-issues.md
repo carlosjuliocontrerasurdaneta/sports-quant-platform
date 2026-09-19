@@ -401,3 +401,10 @@ Format:
 - Affected files: host (registro de eventos), scripts/set_tasks_unattended.ps1 (runbook), src/sqp/monitoring/health.py (bloque `scheduled_tasks`)
 - Proposed fix: desde una consola ELEVADA (no basta con que la cuenta sea admin): `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`; comprobar con `(Get-WinEvent -ListLog 'Microsoft-Windows-TaskScheduler/Operational').IsEnabled`. El clasificador de permisos denegó ejecutarlo desde la sesión.
 - Status: ABIERTO (2026-09-18). Mitigado: `health_check.py` expone `LastRunTime`/`LastTaskResult`/`NumberOfMissedRuns` de las 5 tareas y sale WARN con el comando mientras el historial siga apagado.
+
+- ID: KI-055
+- Severity: Media
+- Description: **Forma 1 de la integración Claude↔Codex (servidor MCP `codex`) muerta.** `~/.claude.json` lanza `codex.exe mcp-server`, pero Codex CLI 0.154.0 ya no tiene ese subcomando: la palabra se reenvía como prompt a la TUI y el proceso muere con `Error: stdin is not a terminal`; Claude Code lo reporta como `codex (CONNECTION_CLOSED)` en cada arranque. Última llamada `mcp__codex__codex` que funcionó: 2026-09-02 (5 en la ventana). `docs/CLAUDE-CODEX-INTEGRATION.md` §Forma 1 sigue describiendo ese transporte. Medido en la sesión del 2026-09-18 (tarde) con una llamada `initialize` JSON-RPC por tuberías (exit 1) y `codex --help` (subcomandos: `exec`, `review`, `mcp` = gestión de servidores externos, `app-server` experimental).
+- Affected files: ~/.claude.json (`mcpServers.codex`, fuera del repo), docs/CLAUDE-CODEX-INTEGRATION.md
+- Proposed fix: retirar el servidor MCP `codex` (o apuntarlo al transporte que ofrezca la versión instalada, si existe) y reescribir la Forma 1 sobre el plugin `codex@openai-codex`, que ya provee el subagente `codex:codex-rescue` y `/codex:review` vía `app-server`. Aprovechar para documentar la puerta Stop del plugin (`stopReviewGate`), que revisa todos los turnos y compite por la cuota con el centinela de la Forma 3.
+- Status: ABIERTO (2026-09-18). Las Formas 2 y 3 no dependen del MCP (usan el binario `codex` del PATH, 0.154.0, resuelto por `command -v`).
