@@ -1,0 +1,36 @@
+{
+  "round_id": "audit-2026-09-22-r2",
+  "auditor": "claude",
+  "model": "claude-opus-5-5",
+  "date_utc": "2026-09-23T00:05:00Z",
+  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
+  "working_tree": "sucio: 34 modificados + 3 sin seguimiento (remediacion r22 sin commit, reversion de full-audit, memoria, audit/)",
+  "contamination": "Se leyeron STATUS/matriz/FINDINGS de audit-2026-09-22 antes del diagnostico; segunda pasada informada, no ciega",
+  "commands": [
+    {"cmd": "git status --short; git diff; git rev-parse HEAD origin/main", "rc": 0, "result": "34 M + 3 ??; HEAD == origin/main"},
+    {"cmd": "gh run list --limit 5", "rc": 0, "result": "5 success; ultimo 35426317559 sobre 9fa276a (2026-09-19)"},
+    {"cmd": "Get-ScheduledTask SQP_* | Get-ScheduledTaskInfo", "rc": 0, "result": "Diario rc0 12:00; Capture_Close rc0 20:30; Backfill rc0; Validate_OOS rc0; Dashboard 267014 (terminada, interactiva)"},
+    {"cmd": "ruff check src scripts tests --no-cache", "rc": 0, "result": "All checks passed"},
+    {"cmd": "mypy src", "rc": 0, "result": "no issues, 106 files"},
+    {"cmd": "PYTHONPATH=src python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\"", "rc": 1, "result": "3 failed, 2049 passed, 225 deselected in 570.24s", "classification": "PRE_EXISTING_FAILURE (CLAUDE-004)"},
+    {"cmd": "python scripts/sync_agent_instructions.py --check", "rc": 0, "result": "synchronized"},
+    {"cmd": "python scripts/validate_claude_model_routing.py", "rc": 0, "result": "OK"},
+    {"cmd": "git status --porcelain -- src scripts configs '*.bat'", "rc": 0, "result": "6 lineas (guarda de DIARIO_COMPLETO.bat abortaria)", "finding": "CLAUDE-001"},
+    {"cmd": "PYTHONPATH=src python scratchpad/repro_latch.py", "rc": 0, "result": "registro ilegible -> mlb|h2h y mlb|totals allowed True, pestillo desarmado", "finding": "CLAUDE-002"},
+    {"cmd": "diff full-audit/SKILL.md vs git show <c>:", "rc": 0, "result": "working tree == 8952755 (2026-09-03)", "finding": "CLAUDE-004"},
+    {"cmd": "sha256sum audit/latest vs audit/audit-2026-09-22", "rc": 0, "result": "11/11 identicos"}
+  ],
+  "coverage": {
+    "REVISADA": ["diff sin commit", "guarda de arbol", "gate de prediccion", "banca/ROI", "derivados", "pruebas", "CI", "tareas", "observabilidad", "hooks", "skills", "secretos", "salidas de apuestas", "limpieza"],
+    "REVISADA_PARCIALMENTE": ["degradacion", "logica/leakage/calibracion/line shopping (apoyo en r22)", "dependencias", "integraciones", "datos", "rendimiento", "documentacion"],
+    "NO_APLICABLE": ["codigo generado/vendorizado", "infraestructura declarativa"]
+  },
+  "findings": {
+    "CLAUDE-001": {"severity": "HIGH", "priority": "P0", "evidence": "REPRODUCED", "confidence": "HIGH"},
+    "CLAUDE-002": {"severity": "HIGH", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"},
+    "CLAUDE-003": {"severity": "MEDIUM", "priority": "P1", "evidence": "STATICALLY_VERIFIED", "confidence": "HIGH"},
+    "CLAUDE-004": {"severity": "MEDIUM", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"}
+  },
+  "not_executed": ["suite slow", "pip-audit (sin cambios de dependencias)", "llamadas a proveedores", "revision Codex (MCP caido)"],
+  "files_written": ["audit/latest/**"]
+}

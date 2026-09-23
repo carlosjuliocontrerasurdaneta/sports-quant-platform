@@ -1,0 +1,63 @@
+{
+  "round_id": "audit-2026-09-22-r2",
+  "date_utc": "2026-09-23T00:05:00Z",
+  "diagnosis_claude_utc": "2026-09-23T00:05:00Z",
+  "diagnosis_openai_utc": null,
+  "consolidated_utc": "2026-09-23T00:10:00Z",
+  "remediation_utc": null,
+  "verification_utc": null,
+  "status": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION",
+  "scope": "auditoria integral del arbol de trabajo (= produccion), incluida la remediacion r22 sin commit",
+  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
+  "branch": "main",
+  "working_tree": "sucio al inicio: 34 M + 3 ??. Durante la ronda solo se escribio audit/latest/.",
+  "python_version": "3.14.4",
+  "platform": "Windows 11",
+  "previous_round": {
+    "round_id": "audit-2026-09-22",
+    "path": "audit/audit-2026-09-22/",
+    "preservation": "11/11 sha256 identicos, verificado antes de escribir"
+  },
+  "auditors": [
+    "claude (claude-opus-5-5)"
+  ],
+  "second_opinion": "no hubo: sin auditor OpenAI; MCP codex CONNECTION_CLOSED",
+  "source_reports": {
+    "claude/REPORT.md": "5609a5018950321a69e03e1402f9769d609c182804dd7aa311ff26882c2c3a57",
+    "claude/EVIDENCE.json": "6a3fea0964c85919634fa624ca182c39fddf27bea93f026a14edecf7a0066836"
+  },
+  "stale_in_latest": {
+    "openai/": "pertenece a audit-2026-09-18; no forma parte de esta ronda",
+    "history/": "de rondas anteriores"
+  },
+  "consolidated": {
+    "FINDINGS.md": "2105cdbf7868431f255fd28d3d8716c1dee4eaddada598d250be3f9802652f19",
+    "BACKLOG.md": "a46a32fb5f9125bce402e174a782cbd77fe77a781f8afc81cec2c087e861d28a",
+    "counts": {
+      "HIGH": 2,
+      "MEDIUM": 2,
+      "P0": 1,
+      "P1": 3
+    }
+  },
+  "tests_initial": "not slow: 3 failed (AUD-004), 2049 passed, 225 deselected, 570.24 s; ruff rc0; mypy rc0",
+  "tests_final": "NO APLICA: sin remediacion en esta ronda",
+  "files_modified": [
+    "audit/latest/claude/REPORT.md",
+    "audit/latest/claude/EVIDENCE.json",
+    "audit/latest/FINDINGS.md",
+    "audit/latest/BACKLOG.md",
+    "audit/latest/STATUS.md",
+    "audit/latest/VALIDATION.md",
+    "audit/latest/CHANGES.md",
+    "audit/latest/MANIFEST.json"
+  ],
+  "final_result": null,
+  "final_result_rationale": "Sin verificacion: no se emite veredicto. Hay un P0 abierto con plazo (AUD-001, 2026-09-23 12:00).",
+  "not_available": [
+    "suite slow",
+    "pip-audit",
+    "segunda opinion",
+    "cuota del proveedor"
+  ]
+}

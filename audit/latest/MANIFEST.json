@@ -1,63 +1,256 @@
 {
-  "round_id": "audit-2026-09-22-r2",
-  "date_utc": "2026-09-23T00:05:00Z",
-  "diagnosis_claude_utc": "2026-09-23T00:05:00Z",
-  "diagnosis_openai_utc": null,
-  "consolidated_utc": "2026-09-23T00:10:00Z",
-  "remediation_utc": null,
+  "round_id": "audit-2026-09-23",
+  "date_utc": "2026-09-23T02:40:00Z",
+  "diagnosis_claude_utc": "2026-09-23T03:05:00Z",
+  "diagnosis_openai_utc": "2026-09-23T16:36:04.040Z",
+  "consolidated_utc": "2026-09-23T18:48:05Z",
+  "remediation_utc": "2026-09-23T21:30:00Z",
   "verification_utc": null,
-  "status": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION",
-  "scope": "auditoria integral del arbol de trabajo (= produccion), incluida la remediacion r22 sin commit",
-  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
+  "status": "REMEDIACION COMPLETADA SIN COMMIT: 13 IMPLEMENTADOS pendientes de verificacion independiente, AUD-003 BLOQUEADO (FABLE-001); VERIFICACION PENDIENTE",
+  "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
+  "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
   "branch": "main",
-  "working_tree": "sucio al inicio: 34 M + 3 ??. Durante la ronda solo se escribio audit/latest/.",
+  "working_tree": "Limpio en codigo durante toda la ronda: git diff HEAD -- src scripts configs tests .claude *.bat vacio al consolidar. Solo cambian entregables de audit/latest/ y el archivo sin seguimiento audit/audit-2026-09-22-r2/. Efecto incidental declarado por OpenAI: ~5 mensajes anadidos a logs/sqp.log por imports del logger real.",
   "python_version": "3.14.4",
-  "platform": "Windows 11",
+  "platform": "win32 (Windows 11)",
   "previous_round": {
-    "round_id": "audit-2026-09-22",
-    "path": "audit/audit-2026-09-22/",
-    "preservation": "11/11 sha256 identicos, verificado antes de escribir"
+    "round_id": "audit-2026-09-22-r2",
+    "path": "audit/audit-2026-09-22-r2/",
+    "status_at_archive": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION (sin VERIFICATION.md)",
+    "preservation": "11/11 ficheros sha256 identicos entre audit/latest/ y audit/audit-2026-09-22-r2/, verificado antes de escribir en latest; reverificado en la consolidacion para FINDINGS, BACKLOG, CHANGES, VALIDATION y STATUS antes de reemplazar FINDINGS y BACKLOG"
   },
   "auditors": [
-    "claude (claude-opus-5-5)"
+    "claude",
+    "openai"
   ],
-  "second_opinion": "no hubo: sin auditor OpenAI; MCP codex CONNECTION_CLOSED",
-  "source_reports": {
-    "claude/REPORT.md": "5609a5018950321a69e03e1402f9769d609c182804dd7aa311ff26882c2c3a57",
-    "claude/EVIDENCE.json": "6a3fea0964c85919634fa624ca182c39fddf27bea93f026a14edecf7a0066836"
-  },
-  "stale_in_latest": {
-    "openai/": "pertenece a audit-2026-09-18; no forma parte de esta ronda",
-    "history/": "de rondas anteriores"
-  },
+  "second_opinion": "disponible: diagnostico OpenAI de la misma ronda y base (conclusiones congeladas 2026-09-23T11:08:01.358Z sin leer el informe Claude). El NV-2 de Claude (sin segunda opinion) queda superado.",
+  "source_reports": [
+    {
+      "path": "audit/latest/claude/REPORT.md",
+      "auditor": "claude",
+      "sha256": "345cd9ddd6b80fe0f846545857dfc93a1fee9911bdbe900ee0d6ab41a149cd79",
+      "round_id": "audit-2026-09-23",
+      "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+      "ids": [
+        "CLAUDE-001",
+        "CLAUDE-002",
+        "CLAUDE-003",
+        "CLAUDE-004",
+        "CLAUDE-005"
+      ]
+    },
+    {
+      "path": "audit/latest/claude/EVIDENCE.json",
+      "auditor": "claude",
+      "sha256": "c57726644d637a8c93343273d791a74cc5ddf04e7e4899f40688300d578551c9"
+    },
+    {
+      "path": "audit/latest/openai/REPORT.md",
+      "auditor": "openai",
+      "sha256": "83956da78b83ed1bca53c136ba30871cec65d07ab3d59ac430d68ee0b6256542",
+      "round_id": "audit-2026-09-23",
+      "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+      "ids": [
+        "OPENAI-001",
+        "OPENAI-002",
+        "OPENAI-003",
+        "OPENAI-004",
+        "OPENAI-005",
+        "OPENAI-006",
+        "OPENAI-007",
+        "OPENAI-008",
+        "OPENAI-009"
+      ]
+    },
+    {
+      "path": "audit/latest/openai/EVIDENCE.json",
+      "auditor": "openai",
+      "sha256": "85f08bbd2e4940df614b5ad788ff13e5cb7a8bae6e997693354221288b8907d3"
+    }
+  ],
   "consolidated": {
-    "FINDINGS.md": "2105cdbf7868431f255fd28d3d8716c1dee4eaddada598d250be3f9802652f19",
-    "BACKLOG.md": "a46a32fb5f9125bce402e174a782cbd77fe77a781f8afc81cec2c087e861d28a",
+    "findings_path": "audit/latest/FINDINGS.md",
+    "findings_sha256": "e4246d6d4068b834c4dc7652fa7f39270a6aa8d2b23d3b4baa00da1b5bcf171c",
+    "backlog_path": "audit/latest/BACKLOG.md",
+    "backlog_sha256": "f87b2609ae8677ab1a50c939356a9a098ab6e0b7822f9f7cc5ffc4a56ee17745",
     "counts": {
-      "HIGH": 2,
-      "MEDIUM": 2,
-      "P0": 1,
-      "P1": 3
+      "CRITICAL": 0,
+      "HIGH": 3,
+      "MEDIUM": 8,
+      "LOW": 3,
+      "total": 14,
+      "P0": 0,
+      "P1": 3,
+      "P2": 8,
+      "P3": 3
+    },
+    "source_findings": 14,
+    "merges": 1,
+    "splits": 1,
+    "origin": {
+      "both_partial": 1,
+      "exclusive_claude": 5,
+      "exclusive_openai": 8,
+      "false_positive": 0,
+      "not_verifiable": 0
+    },
+    "origin_note": "AUD-003 es coincidencia parcial (OPENAI-003 + CLAUDE-002 parte b); AUD-004 procede de CLAUDE-002 parte a y se cuenta como exclusivo Claude",
+    "id_map": {
+      "AUD-001": [
+        "OPENAI-001"
+      ],
+      "AUD-002": [
+        "OPENAI-002"
+      ],
+      "AUD-003": [
+        "OPENAI-003",
+        "CLAUDE-002(b)"
+      ],
+      "AUD-004": [
+        "CLAUDE-002(a)"
+      ],
+      "AUD-005": [
+        "CLAUDE-001"
+      ],
+      "AUD-006": [
+        "CLAUDE-003"
+      ],
+      "AUD-007": [
+        "OPENAI-004"
+      ],
+      "AUD-008": [
+        "OPENAI-005"
+      ],
+      "AUD-009": [
+        "OPENAI-006"
+      ],
+      "AUD-010": [
+        "OPENAI-007"
+      ],
+      "AUD-011": [
+        "OPENAI-008"
+      ],
+      "AUD-012": [
+        "CLAUDE-004"
+      ],
+      "AUD-013": [
+        "CLAUDE-005"
+      ],
+      "AUD-014": [
+        "OPENAI-009"
+      ]
+    },
+    "severity_changes": [
+      {
+        "id": "AUD-003",
+        "claude": "MEDIUM/P2 (CLAUDE-002)",
+        "openai": "HIGH/P1 (OPENAI-003)",
+        "consolidated": "HIGH/P1",
+        "rationale": "stale_void es irreversible (DEDUP_KEY sin result); con stake real el ledger y la banca quedan mal de forma permanente; el default-deny limita la frecuencia actual, no el impacto alcanzable"
+      }
+    ],
+    "consolidator_validation": "14/14 confirmados estaticamente contra 7bd565e leyendo las lineas citadas; arneses REPRODUCED no reejecutados (evidencia de origen); sin tests nuevos porque el codigo no cambio",
+    "observations": [
+      "O-1",
+      "O-2",
+      "O-3",
+      "O-4",
+      "O-5",
+      "O-6",
+      "O-7"
+    ],
+    "dismissed_preserved": {
+      "claude": 6,
+      "openai": 9
     }
   },
-  "tests_initial": "not slow: 3 failed (AUD-004), 2049 passed, 225 deselected, 570.24 s; ruff rc0; mypy rc0",
-  "tests_final": "NO APLICA: sin remediacion en esta ronda",
+  "stale_in_latest": {
+    "history/manifest-20260918T121551Z/": "de rondas anteriores (archivado)"
+  },
+  "history": [
+    {
+      "path": "audit/latest/history/consolidacion-20260923T184804Z/MANIFEST.json",
+      "sha256": "848389a844c989eec8babf20e487cf4005b9435232787245cabc9904efe794a5",
+      "note": "manifest de la ronda previo a la consolidacion; copia verificada por sha256"
+    },
+    {
+      "path": "audit/latest/history/remediacion-20260923T210514Z/MANIFEST.json",
+      "sha256": "ce9911f8fc96ed4ed3673cb5a68d565a4d77019c1c23afc04cebfe56bf7f005e",
+      "note": "manifest previo a la remediacion; copia verificada"
+    }
+  ],
+  "tests_initial": "2299 passed, 1 skipped in 1359.66s (exit 0) [Claude, suite completa]; 844 passed focalizados [OpenAI]",
+  "ci_remote": "success en 7bd565e (gh run list, diagnostico Claude); NOT_VERIFIABLE en el entorno OpenAI (gh ausente)",
+  "tests_final": "2350 passed, 1 skipped in 1252.11s (exit 0); ruff OK; mypy OK (106); sync y routing OK",
   "files_modified": [
-    "audit/latest/claude/REPORT.md",
-    "audit/latest/claude/EVIDENCE.json",
-    "audit/latest/FINDINGS.md",
-    "audit/latest/BACKLOG.md",
-    "audit/latest/STATUS.md",
-    "audit/latest/VALIDATION.md",
-    "audit/latest/CHANGES.md",
-    "audit/latest/MANIFEST.json"
+    ".claude/hooks/crossreview-on-stop.sh",
+    "scripts/daily_picks.py",
+    "scripts/gate_status.py",
+    "scripts/research/measure_price_floor_preregistration.py",
+    "scripts/run_all.py",
+    "scripts/run_daily.py",
+    "src/sqp/audit/report.py",
+    "src/sqp/calibration/calibrator.py",
+    "src/sqp/evaluation/edge_information.py",
+    "src/sqp/monitoring/health.py",
+    "src/sqp/pipeline/daily.py",
+    "src/sqp/providers/mlb_statsapi.py",
+    "src/sqp/risk/prediction_gate.py",
+    "src/sqp/settlement/runner.py",
+    "src/sqp/simulation/monte_carlo.py",
+    "src/sqp/storage/results_store.py",
+    "src/sqp/storage/starter_fip.py",
+    "src/sqp/storage/starters.py",
+    "tests/settlement/test_candidate_history_fallback.py",
+    "tests/test_audit_hooks.py",
+    "tests/test_breakeven.py",
+    "tests/test_calibrator.py",
+    "tests/test_daily_picks.py",
+    "tests/test_edge_information.py",
+    "tests/test_fip_boxscore_errors.py",
+    "tests/test_gate_block_visibility.py",
+    "tests/test_live_gate_integration.py",
+    "tests/test_monte_carlo.py",
+    "tests/test_orchestrator_safety.py",
+    "tests/test_prediction_gate.py",
+    "tests/test_store_concurrency.py"
   ],
   "final_result": null,
-  "final_result_rationale": "Sin verificacion: no se emite veredicto. Hay un P0 abierto con plazo (AUD-001, 2026-09-23 12:00).",
+  "final_result_rationale": "Sin verificacion independiente no hay resultado final. No se emite PASS: AUD-003 (HIGH/P1) bloqueado y nada commiteado (el guard KI-036 abortara el run programado).",
   "not_available": [
-    "suite slow",
-    "pip-audit",
-    "segunda opinion",
-    "cuota del proveedor"
-  ]
+    "verificacion independiente",
+    "verificacion independiente de la ronda previa audit-2026-09-22-r2",
+    "CI remoto de los cambios (sin push)",
+    "barrido de secretos en logs/ y data/output/",
+    "decision de identidad de eventos (AUD-003)"
+  ],
+  "remediation": {
+    "authorized_scope": "todos los confirmados (AUD-001..AUD-014); orden: ejecutar integramente audits/prompts/corregir-auditoria.md",
+    "implementer": "claude-opus-5-5",
+    "independent_review": "subagente independent-code-reviewer en fable (regla 1 de MODEL_ROUTING.md); FABLE-001 CRITICAL reproducido y tratado; FABLE-002..005 tratados",
+    "implemented": [
+      "AUD-001",
+      "AUD-002",
+      "AUD-004",
+      "AUD-005",
+      "AUD-006",
+      "AUD-007",
+      "AUD-008",
+      "AUD-009",
+      "AUD-010",
+      "AUD-011",
+      "AUD-012",
+      "AUD-013",
+      "AUD-014"
+    ],
+    "blocked": {
+      "AUD-003": "fallback historico revertido: liquidaba picks sin jugar con el marcador de otro partido (FABLE-001); requiere decision de identidad de eventos entre proveedores"
+    },
+    "committed": false,
+    "deliverables": {
+      "CHANGES.md": "1a53d4219e445210b7f01b57ee0c9e66b073191baf31168ac2e5457813e99edf",
+      "VALIDATION.md": "41c6cbf3ce551b71357a4fca712cee107e50db4e55f3752e66471aa15b856502",
+      "STATUS.md": "7151e8e4d5801b11dfc284ea09447da5e8d85751a505195d4bd2e32c8e71f1e7"
+    }
+  }
 }

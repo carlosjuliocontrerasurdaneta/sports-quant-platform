@@ -1,0 +1,109 @@
+{
+  "round_id": "audit-2026-09-23",
+  "date_utc": "2026-09-23T02:40:00Z",
+  "diagnosis_claude_utc": "2026-09-23T03:05:00Z",
+  "diagnosis_openai_utc": "2026-09-23T16:36:04.040Z",
+  "consolidated_utc": "2026-09-23T18:48:05Z",
+  "remediation_utc": null,
+  "verification_utc": null,
+  "status": "CONSOLIDACION COMPLETADA; REMEDIACION PENDIENTE DE AUTORIZACION (3 P1: AUD-001, AUD-002, AUD-003)",
+  "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
+  "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+  "branch": "main",
+  "working_tree": "Limpio en codigo durante toda la ronda: git diff HEAD -- src scripts configs tests .claude *.bat vacio al consolidar. Solo cambian entregables de audit/latest/ y el archivo sin seguimiento audit/audit-2026-09-22-r2/. Efecto incidental declarado por OpenAI: ~5 mensajes anadidos a logs/sqp.log por imports del logger real.",
+  "python_version": "3.14.4",
+  "platform": "win32 (Windows 11)",
+  "previous_round": {
+    "round_id": "audit-2026-09-22-r2",
+    "path": "audit/audit-2026-09-22-r2/",
+    "status_at_archive": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION (sin VERIFICATION.md)",
+    "preservation": "11/11 ficheros sha256 identicos entre audit/latest/ y audit/audit-2026-09-22-r2/, verificado antes de escribir en latest; reverificado en la consolidacion para FINDINGS, BACKLOG, CHANGES, VALIDATION y STATUS antes de reemplazar FINDINGS y BACKLOG"
+  },
+  "auditors": [
+    "claude",
+    "openai"
+  ],
+  "second_opinion": "disponible: diagnostico OpenAI de la misma ronda y base (conclusiones congeladas 2026-09-23T11:08:01.358Z sin leer el informe Claude). El NV-2 de Claude (sin segunda opinion) queda superado.",
+  "source_reports": [
+    {
+      "path": "audit/latest/claude/REPORT.md",
+      "auditor": "claude",
+      "sha256": "345cd9ddd6b80fe0f846545857dfc93a1fee9911bdbe900ee0d6ab41a149cd79",
+      "round_id": "audit-2026-09-23",
+      "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+      "ids": ["CLAUDE-001", "CLAUDE-002", "CLAUDE-003", "CLAUDE-004", "CLAUDE-005"]
+    },
+    {
+      "path": "audit/latest/claude/EVIDENCE.json",
+      "auditor": "claude",
+      "sha256": "c57726644d637a8c93343273d791a74cc5ddf04e7e4899f40688300d578551c9"
+    },
+    {
+      "path": "audit/latest/openai/REPORT.md",
+      "auditor": "openai",
+      "sha256": "83956da78b83ed1bca53c136ba30871cec65d07ab3d59ac430d68ee0b6256542",
+      "round_id": "audit-2026-09-23",
+      "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+      "ids": ["OPENAI-001", "OPENAI-002", "OPENAI-003", "OPENAI-004", "OPENAI-005", "OPENAI-006", "OPENAI-007", "OPENAI-008", "OPENAI-009"]
+    },
+    {
+      "path": "audit/latest/openai/EVIDENCE.json",
+      "auditor": "openai",
+      "sha256": "85f08bbd2e4940df614b5ad788ff13e5cb7a8bae6e997693354221288b8907d3"
+    }
+  ],
+  "consolidated": {
+    "findings_path": "audit/latest/FINDINGS.md",
+    "findings_sha256": "e4246d6d4068b834c4dc7652fa7f39270a6aa8d2b23d3b4baa00da1b5bcf171c",
+    "backlog_path": "audit/latest/BACKLOG.md",
+    "backlog_sha256": "f87b2609ae8677ab1a50c939356a9a098ab6e0b7822f9f7cc5ffc4a56ee17745",
+    "counts": {"CRITICAL": 0, "HIGH": 3, "MEDIUM": 8, "LOW": 3, "total": 14, "P0": 0, "P1": 3, "P2": 8, "P3": 3},
+    "source_findings": 14,
+    "merges": 1,
+    "splits": 1,
+    "origin": {"both_partial": 1, "exclusive_claude": 5, "exclusive_openai": 8, "false_positive": 0, "not_verifiable": 0},
+    "origin_note": "AUD-003 es coincidencia parcial (OPENAI-003 + CLAUDE-002 parte b); AUD-004 procede de CLAUDE-002 parte a y se cuenta como exclusivo Claude",
+    "id_map": {
+      "AUD-001": ["OPENAI-001"],
+      "AUD-002": ["OPENAI-002"],
+      "AUD-003": ["OPENAI-003", "CLAUDE-002(b)"],
+      "AUD-004": ["CLAUDE-002(a)"],
+      "AUD-005": ["CLAUDE-001"],
+      "AUD-006": ["CLAUDE-003"],
+      "AUD-007": ["OPENAI-004"],
+      "AUD-008": ["OPENAI-005"],
+      "AUD-009": ["OPENAI-006"],
+      "AUD-010": ["OPENAI-007"],
+      "AUD-011": ["OPENAI-008"],
+      "AUD-012": ["CLAUDE-004"],
+      "AUD-013": ["CLAUDE-005"],
+      "AUD-014": ["OPENAI-009"]
+    },
+    "severity_changes": [
+      {"id": "AUD-003", "claude": "MEDIUM/P2 (CLAUDE-002)", "openai": "HIGH/P1 (OPENAI-003)", "consolidated": "HIGH/P1", "rationale": "stale_void es irreversible (DEDUP_KEY sin result); con stake real el ledger y la banca quedan mal de forma permanente; el default-deny limita la frecuencia actual, no el impacto alcanzable"}
+    ],
+    "consolidator_validation": "14/14 confirmados estaticamente contra 7bd565e leyendo las lineas citadas; arneses REPRODUCED no reejecutados (evidencia de origen); sin tests nuevos porque el codigo no cambio",
+    "observations": ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6", "O-7"],
+    "dismissed_preserved": {"claude": 6, "openai": 9}
+  },
+  "stale_in_latest": {
+    "CHANGES.md, VALIDATION.md, STATUS.md": "de audit-2026-09-22-r2 (sha256 identicos a audit/audit-2026-09-22-r2/); NO pertenecen a esta ronda; los reemplazaran las fases de remediacion/verificacion de audit-2026-09-23",
+    "history/manifest-20260918T121551Z/": "de rondas anteriores (archivado)"
+  },
+  "history": [
+    {"path": "audit/latest/history/consolidacion-20260923T184804Z/MANIFEST.json", "sha256": "848389a844c989eec8babf20e487cf4005b9435232787245cabc9904efe794a5", "note": "manifest de la ronda previo a la consolidacion; copia verificada por sha256"}
+  ],
+  "tests_initial": "2299 passed, 1 skipped in 1359.66s (exit 0) [Claude, suite completa]; 844 passed focalizados [OpenAI]",
+  "ci_remote": "success en 7bd565e (gh run list, diagnostico Claude); NOT_VERIFIABLE en el entorno OpenAI (gh ausente)",
+  "tests_final": null,
+  "files_modified": [],
+  "final_result": null,
+  "final_result_rationale": "Ronda en consolidacion completada: no hay remediacion ni verificacion. No se emite PASS: 3 hallazgos HIGH/P1 abiertos.",
+  "not_available": [
+    "remediacion",
+    "verificacion",
+    "verificacion independiente de la ronda previa audit-2026-09-22-r2",
+    "barrido de secretos en logs/ y data/output/ (permiso denegado)",
+    "volumen productivo de stale_void indebidos (AUD-003) y picks sin veredicto (AUD-004)"
+  ]
+}

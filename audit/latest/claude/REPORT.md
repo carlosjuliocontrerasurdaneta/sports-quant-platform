@@ -1,267 +1,271 @@
-# Informe del auditor Claude — ronda `audit-2026-09-22-r2`
+# Diagnóstico independiente — Claude · ronda `audit-2026-09-23`
 
-- **Fecha:** 2026-09-22 (sesión 20:30–21:05 hora local, fin 2026-09-23T00:05Z)
-- **Auditor:** Claude Code, `claude-opus-5-5`, sesión principal, **sin subagentes** (modo no orquestado)
-- **Base Git:** `main@9fa276a` = `origin/main`. **Árbol de trabajo NO limpio:** 34 ficheros modificados + 3 sin seguimiento (detalle en §2)
-- **Alcance:** auditoría integral del árbol de trabajo tal como lo ejecutará producción, incluida la remediación sin commit de la ronda `audit-2026-09-22`
-- **Autorización:** sólo diagnóstico, validación y planificación. **No se ha modificado ningún fichero fuera de `audit/latest/`**, ni `src/`, `tests/`, `scripts/`, `configs/`, `data/`, BAT ni `.claude/`
+- **Auditor:** `claude` (Claude Code, `claude-opus-5-5`).
+- **Base Git:** `main` @ `7bd565e19606a70b37f704ca44cdc41e168ba274`, árbol **limpio** al inicio.
+- **Alcance:** auditoría integral — `src/sqp`, `scripts/`, `tests/` (como evidencia), `configs/`, BAT de producción, CI, `.claude/` (settings, hooks, routing, referencias).
+- **Fecha (UTC):** 2026-09-23.
+- **Contrato:** `.claude/automation/audit-workflow.md` (prompt generado `audits/prompts/auditoria-claude-code-opus-5.md`) y taxonomía de `AGENTS.md`.
+- **Escrituras de esta fase:** solo `audit/latest/` (MANIFEST, `claude/`) y la copia de preservación `audit/audit-2026-09-22-r2/`. Las reproducciones corrieron en directorios temporales (`tempfile`) con `ROOT` redirigido; no se tocó ningún dato productivo.
 
-## 0. Declaraciones previas
+## 1. Resumen
 
-1. **Contaminación declarada.** La sesión leyó al principio el `STATUS.md`, la matriz de cobertura y parte de `FINDINGS.md` de la ronda `audit-2026-09-22` (esta mañana) para no duplicar trabajo. Por tanto este diagnóstico **no es ciego** respecto a ella: es una segunda pasada informada. Donde una conclusión propia se apoya en la ronda anterior, se dice.
-2. **La skill con la que se lanzó esta auditoría no es la versionada.** `.claude/skills/full-audit/` en el árbol de trabajo es byte a byte la del commit `8952755` (2026-09-03), no la de `HEAD`. Es el hallazgo **CLAUDE-004**. La precedencia de esa misma skill da prioridad a las instrucciones del repositorio, así que esta ronda sigue el contrato canónico `.claude/automation/audit-workflow.md`: rondas, entregables en `audit/latest/` y taxonomía de `AGENTS.md`.
-3. **Segunda opinión:** no hubo. El MCP `codex` falló al conectar en esta sesión (`CONNECTION_CLOSED`), igual que en la ronda anterior (`AUD-008`/`KI-056`).
+| Severidad | Confirmados | P0 | P1 | P2 | P3 |
+|---|---:|---:|---:|---:|---:|
+| CRITICAL | 0 | – | – | – | – |
+| HIGH | 0 | – | – | – | – |
+| MEDIUM | 3 | 0 | 0 | 3 | 0 |
+| LOW | 2 | 0 | 0 | 0 | 2 |
 
-## 1. Resumen ejecutivo
+- **Sin P0/P1.** Ningún hallazgo pone dinero en riesgo hoy: el gate de predicción está en default-deny (0 de 49 cortes habilitados, registro del 2026-09-22T15:15Z) y todos los stakes son 0.
+- Los tres MEDIUM afectan la **integridad del rastro de picks y de la salida al operador**, no a las probabilidades del motor:
+  - **CLAUDE-001:** con banca 0, la lista de candidatos desaparece entera. Reproducido.
+  - **CLAUDE-002:** un pick desplazado sin marcador nunca se anula y sale del ledger sin veredicto. Reproducido.
+  - **CLAUDE-003:** la lista diaria ordena y filtra con la probabilidad cruda que el propio sistema descartó. Verificado estáticamente y medido.
+- Controles globales en HEAD:
+  - `ruff check src scripts tests`: OK.
+  - `mypy src`: OK, 106 ficheros.
+  - CI remoto en `7bd565e`: **success**.
+  - `sync_agent_instructions.py --check`: sincronizado.
+  - `validate_claude_model_routing.py`: OK.
+  - `pytest`: 2299 passed, 1 skipped.
+- **No se emite PASS**: faltó la segunda opinión (MCP codex caído) y el barrido de `logs/` fue denegado por permisos (§9).
 
-**Propósito del sistema.** Estimar probabilidades para todos los partidos y mercados, y publicar picks diarios priorizados por probabilidad, con salida a stake real sólo a través del gate de predicción pre-registrado.
+## 2. Preparación de la ronda y preservación
 
-**Arquitectura.** Paquete Python `src/sqp` (106 módulos, ~20.300 líneas) orquestado por BAT desde el Programador de tareas de Windows. **El árbol de trabajo ES producción**: la tarea ejecuta lo que hay en disco.
+- `audit/latest/` contenía la ronda `audit-2026-09-22-r2`, en estado `DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION` y sin `VERIFICATION.md`. Esa ronda **ya no está en diagnóstico**, así que este diagnóstico abre una ronda nueva y no se une a ella.
+- Se copió íntegra a `audit/audit-2026-09-22-r2/`: **11/11 ficheros con sha256 idéntico**, verificado antes de escribir nada en `latest`. Hashes en `EVIDENCE.json`.
+- El borrado de los entregables viejos de `latest` lo **denegó el clasificador de permisos**. Por eso siguen allí `FINDINGS.md`, `BACKLOG.md`, `CHANGES.md`, `VALIDATION.md`, `STATUS.md`, `openai/` e `history/`. Todos pertenecen a rondas anteriores y el `MANIFEST.json` nuevo los declara en `stale_in_latest`. Se reemplazaron `MANIFEST.json` y `claude/`.
+- **Contaminación declarada (paso 2 del contrato):**
+  - La memoria automática del harness inyectó al arranque titulares de rondas previas: índice `MEMORY.md` con KI-053…056, «ciclo audits 09-14», «producción restaurada», etc.
+  - Durante el análisis principal no se leyeron `FINDINGS`, `STATUS` ni informes del otro auditor.
+  - El `MANIFEST.json` de r2 se consultó solo en sus campos de identidad y estado (`round_id`, `status`, `stale_in_latest`).
+  - La comparación histórica (§6) se hizo después de fijar las conclusiones.
 
-**Estado general.** El código versionado está sano: ruff y mypy limpios, CI verde en `HEAD`, 2049 pruebas rápidas en verde y los ocho arreglos de esta mañana correctos en lo sustancial. Los problemas están en el **estado del árbol** y en **un defecto latente de fallo abierto** del gate:
+## 3. Inventario y cobertura
 
-| ID | Sev. | Prio | Evidencia | Resumen |
-|---|---|---|---|---|
-| **CLAUDE-001** | HIGH | **P0** | `REPRODUCED` | **La ejecución de producción de mañana (2026-09-23 12:00) abortará antes de liquidar y no habrá picks**: la guarda de árbol limpio de `DIARIO_COMPLETO.bat` encuentra 6 ficheros de código sin commit (la remediación de esta mañana) |
-| **CLAUDE-002** | HIGH | P1 | `REPRODUCED` | Los escritores de los registros con estado (`prediction_gate`, `degradation`) tratan un registro **ilegible** como **vacío**: pierden pestillos y tests de entrada gastados, y el gate **falla abierto** hacia stake real |
-| **CLAUDE-003** | MEDIUM | P1 | `STATICALLY_VERIFIED` | El `AUD-001` de esta mañana contradice el pre-registro sellado del 2026-09-04: hasta 50 cortes **es la tolerancia pre-registrada**, no un incumplimiento. La remediación ordena en el log re-pre-registrar dentro de esa banda |
-| **CLAUDE-004** | MEDIUM | P1 | `REPRODUCED` | `.claude/skills/full-audit/` revertida hoy, sin commit, a la versión del 2026-09-03: 3 pruebas de contrato en rojo y la skill desconectada del contrato canónico |
+| Componente | Criticidad | Método | Estado |
+|---|---|---|---|
+| `pipeline/daily.py` (run_league, gates, exposición, `_finalize`, archivo) | P0 | lectura completa + reproducción aislada | REVISADO → CLAUDE-001, CLAUDE-004 |
+| `pipeline/probabilities.py` (consenso, no-vig, decisión, ajustes, ejecución) | P0 | lectura completa | REVISADO, sin hallazgos |
+| `markets/edge.py`, `markets/vig.py`, `risk/kelly.py` | P0 | lectura | REVISADO, sin hallazgos |
+| `settlement/settle.py`, `settlement/runner.py`, `scripts/settle_all.py` | P0 | lectura completa + reproducción aislada | REVISADO → CLAUDE-002; observación O-2 |
+| `storage/served_store.py`, `storage/lock.py`, `storage/atomic.py` | P0 | lectura + medición de tiempos de lectura | REVISADO; D-1 descartado |
+| `risk/prediction_gate.py` (diff 9fa276a..HEAD entero y pestillo) | P0 | lectura + estado persistido (agregado) | REVISADO → CLAUDE-005; observación O-1 |
+| `risk/degradation.py`, `risk/bankroll.py` (diff reciente) | P0 | lectura | REVISADO, sin hallazgos nuevos |
+| `calibration/calibrator.py` (train, gate, apply) | P0 | lectura parcial: train/apply/registry | PARCIAL: promoción y auto-promoción no leídas línea a línea |
+| `config.py` (env vs yaml, validate) | P1 | lectura | REVISADO, sin hallazgos |
+| `providers/odds_api.py` (clave, reintentos, caché, frescura) | P1 | lectura | REVISADO, sin hallazgos |
+| `pipeline/revalidation.py` | P1 | lectura de ambos pases | REVISADO, sin hallazgos |
+| `pipeline/cleanup.py` | P1 | lectura | REVISADO |
+| `pipeline/team_totals_capture.py` | P2 | lectura parcial | PARCIAL; D-3 descartado |
+| `backtesting/roi_engine.py` | P1 | lectura del bucle walk-forward | REVISADO: sin leakage; paridad de políticas documentada |
+| `scripts/run_all.py` | P0 | lectura completa | REVISADO |
+| `scripts/daily_picks.py`, `evaluation/tipster.py`, `audit/report.py` | P1 | lectura + medición sobre el stream vigente | REVISADO → CLAUDE-003; observación O-4 |
+| `audit/html_report.py` (1599 líneas) | P2 | búsqueda dirigida: fuentes de probabilidad, ROI, lenguaje | PARCIAL |
+| BAT: `DIARIO_COMPLETO`, `SETTLE_ALL`, `RUN_DIARIO_ALL` | P0 | inspección estática | REVISADO |
+| CI (`.github/workflows/ci.yml`) y estado remoto | P1 | lectura + `gh run list` | REVISADO: verde en HEAD |
+| `.claude/` settings, hooks, routing, referencias rotas | P2 | validadores de solo lectura + barrido de referencias | REVISADO; D-2 descartado |
+| Secretos en ficheros versionados | P0 | barrido por patrones | REVISADO: sin fugas |
+| Secretos en `logs/` y `data/output` | P0 | barrido por patrones | **NO VERIFICABLE** (permiso denegado) |
+| `features/*`, `models/*`, adaptadores deportivos | P1 | **EXCLUIDO** por tiempo; solo el contrato temporal de `build_adjustment_context` | NO REVISADO en profundidad |
+| `audit/clv*.py`, `evaluation/feature_shadow.py`, `intraday_scan.py`, `closing_capture.py` | P2 | no revisados | EXCLUIDO |
 
-**Conclusión.** Hay un P0 con plazo de **~15 horas** que se resuelve con un commit selectivo (sin la reversión de CLAUDE-004), con el aviso de que la remediación de esta mañana queda así verificada **sólo por esta ronda**, que no es ciega (§0). CLAUDE-002 no tiene efecto hoy, porque ningún corte ha gastado todavía su test de entrada. Se vuelve alcanzable en cuanto `mlb|h2h` o `mlb|spreads` crucen `n ≥ 300`, previsiblemente hacia el **2026-09-25/26** (§7).
-
-**Limitaciones.** No hubo auditor independiente ni revisión de Codex. No se ejecutó ninguna llamada a proveedores. No se cargaron datasets completos. La suite `slow` no se ejecutó en esta ronda (sí en la de esta mañana, sobre `HEAD`).
-
-## 2. Inventario
-
-| Elemento | Medida |
-|---|---|
-| Paquete | `src/sqp`: 106 módulos, 20.326 líneas; Python 3.14.4 en producción, CI 3.11–3.14 |
-| Pruebas | 151 ficheros `tests/*.py`; subconjunto `not slow` = 2052 pruebas (225 `slow` deseleccionadas) |
-| Scripts | 71 ficheros en `scripts/` |
-| Orquestación | 10 BAT en la raíz; `DIARIO_COMPLETO.bat` = guarda de árbol → `SETTLE_ALL` → `RUN_DIARIO_ALL` → lista/tipster/derivados → salud |
-| Programación | 5 tareas `SQP_*_Cdev` (4 en S4U, `Dashboard` interactiva) |
-| Configuración | `configs/default.yaml` (+ `venues`, `leagues/*`), `.env` (no leído, denegado por política), `Settings.load()` |
-| Dependencias | `pyproject.toml` + `requirements.lock` |
-| Persistencia | CSV/JSON/joblib bajo `data/` con escritura atómica (`storage/atomic.py`) y bloqueo (`storage/lock.py`) |
-| Proveedores | The Odds API, ESPN, MLB StatsAPI, Open-Meteo (deshabilitado) |
-| Sistema de agentes | `.claude/`: 34 skills, agentes, hooks (7 + gate `Stop` del plugin Codex), `automation/`, memoria |
-| CI | `.github/workflows/ci.yml` |
-
-**Estado del árbol al inicio (preexistente, no tocado).** Código que ejecuta producción y está sucio: `scripts/validate_claude_model_routing.py`, `src/sqp/pipeline/{cleanup,team_totals_capture}.py`, `src/sqp/risk/{bankroll,prediction_gate}.py`, `src/sqp/storage/atomic.py`. Además: 6 tests, `.claude/settings.json`, `.claude/hooks/run-tests-on-stop.sh`, 4 ficheros de `.claude/skills/full-audit/`, `CLAUDE.md`, routing de modelo, memoria y entregables de `audit/latest/`. Sin seguimiento: `audit/audit-2026-09-18/`, `audit/audit-2026-09-22/` y `Obsidian/Bitácora/2026-09-22.md`.
-
-## 3. Matriz de cobertura
-
-«r22» = ronda `audit-2026-09-22` de esta mañana. Donde el estado se apoya en ella, se indica.
-
-| Área | Prio | Estado | Componentes | Método | Validación / **estado del control** | Limitaciones |
-|---|---|---|---|---|---|---|
-| Diff sin commit (remediación r22) | P0 | REVISADA | 6 módulos, hook, `settings.json`, 6 tests | Lectura línea a línea del diff + callers + suite | Los 8 IDs revalidados (§8). 1 premisa errónea → CLAUDE-003 | — |
-| Guarda de árbol / operación diaria | P0 | REVISADA | `DIARIO_COMPLETO.bat:39-74,296-308`, tarea `SQP_Diario_Completo_Cdev` | Lectura + **reproducción del comando exacto de la guarda** + acción de la tarea | `git status --porcelain -- src scripts configs *.bat` → **6 líneas** → CLAUDE-001 | — |
-| Gate de predicción | P0 | REVISADA | `risk/prediction_gate.py` (decisión, pestillo, test único, lector) | Lectura + reproducción en memoria + estado vivo | Estado 2026-09-22T15:15Z: 49 cortes, 0 `allowed`, mayor `n` = 270/300 (`mlb|h2h`, `mlb|spreads`) → CLAUDE-002, CLAUDE-003 | — |
-| Monitor de degradación | P0 | REVISADA_PARCIALMENTE | `risk/degradation.py:173-264` | Lectura del escritor | Mismo patrón que el gate → CLAUDE-002 (manifestación secundaria) | No reproducido dinámicamente; conclusión estática |
-| Banca / ROI realizado | P0 | REVISADA | `risk/bankroll.py:333-362`, `settlement/settle.py:128-140` | Lectura + suite | Cambio de r22 equivalente en comportamiento (push/void con `pnl 0`) | — |
-| Liquidación de derivados | P1 | REVISADA | `pipeline/team_totals_capture.py:368-440` | Lectura | Fecha en hora del Este; doubleheader sin graduar; una captura por selección | — |
-| Captura de derivados (presupuesto, cobertura) | P1 | REVISADA | `team_totals_capture.py:209-358`, `DIARIO_COMPLETO.bat:293` | Lectura + configuración efectiva | `regions=us,eu` → coste 2 por evento, coherente con `CREDITS_PER_EVENT` | Cuota real del proveedor: NO_VERIFICABLE (llamada externa) |
-| Lógica / leakage / calibración / line shopping | P0 | REVISADA_PARCIALMENTE | `markets/`, `features/`, `calibration/`, `pipeline/probabilities.py` | **Sin relectura propia**: sin cambios desde `HEAD`, que r22 revisó a fondo | Se apoya en r22 (§3 de su informe) | Dependencia declarada de la ronda anterior |
-| Pruebas | P1 | REVISADA | 2052 `not slow` | Ejecución completa aislada, sin caché | **3 failed, 2049 passed, 225 deselected, 570,24 s**. Los 3 fallos → CLAUDE-004 | `slow` no ejecutada en esta ronda |
-| CI/CD | P1 | REVISADA | `ci.yml` | **Estado del control** | `gh run list`: último run `35426317559` **success** sobre `9fa276a` (2026-09-19). El diff sin commit **no ha pasado por CI** | — |
-| Tareas programadas | P1 | REVISADA | 5 `SQP_*_Cdev` | `Get-ScheduledTaskInfo` (2026-09-22 ~20:55) | `Diario` rc 0 (12:00), `Capture_Close` rc 0 (20:30), `Backfill` rc 0, `Validate_OOS` rc 0 (17/09). `Dashboard` rc 267014 = `SCHED_S_TASK_TERMINATED` (interactiva, terminada; no es fallo del pipeline). Historial del Programador **deshabilitado** (KI-054, persistente) | — |
-| Observabilidad | P1 | REVISADA | `data/output/pipeline_health.json` | Lectura del estado vivo | `WARN`, 0 errores, 1 aviso (historial del Programador). `served_pending_expired_total` = 150, **estable** respecto al 2026-09-13 | — |
-| Hooks | P2 | REVISADA | `.claude/settings.json`, `run-tests-on-stop.sh`, `mark-tests-pending.sh` | Lectura + `command -v timeout` + centinelas | `timeout` = GNU coreutils 8.32. **Centinela `.tests-pending` puesto desde las 20:51**: la sesión de remediación cerró sin veredicto de la suite local | — |
-| Skills / instrucciones / routing | P2 | REVISADA | `.claude/skills/`, `automation/`, validadores | `sync_agent_instructions.py --check` (rc 0), `validate_claude_model_routing.py` (rc 0), comparación contra el historial de Git | → CLAUDE-004 | Origen de la reversión: NO_VERIFICABLE |
-| Seguridad y secretos | P1 | REVISADA | Árbol versionado | `git grep` de literales tipo clave (valores redactados) | Sólo fixtures sintéticos en `tests/test_audit_hooks.py`. `.env` denegado por política (control **comprobado en vivo**) | — |
-| Salidas de apuestas | P1 | REVISADA | `src/`, `scripts/`, BAT | Búsqueda de promesas de beneficio | Sólo avisos de «no garantiza»; ninguna promesa | — |
-| Dependencias | P1 | REVISADA_PARCIALMENTE | `pyproject.toml`, `requirements.lock` | Sin cambios desde r22 | r22: `pip-audit` rc 0 | No re-ejecutado (sin cambios de dependencias) |
-| Integraciones externas | P1 | REVISADA_PARCIALMENTE | `providers/` | Sin cambios desde `HEAD` | Se apoya en r22 | Llamadas reales prohibidas |
-| Datos y persistencia | P1 | REVISADA_PARCIALMENTE | `storage/`, `cleanup.py` | Lectura del diff; agregados del estado vivo | Purga de `.team_totals_credits_*` por `mtime` no alcanza el mes corriente | Datasets completos excluidos por regla |
-| Rendimiento | P2 | REVISADA_PARCIALMENTE | Suite | Medida | Suite `not slow` 570 s aislada frente al presupuesto del hook (1080 s) | Run diario no perfilado |
-| Limpieza y racionalización | P2 | REVISADA | Raíz, `.codex-tmp/`, `audit/` | Historial Git + consumidores | 1 candidato (CLN-001), 1 descartado (`OPTIMIZATION.diff`) | Contenido de subdirectorios de `.codex-tmp/` con ACL denegada: NO_VERIFICABLE |
-| Documentación | P2 | REVISADA_PARCIALMENTE | `IMPLEMENTACION.md`, pre-registros | Contraste puntual | El pre-registro del gate contradice el texto de la remediación r22 → CLAUDE-003 | README no verificado comando a comando |
-| Código generado / vendorizado | P3 | NO_APLICABLE | — | — | No hay | — |
-| Infraestructura declarativa | P3 | NO_APLICABLE | `Dockerfile` | Lectura (r22) | Entorno de demo declarado | — |
+La cobertura **no es total**: las filas PARCIAL y EXCLUIDO no permiten afirmar ausencia de defectos en esas zonas.
 
 ## 4. Hallazgos confirmados
 
-### CLAUDE-001 — La ejecución diaria de mañana abortará por árbol sucio: día sin liquidación y sin picks
+### CLAUDE-001 — Con banca 0 la lista de candidatos desaparece entera, contra lo que declara el código
 
-| Campo | Valor |
+- **Categoría:** lógica / integridad de salida. **Severidad:** MEDIUM. **Confianza:** HIGH. **Evidencia:** REPRODUCED. **Prioridad:** P2.
+- **Archivo / línea:**
+  - `src/sqp/pipeline/daily.py:897-901` y `:952-953`: la selección exige `stake > 0`.
+  - `src/sqp/risk/kelly.py:30-31`: `bankroll <= 0 → (0, 0)`.
+  - `src/sqp/risk/bankroll.py:384-395`: banca a 0 ante `LedgerIntegridadError`, con el comentario «la lista de picks se sigue generando entera».
+- **Activación:** `apply_dynamic_bankroll` fija `settings.bankroll = 0`, ya sea por `LedgerIntegridadError` (ledger ilegible) o por un balance ≤ 0.
+- **Problema:** en `pick_mode: edge` la **selección** de un candidato usa el stake de Kelly: `elif stake <= 0 and not suspect: continue`. Kelly devuelve 0 con banca 0 antes incluso de evaluar el edge. Por eso, con banca 0, ningún lado con edge suficiente llega a `candidates_*.csv`; solo sobreviven los *suspect* (edge > `max_plausible_edge`). Los gates, en cambio, conservan la fila y le quitan el dinero (`_zero_stake_flag`). La banca 0 no hace eso: borra la fila.
+- **Evidencia concreta:**
+  - Script `scratchpad/repro_bankroll0b.py`: `ROOT` en un temporal, modo demo `nba`, `calibration_enabled=False` y `max_plausible_edge=1.0`, esto último solo para que los lados con edge no queden como *suspect*.
+  - Resultado: `bankroll=1000 → candidates=2` (stakes 4.09 y 3.61) y `bankroll=0 → candidates=0`.
+- **Esperado:** mismo conjunto de candidatos, todos con stake 0 y un flag explícito (p. ej. `banca_no_verificable`). Es lo que promete el comentario de `bankroll.py` y lo que exige la regla «el gate quita el stake, nunca la lista».
+- **Observado:** `candidates_<liga>.csv` sin filas; `_finalize` además borra el fichero vigente (`cand_path.unlink()`), tras archivarlo.
+- **Causa raíz:** la selección por edge y el dimensionamiento están acoplados en una sola llamada (`kelly_fraction_stake`). La banca entra como condición de selección y no solo como tamaño.
+- **Consecuencia:**
+  - Los días con ledger ilegible, todas las ligas publican 0 candidatos. No quedan filas que liquidar en `settled_*.csv`, se pierde el KPI de picks y del dashboard, y la revalidación no tiene nada que revalidar.
+  - La lista del operador **no** se pierde: `daily_picks.py` lee el stream servido, que se graba antes del filtrado. Ese es el control compensatorio que limita la severidad a MEDIUM.
+- **Controles existentes:** default-deny del gate (no hay dinero en juego); stream servido intacto; log de error «BANCA NO VERIFICABLE».
+- **Corrección mínima:** separar selección de dimensionamiento. Seleccionar con `adjusted_edge >= min_edge`, como hace Kelly internamente, con independencia de la banca. Dimensionar después y, si la banca es ≤ 0, registrar el candidato con stake 0 y un flag propio.
+- **Pruebas necesarias:** `run_league` en demo con banca 0 debe producir el mismo número de candidatos que con banca > 0, todos con stake 0 y el flag. Añadir el caso con `LedgerIntegridadError` vía `apply_dynamic_bankroll`.
+- **Criterio de aceptación:** conjunto de candidatos independiente de la banca; stake 0 y flag cuando la banca es ≤ 0.
+- **Limitaciones:** hoy el ledger es legible y el balance positivo, así que no está activo. Frecuencia real no verificable.
+
+### CLAUDE-002 — Un pick desplazado (`superseded`) cuyo partido no tiene marcador nunca se anula, y sale del ledger sin veredicto
+
+- **Categoría:** liquidación / integridad del ledger. **Severidad:** MEDIUM. **Confianza:** HIGH. **Evidencia:** REPRODUCED (rama de anulación) y STATICALLY_VERIFIED (rama sin fallback histórico). **Prioridad:** P2.
+- **Archivo / línea:**
+  - `src/sqp/settlement/runner.py:673-676`: `_with_stale_voids(..., _prediction_start_times(league))`.
+  - `:406-418`: `start_time` solo del `predictions_<liga>.csv` **vigente**.
+  - `:44-110`: `superseded_candidates`, con ventana de 14 días.
+  - `src/sqp/domain/models.py:56`: `BetCandidate` no guarda `start_time`.
+- **Activación:** un pick deja la lista antes del partido (lo recupera `superseded_candidates` desde `archive/`) y además ocurre una de dos cosas:
+  - (a) el partido se cancela o pospone y nunca entrega marcador;
+  - (b) la liquidación no corre dentro de la ventana `--days-from 3`, por caída o por tareas no lanzadas.
+- **Problema:**
+  - La anulación por expiración necesita el `start_time` del evento, y solo lo busca en el `predictions` vigente. Un evento ya jugado o cancelado **no está** en el run vigente de The Odds API, así que para un pick desplazado `start_time` es siempre desconocido y `void_stale_candidates` lo deja «abierto».
+  - En deportes de equipo tampoco hay fallback contra `data/historical/` para candidatos. Sí lo hay para el stream servido (`_grade_served_from_history`) y para candidatos de tenis (AUD-MED-004). Un pick con el marcador fuera de la ventana del feed no se gradúa nunca.
+  - A los 14 días (`SUPERSEDED_LOOKBACK_DAYS`) el pick sale del escaneo **sin fila en `settled_*.csv`**.
+- **Evidencia concreta:**
+  - Script `scratchpad/repro_superseded.py`: `ROOT` temporal, payload de scores sano (un partido ajeno completado, `scores_trusted=True`), pick con partido de hace 5 días y sin marcador.
+  - Control (el pick en el fichero vigente, con su `start_time`): `[{'result': 'void', 'flags': 'stale_void'}]`.
+  - Caso desplazado: `[]`, sin fila liquidada.
+- **Esperado:** un pick desplazado sin marcador recibe `void/stale_void` pasados `STALE_VOID_DAYS`, igual que uno vigente. Uno con marcador en `data/historical/` se gradúa por el mismo fallback que ya tienen el stream servido y el tenis.
+- **Observado:** ni se anula ni se gradúa; desaparece del escaneo a los 14 días.
+- **Causa raíz:** el `start_time` del pick no viaja con el candidato y se reconstruye desde un fichero que solo describe el run vigente. El fallback histórico de AUD-MED-004 se aplicó solo a la ruta de tenis.
+- **Consecuencia:**
+  - Hoy (stakes 0): unidades de pick sin veredicto. Es la clase de hueco que AUD-MED-003 (2026-09-13) quiso cerrar: «132 de 730 unidades nunca recibieron veredicto».
+  - Con stake real: un pick apostado en un partido jugado fuera de ventana deja el ledger y la banca dinámica desalineados del dinero. Uno cancelado no afecta al saldo (pnl 0), pero no deja rastro.
+- **Controles existentes:**
+  - El guard M2 de `run_all` (`unsettled_completed_picks`) solo cubre picks del fichero **vigente**.
+  - `pending_served` sí tiene fallback y anulación, así que la evidencia de calibración no se pierde por esta vía.
+- **Corrección mínima:** tomar `start_time` para los desplazados de la fila archivada. Dos vías posibles:
+  - añadir `start_time` a `BetCandidate` (compatible hacia atrás con default);
+  - cruzar con `archive/predictions_<liga>_<dia>.csv`, como ya hace `_tennis_prediction_metadata`.
+  - Y añadir para candidatos de equipo el fallback `history_scores_map`, que ya existe.
+- **Pruebas necesarias:** caso desplazado sin marcador → `stale_void`; caso desplazado con marcador solo en `ResultsStore` → graduado; regresión: sin duplicados por `DEDUP_KEY`.
+- **Criterio de aceptación:** ningún pick archivado dentro de la ventana termina fuera del ledger sin `win/loss/push/void`.
+- **Limitaciones:** frecuencia real no medida: requeriría cruzar `archive/` con `settled_*` (datos productivos). No se hizo en esta fase.
+
+### CLAUDE-003 — La lista diaria del operador ordena, filtra y calcula el «ROI esperado» con la probabilidad cruda que el sistema descartó
+
+- **Categoría:** cuantitativo / salida al operador. **Severidad:** MEDIUM. **Confianza:** HIGH. **Evidencia:** STATICALLY_VERIFIED, con medición. **Prioridad:** P2.
+- **Archivo / línea:**
+  - `scripts/daily_picks.py:116`: `p = estimated_probability`.
+  - `:122` y `:177`: `roi_esp = p*cuota-1`.
+  - `:175-176`: comentario «Es el `estimated_edge` de siempre».
+  - Instancia secundaria en `src/sqp/audit/report.py:265`: `mean_est_prob` sobre `estimated_probability` en el «chequeo de calibración».
+- **Activación:** siempre que exista un calibrador **live** para (liga, mercado). Hoy hay 3: `mlb_spreads`, `mlb_totals`, `wnba_spreads`.
+- **Problema:**
+  - En el stream servido, `estimated_probability` es `p_used`, la mezcla cruda `0,5·p_adj + 0,5·no-vig`. En cambio, `calibrated_probability` (`p_decision`) es la que decide edge y stake, y `estimated_edge = p_decision·cuota − 1` (`daily.py:873-875`, `:916-919`).
+  - El dashboard (`html_report.py:792`) y el tipster (`tipster.py:100-111`) se corrigieron a `labels.decision_prob` en la auditoría 2026-08-31 (A-01), cuyo docstring llama a la cruda «una probabilidad descartada por el sistema».
+  - `daily_picks.py`, que genera las tres listas diarias de `DIARIO_COMPLETO.bat:lista` (incluida `--min-prob 0.60 --min-roi 0`), se quedó fuera de ese arreglo. Además su comentario afirma que `roi_esp` es el `estimated_edge`, lo que es falso para toda fila calibrada.
+- **Evidencia concreta:** sobre los 846 picks vigentes del stream (agregado, sin volcar datos):
+  - 4 filas con `|calibrada − estimada| > 0,005`, con un máximo de 0,0259.
+  - Hoy 0 discrepancias de signo entre `roi_esp` y `estimated_edge`.
+- **Esperado:** las tres listas y el chequeo de calibración usan la probabilidad canónica de decisión (`decision_prob`), como el dashboard y el tipster.
+- **Observado:** ordenan y filtran con la cruda. Con más calibradores promovidos, el filtro `--min-prob 0.60` y el orden pueden incluir, excluir o reordenar picks distinto de como decidió el motor.
+- **Causa raíz:** un arreglo por clase (A-01) aplicado a dos de tres consumidores. No hay un único lector canónico para la columna de probabilidad en los generadores de listas.
+- **Consecuencia:** hoy es pequeña (4 filas); crece con cada promoción de calibrador. La cifra rotulada «ROI esperado» no coincide con el edge del motor para mercados calibrados.
+- **Controles existentes:** ninguno sobre `daily_picks.py`. El tipster y el dashboard sí están bien.
+- **Corrección mínima:** `p = decision_prob(d)` en `rank_picks`; corregir el comentario; en `report.py`, `mean_est_prob` con la misma función.
+- **Pruebas necesarias:** frame con `calibrated_probability ≠ estimated_probability` → `prob_est`, `roi_esp`, el orden y `--min-prob` siguen a la calibrada; fallback por fila cuando la calibrada es NaN.
+- **Criterio de aceptación:** `roi_esp == estimated_edge` (redondeo aparte) en toda fila servida.
+- **Limitaciones:** la magnitud futura depende de promociones que decide el operador.
+
+### CLAUDE-004 — Un segundo run el mismo día sobrescribe la copia de archivo del primero
+
+- **Categoría:** preservación de datos. **Severidad:** LOW. **Confianza:** HIGH. **Evidencia:** STATICALLY_VERIFIED. **Prioridad:** P3.
+- **Archivo / línea:** `src/sqp/pipeline/daily.py:421-428` (`archive_dir / f"{stem}_{day}{suffix}"`, con `day` tomado de `generated_at`).
+- **Activación:** dos runs el mismo día UTC, algo que ya ocurrió (re-run tras el fallo del 2026-08-27).
+- **Problema:**
+  - Run 1 escribe F1. Run 2 archiva F1 como `candidates_x_D.csv` y escribe F2.
+  - Al día siguiente, el run archiva F2 con el **mismo** nombre `candidates_x_D.csv` y pisa F1 (`shutil.copy2`).
+  - Los picks de F1 ausentes de F2 dejan de existir en `archive/`, así que `superseded_candidates` no puede recuperarlos.
+- **Esperado:** una copia por generación, sin pisar ninguna (sufijo con la hora de `generated_at`, o no sobrescribir si ya existe con contenido distinto).
+- **Consecuencia:** picks mostrados en el primer run del día quedan fuera de la liquidación de desplazados. Hoy son stake 0; con stake real, un pick apostado del primer run no tendría veredicto.
+- **Corrección mínima:** nombre de archivo con la marca completa de `generated_at`, adaptando `_ARCHIVE_DAY` en `runner.py` para que siga extrayendo el día.
+- **Pruebas necesarias:** dos `_finalize` el mismo día más un tercero al día siguiente → las dos generaciones están en `archive/`; `superseded_candidates` las ve.
+- **Criterio de aceptación:** ninguna generación archivada se pierde.
+- **Limitaciones:** no se reprodujo (análisis estático directo); frecuencia no medida.
+
+### CLAUDE-005 — El centinela `prediction_gate.blocked` no aparece en ningún control de salud, y `gate_status.py` lo describe como registro «ausente o ilegible»
+
+- **Categoría:** observabilidad de un control. **Severidad:** LOW. **Confianza:** HIGH. **Evidencia:** STATICALLY_VERIFIED. **Prioridad:** P3.
+- **Archivo / línea:**
+  - `src/sqp/risk/prediction_gate.py:474-486` y `:683-689`: centinela nuevo del commit `4fa1673`.
+  - `scripts/gate_status.py:137` y el render («registro ausente o ilegible»).
+  - `grep` sin coincidencias de `blocked` en `src/sqp/monitoring/` y `scripts/health_check.py`.
+- **Activación:** un `prediction_gate.json` ilegible o con forma inesperada. El escritor lanza cada día y el centinela persiste.
+- **Problema:** mientras exista el centinela, el gate queda cerrado **indefinidamente**, que es la dirección segura. Lo único visible es un `warning` de `run_all` («No se pudo actualizar el gate») en `logs/run_diario.log`. `pipeline_health.json` sigue en su estado y `gate_status.py` atribuye la denegación a un registro ausente cuando el registro existe y se lee.
+- **Esperado:** health en WARN/ERROR con el motivo y la ruta del centinela; `gate_status.py` distingue «centinela de bloqueo» de «registro ausente».
+- **Consecuencia:** un corte que ganase su test de entrada no podría entrar hasta que alguien lea el log, y el diagnóstico apuntaría al sitio equivocado. No hay riesgo de dinero (falla cerrado).
+- **Corrección mínima:** comprobación en `health_check`, más un mensaje específico en `gate_status.render` cuando exista `PREDICTION_GATE_BLOCK_FILENAME`.
+- **Pruebas necesarias:** con el centinela presente, health reporta el motivo y `gate_status` muestra el mensaje específico.
+- **Criterio de aceptación:** el centinela es visible en la salida de salud del día.
+- **Limitaciones:** hoy no hay centinela en `data/bets/` (comprobado por listado).
+
+## 5. Observaciones, no verificables y descartes
+
+**Observaciones (no son defectos del contrato vigente):**
+
+- **O-1 · Condición 2 del gate = EV autoestimado.** `ev_flat = mean(p_modelo·(cuota−1) − (1−p_modelo))` (`prediction_gate.py:243-244`) es el ROI **esperado según el propio modelo**, no el ROI realizado a stake plano. Coincide literalmente con el pre-registro (`docs/research/2026-08-16-preregistro-regla-de-salida.md`, «Condición 2»), así que no es un defecto. Aun así, no demuestra rentabilidad neta de vig: un modelo sobreconfiado la cumple por construcción. Cualquier cambio es una decisión del operador sobre un pre-registro.
+- **O-2 · Aborto global por una liga.** `settle_all.py` devuelve 1 si **cualquier** liga que falla retiene picks comenzados, y `DIARIO_COMPLETO.bat` aborta entonces la generación de **todas** las ligas, pese a que `run_all.py` ya omite por liga (guard M2). Es conservador y está documentado como contrato («se ABORTA el run diario para no perder picks»). Contradecirlo es decisión del operador.
+- **O-3 · Filas servidas pendientes fuera de ventana.** `pipeline_health.json` (2026-09-22T15:18Z) reporta `served_pending_expired_total` = brasileirao 35, chile 49, mlb 54, wnba 12. Son candidatas a `stale_void` en vez de graduarse. Causa **NOT_VERIFIABLE** sin leer datos productivos a nivel de fila.
+- **O-4 · Poblaciones distintas en el chequeo de calibración.** En `audit/report.py:_segment_audit`, el «chequeo de calibración» compara `mean_est_edge` (todas las filas graduadas, casi todas con stake 0) con `realized_roi` (solo filas con stake). `n_staked` lo mitiga, pero el texto afirma que deberían aproximarse.
+
+**No verificables:**
+
+- **NV-1:** barrido de patrones de clave (`apiKey=`) en `logs/` y `data/output/`: permiso denegado. El código redacta la clave en excepciones (`odds_api.py:184-210`) y la clave de caché se calcula antes de añadir `apiKey`; no se pudo comprobar el histórico de logs.
+- **NV-2:** segunda opinión OpenAI/Codex: el MCP `codex` falló al conectar (`CONNECTION_CLOSED`).
+
+**Descartados (DISMISSED):**
+
+- **D-1 · Lock sin latido.** `storage/lock.py` rompe un lock con más de 300 s sin latido. Las secciones críticas medidas son cortas: la lectura del mayor fichero de cuotas del mes (`odds_mlb_202609.csv`, 31 MB, 205.058 filas) tarda 2,2 s, y la red de `revalidate_pitchers` está fuera del lock. Sin escenario demostrable.
+- **D-2 · Referencias rotas.** `.claude/agents/*` citan `.claude/loops/{backtest,refactor,release}.md`, que ya no existen, pero son notas históricas («antes …») tras la fusión `56edbcd`, no cargas.
+- **D-3 · Push en team totals.** `team_totals_capture.tail_over` ignora la masa de push, pero `team_total_rows` solo admite líneas `.5` (`:103`).
+- **D-4 · Secretos versionados.** Sin claves reales en ficheros versionados; solo placeholders de tests y texto de auditorías.
+- **D-5 · Leakage del calibrador.** El split temporal agrupa por `event_id` y ordena por fecha del partido (`calibrator.py:468-495`).
+- **D-6 · Leakage del backtest.** `roi_engine` usa un snapshot estrictamente previo al comienzo, features con `d < rd` y adaptador congelado por día.
+
+## 6. Comparación histórica (tras fijar conclusiones)
+
+Búsqueda dirigida en `audit/*/FINDINGS.md` e informes `claude`/`openai` archivados:
+
+| ID | Estado histórico |
 |---|---|
-| Categoría | Operación / proceso de liberación |
-| Severidad | **HIGH** |
-| Confianza | HIGH |
-| Evidencia | `REPRODUCED` (condición exacta de la guarda ejecutada) + `STATICALLY_VERIFIED` (rama de aborto y acción de la tarea) |
-| Prioridad | **P0**: plazo hasta el **2026-09-23 12:00** hora local |
-| Archivos | `DIARIO_COMPLETO.bat:60-74` (guarda), `:296-308` (`error_arbol`); tarea `SQP_Diario_Completo_Cdev` |
+| CLAUDE-001 | **NUEVO**. La ronda 09-22 revisó Kelly con «banca ≤0 protegida», pero no el efecto de la banca 0 sobre la **selección**. |
+| CLAUDE-002 | **NUEVO**. Deriva de AUD-MED-003 (09-13, superseded) y AUD-MED-004 (09-13, fallback de tenis), que no cubrieron la expiración ni el fallback de equipo. |
+| CLAUDE-003 | **NUEVO**, persistencia de clase: A-01 (2026-08-31) corrigió dashboard y tipster, no `daily_picks.py`. |
+| CLAUDE-004 | **NUEVO**. |
+| CLAUDE-005 | **NUEVO**, sobre código de `4fa1673` (remediación r2, pendiente de verificación independiente). |
 
-- **Activación:** la tarea diaria lanza `C:\dev\3\sports-quant-platform\DIARIO_COMPLETO.bat` a las 12:00 (verificado con `Get-ScheduledTask`).
-- **Problema:** la guarda KI-036 ejecuta `git status --porcelain -- src scripts configs *.bat` y aborta con `exit /b 1` **antes de liquidar** si hay salida.
-- **Evidencia concreta:** el mismo comando devuelve ahora 6 líneas: `scripts/validate_claude_model_routing.py`, `src/sqp/pipeline/cleanup.py`, `src/sqp/pipeline/team_totals_capture.py`, `src/sqp/risk/bankroll.py`, `src/sqp/risk/prediction_gate.py` y `src/sqp/storage/atomic.py`. Todos se modificaron a las 17:07–17:09 de hoy, **después** de la ejecución de las 12:00 (que terminó con rc 0 sobre `HEAD`). Por eso hoy no saltó.
-- **Esperado:** que una remediación terminada llegue al árbol de producción commiteada, o no llegue.
-- **Observado:** la ronda r22 cerró con la remediación **sin commit**, «pendiente de verificación independiente» (`audit/latest/STATUS.md` de r22).
-- **Causa raíz:** dos controles correctos por separado que chocan. El contrato de auditoría deja la remediación pendiente de verificación independiente, y la guarda (orden del operador del 2026-09-06) impide ejecutar código sin commit. Nada de lo que dejó escrito la sesión anterior avisa del choque: ni `STATUS.md` ni el resumen de sesión.
-- **Consecuencia:** un día sin liquidación ni picks, lo que va contra la regla fundamental de generar picks diarios. La guarda sí deja rastro (`run_status --fail --stage guard_arbol` y aviso en el log), así que el fallo sería visible, pero no se evitaría.
-- **Controles existentes:** la guarda funciona tal como se diseñó; el escape `SQP_SKIP_TREE_GUARD=1` existe sólo para recuperación manual.
-- **Corrección mínima:** antes de las 12:00 del 2026-09-23, dejar vacío `git status --porcelain -- src scripts configs *.bat` con un **commit selectivo** de los ficheros de la remediación r22 (los 6 de arriba, sus 6 tests, `.claude/settings.json`, `.claude/hooks/run-tests-on-stop.sh` y los entregables de auditoría), **excluyendo** `.claude/skills/full-audit/` (CLAUDE-004). La alternativa es revertirlos, y exige la misma autorización. No usar `git add -A`.
-- **Pruebas necesarias:** `ruff`, `mypy` y la suite `not slow` sobre el árbol resultante. Esta ronda ya las ejecutó sobre el árbol actual: 2049 passed y 3 failed, los 3 de CLAUDE-004. Tras el push, comprobar el CI.
-- **Criterio de aceptación:** comando de la guarda sin salida; CI verde sobre el nuevo commit; a las 12:00 del 23/09, `diario_completo.log` sin «ABORTADO ANTES DE LIQUIDAR».
-- **Limitaciones:** commitear es escritura en Git (y el push, externa): requiere autorización expresa del operador.
+Los hallazgos de la ronda r2 no se reverifican aquí: su verificación independiente sigue **pendiente** y está preservada en `audit/audit-2026-09-22-r2/`.
 
-### CLAUDE-002 — Los registros con estado fallan abiertos: un registro ilegible borra pestillos y tests de entrada gastados
+## 7. Validaciones y comandos
 
-| Campo | Valor |
-|---|---|
-| Categoría | Integridad de estado / cuantitativo (pre-registro) / seguridad financiera |
-| Severidad | **HIGH**: el impacto alcanzable es stake real en un corte que suspendió su único test o que tiene el pestillo armado. La rareza de la activación no rebaja la severidad (contrato de hallazgos) |
-| Confianza | HIGH |
-| Evidencia | `REPRODUCED` (gate, en memoria, con un registro ilegible en un directorio temporal) + `STATICALLY_VERIFIED` (degradación) |
-| Prioridad | **P1**: hoy no hay estado que perder; lo habrá en cuanto un corte gaste su test (previsiblemente 2026-09-25/26) |
-| Archivos | `src/sqp/risk/prediction_gate.py:456-458` (escritor), `:573-590` (lector compartido); `src/sqp/risk/degradation.py:173-188,257-264` |
-
-- **Problema:** `write_prediction_gate` obtiene el estado previo con `load_prediction_gate`, que devuelve `{}` si el fichero existe pero no se puede leer (`OSError`, JSON corrupto, raíz no objeto). Para el **consumidor** `{}` es default-deny, y es correcto. Para el **escritor** significa «no había estado»: `_apply_latch` trata cada corte como nuevo, el que ya gastó su test lo **estrena otra vez** y un pestillo armado **desaparece**. El resultado se persiste encima.
-- **Reproducción** (`scratchpad/repro_latch.py`, sin tocar `data/`): con dos cortes previos, `mlb|h2h` con test gastado y no superado y `mlb|totals` con pestillo armado, y criterios cumplidos hoy:
-
-  | Corte | Registro legible | Registro ilegible |
-  |---|---|---|
-  | `mlb|h2h` | `allowed False`, `agotado_test_unico` | **`allowed True`**, test «estrenado» con fecha de hoy |
-  | `mlb|totals` | `allowed False`, pestillo armado | **`allowed True`**, **pestillo desarmado** |
-
-- **Esperado:** «no puedo leer el estado» ≠ «no hay estado». El escritor debería negarse a sobrescribir y dejar el registro previo intacto, con error ruidoso.
-- **Causa raíz:** un único lector tolerante compartido por consumidor y escritor. La tolerancia es correcta para leer una autorización y errónea para derivar un estado nuevo.
-- **Consecuencia:** se vulnera el pre-registro del 2026-09-04 («un solo test de entrada»; «no reentra sin liberación humana») y un corte puede salir del modo shadow hacia stake real (`pipeline/daily.py:650-657,960`; `prediction_gate.enabled: true` en `configs/default.yaml:273`). En degradación, una pausa pierde su histéresis y se reanuda si las métricas quedan entre los umbrales de pausa y de reanudación.
-- **Activación realista:** con la escritura atómica y el `fsync`, la corrupción es improbable. La vía plausible es un `OSError` transitorio de Windows (violación de uso compartido) en el instante en que el run diario relee el registro, por ejemplo con otro lector abierto. Hoy no tiene efecto: 0 cortes con `entry_test_at` y 0 pestillos armados.
-- **Controles existentes:** `prediction_gate_latch_log.csv` registra las transiciones de pestillo, pero **no se relee nunca** para reconstruir el estado y **no registra** el consumo de tests de entrada. No compensa.
-- **Corrección mínima:** en los dos escritores, distinguir «ausente» (estado inicial legítimo) de «existe pero ilegible». En el segundo caso, lanzar una excepción explícita del paquete, no escribir y dejar que el run lo notifique. Los consumidores conservan su default-deny.
-- **Pruebas necesarias:** registro corrupto → el escritor lanza y el fichero queda **byte a byte igual**; raíz no objeto → lo mismo; registro ausente → estado inicial; regresión de todos los tests actuales del pestillo. Idem en degradación.
-- **Criterio de aceptación:** la reproducción de arriba deja `mlb|h2h` con `agotado_test_unico` y `mlb|totals` con el pestillo armado, o aborta sin escribir.
-- **Limitaciones:** la vía de activación es inferida. Lo reproducido es la consecuencia una vez activado.
-
-### CLAUDE-003 — La remediación de `AUD-001` (r22) contradice el pre-registro sellado y empuja una decisión de gate sobre una premisa falsa
-
-| Campo | Valor |
-|---|---|
-| Categoría | Cuantitativo: fidelidad al pre-registro / trazabilidad de decisiones |
-| Severidad | MEDIUM |
-| Confianza | HIGH |
-| Evidencia | `STATICALLY_VERIFIED` |
-| Prioridad | **P1**: `audit/latest/STATUS.md` (r22) pide al operador decidir «con prisa» antes de que un corte cruce `n ≥ 300` (~2026-09-25/26) |
-| Archivos | `src/sqp/risk/prediction_gate.py:463-489` (diff sin commit); `docs/research/2026-09-04-preregistro-multiplicidad-del-gate.md:124-127`; `audit/audit-2026-09-22/{FINDINGS,STATUS}.md` |
-
-- **Problema:** el pre-registro fija **de antemano** que el universo puede crecer: «si el número de cortes evaluados supera **50** (un 22 % sobre 41), este criterio se re-pre-registra antes…», y «No se re-divide α sobre la marcha». Con 49 cortes, el criterio se aplica **tal como se registró**. El `AUD-001` de r22 citaba esas mismas líneas (`:115-125`) y aun así concluyó «el criterio sigue incumplido». La auditoría del 2026-09-18 (OBS-1) lo había clasificado correctamente: «dentro del +22 % aceptado».
-- **Observado en el diff:** el aviso salta ahora con `> K` (41) y dice «RE-PRE-REGISTRAR el criterio antes de que un corte nuevo alcance n>=300». Es justo la acción que el pre-registro reserva para `> 50`. El comentario de `:469-471` afirma que «entre 42 y 50 cortes el criterio YA esta incumplido».
-- **Lo que sí es correcto y debe conservarse:** la aritmética (`49 × 0,05/41 = 0,0598`) y la publicación de `fwer_bound` en el registro, que es trazabilidad útil.
-- **Consecuencia:** a diario un aviso que contradice un documento sellado, y una recomendación al operador de cambiar `K`/`alpha` (clase de escalación de `CLAUDE.md`) basada en una premisa falsa, días antes del primer test de entrada. Re-pre-registrar ahora, con datos ya acumulados, reabriría el riesgo que el pre-registro quería cerrar («volvería el umbral dependiente del calendario»).
-- **Corrección mínima:** mantener `fwer_bound`. A partir de `> K`, emitir un mensaje **informativo** («cota de familia X; dentro de la tolerancia pre-registrada de 50 cortes»). La orden «RE-PRE-REGISTRAR» sólo con `> PREDICTION_GATE_K_REPREGISTRO`, como estaba. Corregir el comentario. La corrección de `STATUS`/`FINDINGS` de r22 corresponde a su fase de verificación.
-- **Pruebas necesarias:** 49 cortes → sin texto «RE-PRE-REGISTRAR» y con `fwer_bound`; 51 cortes → `log.error` con el texto. Ningún veredicto cambia.
-- **Criterio de aceptación:** el código y sus comentarios no afirman incumplimiento en la banda 42–50, y la prueba lo fija.
-- **Limitaciones:** si el operador **quiere** endurecer el criterio, es una decisión legítima, pero es un cambio del pre-registro que se registra como tal, no la corrección de un defecto.
-
-### CLAUDE-004 — La skill `full-audit` se revirtió hoy, sin commit, a su versión del 2026-09-03
-
-| Campo | Valor |
-|---|---|
-| Categoría | Sistema de skills e instrucciones / pruebas de contrato |
-| Severidad | MEDIUM |
-| Confianza | HIGH |
-| Evidencia | `REPRODUCED` (3 pruebas en rojo) + `STATICALLY_VERIFIED` (identidad byte a byte con `8952755`) |
-| Prioridad | P1: bloquea un commit limpio (CLAUDE-001) y pondría el CI en rojo |
-| Archivos | `.claude/skills/full-audit/SKILL.md` y `references/{evidence-findings,reporting,validation-remediation}.md` |
-
-- **Evidencia concreta:** el `SKILL.md` de trabajo coincide exactamente con `git show 8952755:` (2026-09-03), con `mtime` de ese día y un BOM añadido. El árbol estaba limpio a las 13:00Z (manifest r22), así que la reversión ocurrió **hoy**. Deshace `f93bdc1` (2026-09-17, enlace al contrato canónico `audit-workflow.md`) y `56edbcd` (2026-09-18, bloque `## Common guardrails` y cierre por `/verification-gate`).
-- **Pruebas en rojo:** `test_agent_instruction_sync.py::test_guardrails_remain_self_contained_in_each_general_loop` (`assert 6 == 7`), `test_claude_system_contract.py::test_all_general_loops_finish_through_verification_gate` (`['full-audit'] == []`) y `::test_general_skills_share_an_identical_guardrail_block`.
-- **Consecuencia:** las auditorías lanzadas con `/full-audit` siguen un procedimiento superado, sin rondas, sin preservación y sin taxonomía canónica (esta misma ronda lo sufrió, §0). Si entra en un commit, el CI se pone en rojo. La sesión de la tarde lo detectó y lo dejó anotado sin tocarlo, correctamente.
-- **Causa raíz:** NO_VERIFICABLE. No hay copia de usuario en `~/.claude/skills/` que lo explique; parece la restauración de una copia antigua que conservó las fechas.
-- **Corrección mínima:** restaurar los cuatro ficheros desde `HEAD`. Es **destructivo para cambios sin commit**: antes, guardar una copia fuera del árbol y confirmar con el operador que no hay nada en ellos que quiera conservar.
-- **Criterio de aceptación:** las 3 pruebas en verde y `git status` sin `.claude/skills/full-audit/`.
-
-## 5. Hallazgos inferidos
-
-Ninguno con entidad propia. La vía de activación de CLAUDE-002 es inferida y está declarada dentro del hallazgo.
-
-## 6. No verificables
-
-| Elemento | Qué falta | Evidencia necesaria |
+| Comando | Resultado | Clasificación |
 |---|---|---|
-| Origen de la reversión de CLAUDE-004 | Historial de operaciones sobre ficheros | Registro del operador o de la herramienta que restauró la copia |
-| Contenido de los subdirectorios de `.codex-tmp/` con ACL denegada | Permisos de lectura | Inspección con la cuenta que los creó |
-| Cuota real de The Odds API | Llamada externa (prohibida en diagnóstico) | Cabecera `x-requests-remaining` de un run real |
-| Fecha exacta en que `mlb|h2h` cruzará `n = 300` | Resultados futuros | Ritmo medido: 231 (18/09) → 270 (22/09) ≈ 10/día, luego ~3 días. Estimación, no hecho |
+| `ruff check src scripts tests` | exit 0, «All checks passed!» | OK |
+| `mypy src` | exit 0, «no issues found in 106 source files» | OK |
+| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest` | exit 0, **2299 passed, 1 skipped** en 22 min 40 s | OK |
+| `gh run list --limit 6` | HEAD `7bd565e`: **success**; `efe09bb`: cancelled (sustituido por el siguiente push) | OK |
+| `python scripts/sync_agent_instructions.py --check` | exit 0, «synchronized» | OK |
+| `python scripts/validate_claude_model_routing.py` | exit 0, «OK» | OK |
+| `scratchpad/repro_bankroll0b.py` | `bankroll=1000 → 2`, `bankroll=0 → 0` candidatos | REPRODUCED (CLAUDE-001) |
+| `scratchpad/repro_superseded.py` | control `void/stale_void`; desplazado `[]` | REPRODUCED (CLAUDE-002) |
+| Medición de probabilidades del stream vigente (agregado) | 846 vigentes; 4 con \|Δ\| > 0,005; 0 discrepancias de signo | Evidencia de CLAUDE-003 |
+| Estado del gate persistido (agregado) | 49 cortes, 0 habilitados, 0 pestillos, 0 tests de entrada gastados | contexto |
 
-## 7. Detecciones de herramientas pendientes
+## 8. Plan priorizado
 
-Ninguna. ruff y mypy no reportan nada.
+| Prioridad | ID | Cambio mínimo | Archivos | Autorización |
+|---|---|---|---|---|
+| P2 | CLAUDE-001 | Seleccionar por `adjusted_edge ≥ min_edge` con independencia de la banca; banca ≤ 0 → stake 0 con flag | `pipeline/daily.py` (+ test) | toca la ruta de selección de picks; conviene revisión humana |
+| P2 | CLAUDE-002 | `start_time` en el candidato o cruce con `archive/predictions_*`; fallback `history_scores_map` para candidatos de equipo | `domain/models.py`, `settlement/runner.py`, `pipeline/daily.py` (+ tests) | cambia el esquema de `candidates_*.csv` (compatible con default) |
+| P2 | CLAUDE-003 | `decision_prob` en `daily_picks.rank_picks` y `report._segment_audit` | `scripts/daily_picks.py`, `audit/report.py` (+ tests) | salida al operador |
+| P3 | CLAUDE-004 | Archivo por generación completa | `pipeline/daily.py`, `settlement/runner.py` (`_ARCHIVE_DAY`) | — |
+| P3 | CLAUDE-005 | Centinela visible en health y `gate_status` | `monitoring/health.py` o `scripts/health_check.py`, `scripts/gate_status.py` | — |
 
-## 8. Comparación histórica: revalidación de los IDs de la ronda r22
+Riesgos residuales:
 
-Revalidados contra el árbol actual: diff leído, callers revisados, suite ejecutada. **Aviso:** todos los arreglos siguen **sin commit**, así que «corregido» significa corregido **en el árbol de trabajo**. En `HEAD` y en el CI no están.
+- Zonas PARCIAL y EXCLUIDO del §3: features, adaptadores, CLV, promoción del calibrador.
+- La verificación independiente de la remediación r2 sigue pendiente.
+- Falta la segunda opinión.
 
-| ID (r22) | Estado revalidado | Evidencia |
-|---|---|---|
-| `AUD-007` | verificado-corregido | Presupuesto 1200 s en `settings.json`; autoacotado 1080 s con `rc 124` como rama propia; `timeout` = GNU coreutils 8.32. Suite medida en **570,24 s** aislada (53 % del autoacotado). Riesgo residual: con el centinela puesto, **cada** cierre de turno ejecuta la suite (~10 min) |
-| `AUD-001` | **reabierto (premisa)** | La instrumentación (`fwer_bound`) es correcta. El diagnóstico y el aviso contradicen el pre-registro → CLAUDE-003 |
-| `AUD-008` | persistente / no aplicable al repo | El MCP `codex` falla también en esta sesión (`CONNECTION_CLOSED`) |
-| `AUD-002` | verificado-corregido | `coverage_baseline` excluye el día en curso; el aviso compara candidatos contra la mediana de capturados. Riesgo residual: el aviso **saltará casi a diario al acabar la temporada regular de la MLB** (postemporada con pocos partidos). Ruido esperable, no defecto |
-| `AUD-003` | verificado-corregido | La guarda usa el coste previsto; `CREDITS_PER_EVENT = 2` coherente con `regions = us,eu` efectivo. Observación: la constante no se deriva de `regions` |
-| `AUD-004` | verificado-corregido | `REPLACE_RETRY_SECONDS` como constante; test acotado contra ella; en verde |
-| `AUD-005` | verificado-corregido | Mismo resultado con `push`/`void` con `pnl 0`; `realized_pnl` sigue siendo el total del ledger |
-| `AUD-006` | verificado-corregido | La purga por `mtime` > 90 días no alcanza el mes corriente que consulta `spent_this_month` |
+## 9. Limitaciones
 
-**Evidencia de Fase 5 de r22 incompleta (observación):** el `MANIFEST.json` de r22 declara en `status` «remediación completada», pero en `tests_final` dice «no hubo remediación». `VALIDATION.md` sólo recoge la validación del diagnóstico, y el centinela `.tests-pending` quedó puesto a las 20:51, sin veredicto. Esta ronda aporta la ejecución global que faltaba (§9).
-
-IDs de r18 arrastrados: `AUD-004` (historial del Programador, KI-054) sigue **persistente**; `pipeline_health.json` lo avisa.
-
-## 9. Descartes (falsos positivos y no-defectos)
-
-| Candidato | Por qué se descarta |
-|---|---|
-| `OPTIMIZATION.diff` en la raíz: ya no aplica (`git apply --check` falla) | Instantánea histórica **deliberada**: la citan `BUILD_INFO.json` (manifiesto de hashes), `IMPLEMENTACION.md` y la ronda del 13/09 («snapshot, no se regenera»). CONSERVAR |
-| Grading de `team_totals` por fecha UTC | Usa la fecha en `America/New_York` y no gradúa ante doubleheader. Correcto |
-| `Dashboard` con rc 267014 | `SCHED_S_TASK_TERMINATED` en una tarea interactiva; no pertenece al pipeline de datos |
-| Literales tipo clave en `tests/test_audit_hooks.py` | Fixtures sintéticos del propio detector de secretos |
-| 150 picks servidos vencidos sin liquidar | Cifra idéntica a la del 2026-09-13: no crece. Ya registrado |
-| Lenguaje de las salidas de apuestas | Ninguna promesa de beneficio; sólo avisos de «no garantiza» |
-
-## 10. Validaciones ejecutadas
-
-| Comando | Propósito | Resultado | Efectos |
-|---|---|---|---|
-| `git status --short`, `git diff`, `git rev-parse HEAD origin/main` | Estado del árbol | 34 M + 3 `??`; `HEAD == origin/main` | Ninguno |
-| `gh run list --limit 5` | Estado del CI | 5 × `success`; último `35426317559` sobre `9fa276a` | Lectura remota |
-| `Get-ScheduledTask SQP_* \| Get-ScheduledTaskInfo` | Estado de las tareas | Ver matriz | Ninguno |
-| `ruff check src scripts tests --no-cache` | Lint | rc 0 | Ninguno |
-| `mypy src` | Tipos | rc 0, 106 ficheros | Caché de mypy |
-| `PYTHONPATH=src python -m pytest tests/ -q -p no:cacheprovider -m "not slow"` | Suite rápida sobre el árbol de producción | rc 1: **3 failed, 2049 passed, 225 deselected, 570,24 s** (pared 9 m 38 s). Los 3 son CLAUDE-004 → `PRE_EXISTING_FAILURE` (introducidos hoy antes de esta sesión, sin commit) | Temporales del sistema. Nota: el contrato pide `--basetemp=.codex-tmp/pytest`; no se pasó y se usó el temporal por defecto (fuera del árbol) |
-| `python scripts/sync_agent_instructions.py --check` | Deriva de instrucciones | rc 0, `synchronized` | Ninguno |
-| `python scripts/validate_claude_model_routing.py` | Candado de routing | rc 0, `OK` | Ninguno |
-| `git status --porcelain -- src scripts configs '*.bat'` | Reproducir la guarda de CLAUDE-001 | 6 líneas | Ninguno |
-| `PYTHONPATH=src python scratchpad/repro_latch.py` | Reproducir CLAUDE-002 | Tabla de §4 | Sólo un directorio temporal del sistema |
-| `Settings.load()` (sólo `regions`, `mode`, `prediction_gate_enabled`) | Configuración efectiva sin secretos | `us,eu`, `demo` (los BAT pasan `--mode live`), `True` | Ninguno |
-| Comparación byte a byte de `full-audit/SKILL.md` contra el historial | Datar la reversión | Igual a `8952755` | Ninguno |
-| `sha256sum` de `audit/latest` frente a `audit/audit-2026-09-22` | Preservación de la ronda anterior | 11/11 idénticos | Ninguno |
-
-## 11. Plan priorizado (requiere autorización expresa; nada se ha aplicado)
-
-| Orden | ID | Acción | Archivos | Pruebas | Aceptación |
-|---|---|---|---|---|---|
-| 1 | CLAUDE-004 | Guardar una copia de los 4 ficheros revertidos fuera del árbol; confirmar con el operador; restaurar desde `HEAD` | `.claude/skills/full-audit/**` | Las 3 pruebas de contrato | Suite `not slow` sin fallos |
-| 2 | CLAUDE-001 | Commit **selectivo** de la remediación r22 + push; **antes de las 12:00 del 23/09** | Los 6 de código, sus 6 tests, `settings.json`, hook, `audit/` | ruff, mypy, `not slow` y CI | Guarda sin salida; CI verde; run del 23/09 sin aborto |
-| 3 | CLAUDE-003 | Rebajar el aviso de 42–50 cortes a informativo; «RE-PRE-REGISTRAR» sólo con > 50; corregir el comentario | `risk/prediction_gate.py`, `tests/test_prediction_gate.py` | 49 → sin orden; 51 → `error` | Ningún veredicto cambia |
-| 4 | CLAUDE-002 | El escritor distingue ausente de ilegible; ilegible → excepción sin escribir | `risk/prediction_gate.py`, `risk/degradation.py`, `exceptions.py`, tests | Corrupto → fichero intacto; ausente → estado inicial | La reproducción no reabre tests ni pestillos |
-| 5 | CLN-001 | Vaciar los subdirectorios accesibles de `.codex-tmp/` de rondas cerradas | `.codex-tmp/*` (ignorado por Git) | Ninguna (scratch) | `grep -r` sin `Permission denied` |
-
-Los pasos 1 y 2 van **en ese orden**: si se commitea antes de restaurar la skill, o con `git add -A`, el CI se pone en rojo. Los pasos 3 y 4 tocan un gate: según `MODEL_ROUTING.md` son clase de escalación y conviene hacerlos en el escalón superior.
-
-## 12. Limpieza y racionalización
-
-| ID | Ruta | Categoría | Evidencia | Impacto | Reemplazo | Riesgo | Decisión | Validación |
-|---|---|---|---|---|---|---|---|---|
-| CLN-001 | `.codex-tmp/` (≈60 subdirectorios y 16 ficheros de rondas del 14 al 22/09) | GENERADO_RECONSTRUIBLE (los accesibles) / NO_VERIFICABLE (los de ACL denegada) | Ignorado en `.gitignore:85`; basetemps de pytest y scripts de rondas cerradas; `grep -r` sobre el árbol termina con rc 2 por los directorios denegados | Ruido en búsquedas; espacio | Ninguno (scratch) | Bajo | PROPONER_ELIMINACIÓN **sólo de los accesibles**; los denegados, CONSERVAR hasta verificarlos | `git status` sin cambios |
-| — | `OPTIMIZATION.diff`, `BUILD_INFO.json` | CONSERVAR | Instantánea deliberada (§9) | — | — | — | CONSERVAR | — |
-
-## 13. Riesgos pendientes
-
-- **Plazo de CLAUDE-001:** si nadie actúa antes de las 12:00 del 23/09, el día se pierde. Es visible, pero no se evita.
-- **Primer test de entrada del gate** (~25–26/09): se producirá con CLAUDE-002 abierto, salvo que se corrija antes, y con la duda de CLAUDE-003 planteada al operador.
-- **Remediación r22 sin revisión de terceros:** esta ronda la verifica, pero no es ciega (§0) y Codex sigue caído (KI-056).
-- **Historial del Programador deshabilitado** (KI-054): una tarea que no llegue a lanzarse no deja rastro.
-- **Suite local a ~570–800 s:** con el centinela puesto, cada cierre de turno con ediciones de código cuesta ~10–13 min.
-- Nada de esto dice nada sobre ventaja predictiva: las mediciones registradas siguen sin mostrar ventaja sobre el consenso de mercado, y el ROI realizado del ledger es negativo (−0,1526 según r22).
+- **Sin segunda opinión:** MCP `codex` caído en esta sesión. No se inventa informe OpenAI.
+- **Permisos:**
+  - Denegado el barrido de `logs/` y `data/output/` (NV-1).
+  - Denegado el borrado de los entregables viejos de `latest` (declarados en `stale_in_latest`).
+- **Contaminación de contexto** por la memoria automática del harness (§2).
+- **Cobertura no total** (§3).
+- Nada de este informe afirma rentabilidad. Las cifras de probabilidad son **estimadas**, y hit rate, ROI esperado y ROI realizado se tratan como magnitudes distintas.

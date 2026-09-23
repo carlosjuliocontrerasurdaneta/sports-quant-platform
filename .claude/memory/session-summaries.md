@@ -669,3 +669,34 @@ un ID: pendiente la misma comprobación por transcript que se hizo con `fable` e
 ## 2026-09-22 (noche) — Ronda `audit-2026-09-22-r2` y commit de la remediación
 
 Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgos: **AUD-001 P0** (la guarda de árbol limpio iba a abortar el run del 23/09 por la remediación r22 sin commit), **AUD-002 P1** (los escritores del gate y de degradación tratan un registro ilegible como vacío y el gate falla abierto; reproducido), **AUD-003 P1** (el aviso de AUD-001 r22 contradice el pre-registro: hasta 50 cortes es tolerancia), **AUD-004 P1** (skill `full-audit` revertida hoy a `8952755`). Autorizado y aplicado: AUD-004 (restaurada desde HEAD) y AUD-001 (commits `c6f1971`, `d718fa1`, `af9d156`; push; CI `35804096043` verde). Después, también autorizados, **AUD-003** (aviso fiel al pre-registro) y **AUD-002**: el escritor lee con un lector estricto (reintenta `OSError`; `ValueError`/`UnicodeDecodeError` = ilegible) y ante un registro ilegible escribe el centinela `prediction_gate.blocked` (default-deny) y no reescribe; al recuperarse arma el pestillo `bloqueo_de_lectura` a quien estaba dentro; con centinela y registro borrado lanza (reiniciar = borrar también el centinela). La degradación reconstruye las pausas desde `degradation_log.csv`. Revisado en `claude-fable-5-1` (2 pasadas) y por Codex (2 hallazgos, ambos aceptados). Suite 2075 passed. **Riesgo residual:** fallo correlacionado al escribir el propio centinela. Cierre: CLN-001 parcial (47 directorios temporales de `.codex-tmp/` borrados; conservados los 8 con ACL denegada y todo lo que tenía documentos) y puerta Stop del plugin Codex **desactivada** (KI-056 intermitente; bloqueó unos 20 cierres). Commits `c6f1971`, `d718fa1`, `af9d156`, `4fa1673`, `efe09bb`; CI verde. **Pendientes:** comprobar el run del 23/09 12:00, vigilar el primer test de entrada del gate (~25–26/09), la verificación independiente de la ronda y reactivar la puerta de Codex cuando responda de forma estable.
+
+## 2026-09-23 — Ronda `audit-2026-09-23`: consolidación y remediación (sin commit)
+
+**Consolidación:** primera ronda con dos auditores sobre la misma base `7bd565e`: Claude 5 y OpenAI 9 hallazgos, que quedan en 14 AUD (3 HIGH/P1, 8 MEDIUM, 3 LOW). CLAUDE-002 se partió en dos: AUD-003 (junto con OPENAI-003) y AUD-004. AUD-003 sube a HIGH porque el `stale_void` es irreversible. Ver `audit/latest/FINDINGS.md`.
+
+**Remediación** («ejecutar íntegramente», interpretado como todos los confirmados): 13 implementados con test discriminante (fallan en HEAD exportado con `git archive`, pasan ahora).
+- AUD-001: gate revalidado antes del bucle de ligas; si falla, `gate_deny_all`.
+- AUD-002: transacción del pestillo bajo `locked`.
+- AUD-004: `start_time` de los desplazados sacado de `archive/predictions_*`.
+- AUD-005: banca 0 conserva la lista con el flag `bankroll_zero`.
+- AUD-006: `decision_prob` en `daily_picks` y `report`.
+- AUD-007: medias liquidaciones con peso 0,5 en el calibrador (ruta idéntica si no hay medias).
+- AUD-008: medias en el ROI de `edge_information`.
+- AUD-009: stores bajo lock.
+- AUD-010: boxscore con `_get_with_retry`.
+- AUD-011: hook de revisión cruzada.
+- AUD-012: archivo `_<dia>_<HHMMSS>`.
+- AUD-013: centinela visible.
+- AUD-014: Monte Carlo con líneas de cuarto.
+
+**AUD-003 BLOQUEADO:** Fable (revisión independiente) reprodujo FABLE-001 (CRITICAL). El fallback histórico para candidatos liquidaba picks aún no jugados con el marcador del partido anterior de la serie MLB, y de forma irreversible. Se revirtió; ver KI-057.
+- Otros hallazgos de Fable tratados: FABLE-003 (aviso en `run_daily`), FABLE-004 (muestra del pre-registro del suelo de precio congelada) y FABLE-005.
+- FABLE-002 medido: 0 anulaciones en la primera pasada.
+
+**Validación:** suite completa **2350 passed, 1 skipped**; ruff y mypy OK; sync y routing OK. Entregables: `audit/latest/{CHANGES,VALIDATION,STATUS}.md` y el manifest. Obsidian: `Bitácora/2026-09-23`.
+
+**Incidencias:**
+- Una normalización CRLF a LF tocó tres entregables de los auditores. Se restauraron byte a byte y sus sha256 coinciden.
+- El autofix `ruff --fix` del hook retiró dos veces imports añadidos antes de su primer uso.
+
+**PENDIENTE CRÍTICO:** **nada está commiteado**, así que el guard KI-036 abortará el `DIARIO_COMPLETO` de las 12:00. Además: verificación independiente de esta ronda y de la r2, y la decisión de identidad de eventos para AUD-003.

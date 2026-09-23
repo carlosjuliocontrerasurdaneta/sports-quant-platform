@@ -375,3 +375,9 @@ Format:
 - Reason: AUD-002 de la ronda r2 (reproducido: un registro ilegible reabría tests de entrada gastados y desarmaba pestillos, `allowed True`). La regla de recuperación aplica la que `_apply_latch` ya tenía para `sin_evaluacion`: no poder verificar que un corte sigue cumpliendo no es permiso. Revisado por `claude-fable-5-1` (2 pasadas) y Codex (2 hallazgos, ambos aceptados).
 - Alternatives: tomar el ilegible por vacío (el defecto); no escribir sin centinela (rechazado por Codex, reproducido: un `allowed: true` vencido sobrevivía a un fallo transitorio); reconstruir el estado desde `prediction_gate_latch_log.csv` (inviable: el log no guarda `entry_test_at`).
 - Consequences: commit `4fa1673`. Riesgo residual declarado: que falle también la escritura del propio centinela. Procedimiento del operador ante un registro corrupto: **restaurar una copia legible**, no borrarlo.
+
+- Date: 2026-09-23
+- Decision: **Sin identidad de partido demostrada no se liquida un candidato desde `data/historical/`.** AUD-003 queda BLOQUEADO; fuera de la ventana del feed rige la expiración de siempre.
+- Reason: FABLE-001 (CRITICAL, reproducido). El emparejamiento (local, visitante) ± 1 día liquidaba de forma irreversible picks sin jugar con el marcador de otro partido de la serie. Acotarlo con una regla de fechas sería un umbral inventado sobre una operación irreversible.
+- Alternatives: fallback con filtro `start_time <= now` (rechazado: un partido jugado sin resultado ingerido se empareja con el vecino de la serie); ventana de fecha más estrecha (sin zona horaria por liga no se puede definir la fecha local).
+- Consequences: KI-057 abierto. Tests de regresión en `tests/settlement/test_candidate_history_fallback.py`. Se prioriza no corromper el ledger frente a graduar más picks.

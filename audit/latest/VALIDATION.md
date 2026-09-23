@@ -1,23 +1,75 @@
-# VALIDATION — ronda `audit-2026-09-22-r2` (diagnóstico)
+# Validación de la remediación · ronda `audit-2026-09-23`
 
-Árbol evaluado: `main@9fa276a` + remediación r22 sin commit. El `VALIDATION.md` de r22 está preservado en `audit/audit-2026-09-22/`.
+Evidencia real de esta sesión (2026-09-23). Todas las ejecuciones usaron `-p no:cacheprovider` con un `--basetemp` propio bajo `.codex-tmp/`.
 
-| Comando | rc | Resultado | Clasificación |
+## 1. Línea base, antes de tocar código
+
+| Comando | Resultado |
+|---|---|
+| `ruff check src scripts tests` | exit 0 |
+| `mypy src` | exit 0, 106 ficheros |
+| pytest focalizado de los componentes afectados (gate, run_all, liquidación, stores, FIP, daily_picks, reports, calibrador, edge_information, MC, hooks, health, gate_status, kelly, banca, pipeline) | **511 passed** |
+| Suite completa en HEAD (diagnóstico Claude, misma base) | 2299 passed, 1 skipped |
+
+**Limitación:** la línea base focalizada se lanzó en segundo plano y la primera edición (un import, que el autofix retiró acto seguido) coincidió con su inicio. La suite completa del diagnóstico, sobre el mismo código de HEAD, respalda la línea base.
+
+## 2. Método «falla antes / pasa después»
+
+- **Antes:** el código de HEAD se exportó con `git archive HEAD src scripts configs .claude/hooks` a `scratchpad/head_tree/`. Los tests se ejecutaron con `PYTHONPATH=<head>/src` y `-o pythonpath=`, porque `pyproject` antepone `src/` del repo. Los tests que cargan scripts por ruta se copiaron apuntando `ROOT` a ese árbol.
+- **Después:** los mismos tests contra el árbol de trabajo.
+
+| ID | Antes (HEAD) | Después | Naturaleza del fallo en HEAD |
 |---|---|---|---|
-| `ruff check src scripts tests --no-cache` | 0 | `All checks passed!` | OK |
-| `mypy src` | 0 | 106 ficheros, sin problemas | OK |
-| `PYTHONPATH=src python -m pytest tests/ -q -p no:cacheprovider -m "not slow"` | 1 | **3 failed, 2049 passed, 225 deselected en 570,24 s** | `PRE_EXISTING_FAILURE`: los 3 son `AUD-004` (skill revertida antes de esta sesión) |
-| `python scripts/sync_agent_instructions.py --check` | 0 | `synchronized` | OK |
-| `python scripts/validate_claude_model_routing.py` | 0 | `OK` | OK |
-| `gh run list --limit 5` | 0 | Último `35426317559` success sobre `9fa276a` | OK sobre `HEAD`; el diff sin commit **no** ha pasado por CI |
-| `Get-ScheduledTask SQP_* \| Get-ScheduledTaskInfo` | 0 | Ninguna tarea del pipeline en fallo | OK |
+| AUD-002 | 2 failed | pasan | comportamiento: `latched` False tras la carrera; la liberación devuelve False |
+| AUD-001 | 4 failed | pasan | interfaz (`_refresh_prediction_gate` y `gate_deny_all` no existen). La evidencia de comportamiento es el arnés R-GATES de OpenAI (4 picks con stake contra la autorización de ayer) |
+| AUD-004 / AUD-012 | 2 failed (+ AUD-003 retirado) | pasan | comportamiento: desplazado sin fila liquidada; una sola copia de archivo |
+| AUD-009 | 3 failed | pasan | comportamiento: la escritura B se pierde en los 3 stores |
+| AUD-010 | 4 failed | pasan (+1 contraprueba) | comportamiento: fila vacía emitida y FIP borrados |
+| AUD-005 | 2 failed | pasan | comportamiento: 0 candidatos con banca 0 en las ramas edge y accuracy |
+| AUD-006 | 3 failed | pasan | comportamiento: probabilidad cruda en orden, filtro y `mean_est_prob` |
+| AUD-013 | fallo de import | pasan | interfaz; comprobación de comportamiento aparte (§3) |
+| AUD-011 | 2 failed | pasan (+2 contrapruebas iguales en ambos lados) | comportamiento: exit 0 sin aviso y marcador perdido |
+| AUD-007 | 4 failed | pasan (+1 contraprueba) | comportamiento: 80 filas con objetivo 0,75; sin `weight` |
+| AUD-008 | 2 failed | pasan (+2 contrapruebas) | comportamiento: ROI +1,0 sobre n = 1 |
+| AUD-014 | 7 failed | pasan (+2 contrapruebas) | comportamiento: Over 0,4565 frente a 0,5233 |
 
-Fallos de la suite:
+## 3. AUD-013: comprobación de comportamiento en HEAD
 
-- `tests/test_agent_instruction_sync.py::test_guardrails_remain_self_contained_in_each_general_loop`
-- `tests/test_claude_system_contract.py::test_all_general_loops_finish_through_verification_gate`
-- `tests/test_claude_system_contract.py::test_general_skills_share_an_identical_guardrail_block`
+Script `scratchpad/aud013_before.py`, con un registro legible y un centinela presentes:
 
-Esta es la **primera ejecución global** de la suite rápida sobre la remediación de r22. Todas sus pruebas pasan. No se ejecutó la suite `slow` ni `pip-audit`.
+- `generate_health_report`: 0 avisos sobre el centinela.
+- `gate_status`: «registro ausente o ilegible -> default-deny…».
 
-Desviación del contrato: pytest usó el temporal del sistema en lugar de `--basetemp=.codex-tmp/pytest`. Efecto: ninguna escritura dentro del árbol.
+## 4. Revisión independiente (Fable) y correcciones posteriores
+
+- **Lo que ejecutó el revisor:** 294 tests del diff, que pasan en el árbol de trabajo (38 fallan en HEAD).
+- **FABLE-001, reproducido por el implementador:** `scratchpad/repro_fable/test_repro_future.py` fallaba (`g2` liquidado como `loss`, pnl −100). Tras retirar el fallback **pasa** (1 passed).
+- **Tras las correcciones:**
+  - liquidación: 123 passed;
+  - calibrador + `edge_information`: 77 passed.
+
+## 5. Medición FABLE-002 (solo lectura, agregados)
+
+`scratchpad/medir_fable002.py` sobre `data/predictions/archive` y `data/bets/settled_*`, a fecha 2026-09-23:
+
+- 85 desplazados sin liquidar;
+- 0 expirarían en la primera pasada;
+- 84 son partidos futuros;
+- 0 sin `start_time`.
+
+## 6. Validación final
+
+| Comando | Resultado | Clasificación |
+|---|---|---|
+| `ruff check src scripts tests` | exit 0 | OK |
+| `mypy src` | exit 0, 106 ficheros | OK |
+| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-rem-final` (suite completa, código definitivo) | **2350 passed, 1 skipped**, 20 min 52 s, exit 0 | OK |
+| `python scripts/sync_agent_instructions.py --check` | exit 0 | OK |
+| `python scripts/validate_claude_model_routing.py` | exit 0 | OK |
+| Inspección de BAT (`DIARIO_COMPLETO`, `RUN_DIARIO_ALL`, `SETTLE_ALL`) | sin cambios necesarios: SETTLE → `run_all --mode live` sin `--no-report` | OK |
+| Guard KI-036 (`DIARIO_COMPLETO.bat:73`) | **el árbol está sucio en `src/` y `scripts/`: el run programado ABORTARÁ hasta que se commitee** | riesgo operativo |
+
+- Una suite completa intermedia (2351 passed, 1 skipped) corrió sobre el código **con** el fallback de AUD-003. Queda superada por la final.
+- Ninguna `NEW_REGRESSION` ni `PRE_EXISTING_FAILURE` observada.
+- CI remoto: NOT_VERIFIABLE, porque no hay push.
+- No se ejecutó ningún BAT, operación productiva ni proveedor.

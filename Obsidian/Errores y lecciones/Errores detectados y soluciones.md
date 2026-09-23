@@ -1,7 +1,7 @@
 ---
 tags: [errores, bugs, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-16
+actualizada: 2026-09-23
 ---
 
 # Errores detectados y soluciones
@@ -9,6 +9,8 @@ actualizada: 2026-09-16
 Fuente canónica: `.claude/memory/known-issues.md` (KI-001…KI-018, con estado). Aquí, los errores más instructivos y su solución. Todos los KI están RESUELTOS o mitigados al 2026-07-08, salvo KI-002 (nombres soccer, verificable ~post 19-jul), KI-005 (vendor Frauen-Bundesliga) y KI-006 parcial (moneyline MLB/NHL sin señal específica).
 
 ## Integridad de datos
+
+- **Fallback histórico de candidatos, 2026-09-23 (FABLE-001, revertido):** emparejar un pick con un resultado por (local, visitante) ± 1 día no prueba identidad; en una serie MLB un pick de hoy sin jugar se liquidaba, de forma irreversible, con el marcador de ayer. El stream servido lo evita porque `pending` filtra por `start_time <= now`; los candidatos no. Liquidar es irreversible (`DEDUP_KEY` sin `result`): sin identidad demostrada, no se gradúa. AUD-003 queda bloqueado. Ver [[Bitácora/2026-09-23]].
 
 - **Fuentes de instrucciones, 2026-09-16:** mantener procedimientos equivalentes en prompts, skills y loops produjo deriva. El contrato de auditoría, routing y guardarraíles tienen ahora fuentes explícitas y consumidores generados verificables; aliases e históricos permanecen compatibles. Detalles de mantenimiento en `.claude/automation/INSTRUCTIONS.md` y [[Bitácora/2026-09-16]].
 

@@ -241,3 +241,20 @@ a qué modelo resuelve hoy el alias `opus` del parámetro `model` de `Agent` (en
 `sonnet|opus|haiku|fable`): la regla 2 de despacho sigue pasando el alias, y
 comprobar a qué resuelve exige la misma verificación por transcript que se hizo
 con `fable` el 2026-09-04.
+
+## Registro de enrutamiento — remediación de la ronda `audit-2026-09-23` (2026-09-23)
+
+Orden del operador: ejecutar íntegramente `audits/prompts/corregir-auditoria.md`
+(skill `audit-remediation`) sobre `audit/latest/FINDINGS.md` de la ronda
+`audit-2026-09-23`. Alcance interpretado: **todos los confirmados**
+(AUD-001…AUD-014), la única lectura de «íntegramente» que no deja IDs sin
+tratar; se declara en `audit/latest/CHANGES.md`.
+
+Owner: sesión principal en `claude-opus-5-5` (implementación). Clases de
+escalado presentes: **gates de riesgo** (AUD-001/002/005/013), **ledger y
+settlement** (AUD-003/004/012), **parámetros de modelo** (AUD-007) y **cifras
+publicables** (AUD-006/008). Por la regla 1 de despacho, la **revisión
+independiente** del diff se despacha con `model: "fable"` (subagente
+`independent-code-reviewer`), mismo patrón que la ronda del 2026-09-13. No se
+toca ningún umbral, pre-registro, registro productivo del gate ni dato de
+`data/`.

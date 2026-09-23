@@ -1,36 +1,217 @@
 {
-  "round_id": "audit-2026-09-22-r2",
+  "round_id": "audit-2026-09-23",
   "auditor": "claude",
   "model": "claude-opus-5-5",
-  "date_utc": "2026-09-23T00:05:00Z",
-  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
-  "working_tree": "sucio: 34 modificados + 3 sin seguimiento (remediacion r22 sin commit, reversion de full-audit, memoria, audit/)",
-  "contamination": "Se leyeron STATUS/matriz/FINDINGS de audit-2026-09-22 antes del diagnostico; segunda pasada informada, no ciega",
+  "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+  "branch": "main",
+  "working_tree_at_start": "limpio",
+  "scope": "integral: src/sqp, scripts, configs, BAT, CI, .claude; tests como evidencia",
+  "contamination": "La memoria automatica del harness inyecto al arranque titulares de rondas previas (MEMORY.md). No se leyeron FINDINGS/STATUS/informes del otro auditor durante el analisis principal; del MANIFEST de r2 solo campos de identidad/estado.",
+  "preservation": {
+    "source": "audit/latest/ (ronda audit-2026-09-22-r2)",
+    "target": "audit/audit-2026-09-22-r2/",
+    "files": 11,
+    "result": "IDENTICAL (sha256 de los 11 ficheros)",
+    "sha256": {
+      "BACKLOG.md": "a46a32fb5f9125bce402e174a782cbd77fe77a781f8afc81cec2c087e861d28a",
+      "CHANGES.md": "3b8e39b6405bc945f19893bfd3efaabea447504a4b780d6c660720ba474b2854",
+      "FINDINGS.md": "2105cdbf7868431f255fd28d3d8716c1dee4eaddada598d250be3f9802652f19",
+      "MANIFEST.json": "81a29c138aea89b86eda05bd232e93f7bcedcb06dcb992bdec642b99e9f51c44",
+      "STATUS.md": "61095ceab3981f5a0145f05be7ac813fce4b2721cb71049e9580a485e8dbb404",
+      "VALIDATION.md": "29a40cfbef0e05665e024ab3152f95366fbbd91de22c96548f6497eda4c68960",
+      "claude/EVIDENCE.json": "6a3fea0964c85919634fa624ca182c39fddf27bea93f026a14edecf7a0066836",
+      "claude/REPORT.md": "5609a5018950321a69e03e1402f9769d609c182804dd7aa311ff26882c2c3a57",
+      "history/manifest-20260918T121551Z/MANIFEST.json": "99487cb2b471d555d63bb068d234263b98d2608e5eaadae7a26c31c957e06a6d",
+      "openai/EVIDENCE.json": "88219ecaaa2dfae87cfe4e028f149d53529c985288dd10554a9b3c24865057af",
+      "openai/REPORT.md": "a593000e9f5644a6b34879c980b4ea90a96bd3617118d043030da1b4221db863"
+    },
+    "cleanup_of_latest": "DENEGADO por el clasificador de permisos; ficheros viejos declarados en MANIFEST.stale_in_latest"
+  },
   "commands": [
-    {"cmd": "git status --short; git diff; git rev-parse HEAD origin/main", "rc": 0, "result": "34 M + 3 ??; HEAD == origin/main"},
-    {"cmd": "gh run list --limit 5", "rc": 0, "result": "5 success; ultimo 35426317559 sobre 9fa276a (2026-09-19)"},
-    {"cmd": "Get-ScheduledTask SQP_* | Get-ScheduledTaskInfo", "rc": 0, "result": "Diario rc0 12:00; Capture_Close rc0 20:30; Backfill rc0; Validate_OOS rc0; Dashboard 267014 (terminada, interactiva)"},
-    {"cmd": "ruff check src scripts tests --no-cache", "rc": 0, "result": "All checks passed"},
-    {"cmd": "mypy src", "rc": 0, "result": "no issues, 106 files"},
-    {"cmd": "PYTHONPATH=src python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\"", "rc": 1, "result": "3 failed, 2049 passed, 225 deselected in 570.24s", "classification": "PRE_EXISTING_FAILURE (CLAUDE-004)"},
-    {"cmd": "python scripts/sync_agent_instructions.py --check", "rc": 0, "result": "synchronized"},
-    {"cmd": "python scripts/validate_claude_model_routing.py", "rc": 0, "result": "OK"},
-    {"cmd": "git status --porcelain -- src scripts configs '*.bat'", "rc": 0, "result": "6 lineas (guarda de DIARIO_COMPLETO.bat abortaria)", "finding": "CLAUDE-001"},
-    {"cmd": "PYTHONPATH=src python scratchpad/repro_latch.py", "rc": 0, "result": "registro ilegible -> mlb|h2h y mlb|totals allowed True, pestillo desarmado", "finding": "CLAUDE-002"},
-    {"cmd": "diff full-audit/SKILL.md vs git show <c>:", "rc": 0, "result": "working tree == 8952755 (2026-09-03)", "finding": "CLAUDE-004"},
-    {"cmd": "sha256sum audit/latest vs audit/audit-2026-09-22", "rc": 0, "result": "11/11 identicos"}
+    {
+      "cmd": "ruff check src scripts tests",
+      "exit": 0,
+      "result": "All checks passed!"
+    },
+    {
+      "cmd": "mypy src",
+      "exit": 0,
+      "result": "Success: no issues found in 106 source files"
+    },
+    {
+      "cmd": "python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest",
+      "exit": 0,
+      "result": "2299 passed, 1 skipped in 1359.66s (exit 0)"
+    },
+    {
+      "cmd": "gh run list --limit 6",
+      "exit": 0,
+      "result": "7bd565e success; efe09bb cancelled (sustituido); 4fa1673 success; af9d156 success"
+    },
+    {
+      "cmd": "python scripts/sync_agent_instructions.py --check",
+      "exit": 0,
+      "result": "Agent instructions: synchronized"
+    },
+    {
+      "cmd": "python scripts/validate_claude_model_routing.py",
+      "exit": 0,
+      "result": "Claude model routing configuration: OK"
+    },
+    {
+      "cmd": "python scratchpad/repro_bankroll0b.py (ROOT temporal, demo nba, calibration off, max_plausible_edge=1.0)",
+      "exit": 0,
+      "result": "bankroll=1000 -> candidates=2 (stakes 4.09, 3.61); bankroll=0 -> candidates=0",
+      "finding": "CLAUDE-001"
+    },
+    {
+      "cmd": "python scratchpad/repro_superseded.py (ROOT temporal, FakeClient con payload sano)",
+      "exit": 0,
+      "result": "control -> [{'result':'void','flags':'stale_void'}]; superseded -> []",
+      "finding": "CLAUDE-002"
+    },
+    {
+      "cmd": "agregado del stream servido vigente (picks_vigentes_unicos)",
+      "exit": 0,
+      "result": "846 vigentes; 4 con |calibrada-estimada|>0.005 (max 0.0259); 0 discrepancias de signo roi_esp vs estimated_edge; calibradores live: mlb_spreads, mlb_totals, wnba_spreads",
+      "finding": "CLAUDE-003"
+    },
+    {
+      "cmd": "agregado de data/bets/prediction_gate.json",
+      "exit": 0,
+      "result": "generated_at 2026-09-22T15:15:26Z; 49 cortes; 0 allowed; 0 latched; 0 entry_test_at; sin centinela .blocked"
+    },
+    {
+      "cmd": "agregado de data/output/pipeline_health.json",
+      "exit": 0,
+      "result": "status WARN (historial del Programador deshabilitado); served_pending_expired_total brasileirao 35, chile 49, mlb 54, wnba 12"
+    },
+    {
+      "cmd": "tiempo de read_csv de data/odds/odds_mlb_202609.csv",
+      "exit": 0,
+      "result": "31.2 MB, 205058 filas, 2.2 s",
+      "finding": "D-1 (descartado)"
+    },
+    {
+      "cmd": "grep -rlE 'apiKey=[A-Za-z0-9]{8,}' logs data/output",
+      "exit": null,
+      "result": "DENEGADO por permisos",
+      "finding": "NV-1"
+    }
   ],
+  "tests_initial": "2299 passed, 1 skipped in 1359.66s (exit 0)",
   "coverage": {
-    "REVISADA": ["diff sin commit", "guarda de arbol", "gate de prediccion", "banca/ROI", "derivados", "pruebas", "CI", "tareas", "observabilidad", "hooks", "skills", "secretos", "salidas de apuestas", "limpieza"],
-    "REVISADA_PARCIALMENTE": ["degradacion", "logica/leakage/calibracion/line shopping (apoyo en r22)", "dependencias", "integraciones", "datos", "rendimiento", "documentacion"],
-    "NO_APLICABLE": ["codigo generado/vendorizado", "infraestructura declarativa"]
+    "revisado": [
+      "pipeline/daily.py",
+      "pipeline/probabilities.py",
+      "markets/edge.py",
+      "markets/vig.py",
+      "risk/kelly.py",
+      "settlement/settle.py",
+      "settlement/runner.py",
+      "scripts/settle_all.py",
+      "storage/served_store.py",
+      "storage/lock.py",
+      "storage/atomic.py",
+      "risk/prediction_gate.py",
+      "risk/degradation.py (diff)",
+      "risk/bankroll.py",
+      "config.py",
+      "providers/odds_api.py",
+      "pipeline/revalidation.py",
+      "pipeline/cleanup.py",
+      "backtesting/roi_engine.py (bucle)",
+      "scripts/run_all.py",
+      "scripts/daily_picks.py",
+      "evaluation/tipster.py",
+      "audit/report.py",
+      "DIARIO_COMPLETO.bat",
+      "SETTLE_ALL.bat",
+      "RUN_DIARIO_ALL.bat",
+      ".github/workflows/ci.yml",
+      ".claude/settings.json"
+    ],
+    "parcial": [
+      "calibration/calibrator.py",
+      "pipeline/team_totals_capture.py",
+      "audit/html_report.py"
+    ],
+    "excluido": [
+      "features/*",
+      "models/*",
+      "sports/adapters",
+      "audit/clv*.py",
+      "evaluation/feature_shadow.py",
+      "pipeline/intraday_scan.py",
+      "pipeline/closing_capture.py"
+    ],
+    "no_verificable": [
+      "secretos en logs/ y data/output (permiso denegado)",
+      "segunda opinion OpenAI (MCP codex CONNECTION_CLOSED)"
+    ]
   },
-  "findings": {
-    "CLAUDE-001": {"severity": "HIGH", "priority": "P0", "evidence": "REPRODUCED", "confidence": "HIGH"},
-    "CLAUDE-002": {"severity": "HIGH", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"},
-    "CLAUDE-003": {"severity": "MEDIUM", "priority": "P1", "evidence": "STATICALLY_VERIFIED", "confidence": "HIGH"},
-    "CLAUDE-004": {"severity": "MEDIUM", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"}
-  },
-  "not_executed": ["suite slow", "pip-audit (sin cambios de dependencias)", "llamadas a proveedores", "revision Codex (MCP caido)"],
-  "files_written": ["audit/latest/**"]
+  "findings": [
+    {
+      "id": "CLAUDE-001",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence": "REPRODUCED",
+      "priority": "P2",
+      "title": "Con banca 0 la lista de candidatos desaparece entera"
+    },
+    {
+      "id": "CLAUDE-002",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence": "REPRODUCED",
+      "priority": "P2",
+      "title": "Pick superseded sin marcador nunca se anula ni tiene fallback historico; sale del ledger sin veredicto"
+    },
+    {
+      "id": "CLAUDE-003",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence": "STATICALLY_VERIFIED",
+      "priority": "P2",
+      "title": "daily_picks ordena/filtra/calcula ROI esperado con estimated_probability cruda, no con decision_prob"
+    },
+    {
+      "id": "CLAUDE-004",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "evidence": "STATICALLY_VERIFIED",
+      "priority": "P3",
+      "title": "Segundo run del mismo dia sobrescribe la copia de archivo del primero"
+    },
+    {
+      "id": "CLAUDE-005",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "evidence": "STATICALLY_VERIFIED",
+      "priority": "P3",
+      "title": "Centinela prediction_gate.blocked invisible para health; gate_status lo describe como registro ausente"
+    }
+  ],
+  "observations": [
+    "O-1",
+    "O-2",
+    "O-3",
+    "O-4"
+  ],
+  "dismissed": [
+    "D-1",
+    "D-2",
+    "D-3",
+    "D-4",
+    "D-5",
+    "D-6"
+  ],
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "MEDIUM": 3,
+    "LOW": 2,
+    "P0": 0,
+    "P1": 0
+  }
 }
