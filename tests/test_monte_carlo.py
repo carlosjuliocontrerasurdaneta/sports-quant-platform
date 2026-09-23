@@ -60,3 +60,42 @@ def test_poisson_totals_complementary():
                         + out["under_estimated_probability"], 1.0, abs_tol=1e-9)
     assert math.isclose(out["home_cover_estimated_probability"]
                         + out["away_cover_estimated_probability"], 1.0, abs_tol=1e-9)
+
+
+# --- AUD-014, ronda audit-2026-09-23: lineas asiaticas de cuarto -------------
+#
+# Con marcadores enteros, `total != 2.25` se cumple siempre: la simulacion
+# trataba como binaria una apuesta que liquida a medias. Reproducido por OpenAI:
+# lambda 1.5/1.0, total 2.25, seed 42 -> MC 0,4565 frente a 0,5233 analitico.
+
+import pytest  # noqa: E402
+
+from sqp.models.distributions import poisson_match_probs  # noqa: E402
+
+
+@pytest.mark.parametrize("total_line", [2.25, 2.75, 3.25])
+def test_poisson_totales_de_cuarto_coinciden_con_el_analitico(total_line):
+    mc = simulate_poisson_game(1.5, 1.0, None, total_line, three_way=True,
+                               n_sims=400_000, seed=42)
+    exacto = poisson_match_probs(1.5, 1.0, None, total_line, three_way=True)
+    # Error MC de una proporcion con n=400k: ~0,0008; 4 sigmas de margen.
+    assert mc["over_estimated_probability"] == pytest.approx(exacto["over"], abs=0.004)
+    assert mc["under_estimated_probability"] == pytest.approx(exacto["under"], abs=0.004)
+
+
+@pytest.mark.parametrize("spread_line", [-0.25, -0.75, 0.25, 0.75])
+def test_poisson_handicap_de_cuarto_coincide_con_el_analitico(spread_line):
+    mc = simulate_poisson_game(1.5, 1.0, spread_line, None, three_way=True,
+                               n_sims=400_000, seed=42)
+    exacto = poisson_match_probs(1.5, 1.0, spread_line, None, three_way=True)
+    assert mc["home_cover_estimated_probability"] == pytest.approx(
+        exacto["home_cover"], abs=0.004)
+
+
+@pytest.mark.parametrize("line", [2.0, 2.5])
+def test_lineas_enteras_y_medias_no_cambian(line):
+    """Contraprueba: la ruta de enteras/medias es la de siempre."""
+    mc = simulate_poisson_game(1.5, 1.0, -line + 2.0, line, three_way=True,
+                               n_sims=200_000, seed=7)
+    exacto = poisson_match_probs(1.5, 1.0, -line + 2.0, line, three_way=True)
+    assert mc["over_estimated_probability"] == pytest.approx(exacto["over"], abs=0.005)

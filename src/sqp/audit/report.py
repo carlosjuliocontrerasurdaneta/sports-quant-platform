@@ -5,7 +5,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.config import ROOT
-from sqp.evaluation.labels import game_date_local, local_today, picks_vigentes
+from sqp.evaluation.labels import (decision_prob, game_date_local, local_today,
+                                   picks_vigentes)
 from sqp.settlement.settle import realized_roi_parts, staked_mask
 
 DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado "
@@ -244,6 +245,9 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     decided = graded["result"].isin(["win", "loss"])
     # Punto de equilibrio por pick, promediado por segmento: cuanto habria que
     # acertar para quedar en tablas con las cuotas realmente tomadas.
+    # Probabilidad de DECISION, no la cruda descartada (AUD-006, ronda
+    # audit-2026-09-23): el chequeo de calibracion debe medir la que decidio.
+    graded["_p_decision"] = decision_prob(graded)
     if "price_decimal" in graded.columns:
         graded["_breakeven"] = graded["price_decimal"].map(breakeven_probability)
     else:
@@ -262,7 +266,7 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
                 staked=("stake", "sum"),
                 pnl=("pnl", "sum"),
                 mean_est_edge=("estimated_edge", "mean"),
-                mean_est_prob=("estimated_probability", "mean"),
+                mean_est_prob=("_p_decision", "mean"),
                 breakeven_hit_rate=("_breakeven", "mean")).reset_index()
     out["hit_rate"] = (out["wins"] / out["n"].where(out["n"] > 0)).round(4)
     # Sin stake no hay ROI: 0.0 se leia como "equilibrio" cuando significa "no se

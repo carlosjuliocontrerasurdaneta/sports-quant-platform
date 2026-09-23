@@ -93,12 +93,19 @@ fi
 # algo distinto de lo que mide, esto es esa enfermedad dentro del propio control.
 out=$(codex review $alcance 2>&1)
 rc=$?
-[ -z "${out:-}" ] && exit 0
+# El codigo de salida se mira ANTES que la salida vacia (AUD-011, ronda
+# audit-2026-09-23, reproducido por OpenAI). Antes, `[ -z "$out" ] && exit 0`
+# iba primero: un `codex review` que fallaba SIN escribir nada (rc=7, salida
+# vacia) salia con exito, sin aviso, y con el centinela ya borrado arriba, asi
+# que la revision pendiente se perdia en silencio y nadie la reintentaba.
+# Salida vacia con rc=0 tampoco es un veredicto: no hay nada que diga "revisado
+# y limpio", asi que se trata igual, como revision NO ejecutada y aplazada.
+[ -z "${out:-}" ] && out="(codex review no escribio ninguna salida)" && vacia=1
 
 # Fallo de infraestructura: la revision NO se ejecuto. Se detecta por codigo de
 # salida Y por patrones conocidos, porque `codex review` puede salir con 0
 # habiendo abortado (la cuota agotada del 2026-09-06 lo hizo).
-if [ "$rc" -ne 0 ] || printf '%s' "$out" | grep -qiE \
+if [ "$rc" -ne 0 ] || [ "${vacia:-0}" = 1 ] || printf '%s' "$out" | grep -qiE \
      "usage limit|Review was interrupted|failed to refresh available models|rate.?limit|401 Unauthorized|ECONNREFUSED"; then
   { echo "LA REVISION CRUZADA NO SE EJECUTO (fallo de entorno, codigo $rc)."
     echo

@@ -32,7 +32,10 @@ SUPERSEDED_FLAG = "superseded"
 # Dias de archivo que se revisan buscando picks que dejaron la lista antes del
 # partido. Sobra con el horizonte de eventos (7 dias) mas margen.
 SUPERSEDED_LOOKBACK_DAYS = 14
-_ARCHIVE_DAY = re.compile(r"_(\d{4}-\d{2}-\d{2})\.csv$")
+# `_<dia>.csv` o, si ese hueco ya lo ocupaba otra generacion del mismo dia,
+# `_<dia>_<HHMMSS>.csv` (AUD-012, ronda audit-2026-09-23; ver
+# `daily._archive_existing`). El grupo 1 es siempre el dia.
+_ARCHIVE_DAY = re.compile(r"_(\d{4}-\d{2}-\d{2})(?:_\d{6})?\.csv$")
 
 
 def _pick_identity(df: pd.DataFrame) -> pd.Series:
@@ -494,8 +497,13 @@ def _con_superseded(league: str, cands: pd.DataFrame) -> pd.DataFrame:
                      ignore_index=True)
 
 
-def _tennis_prediction_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
+def _prediction_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
     """Latest known metadata per event, including displaced predictions.
+
+    Nacio para tenis (AUD-MED-004) y desde la ronda audit-2026-09-23 la usan
+    tambien los deportes de equipo: un pick desplazado (`superseded`) ya no
+    esta en el ``predictions`` vigente, y sin su `start_time` ni expiraba ni
+    podia buscarse en el historico (AUD-003/AUD-004).
 
     Event IDs are stable within this provider. Prefer the current schedule;
     otherwise use the newest archived snapshot within the candidate lookback.
@@ -521,6 +529,20 @@ def _tennis_prediction_metadata(league: str, cands: pd.DataFrame) -> pd.DataFram
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True).drop_duplicates("event_id", keep="last")
+
+
+def _candidate_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
+    """`_prediction_metadata` reducido a lo que usa la liquidacion de equipos.
+    Best-effort: ante cualquier fallo, frame vacio (se liquida como antes)."""
+    try:
+        preds = _prediction_metadata(league, cands)
+    except Exception as exc:
+        log.warning("[%s] no se pudieron leer los metadatos archivados de los "
+                    "candidatos: %s", league, exc)
+        return pd.DataFrame(columns=["event_id", "home", "away", "start_time"])
+    if preds.empty:
+        return pd.DataFrame(columns=["event_id", "home", "away", "start_time"])
+    return preds[["event_id", "home", "away", "start_time"]].reset_index(drop=True)
 
 
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
@@ -589,7 +611,7 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
             _void_stale_served(league)
     if cands.empty:
         return pd.DataFrame()
-    preds = _tennis_prediction_metadata(league, cands)
+    preds = _prediction_metadata(league, cands)
     if preds.empty:
         log.warning("[%s] no predictions file to recover players/date for tennis "
                     "settlement; skipped.", league)
@@ -670,10 +692,25 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
             _void_stale_served(league)
     if cands.empty:
         return pd.DataFrame()
+    # Metadatos (home/away/start_time) de TODOS los candidatos, desplazados
+    # incluidos: el `predictions` vigente solo describe el run de hoy, asi que
+    # un pick `superseded` quedaba sin `start_time`, nunca expiraba y a los
+    # SUPERSEDED_LOOKBACK_DAYS salia del escaneo sin veredicto (AUD-004, ronda
+    # audit-2026-09-23).
+    preds = _candidate_metadata(league, cands)
+    start_times = {**{str(r.event_id): str(r.start_time) for r in preds.itertuples()},
+                   **_prediction_start_times(league)}
+    # SIN fallback historico para candidatos de equipo, a proposito (AUD-003,
+    # ronda audit-2026-09-23: BLOQUEADO). Se implemento con `history_scores_map`
+    # y la revision Fable lo tumbo con una reproduccion: emparejar por (local,
+    # visitante) +-1 dia NO prueba identidad, y en una serie MLB el pick de HOY,
+    # sin jugar, se liquidaba con el marcador de AYER -- de forma irreversible,
+    # porque DEDUP_KEY no lleva `result`. Es el problema abierto de identidad
+    # entre proveedores (AUD-002, remediacion 2026-09-14). Hasta decidirlo, un
+    # candidato fuera de la ventana del feed sigue la politica de expiracion.
     settled = settle_candidates(cands, scores, three_way)
     if scores_trusted:
-        settled = _with_stale_voids(league, cands, settled, scores,
-                                    _prediction_start_times(league))
+        settled = _with_stale_voids(league, cands, settled, scores, start_times)
     settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)
 

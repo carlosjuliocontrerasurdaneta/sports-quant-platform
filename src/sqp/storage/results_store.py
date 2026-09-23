@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.lock import locked
 
 
 COLUMNS = ["date", "home", "away", "game_id", "home_score", "away_score", "neutral", "ingested_at"]
@@ -54,22 +55,28 @@ class ResultsStore:
         new["ingested_at"] = now
         new = new[COLUMNS].drop_duplicates(subset=KEY, keep="first")
         p = self.path(league)
-        if p.exists():
-            cur = self._migrate(pd.read_csv(p, dtype={"date": str, "game_id": str}))
-            # Una fila legacy (game_id == "") ya cubre ese (date, home, away):
-            # re-ingerir el mismo juego con game_id real crearia un duplicado
-            # dentro del store (auditoria 2026-07-24, M-22). Los doubleheaders
-            # genuinos llegan del mismo vendor con ambos game_id no vacios.
-            legacy = set(map(tuple, cur.loc[cur["game_id"] == "",
-                                            ["date", "home", "away"]]
-                             .itertuples(index=False, name=None)))
-            if legacy:
-                new = new[[(dy, h, a) not in legacy for dy, h, a in
-                           new[["date", "home", "away"]].itertuples(index=False, name=None)]]
-            merged = pd.concat([cur, new], ignore_index=True).drop_duplicates(subset=KEY, keep="first")
-            added = len(merged) - len(cur)
-        else:
-            self.dir.mkdir(parents=True, exist_ok=True)
-            merged, added = new, len(new)
-        atomic_write_csv(merged.sort_values("date", kind="stable"), p)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        # Leer, fusionar y escribir BAJO LOCK (AUD-009, ronda audit-2026-09-23):
+        # el reemplazo atomico protege el fichero, no la transaccion, y dos
+        # backfills solapados perdian en silencio las filas del primero en
+        # escribir (reproducido por OpenAI, OPENAI-006). La red queda fuera:
+        # quien llama ya trae los resultados descargados.
+        with locked(p):
+            if p.exists():
+                cur = self._migrate(pd.read_csv(p, dtype={"date": str, "game_id": str}))
+                # Una fila legacy (game_id == "") ya cubre ese (date, home, away):
+                # re-ingerir el mismo juego con game_id real crearia un duplicado
+                # dentro del store (auditoria 2026-07-24, M-22). Los doubleheaders
+                # genuinos llegan del mismo vendor con ambos game_id no vacios.
+                legacy = set(map(tuple, cur.loc[cur["game_id"] == "",
+                                                ["date", "home", "away"]]
+                                 .itertuples(index=False, name=None)))
+                if legacy:
+                    new = new[[(dy, h, a) not in legacy for dy, h, a in
+                               new[["date", "home", "away"]].itertuples(index=False, name=None)]]
+                merged = pd.concat([cur, new], ignore_index=True).drop_duplicates(subset=KEY, keep="first")
+                added = len(merged) - len(cur)
+            else:
+                merged, added = new, len(new)
+            atomic_write_csv(merged.sort_values("date", kind="stable"), p)
         return added

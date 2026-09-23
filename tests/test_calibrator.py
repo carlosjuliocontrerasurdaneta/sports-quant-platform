@@ -823,3 +823,89 @@ def test_el_registro_de_metodos_sobrevive_a_una_escritura_truncada(tmp_path,
 
     assert cal._load_method_registry() == {"mlb_h2h": "isotonic",
                                            "nba_totals": "beta"}
+
+
+# --- AUD-007, ronda audit-2026-09-23: medias liquidaciones de lineas de cuarto -
+#
+# El filtro win/loss quitaba half_win/half_loss, eligiendo la muestra SEGUN EL
+# RESULTADO. Caso reproducido por OpenAI: 100 eventos Over 2.25 (60 win, 20
+# loss, 20 half_loss) llegaban al ajuste como 80 filas con objetivo 0,75; el
+# contrato del precio es win_units/(win+loss units) = 60/(60+20+10) = 0,667.
+
+
+def _cuartos(n_win=60, n_loss=20, n_half_loss=20, n_half_win=0):
+    filas = []
+    for res, k in (("win", n_win), ("loss", n_loss), ("half_loss", n_half_loss),
+                   ("half_win", n_half_win)):
+        for _ in range(k):
+            i = len(filas)
+            filas.append({"league": "epl", "market": "totals",
+                          "event_id": f"ev{i}", "selection": "Over", "line": 2.25,
+                          "date": f"2026-08-{1 + i % 28:02d}",
+                          "model_probability": 2 / 3, "result": res})
+    return pd.DataFrame(filas)
+
+
+def _entrada_al_ajuste(monkeypatch, tmp_path, hist):
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    monkeypatch.setattr(cal, "revalidate_live_registry", lambda: [])
+    capturado = {}
+
+    def fake_train(df, **kwargs):
+        capturado["df"], capturado["kwargs"] = df.copy(), kwargs
+        raise ValueError("interceptado: sin escribir artefactos")
+
+    monkeypatch.setattr(cal, "train_calibration", fake_train)
+    cal.train_market_calibrators(hist, prob_col="model_probability")
+    return capturado
+
+
+def test_el_ajuste_recibe_el_objetivo_del_contrato_de_cuartos(tmp_path, monkeypatch):
+    cap = _entrada_al_ajuste(monkeypatch, tmp_path, _cuartos())
+    df = cap["df"]
+    assert len(df) == 100                                   # nada se descarta
+    assert cap["kwargs"].get("weight_col") == "weight"
+    objetivo = np.average(df["won"], weights=df["weight"])
+    assert objetivo == pytest.approx(60 / (60 + 20 + 10))
+
+
+def test_espejo_half_win(tmp_path, monkeypatch):
+    cap = _entrada_al_ajuste(monkeypatch, tmp_path,
+                             _cuartos(n_win=20, n_loss=60, n_half_loss=0,
+                                      n_half_win=20))
+    df = cap["df"]
+    assert np.average(df["won"], weights=df["weight"]) == pytest.approx(
+        (20 + 10) / (20 + 10 + 60))
+
+
+def test_push_y_void_siguen_fuera(tmp_path, monkeypatch):
+    hist = _cuartos(n_win=50, n_loss=50, n_half_loss=0)
+    extra = hist.iloc[:5].copy()
+    extra["result"] = ["push", "void", "push", "void", "push"]
+    extra["event_id"] = [f"pv{i}" for i in range(5)]
+    cap = _entrada_al_ajuste(monkeypatch, tmp_path,
+                             pd.concat([hist, extra], ignore_index=True))
+    assert len(cap["df"]) == 100
+
+
+def test_sin_medias_el_ajuste_es_identico_al_de_siempre(tmp_path, monkeypatch):
+    """Pesos todos 1 -> exactamente la ruta sin pesos (mismas metricas, mismos
+    mapas). Los calibradores de lineas enteras/medias no cambian."""
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path / "models")
+    df = _miscalibrated(1500, seed=3)
+    a = cal.train_calibration(df, sport="unit_a")
+    b = cal.train_calibration(df.assign(w=1.0), sport="unit_b", weight_col="w")
+    for k in ("raw_val_ece", "raw_val_brier", "beta_val_ece", "beta_val_brier"):
+        assert a[k] == b[k]
+    assert a["val_metrics"]["ece"] == b["val_metrics"]["ece"]
+    x = np.linspace(0.05, 0.95, 19)
+    assert np.array_equal(cal.apply_calibration(x, sport="unit_a", method="isotonic"),
+                          cal.apply_calibration(x, sport="unit_b", method="isotonic"))
+
+
+def test_ece_ponderado_con_pesos_1_es_el_canonico():
+    rng = np.random.default_rng(7)
+    p = rng.uniform(0.05, 0.95, 500)
+    y = (rng.uniform(size=500) < p).astype(float)
+    assert cal._weighted_ece(p, y, np.ones(500)) == pytest.approx(
+        expected_calibration_error(p, y), abs=1e-12)

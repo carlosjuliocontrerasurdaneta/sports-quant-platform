@@ -118,6 +118,49 @@ def _select_live(settings: Settings, supported: dict[str, str],
     return selected, active
 
 
+def _refresh_prediction_gate(bets_dir: Path) -> bool:
+    """Reescribe data/bets/prediction_gate.json (regla de salida RECTORA desde
+    2026-08-16) con lo ya liquidado. Devuelve True si el registro quedo escrito;
+    False si fallo, y entonces el llamador genera en default-deny.
+
+    Nunca lanza: un fallo aqui no puede tumbar el run."""
+    try:
+        graded = ServedStore(ROOT).load_all_graded()
+        decided = evaluate_markets(graded)
+        write_prediction_gate(graded, bets_dir)
+    except Exception as exc:
+        log.error("No se pudo actualizar el gate de prediccion (%s): este run "
+                  "genera en DEFAULT-DENY, ningun mercado lleva stake real.", exc)
+        return False
+    try:
+        # El veredicto se lee del REGISTRO recien escrito, no de `decided`:
+        # `write_prediction_gate` aplica el pestillo del pre-registro
+        # (`_apply_latch`) y un corte con test de entrada consumido o pestillo
+        # armado queda `allowed=false` aunque cumpla los criterios estadisticos
+        # hoy. Anunciarlo desde la tabla previa lo daba por habilitado (AUD-005,
+        # ronda audit-2026-09-18). `decided` se conserva solo para el progreso.
+        ok = gate_allowed_markets(bets_dir)
+        log.info("Gate de prediccion -> habilitados para stake real: %s "
+                 "(evaluados: %d)",
+                 ", ".join(ok) if ok else "ninguno (default-deny)",
+                 len(decided))
+        if not ok and not decided.empty:
+            from sqp.risk.prediction_gate import PREDICTION_GATE_MIN_N
+            progress = sorted(
+                [(f"{r.league}|{r.market}", int(r.n), r.reason)
+                 for r in decided.itertuples()],
+                key=lambda x: -x[1])
+            summary = " | ".join(
+                f"{k}: {n}/{PREDICTION_GATE_MIN_N} ({reason})"
+                for k, n, reason in progress[:10])
+            log.info("Gate de prediccion — progreso OOS (n/min_n): %s%s",
+                     summary,
+                     f" ... y {len(progress) - 10} más" if len(progress) > 10 else "")
+    except Exception as exc:  # solo el anuncio; el registro ya esta escrito
+        log.warning("Gate de prediccion escrito, pero no se pudo anunciar: %s", exc)
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["demo", "live"], default="live")
@@ -206,9 +249,21 @@ def main() -> int:
             settings.paused_markets[lg] = sorted(
                 set(settings.paused_markets.get(lg, [])) | set(mks))
 
+    # Prediction gate ANTES de generar (AUD-001, ronda audit-2026-09-23): lo
+    # liquidado por SETTLE_ALL ya esta en el stream servido, asi que la salida
+    # diaria del pre-registro se aplica a los picks de HOY y no a los de manana.
+    # Antes se actualizaba al final, dentro de los informes: los picks del dia se
+    # generaban con la autorizacion de ayer, y `--no-report` la omitia entera.
+    # Si la actualizacion falla, este run va en default-deny: no se reutiliza
+    # una autorizacion que no se pudo revalidar.
+    gate_deny_all = False
+    if args.mode != "demo":
+        gate_deny_all = not _refresh_prediction_gate(ROOT / "data" / "bets")
+
     for lg in selected:
         try:
-            run_league(lg, settings, mode=args.mode)
+            run_league(lg, settings, mode=args.mode,
+                       gate_deny_all=gate_deny_all)
         except Exception as exc:
             failures += 1
             log.error("[%s] fallo en el pipeline: %s", lg, exc)
@@ -299,41 +354,9 @@ def main() -> int:
                      else "ninguno (default-deny)")
         except Exception as exc:
             log.warning("No se pudo generar el analisis CLV: %s", exc)
-        # Prediction gate: la regla de salida RECTORA desde 2026-08-16. Reescribe
-        # data/bets/prediction_gate.json con los (liga, mercado) cuyo modelo puro
-        # bate al mercado FUERA DE MUESTRA y cuyo EV a stake plano es positivo.
-        # Best-effort: un fallo aqui no puede tumbar el run, y el registro previo
-        # (o su ausencia) sigue siendo default-deny.
-        try:
-            graded = ServedStore(ROOT).load_all_graded()
-            decided = evaluate_markets(graded)
-            write_prediction_gate(graded, ROOT / "data" / "bets")
-            # El veredicto se lee del REGISTRO recien escrito, no de `decided`:
-            # `write_prediction_gate` aplica el pestillo del pre-registro
-            # (`_apply_latch`) y un corte con test de entrada consumido o
-            # pestillo armado queda `allowed=false` aunque cumpla los criterios
-            # estadisticos hoy. Anunciarlo desde la tabla previa lo daba por
-            # habilitado (AUD-005, ronda audit-2026-09-18). `decided` se
-            # conserva solo para el resumen de progreso.
-            ok = gate_allowed_markets(ROOT / "data" / "bets")
-            log.info("Gate de prediccion -> habilitados para stake real: %s "
-                     "(evaluados: %d)",
-                     ", ".join(ok) if ok else "ninguno (default-deny)",
-                     len(decided))
-            if not ok and not decided.empty:
-                from sqp.risk.prediction_gate import PREDICTION_GATE_MIN_N
-                progress = sorted(
-                    [(f"{r.league}|{r.market}", int(r.n), r.reason)
-                     for r in decided.itertuples()],
-                    key=lambda x: -x[1])
-                summary = " | ".join(
-                    f"{k}: {n}/{PREDICTION_GATE_MIN_N} ({reason})"
-                    for k, n, reason in progress[:10])
-                log.info("Gate de prediccion — progreso OOS (n/min_n): %s%s",
-                         summary,
-                         f" ... y {len(progress) - 10} más" if len(progress) > 10 else "")
-        except Exception as exc:
-            log.warning("No se pudo actualizar el gate de prediccion: %s", exc)
+        # El gate de prediccion ya NO se actualiza aqui: ver
+        # `_refresh_prediction_gate`, que corre ANTES del bucle de ligas
+        # (AUD-001, ronda audit-2026-09-23).
         try:
             hist = build_pick_history(settings, write=True)
             log.info("Historial consolidado de picks: %d picks", len(hist))

@@ -162,3 +162,53 @@ def test_disabled_gate_does_not_block(live):
     df = _candidates(live)
     assert not df.empty
     assert not df["flags"].str.contains("prediction_gate").any()
+
+
+def test_gate_not_revalidated_this_run_is_default_deny_even_if_registry_allows(live):
+    """AUD-001, ronda audit-2026-09-23. Si el orquestador no pudo revalidar el
+    gate antes de generar, el registro anterior (aunque diga `allowed`) NO se
+    reutiliza: la contraprueba es `test_allowed_market_can_carry_stake`."""
+    _write_gate(live, allowed=True)
+    daily.run_league(LEAGUE, _settings(), mode="live", gate_deny_all=True)
+    df = _candidates(live)
+    assert not df.empty
+    assert (df["stake"] == 0).all()
+    assert df["flags"].str.contains("prediction_gate").all()
+
+
+def test_banca_cero_conserva_la_lista_a_stake_cero(live):
+    """AUD-005, ronda audit-2026-09-23 (CLAUDE-001, reproducido). Con banca 0
+    Kelly devuelve 0 antes de mirar el edge, y ese 0 se usaba para SELECCIONAR:
+    la lista desaparecia entera. Debe salir el MISMO conjunto, a stake 0 y con
+    flag propio."""
+    base = _settings(prediction_gate_enabled=False)
+    daily.run_league(LEAGUE, base, mode="live")
+    con_banca = _candidates(live)
+    assert not con_banca.empty and (con_banca["stake"] > 0).any()
+
+    sin = _settings(prediction_gate_enabled=False)
+    sin.bankroll = 0.0
+    daily.run_league(LEAGUE, sin, mode="live")
+    sin_banca = _candidates(live)
+    clave = ["event_id", "market", "selection"]
+    assert (sorted(map(tuple, sin_banca[clave].astype(str).values))
+            == sorted(map(tuple, con_banca[clave].astype(str).values)))
+    assert (sin_banca["stake"] == 0).all()
+    assert sin_banca["flags"].str.contains("bankroll_zero").all()
+
+
+def test_banca_cero_en_modo_precision_tampoco_borra_la_lista(live):
+    base = _settings(prediction_gate_enabled=False, pick_mode="accuracy",
+                     accuracy_threshold=0.5)
+    daily.run_league(LEAGUE, base, mode="live")
+    con_banca = _candidates(live)
+    assert not con_banca.empty
+
+    sin = _settings(prediction_gate_enabled=False, pick_mode="accuracy",
+                    accuracy_threshold=0.5)
+    sin.bankroll = 0.0
+    daily.run_league(LEAGUE, sin, mode="live")
+    sin_banca = _candidates(live)
+    assert len(sin_banca) == len(con_banca)
+    assert (sin_banca["stake"] == 0).all()
+    assert sin_banca["flags"].str.contains("bankroll_zero").all()

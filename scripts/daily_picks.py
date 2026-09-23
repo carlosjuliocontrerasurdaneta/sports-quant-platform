@@ -59,8 +59,8 @@ import pandas as pd
 
 from sqp.config import ROOT
 from sqp.evaluation.labels import (EN_JUEGO, game_date_local, local_today,
-                                   cargar_stream_servido, match_label,
-                                   picks_vigentes_unicos)
+                                   cargar_stream_servido, decision_prob,
+                                   match_label, picks_vigentes_unicos)
 from sqp.logging_config import consola_utf8
 
 # `generado` va al final por la misma razon que en el dashboard: al filtrar por
@@ -106,6 +106,9 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
                orden: str = "prob") -> pd.DataFrame:
     """Ordena por probabilidad estimada DESCENDENTE y anota el breakeven.
 
+    La probabilidad es la de DECISION (`labels.decision_prob`: calibrada, con
+    fallback por fila a la estimada); la columna conserva el nombre `prob_est`.
+
     `margen = prob_est - 1/precio`. Positivo significa que la probabilidad
     estimada supera lo que la cuota exige para no perder dinero; negativo
     significa que NO, por alta que sea la probabilidad.
@@ -113,7 +116,11 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     if df.empty:
         return pd.DataFrame(columns=COLS)
     d = df.copy()
-    p = pd.to_numeric(d.get("estimated_probability"), errors="coerce")
+    # La probabilidad con la que el sistema DECIDIO (calibrada, fallback por
+    # fila a la estimada), no la mezcla cruda que descarto: el dashboard y el
+    # tipster ya la usan desde A-01 (2026-08-31) y esta lista se quedo fuera
+    # (AUD-006, ronda audit-2026-09-23). Asi `roi_esp` ES el `estimated_edge`.
+    p = decision_prob(d)
     price = pd.to_numeric(d.get("price_decimal"), errors="coerce")
     d["_p"] = p
     d["_price"] = price

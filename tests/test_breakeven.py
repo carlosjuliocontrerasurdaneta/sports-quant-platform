@@ -126,3 +126,13 @@ def test_segment_audit_without_price_column_still_works():
     out = _segment_audit(df, ["league"])
     assert not out.empty
     assert "hit_rate" in out.columns
+
+
+def test_mean_est_prob_es_la_probabilidad_de_decision():
+    """AUD-006, ronda audit-2026-09-23. El chequeo de calibracion comparaba el
+    hit rate con la probabilidad CRUDA; debe usar la calibrada (fallback por
+    fila a la estimada), la que decidio el pick."""
+    df = _settled([("win", 2.0), ("loss", 2.0)])
+    df["calibrated_probability"] = [0.6, float("nan")]   # fila 2: fallback 0.5
+    out = _segment_audit(df, ["league"])
+    assert out["mean_est_prob"].iloc[0] == pytest.approx(0.55)

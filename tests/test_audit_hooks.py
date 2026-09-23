@@ -132,3 +132,60 @@ def test_audit_reports_are_excluded_from_the_scan(tmp_path):
         src.write_text('ODDS_API_KEY="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"', encoding="utf-8")
         assert _run(tmp_path, ".claude/hooks/check-secrets.sh",
                     {"tool_input": {"file_path": str(src)}}).returncode == 2, rel
+
+
+# AUD-011 (ronda audit-2026-09-23, OPENAI-008 reproducido): `[ -z "$out" ] &&
+# exit 0` iba ANTES de mirar el codigo de salida. Un `codex review` que fallaba
+# sin escribir nada salia con exito, sin aviso y con el centinela ya borrado:
+# la revision pendiente se perdia en silencio. `codex` es un doble en PATH; no
+# se llama a ningun servicio.
+def _crossreview(tmp_path, rc: int, salida: str):
+    shutil.copytree(ROOT / ".claude/hooks", tmp_path / ".claude/hooks")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True,
+                   capture_output=True)
+    marker = tmp_path / ".claude/.crossreview-pending"
+    marker.write_text("", encoding="utf-8")
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir()
+    fake = bin_dir / "codex"
+    fake.write_text("#!/usr/bin/env bash\n"
+                    + (f"printf '%s\n' {json.dumps(salida)}\n" if salida else "")
+                    + f"exit {rc}\n", encoding="utf-8", newline="\n")
+    fake.chmod(0o755)
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path),
+           "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
+    res = subprocess.run([_bash(), "-c",
+                          f'export PATH="$(cygpath -u "{bin_dir}" 2>/dev/null '
+                          f'|| echo "{bin_dir}"):$PATH"; '
+                          f'bash "{(tmp_path / ".claude/hooks/crossreview-on-stop.sh").as_posix()}"'],
+                         cwd=tmp_path, input=json.dumps({}), text=True,
+                         capture_output=True, env=env, timeout=60)
+    return res, marker
+
+
+def test_crossreview_fallo_sin_salida_avisa_y_conserva_el_marcador(tmp_path):
+    res, marker = _crossreview(tmp_path, 7, "")
+    assert res.returncode == 0
+    assert "NO SE EJECUTO" in res.stderr
+    assert marker.exists()
+
+
+def test_crossreview_salida_vacia_con_rc0_no_es_un_veredicto(tmp_path):
+    res, marker = _crossreview(tmp_path, 0, "")
+    assert res.returncode == 0
+    assert "NO SE EJECUTO" in res.stderr
+    assert marker.exists()
+
+
+def test_crossreview_fallo_con_texto_sigue_igual(tmp_path):
+    res, marker = _crossreview(tmp_path, 1, "You've hit your usage limit")
+    assert res.returncode == 0
+    assert "NO SE EJECUTO" in res.stderr
+    assert marker.exists()
+
+
+def test_crossreview_veredicto_valido_bloquea_y_consume_el_marcador(tmp_path):
+    res, marker = _crossreview(tmp_path, 0, "Finding: algo")
+    assert res.returncode == 2
+    assert "REVISION CRUZADA AUTOMATICA" in res.stderr
+    assert not marker.exists()

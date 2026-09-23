@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.lock import locked
 
 
 COLUMNS = ["game_id", "date", "home_starter", "home_starter_fip",
@@ -31,15 +32,18 @@ class StarterFIPStore:
         new["ingested_at"] = now
         new = new.reindex(columns=COLUMNS)
         p = self.path(league)
-        if p.exists():
-            cur = pd.read_csv(p, dtype={"game_id": str})
-            merged = pd.concat([cur, new], ignore_index=True).drop_duplicates(
-                subset=["game_id"], keep="last")
-        else:
-            self.dir.mkdir(parents=True, exist_ok=True)
-            merged = new.drop_duplicates(subset=["game_id"], keep="last")
-        merged = merged.sort_values("date", kind="stable")
-        atomic_write_csv(merged, p)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        # Transaccion bajo lock (AUD-009, ronda audit-2026-09-23): ver
+        # `ResultsStore.upsert`.
+        with locked(p):
+            if p.exists():
+                cur = pd.read_csv(p, dtype={"game_id": str})
+                merged = pd.concat([cur, new], ignore_index=True).drop_duplicates(
+                    subset=["game_id"], keep="last")
+            else:
+                merged = new.drop_duplicates(subset=["game_id"], keep="last")
+            merged = merged.sort_values("date", kind="stable")
+            atomic_write_csv(merged, p)
         return len(merged)
 
     def attach(self, league: str, results: list[dict]) -> int:

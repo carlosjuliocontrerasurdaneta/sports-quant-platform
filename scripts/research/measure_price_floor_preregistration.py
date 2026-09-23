@@ -68,6 +68,11 @@ def _delta_ci(roi: np.ndarray, mask: np.ndarray, events: np.ndarray, *,
 
 def run(raw: pd.DataFrame, *, n_boot: int, seed: int) -> dict[str, object]:
     window = raw[raw["game_date"].astype(str) > WINDOW_AFTER]
+    # Muestra CONGELADA tal como se midio el 2026-09-19 (solo win/loss).
+    # `prepare` incluye desde AUD-008 (ronda audit-2026-09-23) las medias de
+    # linea de cuarto; sin este filtro, re-ejecutar la medicion pre-registrada
+    # cambiaria retroactivamente su `n` y su ROI (revision Fable, FABLE-004).
+    window = window[window["result"].isin(["win", "loss"])]
     d = prepare(window)
     d["_novig"] = pd.to_numeric(d["implied_probability_novig"], errors="coerce")
     cand = d[(d["_edge"] >= 0) & np.isfinite(d["_novig"])].reset_index(drop=True)

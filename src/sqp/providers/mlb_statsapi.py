@@ -120,7 +120,18 @@ class MLBStatsProvider(ResultsProvider):
         out = []
         for i, (gpk, day) in enumerate(games):
             try:
-                box = self.session.get(f"{BASE}/game/{gpk}/boxscore", timeout=60).json()
+                # `_get_with_retry` (estado HTTP y reintentos) y forma del payload
+                # ANTES de emitir fila (AUD-010, ronda audit-2026-09-23): un 500
+                # con JSON de error se decodificaba sin quejarse y producia una
+                # fila con FIP vacios que, por el upsert `keep="last"`, BORRABA
+                # los FIP validos ya almacenados (reproducido por OpenAI).
+                box = _get_with_retry(self.session, f"{BASE}/game/{gpk}/boxscore",
+                                      timeout=60).json()
+                teams = box.get("teams") if isinstance(box, dict) else None
+                if not (isinstance(teams, dict)
+                        and isinstance(teams.get("home"), dict)
+                        and isinstance(teams.get("away"), dict)):
+                    raise ValueError("respuesta sin 'teams.home/away': no es un boxscore")
             except Exception as exc:  # one bad game must not abort the backfill
                 if log:
                     log.warning("boxscore %s failed: %s", gpk, exc)

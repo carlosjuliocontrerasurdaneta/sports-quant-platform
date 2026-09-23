@@ -35,6 +35,7 @@ import pandas as pd
 
 from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 from sqp.logging_config import get_logger
+from sqp.settlement.settle import STAKED_RESULTS
 
 log = get_logger(__name__)
 
@@ -85,8 +86,8 @@ def prepare(df: pd.DataFrame, *,
             prob_col: str = "calibrated_probability") -> pd.DataFrame:
     """Proyecta el stream graduado a las columnas que necesita el analisis.
 
-    Conserva solo `win`/`loss`: push y void no tienen resultado binario ni P&L
-    que puntuar. Si falta `edge_col` lo reconstruye como `p * precio - 1` sobre
+    Conserva `win`/`loss` y las medias de linea de cuarto (`half_win`/
+    `half_loss`, con su P&L parcial); push y void no tienen P&L que puntuar. Si falta `edge_col` lo reconstruye como `p * precio - 1` sobre
     `prob_col`, que es la definicion que usa produccion.
 
     Colapsa a **una fila por apuesta** (`one_row_per_pick`): todo lo que sale de
@@ -98,7 +99,11 @@ def prepare(df: pd.DataFrame, *,
     if missing:
         raise ValueError(f"faltan columnas obligatorias: {sorted(missing)}")
 
-    d = one_row_per_pick(df[df["result"].isin(["win", "loss"])]).copy()
+    # Las medias liquidaciones ENTRAN (AUD-008, ronda audit-2026-09-23): tienen
+    # P&L real y cuentan en el denominador canonico (`realized_roi_parts`).
+    # Filtrarlas quitaba filas SEGUN EL RESULTADO: 1 win + 10 half_loss a cuota 2
+    # salia ROI +100 % sobre 1 apuesta, cuando el ledger dice -36,4 % sobre 11.
+    d = one_row_per_pick(df[df["result"].isin(STAKED_RESULTS)]).copy()
     price = pd.to_numeric(d["price_decimal"], errors="coerce")
     if edge_col in d.columns:
         edge = pd.to_numeric(d[edge_col], errors="coerce")
@@ -107,13 +112,19 @@ def prepare(df: pd.DataFrame, *,
     else:
         raise ValueError(f"ni {edge_col!r} ni {prob_col!r} estan en el frame")
 
-    d["_won"] = (d["result"] == "win").astype(float)
+    res = d["result"]
+    # Acierto BINARIO: solo win/loss. Una media no es ni acierto ni fallo
+    # entero, asi que queda NaN y las medias (`mean`) la omiten: el hit rate es
+    # el de siempre y el ROI, el del ledger.
+    d["_won"] = np.where(res == "win", 1.0, np.where(res == "loss", 0.0, np.nan))
     d["_price"] = price
     d["_edge"] = edge
     # ROI flat: unidad apostada, se recupera precio-1 al ganar y se pierde 1 al
-    # perder. Es el P&L de la politica, independiente del sizing de Kelly, que
-    # solo escalaria el mismo signo.
-    d["_roi"] = np.where(d["_won"] > 0, price - 1.0, -1.0)
+    # perder; las medias, la mitad de cada cosa (mismo P&L que
+    # `settle.settle_candidates`). Es el P&L de la politica, independiente del
+    # sizing de Kelly, que solo escalaria el mismo signo.
+    d["_roi"] = np.select([res == "win", res == "half_win", res == "half_loss"],
+                          [price - 1.0, 0.5 * (price - 1.0), -0.5], default=-1.0)
     # Un valor no finito en precio o edge envenena media e intervalo sin avisar
     # (auditoria 2026-08-05, RC-1): se descarta explicitamente.
     finite = np.isfinite(d["_price"]) & np.isfinite(d["_edge"])

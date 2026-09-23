@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,  # noqa: E402
                                       PREDICTION_GATE_MIN_N, VALIDATION_START,
                                       evaluate_markets, load_prediction_gate,
-                                      market_allowed)
+                                      market_allowed, prediction_gate_block)
 from sqp.storage.served_store import ServedStore  # noqa: E402
 
 MIN_N_GATE: int = PREDICTION_GATE_MIN_N
@@ -85,7 +85,7 @@ def progress_table(graded: pd.DataFrame, *, min_n_display: int = 0) -> pd.DataFr
 
 
 def render(gate: dict[str, dict], graded: pd.DataFrame, *,
-           min_n_display: int = 0) -> str:
+           min_n_display: int = 0, block: dict | None = None) -> str:
     out: list[str] = []
     out.append(f"=== PREDICTION GATE — umbral: n>={MIN_N_GATE} unidades "
                f"independientes, p<{ALPHA:.5f}, EV plano>0; partidos "
@@ -94,7 +94,17 @@ def render(gate: dict[str, dict], graded: pd.DataFrame, *,
     out.append("[1] VEREDICTO PERSISTIDO (lo que aplica el run diario):")
     verdict = verdict_table(gate)
     habilitados = verdict[verdict["habilitado"]] if not verdict.empty else verdict
-    if not gate:
+    if block:
+        # El registro puede EXISTIR y leerse; lo que fuerza el deny es el
+        # centinela (AUD-013, ronda audit-2026-09-23). Decir "ausente o
+        # ilegible" mandaba a mirar el sitio equivocado.
+        out.append(f"  CENTINELA DE BLOQUEO presente ({block.get('path', '?')}, "
+                   f"desde {block.get('blocked_at', '?')}): la ultima "
+                   f"actualizacion no pudo leer el estado previo "
+                   f"({block.get('reason', '?')}). Default-deny para TODOS los "
+                   f"cortes hasta una actualizacion buena; restaurar un "
+                   f"prediction_gate.json legible.")
+    elif not gate:
         out.append("  registro ausente o ilegible -> default-deny: NINGUN mercado "
                    "lleva stake real.")
     else:
@@ -136,7 +146,8 @@ def main() -> int:
     bets_dir = ROOT / "data" / "bets"
     gate = load_prediction_gate(bets_dir)
     graded = ServedStore(ROOT).load_all_graded()
-    print(render(gate, graded, min_n_display=args.min_n))
+    print(render(gate, graded, min_n_display=args.min_n,
+                 block=prediction_gate_block(bets_dir)))
     return 0
 
 

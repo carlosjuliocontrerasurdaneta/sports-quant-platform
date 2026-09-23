@@ -40,7 +40,9 @@ def main():
     if args.mode == "live":
         log.warning(
             "run_daily --mode live NO aplica el guard de presupuesto de cuota ni "
-            "la seleccion por temporada, y SOBRESCRIBE candidates_*.csv y "
+            "la seleccion por temporada, NO revalida el prediction gate (usa el "
+            "ultimo registro persistido; run_all.py lo revalida antes de generar, "
+            "AUD-001) y SOBRESCRIBE candidates_*.csv y "
             "predictions_*.csv de produccion. El entrypoint de produccion es "
             "scripts/run_all.py (RUN_DIARIO_ALL.bat).")
     for league in args.sports:

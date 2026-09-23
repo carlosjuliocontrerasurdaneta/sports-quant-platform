@@ -3,6 +3,7 @@
 Single bankroll, single risk engine, every league flows through here.
 """
 from __future__ import annotations
+import filecmp
 import re
 import shutil
 from collections import defaultdict
@@ -418,14 +419,30 @@ def _archive_existing(path: Path) -> None:
     except (OSError, pd.errors.ParserError) as exc:
         log.warning("could not archive %s before overwrite: %s", path.name, exc)
         return
+    stamp = None
     if "generated_at" in head.columns and not head.empty:
         day = str(head["generated_at"].iloc[0])[:10]
+        stamp = pd.to_datetime(head["generated_at"].iloc[0], errors="coerce",
+                               utc=True)
     else:
         day = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+    if stamp is None or pd.isna(stamp):
+        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     archive_dir = path.parent / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
+    target = archive_dir / f"{path.stem}_{day}{path.suffix}"
     try:
-        shutil.copy2(path, archive_dir / f"{path.stem}_{day}{path.suffix}")
+        # UNA copia por generacion (AUD-012, ronda audit-2026-09-23). Con dos
+        # runs el mismo dia, el hueco `_<dia>` ya lo ocupaba la primera
+        # generacion y la del segundo run la PISABA al archivarse al dia
+        # siguiente: sus picks desaparecian de archive/ y `superseded_candidates`
+        # ya no podia liquidarlos. Si el hueco guarda OTRA generacion, esta va a
+        # `_<dia>_<HHMMSS>` (hora UTC de su `generated_at`, o del mtime).
+        # Re-archivar la MISMA generacion sigue siendo idempotente.
+        if target.exists() and not filecmp.cmp(path, target, shallow=False):
+            target = archive_dir / (f"{path.stem}_{day}_{stamp:%H%M%S}"
+                                    f"{path.suffix}")
+        shutil.copy2(path, target)
     except OSError as exc:
         log.warning("could not archive %s before overwrite: %s", path.name, exc)
 
@@ -616,7 +633,11 @@ def _tennis_results(league: str, provider=None) -> list[dict]:
         return []
 
 
-def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.DataFrame:
+def run_league(league: str, settings: Settings, mode: str | None = None, *,
+               gate_deny_all: bool = False) -> pd.DataFrame:
+    """``gate_deny_all``: el orquestador no pudo revalidar el prediction gate
+    antes de generar (AUD-001, ronda audit-2026-09-23); se genera en
+    default-deny en vez de reutilizar el registro anterior."""
     mode = mode or settings.mode
     meta = _league_meta(league)
     family, three_way = meta["family"], meta.get("three_way", False)
@@ -649,8 +670,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
     # ausente/ilegible -> default-deny.
     prediction_gate: dict[str, dict] | None = None
     if settings.prediction_gate_enabled and mode != "demo":
-        prediction_gate = load_prediction_gate(ROOT / "data" / "bets")
-        if not prediction_gate:
+        prediction_gate = ({} if gate_deny_all
+                           else load_prediction_gate(ROOT / "data" / "bets"))
+        if gate_deny_all:
+            log.error("[%s] Prediction gate no revalidado en este run: "
+                      "default-deny, ningun mercado lleva stake real.", league)
+        elif not prediction_gate:
             log.warning("[%s] Prediction gate activo sin registro utilizable "
                         "(data/bets/prediction_gate.json): default-deny, ningun "
                         "mercado lleva stake real hasta que "
@@ -899,6 +924,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                                               settings.risk.kelly_fraction,
                                               settings.risk.max_stake_pct,
                                               settings.risk.min_edge)
+            # Banca <= 0 (ledger ilegible o saldo agotado): Kelly devuelve 0 ANTES
+            # de mirar el edge, y usar ese stake para SELECCIONAR borraba la lista
+            # entera en vez de quitarle el dinero (AUD-005, ronda audit-2026-09-23,
+            # reproducido: banca 1000 -> 2 candidatos, banca 0 -> 0). La
+            # elegibilidad se decide con la fraccion de Kelly, que no depende de
+            # la banca; con banca positiva la seleccion no cambia.
+            sin_banca = not settings.bankroll > 0
+            elegible = kelly_fraction_stake(adj.effective_probability, price, 1.0,
+                                            settings.risk.kelly_fraction,
+                                            settings.risk.max_stake_pct,
+                                            settings.risk.min_edge)[1] > 0
             # Served-probability stream: record EVERY priced market side, before
             # any stake/edge filtering. Placed picks alone are a small, adversely
             # selected calibration sample; the full serve distribution lets the
@@ -942,14 +978,17 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 # Banca <= 0 produce stake negativo, y settle.py grada una perdida
                 # como pnl = -stake, es decir POSITIVO. La rama por edge queda
                 # cubierta por kelly_fraction_stake (devuelve 0); el stake plano no
-                # pasa por ahi (auditoria 2026-07-29, B-06).
-                if stake <= 0:
+                # pasa por ahi (auditoria 2026-07-29, B-06). Sin banca la fila se
+                # CONSERVA a stake 0 con su flag (AUD-005, abajo).
+                if sin_banca:
+                    stake, pct = 0.0, 0.0
+                elif stake <= 0:
                     continue
             # Only record a candidate that would otherwise be staked (or is an
             # implausible-edge outlier): below-min-edge lines are ignored whether
             # or not the market is paused, so a paused market does not flood the
             # picks file with non-actionable rows.
-            elif stake <= 0 and not suspect:
+            elif not (elegible if sin_banca else stake > 0) and not suspect:
                 continue
             # A paused market is suspended from staking but kept in the audit trail
             # (stake 0, flagged). Pausing takes precedence over the plausibility cap;
@@ -965,6 +1004,9 @@ def run_league(league: str, settings: Settings, mode: str | None = None) -> pd.D
                 incomplete_market=incomplete_market,
                 prediction_blocked=pred_blocked,
                 stale_quote=cuota_vencida) or ""
+            if sin_banca:
+                # El gate quita el stake, nunca la fila; la banca tampoco.
+                flag = f"{flag};bankroll_zero" if flag else "bankroll_zero"
             if flag:
                 stake, pct = 0.0, 0.0
             if accuracy:

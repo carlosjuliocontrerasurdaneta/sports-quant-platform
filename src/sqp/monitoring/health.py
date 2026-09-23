@@ -17,6 +17,7 @@ import pandas as pd
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
 from sqp.monitoring.run_status import read_run_status
+from sqp.risk.prediction_gate import prediction_gate_block
 from sqp.storage.served_store import KEY_COLS, ServedStore
 from sqp.storage.atomic import atomic_write_json
 
@@ -471,6 +472,19 @@ def generate_health_report(root: Path = ROOT) -> dict:
               else {"available": False, "history_enabled": None, "tasks": {},
                     "warnings": []})
     warnings.extend(f"tareas programadas: {w}" for w in tareas["warnings"])
+
+    # Centinela del prediction gate (AUD-013, ronda audit-2026-09-23): mientras
+    # exista, el gate niega TODO indefinidamente. Es la direccion segura, pero
+    # un corte que ganase su test no podria entrar hasta que alguien leyera el
+    # log; aqui se hace visible con su motivo y su ruta. Aviso, no error: la
+    # lista del dia se sigue generando entera.
+    bloqueo = prediction_gate_block(data / "bets")
+    if bloqueo:
+        warnings.append(
+            f"prediction gate BLOQUEADO por centinela ({bloqueo['path']}, desde "
+            f"{bloqueo.get('blocked_at', '?')}): {bloqueo.get('reason', '?')}. "
+            f"Default-deny para todos los cortes hasta restaurar un "
+            f"prediction_gate.json legible")
 
     served_expired, served_expired_total = _served_pending_expired(root)
     for lg, n in sorted(served_expired.items()):

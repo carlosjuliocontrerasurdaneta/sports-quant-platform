@@ -41,7 +41,7 @@ def test_demo_run_never_touches_live_audit_or_calibration(monkeypatch):
         raise AssertionError("demo attempted to mutate/read live audit state")
 
     for name in ("settlement_audit_report", "daily_clv", "build_pick_history",
-                 "stage_calibrators_from_settled"):
+                 "stage_calibrators_from_settled", "_refresh_prediction_gate"):
         monkeypatch.setattr(mod, name, forbidden)
     monkeypatch.setattr(sys, "argv", ["run_all.py", "--mode", "demo", "--no-html"])
     assert mod.main() == 0
@@ -55,6 +55,8 @@ def test_live_pipeline_failure_returns_nonzero_and_preserves_prior_file(monkeypa
     monkeypatch.setattr(mod, "unsettled_completed_picks", lambda *a, **k: {})
     monkeypatch.setattr(mod, "prune_stale_candidates", lambda *a, **k: [])
     monkeypatch.setattr(mod, "apply_global_exposure_cap", lambda *a, **k: 1.0)
+    # Nunca el registro productivo del gate (AUD-001 lo movio antes del bucle).
+    monkeypatch.setattr(mod, "_refresh_prediction_gate", lambda *a, **k: True)
     monkeypatch.setattr(mod, "run_league",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(sys, "argv", ["run_all.py", "--mode", "live", "--no-report"])
@@ -101,3 +103,66 @@ def test_audit_report_failure_is_best_effort(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "settlement_audit_report",
                         lambda: (_ for _ in ()).throw(OSError("disk full")))
     assert mod.main() == 0
+
+
+# --- AUD-001, ronda audit-2026-09-23: el gate se revalida ANTES de generar -----
+
+
+def _live_run_all(monkeypatch, *, refresh_ok: bool, extra_argv=()):
+    """run_all live con todo lo externo sustituido; devuelve el orden de las
+    llamadas y los kwargs con que se llamo a run_league."""
+    mod = _load_script("run_all")
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(mod.Settings, "load", staticmethod(_settings))
+    monkeypatch.setattr(mod, "_supported_leagues", lambda: {"mlb": "baseball_mlb"})
+    monkeypatch.setattr(mod, "_select_live", lambda *a, **k: (["mlb"], {"mlb"}))
+    monkeypatch.setattr(mod, "unsettled_completed_picks", lambda *a, **k: {})
+    monkeypatch.setattr(mod, "prune_stale_candidates", lambda *a, **k: [])
+    monkeypatch.setattr(mod, "apply_global_exposure_cap", lambda *a, **k: 1.0)
+
+    def refresh(*a, **k):
+        calls.append(("gate", {}))
+        return refresh_ok
+
+    def league(*a, **k):
+        calls.append(("run_league", k))
+
+    monkeypatch.setattr(mod, "_refresh_prediction_gate", refresh)
+    monkeypatch.setattr(mod, "run_league", league)
+    monkeypatch.setattr(sys, "argv", ["run_all.py", "--mode", "live",
+                                      "--no-report", *extra_argv])
+    return mod, calls
+
+
+def test_live_run_revalidates_the_gate_before_generating_even_without_report(
+        monkeypatch):
+    """Antes: la actualizacion iba al final, dentro de `if not args.no_report`,
+    asi que los picks del dia salian con la autorizacion de ayer y --no-report
+    no la actualizaba nunca."""
+    mod, calls = _live_run_all(monkeypatch, refresh_ok=True)
+    mod.main()
+    assert [c[0] for c in calls] == ["gate", "run_league"]
+    assert calls[1][1].get("gate_deny_all") is False
+
+
+def test_failed_gate_revalidation_generates_in_default_deny(monkeypatch):
+    mod, calls = _live_run_all(monkeypatch, refresh_ok=False)
+    mod.main()
+    assert [c[0] for c in calls] == ["gate", "run_league"]
+    assert calls[1][1].get("gate_deny_all") is True
+
+
+def test_refresh_prediction_gate_never_raises_and_reports_failure(monkeypatch,
+                                                                  tmp_path):
+    mod = _load_script("run_all")
+
+    class _Store:
+        def __init__(self, root):
+            pass
+
+        def load_all_graded(self):
+            raise OSError("disco")
+
+    monkeypatch.setattr(mod, "ServedStore", _Store)
+    assert mod._refresh_prediction_gate(tmp_path) is False
+    assert not (tmp_path / "prediction_gate.json").exists()

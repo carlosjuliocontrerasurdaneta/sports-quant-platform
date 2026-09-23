@@ -740,6 +740,107 @@ def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
     json.loads((tmp_path / PREDICTION_GATE_FILENAME).read_text(encoding="utf-8"))
 
 
+# --- Concurrencia: la transaccion del pestillo va bajo lock -------------------
+#
+# AUD-002, ronda audit-2026-09-23 (OPENAI-002, reproducido). `atomic_write_json`
+# protege el FICHERO, no la transaccion leer-estado / aplicar-pestillo /
+# escribir. Dos actualizaciones solapadas leian el mismo estado abierto, y la
+# ultima en escribir borraba el pestillo que la otra acababa de armar: el corte
+# reentraba sin liberacion humana.
+
+
+def test_una_actualizacion_solapada_no_desarma_el_pestillo(tmp_path, monkeypatch):
+    """A lee el estado ABIERTO y se detiene; B (que debe cerrar) intenta escribir
+    mientras tanto; A escribe despues con su evaluacion vieja. Sin lock, B cierra
+    y A lo reabre (`latched` False al final). Con lock, B no entra hasta que A
+    termina, relee el estado de A y arma el pestillo."""
+    import threading
+
+    from sqp.risk import prediction_gate as pg
+
+    day1 = _stream_pass()
+    write_prediction_gate(day1, tmp_path)
+    assert market_allowed(load_prediction_gate(tmp_path), "brasileirao", "totals")
+
+    a_leyo = threading.Event()
+    b_termino = threading.Event()
+    original = pg._load_previous_state
+
+    def lector_con_pausa(bets_dir):
+        estado = original(bets_dir)
+        if threading.current_thread().name == "A":
+            a_leyo.set()
+            # Sin lock B termina dentro de esta espera; con lock no puede
+            # (espera a A), la espera vence y A sigue.
+            b_termino.wait(timeout=2.0)
+        return estado
+
+    monkeypatch.setattr(pg, "_load_previous_state", lector_con_pausa)
+    errores: list[BaseException] = []
+
+    def escritor_a():
+        try:
+            write_prediction_gate(day1, tmp_path)  # evaluacion vieja: "pasa"
+        except BaseException as exc:  # noqa: BLE001 - se re-afirma abajo
+            errores.append(exc)
+
+    def escritor_b():
+        try:
+            a_leyo.wait(timeout=10)
+            write_prediction_gate(pd.concat([day1, _stream_fail()],
+                                            ignore_index=True), tmp_path)
+            b_termino.set()
+        except BaseException as exc:  # noqa: BLE001
+            errores.append(exc)
+
+    hilos = [threading.Thread(target=escritor_a, name="A"),
+             threading.Thread(target=escritor_b, name="B")]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join(timeout=60)
+    assert not errores, errores
+    entry = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert entry.get("latched") is True
+    assert market_allowed(load_prediction_gate(tmp_path),
+                          "brasileirao", "totals") is False
+
+
+def test_la_liberacion_espera_a_la_actualizacion_en_curso(tmp_path):
+    """La liberacion humana comparte el lock del escritor: lee el estado que el
+    escritor en curso deja, no el anterior. Sin lock leia el corte aun abierto,
+    devolvia False y el pestillo que el escritor armaba despues se quedaba."""
+    import threading
+    import time
+
+    from sqp.risk import prediction_gate as pg
+    from sqp.storage.lock import locked
+
+    write_prediction_gate(_stream_pass(), tmp_path)
+    path = tmp_path / pg.PREDICTION_GATE_FILENAME
+    dentro = threading.Event()
+
+    def escritor_lento():
+        with locked(path):
+            dentro.set()
+            time.sleep(0.6)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["markets"]["brasileirao|totals"].update(
+                {"allowed": False, "latched": True, "latched_at": "x"})
+            pg._write_payload(payload, tmp_path)
+
+    hilo = threading.Thread(target=escritor_lento)
+    hilo.start()
+    assert dentro.wait(timeout=10)
+    liberado = pg.release_prediction_gate_latch(
+        tmp_path, "brasileirao", "totals", released_by="operador-test")
+    hilo.join(timeout=30)
+    assert liberado is True
+    entry = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert entry["latched"] is False
+    assert entry["reason"] == "liberado_pendiente_reevaluacion"
+
+
 # --- El umbral no se cita de memoria ------------------------------------------
 #
 # Revision cruzada de Codex, 2026-09-09. El reparto Bonferroni del 2026-09-04

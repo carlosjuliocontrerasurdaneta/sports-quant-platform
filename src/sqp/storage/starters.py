@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.lock import locked
 
 log = get_logger("sqp.storage.starters")
 
@@ -127,15 +128,18 @@ class StartersStore:
             p = self.path(league)
             return len(pd.read_csv(p, usecols=[0])) if p.exists() else 0
         p = self.path(league)
-        if p.exists():
-            cur = pd.read_csv(p, dtype={"game_id": str})
-            merged = pd.concat([cur, new], ignore_index=True)
-            merged = merged.drop_duplicates(subset=["game_id"], keep="last")
-        else:
-            self.dir.mkdir(parents=True, exist_ok=True)
-            merged = new.drop_duplicates(subset=["game_id"], keep="last")
-        merged = merged.sort_values("date", kind="stable")
-        atomic_write_csv(merged, p)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        # Transaccion bajo lock (AUD-009, ronda audit-2026-09-23): ver
+        # `ResultsStore.upsert`.
+        with locked(p):
+            if p.exists():
+                cur = pd.read_csv(p, dtype={"game_id": str})
+                merged = pd.concat([cur, new], ignore_index=True)
+                merged = merged.drop_duplicates(subset=["game_id"], keep="last")
+            else:
+                merged = new.drop_duplicates(subset=["game_id"], keep="last")
+            merged = merged.sort_values("date", kind="stable")
+            atomic_write_csv(merged, p)
         return len(merged)
 
     def attach(self, league: str, results: list[dict]) -> int:

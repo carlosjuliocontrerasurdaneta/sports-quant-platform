@@ -553,3 +553,37 @@ class TestElCriterioSeGeneraCadaDia:
         assert "--min-prob 0.60 --min-roi 0" in bat, (
             "DIARIO_COMPLETO.bat no genera la lista del criterio del operador")
         assert "picks_seleccion.md" in bat
+
+
+class TestProbabilidadDeDecision:
+    """AUD-006, ronda audit-2026-09-23 (CLAUDE-003). La lista ordenaba, filtraba
+    y calculaba el «ROI esperado» con `estimated_probability`, la mezcla CRUDA
+    que el sistema descarta cuando hay calibrador; el motor decide con la
+    calibrada. El dashboard y el tipster ya lo hacian bien desde A-01."""
+
+    def _frame(self):
+        # A: cruda 0.62 pero calibrada 0.55; B: cruda 0.58, calibrada 0.61.
+        return _served([
+            {"selection": "A", "estimated_probability": 0.62,
+             "calibrated_probability": 0.55, "estimated_edge": 0.55 * 2.0 - 1},
+            {"selection": "B", "estimated_probability": 0.58,
+             "calibrated_probability": 0.61, "estimated_edge": 0.61 * 2.0 - 1},
+            # Sin calibrada: fallback POR FILA a la estimada.
+            {"selection": "C", "estimated_probability": 0.57,
+             "calibrated_probability": float("nan"),
+             "estimated_edge": 0.57 * 2.0 - 1},
+        ])
+
+    def test_prob_y_roi_esperado_siguen_a_la_calibrada(self):
+        out = daily_picks.rank_picks(self._frame()).set_index("seleccion")
+        assert out.loc["A", "prob_est"] == pytest.approx(0.55)
+        assert out.loc["B", "prob_est"] == pytest.approx(0.61)
+        assert out.loc["C", "prob_est"] == pytest.approx(0.57)
+        for sel, edge in (("A", 0.10), ("B", 0.22), ("C", 0.14)):
+            assert out.loc[sel, "roi_esp"] == pytest.approx(edge, abs=1e-4)
+
+    def test_el_orden_y_el_filtro_usan_la_calibrada(self):
+        out = daily_picks.rank_picks(self._frame(), min_prob=0.60)
+        assert list(out["seleccion"]) == ["B"]
+        todos = daily_picks.rank_picks(self._frame())
+        assert list(todos["seleccion"])[0] == "B"

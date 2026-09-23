@@ -419,7 +419,8 @@ class BetaCalibrator:
         self.b = 1.0
         self.c = 0.0
 
-    def fit(self, probs: np.ndarray, outcomes: np.ndarray) -> "BetaCalibrator":
+    def fit(self, probs: np.ndarray, outcomes: np.ndarray,
+            weights: np.ndarray | None = None) -> "BetaCalibrator":
         from scipy.optimize import minimize
 
         def neg_log_loss(params: np.ndarray) -> float:
@@ -427,7 +428,10 @@ class BetaCalibrator:
             p = np.clip(probs, 1e-6, 1 - 1e-6)
             cal = 1 / (1 + np.exp(-(a * np.log(p) - b * np.log(1 - p) + c)))
             cal = np.clip(cal, 1e-6, 1 - 1e-6)
-            return float(-np.mean(outcomes * np.log(cal) + (1 - outcomes) * np.log(1 - cal)))
+            ll = outcomes * np.log(cal) + (1 - outcomes) * np.log(1 - cal)
+            # Sin pesos, EXACTAMENTE la media de siempre (AUD-007).
+            return float(-(np.mean(ll) if weights is None
+                           else np.average(ll, weights=weights)))
 
         res = minimize(neg_log_loss, [1.0, 1.0, 0.0], method="Nelder-Mead")
         if not res.success:
@@ -441,11 +445,42 @@ class BetaCalibrator:
         return np.clip(cal, 0.01, 0.99)
 
 
+def _weighted_ece(p: np.ndarray, y: np.ndarray, w: np.ndarray,
+                  n_bins: int = 10) -> float:
+    """`expected_calibration_error` con pesos por observacion: mismos bins, y
+    cada bin pesa por la suma de pesos en vez de por el recuento."""
+    finite = np.isfinite(p) & np.isfinite(y) & np.isfinite(w)
+    p, y, w = p[finite], y[finite], w[finite]
+    if not len(p) or w.sum() <= 0:
+        return float("nan")
+    bins = np.linspace(0, 1, n_bins + 1)
+    idx = np.clip(np.digitize(p, bins) - 1, 0, n_bins - 1)
+    total, err = float(w.sum()), 0.0
+    for b in range(n_bins):
+        m = idx == b
+        wb = float(w[m].sum())
+        if wb <= 0:
+            continue
+        err += wb / total * abs(float(np.average(p[m], weights=w[m]))
+                                - float(np.average(y[m], weights=w[m])))
+    return err
+
+
+def _val_metrics(p: np.ndarray, y: np.ndarray, w: np.ndarray | None) -> tuple[float, float]:
+    """(ECE, Brier) de validacion. Sin pesos, las funciones canonicas de
+    `metrics` tal cual; con pesos (medias liquidaciones, AUD-007), sus versiones
+    ponderadas."""
+    if w is None:
+        return (float(expected_calibration_error(p, y)), float(brier_score(p, y)))
+    return (_weighted_ece(p, y, w), float(np.average((p - y) ** 2, weights=w)))
+
+
 def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
                       outcome_col: str = "home_win", sport: str = "mlb",
                       val_fraction: float = 0.20, staging: bool = False,
                       time_col: str | None = None,
-                      group_col: str | None = None) -> dict:
+                      group_col: str | None = None,
+                      weight_col: str | None = None) -> dict:
     """Fit isotonic + beta calibrators on the earlier games and validate on the
     most recent ``val_fraction``. Persists both models and returns OOS metrics.
 
@@ -498,20 +533,46 @@ def train_calibration(df: pd.DataFrame, prob_col: str = "probability",
     train_outcomes = train_df[outcome_col].to_numpy(dtype=float)
     val_probs = val_df[prob_col].to_numpy(dtype=float)
     val_outcomes = val_df[outcome_col].to_numpy(dtype=float)
+    # Pesos por observacion (AUD-007, ronda audit-2026-09-23): una media
+    # liquidacion de linea de cuarto vale MEDIA unidad ganada o perdida, que es
+    # el contrato `win_units/(win_units+loss_units)` del precio analitico. Si no
+    # hay ningun peso distinto de 1, se sigue EXACTAMENTE la ruta sin pesos de
+    # siempre: los grupos sin cuartos no cambian ni en el ultimo bit.
+    train_w: np.ndarray | None = None
+    val_w: np.ndarray | None = None
+    if weight_col and weight_col in df2.columns:
+        tw = train_df[weight_col].to_numpy(dtype=float)
+        vw = val_df[weight_col].to_numpy(dtype=float)
+        if not (np.all(tw == 1.0) and np.all(vw == 1.0)):
+            train_w, val_w = tw, vw
 
     iso = IsotonicRegression(out_of_bounds="clip")
-    iso.fit(train_probs, train_outcomes)
+    iso.fit(train_probs, train_outcomes, sample_weight=train_w)
 
-    beta = BetaCalibrator().fit(train_probs, train_outcomes)
+    # Sin pesos, la llamada de siempre (mismo contrato para quien sustituya el
+    # calibrador); con pesos, la version ponderada.
+    beta = (BetaCalibrator().fit(train_probs, train_outcomes) if train_w is None
+            else BetaCalibrator().fit(train_probs, train_outcomes, weights=train_w))
 
     raw_clipped = np.clip(val_probs, 0.01, 0.99)
-    raw_val_ece = float(expected_calibration_error(raw_clipped, val_outcomes))
-    raw_val_brier = float(brier_score(raw_clipped, val_outcomes))
+    raw_val_ece, raw_val_brier = _val_metrics(raw_clipped, val_outcomes, val_w)
     iso_val_probs = np.clip(iso.predict(val_probs), 0.01, 0.99)
     val_metrics = calibration_report(iso_val_probs, val_outcomes)
+    if val_w is not None:
+        # Todo el informe ponderado, no solo lo que miran los gates: mezclar en
+        # el mismo dict metricas con y sin peso confunde (revision Fable).
+        val_metrics["ece"], val_metrics["brier_score"] = _val_metrics(
+            iso_val_probs, val_outcomes, val_w)
+        pc = np.clip(iso_val_probs, 1e-12, 1 - 1e-12)
+        val_metrics["log_loss"] = float(-np.average(
+            val_outcomes * np.log(pc) + (1 - val_outcomes) * np.log(1 - pc),
+            weights=val_w))
+        val_metrics["mean_estimated_probability"] = float(
+            np.average(iso_val_probs, weights=val_w))
+        val_metrics["observed_frequency"] = float(np.average(val_outcomes,
+                                                             weights=val_w))
     beta_val_probs = np.clip(beta.predict(val_probs), 0.01, 0.99)
-    beta_val_ece = float(expected_calibration_error(beta_val_probs, val_outcomes))
-    beta_val_brier = float(brier_score(beta_val_probs, val_outcomes))
+    beta_val_ece, beta_val_brier = _val_metrics(beta_val_probs, val_outcomes, val_w)
 
     iso_path = _model_path(sport, "iso", staging=staging)
     beta_path = _model_path(sport, "beta", staging=staging)
@@ -653,8 +714,17 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
     out: list[dict] = []
     if hist is None or hist.empty:
         return out
-    graded = hist[hist["result"].isin(["win", "loss"])].copy()
-    graded["won"] = (graded["result"] == "win").astype(float)
+    # Las medias liquidaciones de las lineas de cuarto ENTRAN, con su direccion y
+    # peso 0,5 (AUD-007, ronda audit-2026-09-23, reproducido por OpenAI). El
+    # filtro win/loss las quitaba, y eso elegia la muestra SEGUN EL RESULTADO:
+    # 60 win / 20 loss / 20 half_loss llegaban al ajuste como 80 filas con
+    # objetivo 0,75, cuando el contrato del precio (`settlement_math`) es
+    # win_units/(win_units+loss_units) = 60/(60+20+10) = 0,667. push/void siguen
+    # fuera: no son ni ganancia ni perdida.
+    graded = hist[hist["result"].isin(["win", "loss", "half_win", "half_loss"])].copy()
+    graded["won"] = graded["result"].isin(["win", "half_win"]).astype(float)
+    graded["weight"] = np.where(graded["result"].isin(["half_win", "half_loss"]),
+                                0.5, 1.0)
     for (league, market), g in graded.groupby(["league", "market"]):
         if "date" in g.columns:
             g = g.sort_values("date")
@@ -672,6 +742,7 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
                   if "served_at" in g.columns else np.full(len(g), ""))
         df = pd.DataFrame({"probability": g[prob_col].to_numpy(dtype=float),
                            "won": g["won"].to_numpy(dtype=float),
+                           "weight": g["weight"].to_numpy(dtype=float),
                            "date": g["date"].astype(str).to_numpy(),
                            "served_at": served,
                            "event_id": event_ids}).dropna(
@@ -707,7 +778,7 @@ def train_market_calibrators(hist: pd.DataFrame, *, min_n: int = 40,
             r = train_calibration(df, prob_col="probability", outcome_col="won",
                                   sport=calibration_key(str(league), str(market)),
                                   staging=staging, time_col="date",
-                                  group_col="event_id")
+                                  group_col="event_id", weight_col="weight")
             rec.update({"trained": True, "raw_val_ece": r["raw_val_ece"],
                         "cal_val_ece": r["val_metrics"]["ece"],
                         "beta_val_ece": r["beta_val_ece"], "n_val": r["n_val"],

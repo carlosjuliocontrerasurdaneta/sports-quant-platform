@@ -236,3 +236,62 @@ class TestCapLadder:
         row = cap_ladder(pd.concat([df, extra]), caps=(float("inf"),),
                          n_boot=200, seed=1).iloc[0]
         assert row.n_pasan == len(df)
+
+
+# --- AUD-008, ronda audit-2026-09-23: medias liquidaciones en el ROI ----------
+
+
+def _con_medias(n_half_loss=10):
+    filas = [{"event_id": "w0", "market": "totals", "line": 2.25,
+              "selection": "Over", "result": "win", "price_decimal": 2.0,
+              "estimated_edge": 0.05, "generated_at": "2026-09-01T10:00:00Z"}]
+    for i in range(n_half_loss):
+        filas.append({"event_id": f"h{i}", "market": "totals", "line": 2.25,
+                      "selection": "Over", "result": "half_loss",
+                      "price_decimal": 2.0, "estimated_edge": 0.05,
+                      "generated_at": "2026-09-01T10:00:00Z"})
+    return pd.DataFrame(filas)
+
+
+def test_el_roi_incluye_las_medias_como_el_ledger():
+    """OPENAI-005: 1 win + 10 half_loss a cuota 2 -> ROI canonico
+    (1 - 10*0,5)/11 = -0,3636, no +100 % sobre 1 apuesta."""
+    from sqp.evaluation.edge_information import edge_ladder, prepare
+    from sqp.settlement.settle import realized_roi_parts
+
+    df = _con_medias()
+    d = prepare(df)
+    assert len(d) == 11
+    assert float(d["_roi"].mean()) == pytest.approx(-4 / 11)
+    lad = edge_ladder(df, thresholds=(0.0,), n_boot=50)
+    fila = lad.iloc[0]
+    assert fila["n_rows"] == 11
+    assert fila["roi_flat"] == pytest.approx(round(-4 / 11, 5))
+    # Mismo numero que el ledger a stake 1.
+    ledger = df.assign(stake=1.0, pnl=[1.0] + [-0.5] * 10)
+    pnl, stake = realized_roi_parts(ledger)
+    assert fila["roi_flat"] == pytest.approx(round(pnl / stake, 5))
+
+
+def test_el_hit_rate_binario_no_cuenta_las_medias():
+    from sqp.evaluation.edge_information import edge_ladder
+
+    lad = edge_ladder(_con_medias(), thresholds=(0.0,), n_boot=50)
+    assert lad.iloc[0]["hit_rate"] == pytest.approx(1.0)   # 1 win de 1 decidida
+
+
+def test_half_win_paga_la_mitad():
+    from sqp.evaluation.edge_information import prepare
+
+    df = _con_medias(0)
+    df.loc[0, "result"] = "half_win"
+    assert float(prepare(df)["_roi"].iloc[0]) == pytest.approx(0.5)
+
+
+def test_push_y_void_siguen_fuera():
+    from sqp.evaluation.edge_information import prepare
+
+    df = _con_medias(2)
+    df.loc[1, "result"] = "push"
+    df.loc[2, "result"] = "void"
+    assert len(prepare(df)) == 1

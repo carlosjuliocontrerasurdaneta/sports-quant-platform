@@ -83,6 +83,7 @@ from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.logging_config import get_logger
 from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
                                 read_json_retrying)
+from sqp.storage.lock import locked
 
 log = get_logger(__name__)
 
@@ -458,6 +459,23 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
     decided = evaluate_markets(graded, min_n=min_n, alpha=alpha,
                                validation_start=validation_start)
     bets_dir = Path(bets_dir)
+    bets_dir.mkdir(parents=True, exist_ok=True)
+    # La evaluacion (cara) va FUERA del lock; leer el estado previo, aplicar el
+    # pestillo y escribir registro y rastro van DENTRO, como una transaccion
+    # (AUD-002, ronda audit-2026-09-23). `atomic_write_json` protege el fichero,
+    # no la transaccion: dos actualizaciones solapadas leian el mismo estado
+    # abierto y la ultima en escribir borraba el pestillo que la otra acababa de
+    # armar. Reproducido por OpenAI (OPENAI-002). Mismo lock que
+    # `release_prediction_gate_latch`. Si no se obtiene, `LockNoAdquiridoError`
+    # sale sin escribir nada, y el llamador falla cerrado.
+    with locked(bets_dir / PREDICTION_GATE_FILENAME):
+        return _persist_under_lock(decided, bets_dir, min_n=min_n, alpha=alpha,
+                                   validation_start=validation_start)
+
+
+def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
+                        alpha: float, validation_start: str) -> Path:
+    """Cuerpo transaccional de `write_prediction_gate`; SOLO bajo su lock."""
     # Lector ESTRICTO, no `load_prediction_gate` (AUD-002, ronda
     # audit-2026-09-22-r2): un registro que existe y no se lee lanza en vez de
     # tomarse por vacio. Aqui arriba, antes de escribir nada, el fichero queda
@@ -583,6 +601,20 @@ def release_prediction_gate_latch(bets_dir: Path, league: str, market: str, *,
     path = bets_dir / PREDICTION_GATE_FILENAME
     if not path.exists():
         return False
+    # Bajo el MISMO lock que `write_prediction_gate` (AUD-002, ronda
+    # audit-2026-09-23): una liberacion leida antes de una actualizacion y
+    # escrita despues borraba el veredicto nuevo, y viceversa.
+    with locked(path):
+        return _release_under_lock(bets_dir, league, market,
+                                   released_by=released_by, note=note)
+
+
+def _release_under_lock(bets_dir: Path, league: str, market: str, *,
+                        released_by: str, note: str) -> bool:
+    """Cuerpo de `release_prediction_gate_latch`; SOLO bajo su lock."""
+    path = bets_dir / PREDICTION_GATE_FILENAME
+    if not path.exists():
+        return False
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -669,6 +701,26 @@ def _load_previous_state(bets_dir: Path) -> dict[str, dict]:
             f"{path} no tiene la forma esperada (raiz objeto con 'markets' "
             "objeto); no se reescribe. Revisar a mano.")
     return markets
+
+
+def prediction_gate_block(bets_dir: Path) -> dict | None:
+    """Contenido del centinela ``prediction_gate.blocked`` si existe, o None.
+
+    Para OBSERVABILIDAD (AUD-013, ronda audit-2026-09-23): mientras exista, el
+    gate queda cerrado indefinidamente -- direccion segura --, pero solo lo
+    delataba un warning de `run_all`, y `gate_status` lo describia como
+    "registro ausente". Nunca lanza: un centinela ilegible sigue siendo un
+    centinela (``{"reason": "centinela ilegible"}``)."""
+    path = Path(bets_dir) / PREDICTION_GATE_BLOCK_FILENAME
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = None
+    if not isinstance(payload, dict):
+        payload = {"reason": "centinela ilegible"}
+    return {"path": str(path), **payload}
 
 
 def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
