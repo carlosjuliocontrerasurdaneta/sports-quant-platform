@@ -10,7 +10,7 @@
 | `AUD-002` | HIGH | P1 | **corregido** (escritor estricto + reintento de `OSError` + centinela `prediction_gate.blocked` + recuperación con pestillo `bloqueo_de_lectura`; degradación con fallback desde el log) | pendiente | 2 revisiones Fable y 2 de Codex atendidas; 16 pruebas fallan contra `HEAD`; suite 2075 passed | Verificación independiente |
 | `AUD-003` | MEDIUM | P1 | **corregido** (INFO en 42–50 cortes; `error` + orden de re-pre-registro sólo > 50; `fwer_bound` conservado) | pendiente | Pruebas 49/51 cortes | Verificación independiente |
 | `AUD-004` | MEDIUM | P1 | **corregido** (restaurada desde `HEAD`; copia en el scratchpad de la sesión) | pendiente | 74/74 en los tests de contrato | Ninguna |
-| `CLN-001` | — | P3 | pendiente | — | `.gitignore:85` | Opcional |
+| `CLN-001` | — | P3 | **parcial** (47 directorios temporales regenerables de pytest/mypy borrados, ~245 MB) | — | Conservados: 8 con ACL denegada (NO_VERIFICABLE), 4 con documentos en la raíz, `pytest` (basetemp canónico), `sqp-agent`, `cache-audit-*`, `review-transient-*` y todos los ficheros sueltos | Inspeccionar los 8 denegados con la cuenta que los creó |
 
 ## IDs de la ronda `audit-2026-09-22` (revalidados; esto no sustituye a su verificación formal)
 
