@@ -204,3 +204,40 @@ del commit. No se toca ningún parámetro de riesgo, modelo, umbral ni gate:
 mediana del consenso; `execution.books` queda vacío (default-deny).
 Veredicto `fable`: **aprobar**, 0 defectos P0/P1/MEDIUM, 1 LOW cosmético (fallback
 defensivo inalcanzable en `daily.py`, se conserva). Codex: sin hallazgos.
+## Registro de enrutamiento — actualización del modelo principal a Opus 5.5 (2026-09-22)
+
+Orden directa del operador: «Actualizar el modelo a claude 5.5». Owner: sesión
+principal, corriendo en `claude-opus-5`. **Sin despachos ni subagentes.**
+
+Clase de escalado aplicable: la tarea toca **parámetros de modelo** y
+**contradice una decisión previa registrada** (`claude-opus-5` como modelo
+principal, 2026-08-30) — dos de las cinco clases. No se escaló a `fable` porque
+no hay margen de juicio que escalar: el operador fijó el destino y el único
+trabajo de razonamiento era verificar el identificador y mover el candado
+entero. Lo que sí se aplicó de la política es su lección explícita del
+2026-09-03: **el dato se verificó contra la documentación viva**
+(`platform.claude.com`, modelos y precios, 2026-09-22), no contra la tabla
+cacheada de la skill `claude-api`, que marca Opus 5.5 como «launching».
+
+Resultado de la verificación: `claude-opus-5-5` es el ID correcto ($4/$20 por
+MTok, caché $0,20, 1M de contexto, 128K de salida, `effort` por defecto
+`medium`, retirada no antes del 2027-09-22). La documentación oficial recomienda
+*"start with Claude Opus 5.5 for most workloads"* y reserva Fable 5.1 para
+*"demanding reasoning and long-horizon agentic work"*, que es exactamente la
+separación punto-de-partida/techo que este proyecto ya tenía escrita. En esa
+misma página **`claude-opus-5` ya figura como legacy**.
+
+Alcance movido (candado de cuatro puntas, entero y en un acto): `settings.json`,
+`.claude/automation/MODEL_ROUTING.md`, `docs/MODEL-ROUTING.md`,
+`tests/test_claude_model_routing.py` y `scripts/validate_claude_model_routing.py`,
+más el principio rector de `CLAUDE.md`. **No se movió el techo** (`claude-fable-5-1`),
+ni el escalón de las rutas (`sonnet` por defecto; `opus`/`haiku` en sus
+excepciones), ni la política de subagentes, ni el disparador de escalado.
+
+Limitación declarada: editar `settings.json` **no** cambia el modelo de esta
+sesión, que terminó en `claude-opus-5`. El valor nuevo rige en la siguiente
+sesión, o antes con `/model claude-opus-5-5`. Tampoco se verificó por observación
+a qué modelo resuelve hoy el alias `opus` del parámetro `model` de `Agent` (enum
+`sonnet|opus|haiku|fable`): la regla 2 de despacho sigue pasando el alias, y
+comprobar a qué resuelve exige la misma verificación por transcript que se hizo
+con `fable` el 2026-09-04.

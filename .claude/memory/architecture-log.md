@@ -196,3 +196,11 @@ liquidación no cambian.
 **Razón:** 15 skills eran un puntero de una línea al loop; cada capa duplicada es un sitio más donde la política deriva sin que un test lo vea (KI-021, AUD-MED-014, AUD-MED-002 son ejemplos de esa deriva).
 **Validación:** `QUANT_SKILLS`/`GENERAL_SKILLS` fijan el conjunto; bloques idénticos; router == json == disco; `test_no_skill_still_points_at_a_deleted_loop`; sync `--check` limpio; suites en verde.
 **Riesgo:** las referencias históricas a `.claude/loops/*.md` en memoria, bitácoras y auditorías se dejan como registro; `BUILD_INFO.json` es un snapshot y no se regenera.
+## 2026-09-22 — El modelo principal pasa a `claude-opus-5-5`
+
+**Tipo:** política de modelos de Claude Code
+**Módulos afectados:** `.claude/settings.json`, `.claude/automation/MODEL_ROUTING.md`, `docs/MODEL-ROUTING.md`, `CLAUDE.md`, `tests/test_claude_model_routing.py`, `scripts/validate_claude_model_routing.py`.
+**Cambio:** `claude-opus-5-5` sustituye a `claude-opus-5` como modelo de la conversación principal y punto de partida del proyecto. El techo (`claude-fable-5-1`), el escalón de las rutas (`sonnet` por defecto) y la política de subagentes quedan **intactos**: se movió el suelo, no la estructura.
+**Razón:** orden del operador («Actualizar el modelo a claude 5.5»), verificada en vivo contra `platform.claude.com` el mismo día — la documentación recomienda Opus 5.5 como punto de partida ($4/$20 por MTok frente a $5/$25) y reserva Fable 5.1 para razonamiento exigente, y `claude-opus-5` ya aparece listado como **legacy**.
+**Validación:** `scripts/validate_claude_model_routing.py` OK; 43/43 en `tests/test_claude_model_routing.py`; `ruff` limpio; `settings.json` reparseado. Reemplazos aplicados con un script que aborta si un anclaje no aparece exactamente una vez, para que el candado no pueda moverse a medias — el modo de fallo de KI-021.
+**Riesgo:** editar `settings.json` no cambia la sesión en marcha (rige en la siguiente, o con `/model`); y no se verificó por observación a qué modelo resuelve hoy el alias `opus` del parámetro `model` de `Agent`, que es un enum y no admite un ID — pendiente la misma comprobación por transcript que se hizo con `fable` el 2026-09-04.

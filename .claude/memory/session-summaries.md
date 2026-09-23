@@ -601,3 +601,67 @@ Sin cambios en `src/`, `scripts/` ni `tests/`. Sesión de infraestructura de con
 **Archivos:** `src/sqp/pipeline/daily.py`, `src/sqp/storage/served_store.py`, `src/sqp/domain/models.py`, `src/sqp/config.py`, `configs/default.yaml`, `tests/test_line_shopping.py`, `src/sqp/pipeline/team_totals_capture.py`, `scripts/collect_team_totals_mlb.py`, `Obsidian/Bitácora/2026-09-19.md`, `current-task.md`, memoria.
 
 **Pendiente (operador):** declarar las casas accesibles (`execution.books` o `EXECUTION_BOOKS`); sin lista la capa es inerte. Decidir aparte si Kelly/liquidación pasan al precio de ejecución. **Pendiente (sistema):** tiempos reales de llegada de información; arnés walk-forward spreads/totals; gate de team_totals con ≥300 graduadas; F5 bloqueado.
+
+## 2026-09-22 — Ronda `audit-2026-09-22`: auditoría integral y remediación autorizada
+
+**Trabajo realizado:** ronda completa (diagnóstico → consolidación → remediación tras autorización expresa del operador de las fases 4 y 5). Ronda anterior preservada en `audit/audit-2026-09-18/` (11 ficheros, sha256 idénticos, verificado antes de escribir). **Sin segunda opinión**: no hubo auditor OpenAI y la revisión cruzada de Codex no pudo ejecutarse — es uno de los hallazgos.
+
+**Ocho hallazgos (4 MEDIUM, 4 LOW), siete tocan el repositorio.** Los tres principales comparten forma: un umbral fijado una vez contra una magnitud que sigue creciendo, y un control que se cree activo sin estarlo.
+- **AUD-007 (P1)**: el hook `Stop` de pruebas **no cabía en su timeout** — 796,09 s medidos contra 600 s; el harness lo mataba y el turno cerraba en verde. Serie: 270,73 s (2026-09-04, 45 %) → 489,76 s (2026-09-18, 82 %) → 796,09 s (133 %). Arreglo: `timeout` 600→1200 **y** autoacotado del propio script con `timeout` a 1080 s (un proceso matado no ejecuta ni una línea, así que esto es lo que arregla el silencio); `rc 124` es rama propia, se anuncia y deja el centinela puesto.
+- **AUD-001 (P2)**: el gate reparte alpha entre `K=41` y evalúa **49** (cota real 0,0598 vs 0,05 declarado); la alarma sólo saltaba con >50, nunca había saltado. Arreglo **sólo instrumentación**: `fwer_bound()`, aviso al superar `K`, y `fwer_bound` publicado en `prediction_gate.json`. **No se tocó `K`, `alpha`, `min_n` ni el pestillo** (clase de escalación); ningún veredicto cambia.
+- **AUD-008 (P2)**: la revisión cruzada de Codex **no se ejecuta** (runtime abre hilo y devuelve vacío, rc 1, mientras `--version` y `setup` se declaran sanos). Registrado como **KI-056**; fuera del repositorio.
+- **AUD-002** cobertura de la Fase 1 sin control (15 → 3 eventos sin aviso); **AUD-003** tope de créditos rebasado (`46/45` en producción); **AUD-004** aserción de reloj de pared no determinista; **AUD-005** `bankroll.summary()` fuera de la definición canónica de ROI (latente); **AUD-006** contadores fuera de la purga.
+
+**Un descarte RETIRADO.** Di el área de hooks por revisada con `command -v codex` y `--version` — inventario presentado como estado — y descarté la caída del MCP. Al ejercitar el runtime con una tarea real falla igual: promovido a AUD-008. Es el error contra el que advierte el propio contrato («inventariar un control no es comprobarlo»).
+
+**Validación:** ruff y mypy limpios. **Todas las pruebas nuevas demostradas discriminantes**: fallan contra la versión de HEAD (verificado restaurando el fichero, ejecutando y reponiendo con comprobación de hash) y pasan con el arreglo. Nota: `test_captura_respeta_el_tope_diario_antes_de_llamar` **codificaba el defecto** (`credits_spent == 46`); reescrito para fijar el invariante, más uno parametrizado con topes par e impar. Efecto de hook observado: el autofix de `ruff` borró un import al sustituirlo antes de cambiar su consumidor (`NameError`); repuesto.
+
+**Archivos:** `.claude/settings.json`, `.claude/hooks/run-tests-on-stop.sh`, `src/sqp/risk/{prediction_gate,bankroll}.py`, `src/sqp/pipeline/{team_totals_capture,cleanup}.py`, `src/sqp/storage/atomic.py`, `tests/test_{prediction_gate,bankroll,team_totals_capture,cleanup,audit_atomic_readers}.py`, `.claude/memory/known-issues.md` (KI-056), `audit/latest/*`, `audit/audit-2026-09-18/`, `Obsidian/Bitácora/2026-09-22.md`.
+
+**Pendiente (operador):** (1) **AUD-001, decisión de fondo** — el criterio sigue incumplido; re-pre-registrar `K` o aceptar el desvío, y corre prisa porque basta un corte con `n ≥ 300` para gastar su único test de entrada con alpha sobregirado. (2) **KI-056** — diagnosticar el runtime de Codex y decidir sobre la puerta `Stop` del plugin (el clasificador denegó desactivarla desde la sesión, correctamente). (3) **KI-054** — historial del Programador, exige consola elevada.
+
+**Pendiente (sistema):** verificación independiente de esta remediación; nada aquí la sustituye.
+## Sesión 2026-09-22 (tarde) — modelo principal a Claude Opus 5.5
+
+Orden del operador: «Actualizar el modelo a claude 5.5». Una sola decisión, el
+candado entero.
+
+**Verificado antes de tocar nada, y contra la fuente viva.** `claude-opus-5-5`
+confirmado en `platform.claude.com` (modelos y precios) el mismo día: $4/$20 por
+MTok, caché $0,20, 1M/128K, `effort` por defecto `medium`, retirada no antes del
+2027-09-22. Dos datos que decidieron la forma del cambio: la documentación dice
+*"start with Claude Opus 5.5 for most workloads"* y reserva Fable 5.1 para
+razonamiento exigente —la misma separación punto-de-partida/techo que el
+proyecto ya tenía—, y **`claude-opus-5` ya figura como legacy**. La skill
+`claude-api` lo tenía cacheado como «launching»: se usó la documentación viva,
+que es la regla que existe por el error del 2026-09-03.
+
+**Candado de cuatro puntas movido en un acto**, con un script de reemplazos
+exactos que aborta si un anclaje no aparece exactamente una vez: `settings.json`,
+`.claude/automation/MODEL_ROUTING.md` (jerarquía, reparto operativo, política
+autorizada), `docs/MODEL-ROUTING.md`, los literales de
+`tests/test_claude_model_routing.py`, `scripts/validate_claude_model_routing.py`
+y el principio rector de `CLAUDE.md`. **No se movió el techo** (`claude-fable-5-1`),
+ni las rutas, ni los subagentes, ni el disparador. El registro histórico de
+agosto/septiembre no se reescribió.
+
+**Validación:** `scripts/validate_claude_model_routing.py` OK; 43/43 en
+`tests/test_claude_model_routing.py`; `ruff` limpio en los dos ficheros Python
+tocados; JSON de `settings.json` releído y parseado.
+
+**Hallazgo ajeno a este cambio (preexistente, no tocado):**
+`tests/test_claude_system_contract.py` falla en dos pruebas
+(`test_all_general_loops_finish_through_verification_gate` y
+`test_general_skills_share_an_identical_guardrail_block`) porque
+`.claude/skills/full-audit/SKILL.md`, modificado en el árbol de trabajo **sin
+commitear antes de esta sesión**, ha perdido el bloque `## Common guardrails` y
+la referencia a `/verification-gate` que sí están en HEAD (verificado con
+`git show HEAD:`). No se corrigió: es trabajo en curso de otra sesión y pisarlo
+sería peor que reportarlo.
+
+**Limitaciones declaradas:** editar `settings.json` no cambia el modelo de la
+sesión en marcha —esta terminó en `claude-opus-5`—; rige en la siguiente o con
+`/model claude-opus-5-5`. Y no se verificó por observación a qué modelo resuelve
+hoy el alias `opus` del parámetro `model` de `Agent`, que es un enum y no admite
+un ID: pendiente la misma comprobación por transcript que se hizo con `fable` el
+2026-09-04.
