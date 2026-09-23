@@ -811,8 +811,9 @@ def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
 # El reparto se hizo entre K=41 cortes. Cuando el universo crece, el alpha por
 # corte no se mueve y la cota sube: 49 cortes dan 0,0598, un 19,5 % por encima
 # del 0,05 declarado. El registro publicaba `family_alpha: 0.05` y
-# `n_cortes_evaluados: 49` uno al lado del otro sin que nada los comparara, y la
-# alarma solo saltaba por encima de 50 -- nunca habia saltado.
+# `n_cortes_evaluados: 49` uno al lado del otro sin que nada los comparara; ahora
+# viaja `fwer_bound`. Hasta 50 cortes es tolerancia PRE-REGISTRADA (§3.1 del
+# pre-registro 2026-09-04): se informa, no se ordena (AUD-003, ronda r2).
 
 def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
     from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
@@ -832,14 +833,18 @@ def _muchos_cortes(n):
     return pd.concat(partes, ignore_index=True)
 
 
-def test_el_aviso_salta_al_superar_K_no_al_superar_el_limite_de_repregistro(tmp_path, caplog):
+def test_en_la_tolerancia_pre_registrada_se_informa_la_cota_sin_ordenar_repregistro(tmp_path, caplog):
     from sqp.risk.prediction_gate import PREDICTION_GATE_K
-    # 49 cortes: por encima de K=41 y por DEBAJO del limite 50. Es justo la
-    # franja en la que el criterio ya estaba incumplido y nadie lo decia.
+    # 49 cortes: por encima de K=41 y por DEBAJO del limite 50. El pre-registro
+    # del 2026-09-04 (§3.1) tolera esta franja: se informa la cota, pero ni se
+    # avisa ni se ordena re-pre-registrar (AUD-003, ronda audit-2026-09-22-r2).
     graded = _muchos_cortes(PREDICTION_GATE_K + 8)
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         ruta = write_prediction_gate(graded, tmp_path)
-    assert any("cota real de error de familia" in r.message for r in caplog.records)
+    mensajes = [r for r in caplog.records if "cota real de error de familia" in r.message]
+    assert mensajes and all(r.levelname == "INFO" for r in mensajes)
+    assert not any("RE-PRE-REGISTRAR" in r.message for r in caplog.records)
+    assert any("tolerancia pre-registrada" in r.message for r in mensajes)
     payload = json.loads(ruta.read_text(encoding="utf-8"))
     assert payload["n_cortes_evaluados"] == PREDICTION_GATE_K + 8
     assert payload["k_bonferroni"] == PREDICTION_GATE_K
@@ -848,11 +853,207 @@ def test_el_aviso_salta_al_superar_K_no_al_superar_el_limite_de_repregistro(tmp_
     assert payload["fwer_bound"] > payload["family_alpha"]
 
 
+def test_por_encima_del_limite_pre_registrado_error_y_orden_de_repregistro(tmp_path, caplog):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_K_REPREGISTRO
+    graded = _muchos_cortes(PREDICTION_GATE_K_REPREGISTRO + 1)
+    with caplog.at_level("INFO"):
+        ruta = write_prediction_gate(graded, tmp_path)
+    errores = [r for r in caplog.records if r.levelname == "ERROR"
+               and "RE-PRE-REGISTRAR" in r.message]
+    assert len(errores) == 1
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    assert payload["n_cortes_evaluados"] == PREDICTION_GATE_K_REPREGISTRO + 1
+
+
 def test_con_el_universo_dentro_de_K_no_hay_aviso_y_la_cota_cuadra(tmp_path, caplog):
     from sqp.risk.prediction_gate import PREDICTION_GATE_K
     graded = _muchos_cortes(PREDICTION_GATE_K - 1)
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         ruta = write_prediction_gate(graded, tmp_path)
     assert not any("cota real de error de familia" in r.message for r in caplog.records)
     payload = json.loads(ruta.read_text(encoding="utf-8"))
     assert payload["fwer_bound"] <= payload["family_alpha"]
+
+
+# --- registro ilegible: el ESCRITOR no lo toma por vacio (AUD-002, ronda r2) ---
+# Reproducido en la auditoria audit-2026-09-22-r2: con el registro ilegible un
+# corte con el test gastado y otro con el pestillo armado salian `allowed True`.
+# Revision cruzada (Codex): NO escribir tampoco basta -- el fichero intacto
+# conserva un `allowed: true` vencido --, de ahi el centinela de bloqueo.
+
+def _previo_dentro(tmp_path):
+    """Registro legible con un corte DENTRO (allowed) y sin pestillo."""
+    from sqp.risk.prediction_gate import PREDICTION_GATE_FILENAME
+    ruta = tmp_path / PREDICTION_GATE_FILENAME
+    ruta.write_text(json.dumps({"markets": {"brasileirao|totals": {
+        "n": 320, "wins": 220, "p_value": 1e-9, "ev_flat": 0.1, "allowed": True,
+        "reason": "", "latched": False, "latched_at": None,
+        "entry_test_at": "2026-09-10T00:00:00+00:00"}}}), encoding="utf-8")
+    return ruta
+
+
+def _hoy_falla():
+    """Hoy el corte deja de batir al mercado: debe SALIR y armar pestillo."""
+    return _rows(100, 220, p_model=0.62, p_market=0.50, price=2.10)
+
+
+@pytest.mark.parametrize("contenido", [b'{"markets": {', b"[1, 2]", b'{"otra": 1}',
+                                       b'{"markets": [1]}',
+                                       b'{"markets": {}}\xff'])
+def test_registro_ilegible_el_escritor_lanza_no_lo_toca_y_bloquea(tmp_path, contenido):
+    from sqp.exceptions import RegistroEstadoIlegibleError
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_BLOCK_FILENAME,
+                                          PREDICTION_GATE_FILENAME)
+    ruta = tmp_path / PREDICTION_GATE_FILENAME
+    ruta.write_bytes(contenido)
+    with pytest.raises(RegistroEstadoIlegibleError):
+        write_prediction_gate(_rows(165, 135, p_model=0.62, p_market=0.50,
+                                    price=2.10), tmp_path)
+    assert ruta.read_bytes() == contenido
+    assert (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).exists()
+    # El consumidor sigue en default-deny (tambien con bytes no UTF-8).
+    assert load_prediction_gate(tmp_path) == {}
+
+
+def test_fallo_de_lectura_transitorio_se_reintenta_y_el_corte_sale(tmp_path, monkeypatch):
+    """El escenario de Codex: un OSError puntual el dia en que un corte que
+    estaba dentro deja de cumplir. Debe salir y armar pestillo, no quedarse
+    con su `allowed: true` persistido."""
+    from pathlib import Path as _P
+    from sqp.risk.prediction_gate import PREDICTION_GATE_BLOCK_FILENAME
+    ruta = _previo_dentro(tmp_path)
+    original = _P.read_text
+    fallos = {"n": 0}
+
+    def read_text(self, *a, **k):
+        if self == ruta and fallos["n"] == 0:
+            fallos["n"] += 1
+            raise PermissionError(32, "sharing violation")
+        return original(self, *a, **k)
+
+    monkeypatch.setattr(_P, "read_text", read_text)
+    write_prediction_gate(_hoy_falla(), tmp_path)
+    assert fallos["n"] == 1
+    fila = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert fila["allowed"] is False and fila["latched"] is True
+    assert not (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).exists()
+
+
+def test_fallo_persistente_deniega_hasta_una_actualizacion_buena(tmp_path, monkeypatch):
+    import functools
+    from pathlib import Path as _P
+    from sqp.exceptions import RegistroEstadoIlegibleError
+    from sqp.risk import prediction_gate as pg
+    from sqp.storage import atomic
+    ruta = _previo_dentro(tmp_path)
+    original = _P.read_text
+
+    def read_text(self, *a, **k):
+        if self == ruta:
+            raise PermissionError(5, "access denied")
+        return original(self, *a, **k)
+
+    # Sin plazo de reintento: el fallo es persistente y no hace falta esperarlo.
+    monkeypatch.setattr(pg, "read_json_retrying",
+                        functools.partial(atomic.read_json_retrying, seconds=0))
+    monkeypatch.setattr(_P, "read_text", read_text)
+    with pytest.raises(RegistroEstadoIlegibleError):
+        write_prediction_gate(_hoy_falla(), tmp_path)
+    monkeypatch.setattr(_P, "read_text", original)
+    # El fichero sigue diciendo `allowed: true`, pero el consumidor NO lo cree.
+    assert json.loads(ruta.read_text(encoding="utf-8"))["markets"][
+        "brasileirao|totals"]["allowed"] is True
+    assert load_prediction_gate(tmp_path) == {}
+    # Recuperada la lectura, la siguiente actualizacion aplica el pestillo y
+    # retira el bloqueo.
+    write_prediction_gate(_hoy_falla(), tmp_path)
+    fila = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert fila["allowed"] is False and fila["latched"] is True
+    assert not (tmp_path / pg.PREDICTION_GATE_BLOCK_FILENAME).exists()
+
+
+def test_registro_ausente_es_estado_inicial_legitimo(tmp_path):
+    ruta = write_prediction_gate(_rows(2, 2, p_model=0.5, p_market=0.5,
+                                       price=2.0), tmp_path)
+    assert json.loads(ruta.read_text(encoding="utf-8"))["markets"]
+
+
+@pytest.mark.parametrize("previo, razon", [
+    ({"n": 300, "wins": 150, "p_value": 0.5, "ev_flat": 0.0, "allowed": False,
+      "reason": "no_bate_al_mercado", "latched": False, "latched_at": None,
+      "entry_test_at": "2026-09-10T00:00:00+00:00"}, "agotado_test_unico"),
+    ({"n": 320, "wins": 190, "p_value": 1e-5, "ev_flat": 0.02, "allowed": False,
+      "reason": "bloqueado_pendiente_revision", "latched": True,
+      "latched_at": "2026-09-12T00:00:00+00:00",
+      "entry_test_at": "2026-09-10T00:00:00+00:00"}, None),
+])
+def test_registro_legible_conserva_test_gastado_y_pestillo(tmp_path, previo, razon):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_FILENAME
+    (tmp_path / PREDICTION_GATE_FILENAME).write_text(
+        json.dumps({"markets": {"brasileirao|totals": previo}}), encoding="utf-8")
+    # Hoy los criterios se cumplen de sobra: aun asi no reentra.
+    ruta = write_prediction_gate(_rows(220, 100, p_model=0.62, p_market=0.50,
+                                       price=2.10), tmp_path)
+    fila = json.loads(ruta.read_text(encoding="utf-8"))["markets"]["brasileirao|totals"]
+    assert fila["allowed"] is False
+    if razon:
+        assert fila["reason"] == razon
+    else:
+        assert fila["latched"] is True
+
+
+def _bloquear(tmp_path, monkeypatch):
+    """Un write que no puede leer el estado: deja el centinela."""
+    import functools
+    from pathlib import Path as _P
+    from sqp.exceptions import RegistroEstadoIlegibleError
+    from sqp.risk import prediction_gate as pg
+    from sqp.storage import atomic
+    ruta = tmp_path / pg.PREDICTION_GATE_FILENAME
+    original = _P.read_text
+
+    def read_text(self, *a, **k):
+        if self == ruta:
+            raise PermissionError(5, "access denied")
+        return original(self, *a, **k)
+
+    with monkeypatch.context() as m:
+        m.setattr(pg, "read_json_retrying",
+                  functools.partial(atomic.read_json_retrying, seconds=0))
+        m.setattr(_P, "read_text", read_text)
+        with pytest.raises(RegistroEstadoIlegibleError):
+            write_prediction_gate(_hoy_falla(), tmp_path)
+    assert (tmp_path / pg.PREDICTION_GATE_BLOCK_FILENAME).exists()
+
+
+def test_recuperado_el_bloqueo_quien_estaba_dentro_no_sigue_sin_liberacion(tmp_path, monkeypatch):
+    """Revision de Codex (stop-time): durante el bloqueo hubo dias sin evaluar.
+    Aunque HOY vuelva a cumplir, quien estaba dentro queda con pestillo."""
+    from sqp.risk.prediction_gate import PREDICTION_GATE_LATCH_LOG
+    _previo_dentro(tmp_path)
+    _bloquear(tmp_path, monkeypatch)
+    write_prediction_gate(_rows(220, 100, p_model=0.62, p_market=0.50, price=2.10),
+                          tmp_path)
+    fila = load_prediction_gate(tmp_path)["brasileirao|totals"]
+    assert fila["allowed"] is False and fila["latched"] is True
+    rastro = pd.read_csv(tmp_path / PREDICTION_GATE_LATCH_LOG)
+    assert "bloqueo_de_lectura" in set(rastro["reason"])
+
+
+def test_con_centinela_borrar_el_registro_no_reinicia_el_estado(tmp_path, monkeypatch):
+    """Revision Fable: borrar el registro corrupto (la reparacion obvia) no
+    puede convertir "desconocido" en "nunca hubo estado"."""
+    from sqp.exceptions import RegistroEstadoIlegibleError
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_BLOCK_FILENAME,
+                                          PREDICTION_GATE_FILENAME)
+    _previo_dentro(tmp_path)
+    _bloquear(tmp_path, monkeypatch)
+    (tmp_path / PREDICTION_GATE_FILENAME).unlink()
+    with pytest.raises(RegistroEstadoIlegibleError):
+        write_prediction_gate(_rows(220, 100, p_model=0.62, p_market=0.50,
+                                    price=2.10), tmp_path)
+    assert load_prediction_gate(tmp_path) == {}
+    # Reinicio EXPLICITO: borrar tambien el centinela.
+    (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).unlink()
+    write_prediction_gate(_rows(2, 2, p_model=0.5, p_market=0.5, price=2.0), tmp_path)
+    assert not (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).exists()

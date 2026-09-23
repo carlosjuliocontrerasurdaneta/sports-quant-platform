@@ -29,3 +29,15 @@ class LockNoAdquiridoError(SQPError):
     pasado `stale_s`. Esta excepcion significa que otro proceso VIVO lo retiene,
     que es justo cuando entrar sin exclusion es mas peligroso.
     """
+
+
+class RegistroEstadoIlegibleError(SQPError):
+    """Un registro con estado (gate de prediccion, monitor de degradacion)
+    EXISTE pero no se puede leer: el estado previo es DESCONOCIDO.
+
+    Desconocido no es vacio. Para un CONSUMIDOR, vacio es default-deny y esta
+    bien; para el ESCRITOR, tratarlo como vacio reabria tests de entrada ya
+    gastados y desarmaba pestillos, y el resultado se persistia encima: el gate
+    fallaba ABIERTO (auditoria audit-2026-09-22-r2, AUD-002, reproducido). El
+    escritor lanza esto y no escribe; el fichero queda intacto para diagnostico.
+    """

@@ -79,8 +79,10 @@ from pathlib import Path
 import pandas as pd
 from scipy.stats import binomtest
 
+from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.logging_config import get_logger
-from sqp.storage.atomic import atomic_write_csv, atomic_write_json
+from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
+                                read_json_retrying)
 
 log = get_logger(__name__)
 
@@ -88,6 +90,9 @@ PREDICTION_GATE_FILENAME = "prediction_gate.json"
 # Rastro append-only de cada pestillo armado y de cada liberacion humana,
 # al estilo de data/models/promotion_log.csv y degradation_log.csv.
 PREDICTION_GATE_LATCH_LOG = "prediction_gate_latch_log.csv"
+# Centinela: existe mientras el ultimo intento de actualizar el pestillo no pudo
+# leer el estado previo. Fuerza default-deny (AUD-002, ronda audit-2026-09-22-r2).
+PREDICTION_GATE_BLOCK_FILENAME = "prediction_gate.blocked"
 # Fecha del pre-registro. Solo cuenta lo ESTRICTAMENTE posterior.
 VALIDATION_START = "2026-08-16"
 # Minimo de filas no empatadas por (liga, mercado). Por debajo, el signo es
@@ -453,40 +458,86 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
     decided = evaluate_markets(graded, min_n=min_n, alpha=alpha,
                                validation_start=validation_start)
     bets_dir = Path(bets_dir)
-    previous = load_prediction_gate(bets_dir)
+    # Lector ESTRICTO, no `load_prediction_gate` (AUD-002, ronda
+    # audit-2026-09-22-r2): un registro que existe y no se lee lanza en vez de
+    # tomarse por vacio. Aqui arriba, antes de escribir nada, el fichero queda
+    # intacto y los consumidores siguen en default-deny.
+    #
+    # Pero NO escribir tampoco es neutro: el fichero intacto conserva entradas
+    # que hoy podrian haber cambiado (un `allowed: true` que debia salir y armar
+    # su pestillo), y el consumidor las leeria como vigentes en cuanto la lectura
+    # vuelva a funcionar (revision cruzada de Codex, reproducido). Por eso se
+    # deja un CENTINELA que fuerza default-deny en `load_prediction_gate` hasta
+    # que una actualizacion con el estado previo legible lo retire.
+    try:
+        previous = _load_previous_state(bets_dir)
+    except RegistroEstadoIlegibleError as exc:
+        # Riesgo residual declarado: si ESCRIBIR el centinela tambien falla (dos
+        # fallos correlacionados del mismo directorio), sale OSError sin
+        # centinela y el consumidor podria leer un `allowed` vencido al
+        # recuperarse. Es el unico hueco que queda; el log de error lo delata.
+        bets_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_json({"blocked_at": datetime.now(timezone.utc).isoformat(),
+                           "reason": str(exc)},
+                          bets_dir / PREDICTION_GATE_BLOCK_FILENAME)
+        log.error("prediction_gate: %s. Centinela %s escrito: default-deny para "
+                  "todos los cortes hasta una actualizacion buena.",
+                  exc, PREDICTION_GATE_BLOCK_FILENAME)
+        raise
     now = datetime.now(timezone.utc).isoformat()
+    # RECUPERACION DE UN BLOQUEO (revision de Codex, stop-time): si el centinela
+    # sigue ahi, hubo al menos una actualizacion que no pudo leer el estado, asi
+    # que hay dias sin evaluar. Quien estaba DENTRO no pudo demostrar que seguia
+    # cumpliendo, y la regla de `_apply_latch` para eso ya existe: no poder
+    # verificarlo no es permiso -> pestillo armado y liberacion humana. Sin esto
+    # un corte que debio salir durante el bloqueo seguia dentro al recuperarse.
+    forzadas: list[dict] = []
+    if (bets_dir / PREDICTION_GATE_BLOCK_FILENAME).exists():
+        for key, e in list(previous.items()):
+            if not (isinstance(e, dict) and e.get("allowed") and not e.get("latched")
+                    and "|" in key):
+                continue
+            previous[key] = {**e, "allowed": False, "latched": True,
+                             "latched_at": now, "reason": "bloqueo_de_lectura"}
+            lg, mk = key.split("|", 1)
+            forzadas.append({"timestamp": now, "league": lg, "market": mk,
+                             "action": "latch", "reason": "bloqueo_de_lectura",
+                             "released_by": "", "note": "", "n": e.get("n"),
+                             "p_value": e.get("p_value"), "ev_flat": e.get("ev_flat")})
     markets, transitions = _apply_latch(decided, previous, now, min_n=min_n)
+    transitions = forzadas + transitions
     for t in transitions:
         log.warning("prediction_gate: pestillo ARMADO para %s|%s (%s); no "
                     "reentra sin liberacion humana (release_prediction_gate_latch).",
                     t["league"], t["market"], t["reason"])
-    # Candado del pre-registro 2026-09-04: K se fijo en 41 y el reparto de alpha
-    # depende de el. Si el universo crece, el criterio hay que re-pre-registrarlo
-    # ANTES de que un corte nuevo sea elegible. No se corrige solo -- se delata,
-    # que es lo que hacen el resto de candados de este repositorio.
-    # Candado del pre-registro 2026-09-04: K se fijo en 41 y el reparto de alpha
-    # depende de el. El aviso se emite en cuanto el universo supera el PROPIO K,
-    # no al superar `PREDICTION_GATE_K_REPREGISTRO`: entre 42 y 50 cortes el
-    # criterio YA esta incumplido -- la cota real de error de familia excede el
-    # 0,05 declarado -- y nadie lo decia. Medido el 2026-09-22 con 49 cortes:
-    # cota 0,0598, un 19,5 % por encima, y la alarma sin disparar ni una vez
-    # (auditoria integral 2026-09-22, AUD-001). El umbral de 50 se conserva
-    # porque marca otra cosa: cuando el desvio deja de ser tolerable y toca
-    # re-pre-registrar, que es decision del operador y no de este modulo.
+    # Candado del pre-registro 2026-09-04 (§3.1): K se fijo en 41 y el reparto
+    # de alpha depende de el. El MISMO pre-registro fijo de antemano cuanto puede
+    # crecer el universo: hasta 50 cortes (+22 %) el criterio se aplica tal cual
+    # y solo POR ENCIMA de 50 se re-pre-registra. Tres franjas, pues:
+    #   n <= K       : el reparto cuadra, nada que decir.
+    #   K < n <= 50  : TOLERANCIA PRE-REGISTRADA. Se informa la cota real (con 49
+    #                  cortes, 0,0598) para que se lea, pero no se ordena nada:
+    #                  el criterio NO esta incumplido.
+    #   n > 50       : fuera de lo pre-registrado -> error y re-pre-registro.
+    # La ronda audit-2026-09-22 (AUD-001) llego a ordenar re-pre-registrar ya en
+    # la franja media, contra el propio documento; lo corrigio la ronda
+    # audit-2026-09-22-r2 (AUD-003). Decidir otra cosa es cambiar el
+    # pre-registro, decision del operador que se registra como tal.
     cota = fwer_bound(len(markets), alpha)
-    if len(markets) > PREDICTION_GATE_K:
-        severidad = (log.error if len(markets) > PREDICTION_GATE_K_REPREGISTRO
-                     else log.warning)
-        severidad("prediction_gate: %d cortes evaluados frente a los K=%d entre "
-                  "los que se repartio alpha. La cota real de error de familia "
-                  "es %.4f, por encima del %.2f declarado%s. RE-PRE-REGISTRAR "
-                  "el criterio antes de que un corte nuevo alcance n>=%d.",
-                  len(markets), PREDICTION_GATE_K, cota,
-                  PREDICTION_GATE_FAMILY_ALPHA,
-                  f" y por encima del limite {PREDICTION_GATE_K_REPREGISTRO} "
-                  f"del pre-registro"
-                  if len(markets) > PREDICTION_GATE_K_REPREGISTRO else "",
-                  min_n)
+    if len(markets) > PREDICTION_GATE_K_REPREGISTRO:
+        log.error("prediction_gate: %d cortes evaluados, por encima del limite "
+                  "%d del pre-registro (K=%d). Cota real de error de familia "
+                  "%.4f frente al %.2f declarado. RE-PRE-REGISTRAR el criterio "
+                  "antes de que un corte nuevo alcance n>=%d.",
+                  len(markets), PREDICTION_GATE_K_REPREGISTRO, PREDICTION_GATE_K,
+                  cota, PREDICTION_GATE_FAMILY_ALPHA, min_n)
+    elif len(markets) > PREDICTION_GATE_K:
+        log.info("prediction_gate: %d cortes evaluados frente a K=%d; cota real "
+                 "de error de familia %.4f (declarado %.2f). Dentro de la "
+                 "tolerancia pre-registrada de %d cortes: el criterio se aplica "
+                 "tal cual.",
+                 len(markets), PREDICTION_GATE_K, cota,
+                 PREDICTION_GATE_FAMILY_ALPHA, PREDICTION_GATE_K_REPREGISTRO)
     payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
                # Trazabilidad del reparto: sin esto, leyendo el registro no se
@@ -501,7 +552,18 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
                "fwer_bound": round(cota, 6),
                "validation_start": str(validation_start), "markets": markets}
     path = _write_payload(payload, bets_dir)
+    # El rastro ANTES de retirar el bloqueo: si el borrado fallara despues, la
+    # transicion ya consta (en la siguiente pasada `was_latched` es True y no se
+    # volveria a emitir -- revision Fable).
     _append_latch_log(transitions, bets_dir)
+    # Estado previo legible y registro nuevo escrito: el bloqueo ya no aplica.
+    # Un fallo al borrarlo deja el gate CERRADO (el consumidor sigue denegando)
+    # hasta la siguiente pasada; se avisa y no se aborta.
+    try:
+        (bets_dir / PREDICTION_GATE_BLOCK_FILENAME).unlink(missing_ok=True)
+    except OSError as exc:
+        log.warning("prediction_gate: no se pudo retirar el centinela (%s); "
+                    "default-deny hasta la siguiente actualizacion.", exc)
     return path
 
 
@@ -570,10 +632,60 @@ def release_prediction_gate_latch(bets_dir: Path, league: str, market: str, *,
     return True
 
 
+def _load_previous_state(bets_dir: Path) -> dict[str, dict]:
+    """Estado previo del pestillo para el ESCRITOR. Ausente -> ``{}`` (estado
+    inicial legitimo); existente pero ilegible -> ``RegistroEstadoIlegibleError``.
+
+    No reutiliza ``load_prediction_gate``: su ``{}`` ante un fichero ilegible es
+    default-deny para quien LEE una autorizacion, pero para quien DERIVA el
+    estado nuevo significaba "nunca hubo tests gastados ni pestillos", y el gate
+    fallaba abierto (AUD-002, ronda audit-2026-09-22-r2, reproducido)."""
+    path = Path(bets_dir) / PREDICTION_GATE_FILENAME
+    bloqueo = Path(bets_dir) / PREDICTION_GATE_BLOCK_FILENAME
+    if not path.exists():
+        # Ausente CON centinela no es "estado inicial": el estado era
+        # desconocido y alguien borro el registro (la reparacion obvia de un
+        # fichero corrupto). Tomarlo por vacio reabria tests gastados (revision
+        # Fable, reproducido). Reiniciar el estado debe ser un acto EXPLICITO.
+        if bloqueo.exists():
+            raise RegistroEstadoIlegibleError(
+                f"{path} no existe y {bloqueo.name} si: el estado previo es "
+                "desconocido. Restaurar el registro desde una copia, o, para "
+                "reiniciar el estado A PROPOSITO (se pierden tests gastados y "
+                f"pestillos), borrar tambien {bloqueo.name}.")
+        return {}
+    try:
+        # Reintenta OSError (transitorio en Windows); corrupto no se reintenta.
+        payload = read_json_retrying(path)
+    except (OSError, ValueError) as exc:  # ValueError: JSON y UnicodeDecodeError
+        raise RegistroEstadoIlegibleError(
+            f"{path} existe pero no se puede leer ({exc}); no se reescribe para "
+            "no perder pestillos ni tests de entrada gastados. Revisar a mano: "
+            "restaurar una copia legible. Borrarlo NO reinicia el estado mientras "
+            f"exista {bloqueo.name}.") from exc
+    markets = payload.get("markets") if isinstance(payload, dict) else None
+    if not isinstance(markets, dict):
+        raise RegistroEstadoIlegibleError(
+            f"{path} no tiene la forma esperada (raiz objeto con 'markets' "
+            "objeto); no se reescribe. Revisar a mano.")
+    return markets
+
+
 def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
     """Mapa "liga|mercado" -> decision. Devuelve {} si el registro no existe o
-    es ilegible; el consumidor debe tratar {} como default-deny."""
+    es ilegible; el consumidor debe tratar {} como default-deny.
+
+    Tambien {} mientras exista el centinela de bloqueo: el ultimo intento de
+    actualizar el pestillo no pudo leer el estado previo, asi que las entradas
+    persistidas pueden estar VENCIDAS (un corte que debia salir sigue con
+    ``allowed: true``). Hasta una actualizacion buena, nadie entra."""
     path = Path(bets_dir) / PREDICTION_GATE_FILENAME
+    bloqueo = Path(bets_dir) / PREDICTION_GATE_BLOCK_FILENAME
+    if bloqueo.exists():
+        log.warning("prediction_gate: centinela %s presente (el pestillo no se "
+                    "pudo actualizar); default-deny para todos los cortes.",
+                    bloqueo)
+        return {}
     if not path.exists():
         return {}
     try:
@@ -585,7 +697,7 @@ def load_prediction_gate(bets_dir: Path) -> dict[str, dict]:
         # asi desde el 2026-09-10; este lector no (AUD-002, ronda
         # audit-2026-09-18, reproducido por OpenAI).
         markets = payload.get("markets") if isinstance(payload, dict) else None
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):  # ValueError cubre JSON y UnicodeDecodeError
         return {}
     return markets if isinstance(markets, dict) else {}
 

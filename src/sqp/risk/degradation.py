@@ -27,8 +27,10 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.report import graded_in_window, load_all_settled
+from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.logging_config import get_logger
-from sqp.storage.atomic import atomic_write_csv, atomic_write_json
+from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
+                                read_json_retrying)
 
 log = get_logger("sqp.risk.degradation")
 
@@ -184,7 +186,7 @@ def load_degradation_registry(bets_dir: Path) -> dict[str, dict]:
         # lector FUERA de su `try` y abortaba el run entero antes de la primera
         # liga. Mismo patron que `risk.clv_gate.load_clv_gate`.
         markets = payload.get("markets") if isinstance(payload, dict) else None
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):  # ValueError cubre JSON y UnicodeDecodeError
         return {}
     return markets if isinstance(markets, dict) else {}
 
@@ -199,11 +201,61 @@ def auto_pauses_from_persisted_registry(bets_dir: Path) -> dict[str, list[str]]:
     fichero de observabilidad es el modo de fallo que AUD-002 documento.
     """
     try:
-        return paused_from_registry(load_degradation_registry(bets_dir))
+        return paused_from_registry(_load_previous_state(bets_dir))
+    except RegistroEstadoIlegibleError as exc:
+        # El registro existe y no se lee (AUD-002, ronda audit-2026-09-22-r2).
+        # Devolver {} aqui soltaba TODAS las pausas justo cuando el monitor, por
+        # la misma causa, tampoco puede calcularlas. El log append-only guarda
+        # cada pause/resume: su ultima accion por corte ES la pausa vigente.
+        log.error("registro de degradacion ilegible (%s); auto-pausas "
+                  "reconstruidas desde %s.", exc, DEGRADATION_LOG_FILENAME)
+        try:
+            return _pauses_from_log(bets_dir)
+        except Exception as exc2:  # defensa final: el consumidor no debe caer
+            log.warning("log de degradacion tambien ilegible (%s); se continua "
+                        "sin auto-pausas.", exc2)
+            return {}
     except Exception as exc:  # defensa final: el consumidor no debe caer
         log.warning("registro de degradacion ilegible (%s); se continua sin "
                     "auto-pausas.", exc)
         return {}
+
+
+def _load_previous_state(bets_dir: Path) -> dict[str, dict]:
+    """Estado previo para el ESCRITOR (y el fallback). Ausente -> ``{}``;
+    existente pero ilegible -> ``RegistroEstadoIlegibleError``.
+
+    `load_degradation_registry` devuelve ``{}`` en ambos casos, y el monitor
+    tomaba "no se lee" por "nada estaba pausado": perdia la histeresis y lo
+    persistia encima (AUD-002, ronda audit-2026-09-22-r2)."""
+    path = Path(bets_dir) / DEGRADATION_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        # Reintenta OSError (transitorio en Windows); corrupto no se reintenta.
+        payload = read_json_retrying(path)
+    except (OSError, ValueError) as exc:  # ValueError: JSON y UnicodeDecodeError
+        raise RegistroEstadoIlegibleError(
+            f"{path} existe pero no se puede leer ({exc}); no se reescribe para "
+            "no perder la histeresis de las pausas. Revisar a mano.") from exc
+    markets = payload.get("markets") if isinstance(payload, dict) else None
+    if not isinstance(markets, dict):
+        raise RegistroEstadoIlegibleError(
+            f"{path} no tiene la forma esperada (raiz objeto con 'markets' "
+            "objeto); no se reescribe. Revisar a mano.")
+    return markets
+
+
+def _pauses_from_log(bets_dir: Path) -> dict[str, list[str]]:
+    """Pausas vigentes segun la ULTIMA accion de cada corte en el log
+    append-only (orden de fichero = orden cronologico de escritura)."""
+    path = Path(bets_dir) / DEGRADATION_LOG_FILENAME
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path, usecols=["league", "market", "action"], dtype=str)
+    last = df.dropna().drop_duplicates(["league", "market"], keep="last")
+    return paused_from_registry({f"{r.league}|{r.market}": {"paused": r.action == "pause"}
+                                 for r in last.itertuples()})
 
 
 def paused_from_registry(markets: dict[str, dict]) -> dict[str, list[str]]:
@@ -254,7 +306,10 @@ def run_degradation_monitor(bets_dir: Path, *,
     bets_dir = Path(bets_dir)
     settled = load_all_settled(bets_dir)
     metrics = degradation_metrics(settled, window_days=window_days, today=today)
-    previous = load_degradation_registry(bets_dir)
+    # Estricto (AUD-002, ronda r2): ilegible lanza ANTES de escribir; el llamador
+    # (`run_all.py`) cae a `auto_pauses_from_persisted_registry`, que reconstruye
+    # las pausas desde el log.
+    previous = _load_previous_state(bets_dir)
     markets, transitions = evaluate_pauses(
         metrics, previous, min_n=min_n, brier_margin=brier_margin,
         roi_pause=roi_pause, roi_resume=roi_resume)

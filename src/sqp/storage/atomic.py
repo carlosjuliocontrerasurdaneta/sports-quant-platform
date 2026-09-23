@@ -121,3 +121,24 @@ def atomic_write_json(payload: object, out: Path, *, indent: int | None = 2,
         _replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)  # no-op tras un replace exitoso
+
+
+def read_json_retrying(path: Path, *, seconds: float = REPLACE_RETRY_SECONDS,
+                       wait: float = 0.1) -> object:
+    """``json.loads`` del fichero reintentando SOLO ``OSError`` durante
+    ``seconds`` (violaciones de uso compartido de Windows mientras otro proceso
+    hace ``os.replace``). JSON corrupto o bytes no UTF-8 no se reintentan: con
+    escritura atomica eso no es transitorio. El ultimo error se propaga.
+
+    Existe para los escritores de registros con estado (gate de prediccion,
+    degradacion): un fallo de lectura TRANSITORIO no debe convertirse en "estado
+    desconocido" y bloquear el gate un dia entero (revision cruzada de Codex
+    sobre AUD-002, ronda audit-2026-09-22-r2, reproducido)."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(wait)

@@ -158,3 +158,55 @@ def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
     write_degradation_registry({"mlb|h2h": {"paused": True}}, tmp_path)
     assert ajeno.read_text(encoding="utf-8") == "AJENO A MEDIO ESCRIBIR"
     assert load_degradation_registry(tmp_path)["mlb|h2h"]["paused"] is True
+
+
+# --- registro ilegible (AUD-002, ronda audit-2026-09-22-r2) -------------------
+# El monitor tomaba "no se lee" por "nada estaba pausado", perdia la histeresis
+# y lo persistia encima. Ahora lanza sin escribir, y el fallback de `run_all.py`
+# reconstruye las pausas vigentes desde el log append-only.
+
+_ILEGIBLES = [b'{"markets": {', b"[1]", b'{"markets": 3}',
+              # Bytes no UTF-8: UnicodeDecodeError no es JSONDecodeError y se
+              # escapaba al `except` generico del fallback (revision Fable).
+              b'{"markets": {"mlb|totals": {"paused": true}}}\xff']
+
+
+@pytest.mark.parametrize("contenido", _ILEGIBLES)
+def test_monitor_con_registro_ilegible_lanza_y_no_lo_reescribe(tmp_path, contenido):
+    from sqp.exceptions import RegistroEstadoIlegibleError
+    ruta = tmp_path / DEGRADATION_FILENAME
+    ruta.write_bytes(contenido)
+    with pytest.raises(RegistroEstadoIlegibleError):
+        run_degradation_monitor(tmp_path, min_n=30, today=TODAY)
+    assert ruta.read_bytes() == contenido
+    # El lector del consumidor no lanza: {} (sin auto-pausas propias).
+    assert load_degradation_registry(tmp_path) == {}
+
+
+@pytest.mark.parametrize("contenido", _ILEGIBLES)
+def test_fallback_reconstruye_las_pausas_desde_el_log(tmp_path, contenido):
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_bytes(contenido)
+    pd.DataFrame([
+        {"timestamp": "t1", "league": "mlb", "market": "totals", "action": "pause"},
+        {"timestamp": "t2", "league": "nba", "market": "h2h", "action": "pause"},
+        {"timestamp": "t3", "league": "mlb", "market": "totals", "action": "resume"},
+        {"timestamp": "t4", "league": "wnba", "market": "spreads", "action": "pause"},
+    ]).to_csv(tmp_path / DEGRADATION_LOG_FILENAME, index=False)
+    assert auto_pauses_from_persisted_registry(tmp_path) == {
+        "nba": ["h2h"], "wnba": ["spreads"]}
+
+
+def test_fallback_sin_log_y_registro_ilegible_no_cae(tmp_path):
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    assert auto_pauses_from_persisted_registry(tmp_path) == {}
+
+
+def test_fallback_con_registro_legible_no_mira_el_log(tmp_path):
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    write_degradation_registry({"mlb|totals": {"paused": True}}, tmp_path)
+    pd.DataFrame([{"timestamp": "t", "league": "nba", "market": "h2h",
+                   "action": "pause"}]).to_csv(tmp_path / DEGRADATION_LOG_FILENAME,
+                                                index=False)
+    assert auto_pauses_from_persisted_registry(tmp_path) == {"mlb": ["totals"]}
