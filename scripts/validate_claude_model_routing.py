@@ -28,7 +28,7 @@ settings=json.loads((ROOT/'.claude/settings.json').read_text(encoding='utf-8'))
 # Se validan las dos mitades de la retirada para que no se deshaga a medias.
 if not (ROOT/'.claude/automation/route_classifier.py').is_file(): errors.append('route_classifier.py missing')
 if (ROOT/'.claude/hooks/route-model.py').is_file(): errors.append('el hook retirado el 2026-09-01 reaparecio en .claude/hooks/')
-if settings.get('model')!='claude-opus-5': errors.append(f"settings model {settings.get('model')!r} != claude-opus-5 (politica 2026-08-30)")
+if settings.get('model')!='claude-opus-5-5': errors.append(f"settings model {settings.get('model')!r} != claude-opus-5-5 (politica 2026-09-22; supersede a claude-opus-5 del 2026-08-30)")
 if errors:
     print('Claude model routing configuration: FAILED')
     print('\n'.join(f'- {e}' for e in errors)); sys.exit(1)

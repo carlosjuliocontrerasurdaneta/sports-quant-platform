@@ -65,26 +65,46 @@ Consecuencias vinculantes:
 - Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
 - Jerarquía de capacidad **de Anthropic** (hecho, no política):
-  `claude-fable-5-1` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
-  La documentación oficial lo dice explícitamente: se empieza por Opus 5 para
-  trabajo agéntico y de empresa, y se sube a Fable 5.1 *"for demanding reasoning
-  and long-horizon agentic work"*.
+  `claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
+  La documentación oficial lo dice explícitamente: *"start with Claude Opus 5.5
+  for most workloads"*, y se sube a Fable 5.1 *"for demanding reasoning and
+  long-horizon agentic work, or when your evals on Claude Opus 5.5 at higher
+  effort still fall short"*.
+
+  **Verificado en vivo el 2026-09-22** contra
+  `platform.claude.com/docs/en/about-claude/models/overview` y `/pricing`, no
+  contra la tabla cacheada de ninguna skill (ver más abajo la lección del
+  2026-09-03). En esa misma página `claude-opus-5` figura ya entre los modelos
+  **legacy** —sigue servido, pero fuera de la línea actual—, de modo que
+  mantenerlo como punto de partida habría dejado el defecto del proyecto en un
+  escalón retirado. Datos verificados de Opus 5.5: ID `claude-opus-5-5`, $4/$20
+  por MTok, lectura de caché $0,20, contexto 1M, salida máxima 128K, `effort`
+  por defecto `medium` (un escalón por debajo del `high` de Opus 5; este
+  proyecto fija `effortLevel: max` en `settings.json`, así que el defecto del
+  modelo no decide aquí), retirada no antes del 2027-09-22.
 
   **El ID lleva guiones: `claude-fable-5-1`.** `claude-fable-5.1` no es un
   identificador válido —el punto pertenece al NOMBRE, no a la API— y
   `claude-fable-5` (sin sufijo) es un modelo distinto, hoy **legacy**.
 
 - Reparto **operativo de este proyecto** (decisión del operador, 2026-08-30;
-  techo actualizado a Fable 5.1 el 2026-09-04):
-  - **`claude-opus-5` es el modelo por defecto**, y el punto de partida de todo.
+  techo actualizado a Fable 5.1 el 2026-09-04; punto de partida actualizado a
+  Opus 5.5 el 2026-09-22):
+  - **`claude-opus-5-5` es el modelo por defecto**, y el punto de partida de
+    todo (decisión del operador 2026-09-22; antes `claude-opus-5`).
   - **`claude-fable-5-1` se reserva para máxima capacidad de razonamiento**: es
     el destino del disparador de escalado, no el punto de partida.
 
   Punto de partida y techo son cosas distintas, y aquí están separados a
-  propósito. Empezar en Fable 5.1 costaría el doble ($10/$50 frente a $5/$25 por
+  propósito. Empezar en Fable 5.1 costaría 2,5x ($10/$50 frente a $4/$20 por
   MTok) sin que la mayoría del volumen lo necesite; no tenerlo disponible
-  dejaría el principio rector sin destino al que escalar. Por eso Opus 5 abajo
+  dejaría el principio rector sin destino al que escalar. Por eso Opus 5.5 abajo
   y Fable 5.1 arriba.
+
+  La actualización del 2026-09-22 movió el **punto de partida**, no el techo:
+  Opus 5.5 sustituye a Opus 5 en el escalón de abajo y Fable 5.1 sigue siendo el
+  destino del escalado. La separación entre los dos no se toca — es lo único que
+  hace accionable al principio rector.
 
   El principio rector queda intacto y **accionable**: "el modelo superior para
   lo que exige máximo razonamiento" apunta a `claude-fable-5-1`, que es de hecho
@@ -142,19 +162,33 @@ propia), jamás un argumento de autoridad sobre el fondo.
 
 ## Política autorizada
 
-- **Conversación principal:** `claude-opus-5`, por decisión humana explícita del
-  2026-08-30. Supersede a `claude-fable-5` (2026-08-24), que había superseduo a
-  `sonnet` (2026-08-18), este a `claude-opus-5` (2026-08-04) y este a
-  `claude-fable-5` ese mismo día. Afecta solo al modelo interactivo de
-  `settings.json`; el escalón de las rutas sigue en `sonnet` para el trabajo
-  normal (abajo). El hook no debe afirmar que cambia este modelo.
+- **Conversación principal:** `claude-opus-5-5`, por decisión humana explícita
+  del 2026-09-22 (orden del operador: "actualizar el modelo a claude 5.5").
+  Supersede a `claude-opus-5` (2026-08-30), que había superseduo a
+  `claude-fable-5` (2026-08-24), este a `sonnet` (2026-08-18), este a
+  `claude-opus-5` (2026-08-04) y este a `claude-fable-5` ese mismo día. Afecta
+  solo al modelo interactivo de `settings.json`; el escalón de las rutas sigue
+  en `sonnet` para el trabajo normal (abajo). El hook no debe afirmar que cambia
+  este modelo.
 
-  `claude-opus-5` es el **punto de partida**, no el techo. El techo es
+  **Editar `settings.json` no cambia el modelo de una sesión ya en marcha**: la
+  sesión que aplicó este cambio siguió corriendo en `claude-opus-5`. El valor
+  nuevo rige en la siguiente sesión, o antes con `/model claude-opus-5-5`.
+
+  `claude-opus-5-5` es el **punto de partida**, no el techo. El techo es
   `claude-fable-5-1`, reservado para máxima capacidad de razonamiento (ver el
   reparto operativo del principio rector, arriba). Punto de partida y techo
   están separados a propósito y **no deben volver a fundirse**: sin un escalón
   por encima, el principio rector se queda sin destino al que escalar y deja de
   ser accionable.
+
+  **El punto de partida pasó de `claude-opus-5` a `claude-opus-5-5` el
+  2026-09-22**, por decisión del operador, verificada en vivo contra la
+  documentación de modelos y de precios el mismo día (ver el bloque de datos
+  verificados en el principio rector). El techo no se movió. Las menciones a
+  `claude-opus-5` que siguen en esta sección son REGISTRO HISTÓRICO de las
+  decisiones de agosto y septiembre y no se reescriben, por la misma razón que
+  las de `claude-fable-5`.
 
   **El techo pasó de `claude-fable-5` a `claude-fable-5-1` el 2026-09-04**, por
   decisión del operador. Fable 5.1 es el modelo actual y Fable 5 quedó legacy.

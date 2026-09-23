@@ -90,13 +90,14 @@ def test_main_model_matches_the_authorized_policy():
     settings = json.loads(
         (ROOT / ".claude/settings.json").read_text(encoding="utf-8")
     )
-    # Main conversation model: claude-opus-5 by explicit human decision 2026-08-30
-    # (supersedes claude-fable-5 2026-08-24, que superseduo a sonnet 2026-08-18).
+    # Main conversation model: claude-opus-5-5 by explicit human decision
+    # 2026-09-22 (supersedes claude-opus-5 2026-08-30, que superseduo a
+    # claude-fable-5 2026-08-24, y este a sonnet 2026-08-18).
     # Separate from the ROUTE default below, which stays sonnet -- normal work is
     # routed to sonnet ("Prefer Sonnet for normal work"); only the interactive
     # settings.json model changed.
     #
-    # claude-opus-5 es el PUNTO DE PARTIDA, no el techo. El techo es
+    # claude-opus-5-5 es el PUNTO DE PARTIDA, no el techo. El techo es
     # claude-fable-5-1, reservado para maxima capacidad de razonamiento
     # (b3f9cfb, 2026-08-30). Este comentario afirmaba lo contrario -- que Fable
     # habia salido de la jerarquia -- y sobrevivio a esa correccion,
@@ -107,7 +108,13 @@ def test_main_model_matches_the_authorized_policy():
     # aplico a settings.json y docs/MODEL-ROUTING.md pero no aqui ni a la
     # politica (KI-021). El candado hizo exactamente lo que debia: sostener el
     # fallo hasta que un humano decidiera. Cerrado el 2026-08-30.
-    assert settings["model"] == "claude-opus-5"
+    #
+    # 2026-09-22: el punto de partida pasa a claude-opus-5-5 por orden del
+    # operador, verificada en vivo contra platform.claude.com (modelos y
+    # precios) el mismo dia -- NO contra la tabla cacheada de una skill, que es
+    # el error del 2026-09-03. En esa pagina claude-opus-5 ya figura como
+    # legacy. El techo NO se mueve: sigue siendo claude-fable-5-1.
+    assert settings["model"] == "claude-opus-5-5"
     assert CONFIG["default"]["model"] == "sonnet"
 
     # RUTAS: sonnet es la norma; opus y haiku son las excepciones declaradas.
@@ -135,7 +142,7 @@ def test_main_model_matches_the_authorized_policy():
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
         encoding="utf-8"
     )
-    assert "**Conversación principal:** `claude-opus-5`" in policy
+    assert "**Conversación principal:** `claude-opus-5-5`" in policy
 
 
 def test_every_route_references_an_existing_loop_and_agents():
@@ -261,17 +268,18 @@ def test_governing_principle_is_declared_and_takes_precedence():
     #    oficial lo dice ("for the highest available capability, use Claude
     #    Fable 5"). Escribirla sin Fable seria afirmar algo falso.
     # 2. El REPARTO operativo de este proyecto (decision del operador
-    #    2026-08-30): claude-opus-5 por defecto, claude-fable-5-1 reservado para
-    #    maxima capacidad de razonamiento. Punto de partida y techo son cosas
+    #    2026-09-22, que movio el punto de partida de claude-opus-5 a
+    #    claude-opus-5-5 sin tocar el techo): claude-opus-5-5 por defecto,
+    #    claude-fable-5-1 reservado para maxima capacidad de razonamiento. Punto de partida y techo son cosas
     #    distintas -- empezar en Fable costaria el doble sin que la mayoria del
     #    volumen lo necesite, y no tenerlo disponible dejaria el principio
     #    rector sin destino al que escalar.
-    assert "`claude-fable-5-1` > `claude-opus-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
+    assert "`claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
     # El candado tiene dos lados: la jerarquia real y el reparto declarado. Sin
     # el segundo, mover el defecto o el techo en la prosa no rompe nada y la
     # politica vuelve a divergir en silencio -- que es el modo de fallo que este
     # archivo entero existe para impedir.
-    assert "`claude-opus-5` es el modelo por defecto" in policy
+    assert "`claude-opus-5-5` es el modelo por defecto" in policy
     assert "`claude-fable-5-1` se reserva para máxima capacidad de razonamiento" in policy
 
 
