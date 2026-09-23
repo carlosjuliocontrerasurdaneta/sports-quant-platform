@@ -204,3 +204,11 @@ liquidación no cambian.
 **Razón:** orden del operador («Actualizar el modelo a claude 5.5»), verificada en vivo contra `platform.claude.com` el mismo día — la documentación recomienda Opus 5.5 como punto de partida ($4/$20 por MTok frente a $5/$25) y reserva Fable 5.1 para razonamiento exigente, y `claude-opus-5` ya aparece listado como **legacy**.
 **Validación:** `scripts/validate_claude_model_routing.py` OK; 43/43 en `tests/test_claude_model_routing.py`; `ruff` limpio; `settings.json` reparseado. Reemplazos aplicados con un script que aborta si un anclaje no aparece exactamente una vez, para que el candado no pueda moverse a medias — el modo de fallo de KI-021.
 **Riesgo:** editar `settings.json` no cambia la sesión en marcha (rige en la siguiente, o con `/model`); y no se verificó por observación a qué modelo resuelve hoy el alias `opus` del parámetro `model` de `Agent`, que es un enum y no admite un ID — pendiente la misma comprobación por transcript que se hizo con `fable` el 2026-09-04.
+## 2026-09-23 — Estado ilegible del gate: lector estricto, reintento y centinela
+
+**Tipo:** integridad de estado / gate de stake real
+**Módulos afectados:** `src/sqp/storage/atomic.py` (`read_json_retrying`), `src/sqp/exceptions.py` (`RegistroEstadoIlegibleError`), `src/sqp/risk/prediction_gate.py` (`_load_previous_state`, `PREDICTION_GATE_BLOCK_FILENAME`), `src/sqp/risk/degradation.py` (`_load_previous_state`, `_pauses_from_log`).
+**Cambio:** los escritores de registros con estado dejan de compartir lector con los consumidores. El lector del **consumidor** sigue devolviendo `{}` ante un fichero ilegible (default-deny). El del **escritor** es estricto: distingue ausente de ilegible, reintenta solo `OSError` y trata JSON corrupto o bytes no UTF-8 como ilegibles. Artefacto nuevo: `data/bets/prediction_gate.blocked`, que existe mientras el pestillo no se haya podido actualizar.
+**Razón:** AUD-002 de la ronda `audit-2026-09-22-r2`; ver la decisión del 2026-09-23 en `project-decisions.md`.
+**Validación:** 16 pruebas nuevas que fallan contra `HEAD`; suite `not slow` 2075 passed; CI `35807528846` verde.
+**Riesgo:** fallo correlacionado al escribir el propio centinela. `append_degradation_log` sigue tratando un log con `ParserError` como vacío; ahora ese log sostiene el fallback (observación de Fable, no corregida).
