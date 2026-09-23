@@ -1,0 +1,158 @@
+{
+  "round_id": "audit-2026-09-22",
+  "auditor": "claude",
+  "model": "claude-opus-5 (sesion principal, sin subagentes)",
+  "date_utc": "2026-09-22T12:40:00+00:00",
+  "base_commit": "9fa276a",
+  "branch": "main",
+  "working_tree_al_inicio": "limpio (git status --porcelain vacio)",
+  "alcance": "Auditoria integral del repositorio: codigo Python (src/sqp, scripts), BAT/PowerShell, configuracion, dependencias, seguridad/secretos, datos operativos por AGREGADOS, modelos y calibracion, pipeline y control de riesgo, sistema de Skills/agentes/comandos/hooks, CI y tareas programadas. Incluye el ESTADO observado de cada control, no solo su configuracion.",
+  "exclusiones": [
+    "Contenido completo de data/ y logs/ (regla de CLAUDE.md y deny de .claude/settings.json). Solo escaneos programaticos que devuelven agregados.",
+    ".env: lectura denegada por la politica de permisos. La configuracion efectiva se obtuvo instanciando Settings.load() e imprimiendo unicamente valores no secretos.",
+    "Llamadas a proveedores externos (The Odds API, ESPN, MLB StatsAPI): ninguna. Cero creditos consumidos.",
+    "Construccion de la imagen Docker: no se ejecuto (ninguna puerta del proyecto la construye)."
+  ],
+  "contexto_contaminado": "NO durante la fase principal. Del MANIFEST.json previo solo se leyeron metadatos de ronda (round_id, fecha, base) para la preservacion, sin conclusiones. Los informes de la ronda audit-2026-09-18 se leyeron DESPUES de fijar las conclusiones propias, para la comparacion historica (paso 7 del contrato).",
+  "preservacion_ronda_anterior": {
+    "origen": "audit/latest",
+    "destino": "audit/audit-2026-09-18",
+    "ficheros": 11,
+    "verificacion": "sha256 de los 11 ficheros identicos entre origen y destino (script de comparacion propio)",
+    "resultado": "IDENTICOS"
+  },
+  "comandos": [
+    {
+      "comando": "ruff check src scripts tests",
+      "rc": 0,
+      "salida": "All checks passed!",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "mypy src",
+      "rc": 0,
+      "salida": "Success: no issues found in 106 source files",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-aud0922",
+      "rc": 1,
+      "salida": "1 failed, 2263 passed, 1 skipped in 4031.25s",
+      "fallo": "tests/test_audit_atomic_readers.py::test_reader_contention_preserves_atomicity[False-csv] -- assert (178638.3850894 - 178633.8996062) < 4 (4.485 s)",
+      "clasificacion": "ENVIRONMENTAL_FAILURE",
+      "justificacion": "Assert de reloj de pared bajo carga: la suite tardo 4031 s frente a los 838 s de la ronda anterior porque corrian en paralelo la tarea diaria, el dashboard y pip-audit. Reejecutado aislado 5 veces: 4 passed en 11,03 / 10,06 / 12,50 / 8,82 / 12,14 s. El defecto de determinismo del test se reporta aparte (CLAUDE-004)."
+    },
+    {
+      "comando": "PYTHONPATH=src python -m pytest tests/ -q -x --maxfail=1 -m \"not slow\" -p no:cacheprovider --basetemp=.codex-tmp/aud0922-notslow",
+      "rc": 0,
+      "salida": "2040 passed, 225 deselected in 796.09s (0:13:16)",
+      "proposito": "Medir el coste real del comando que ejecuta el hook Stop run-tests-on-stop.sh contra su timeout de 600 s.",
+      "clasificacion": "REPRODUCED para CLAUDE-007: 796,09 s frente a un presupuesto de 600 s (133 %). Serie del mismo subconjunto: 270,73 s el 2026-09-04 (1269 pruebas), 489,76 s el 2026-09-18 (1967), 796,09 s hoy (2040). Medido con la maquina en reposo relativo (suite completa y pip-audit ya terminados); la carga de maquina explica parte de la diferencia, no el rebase."
+    },
+    {
+      "comando": "python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/aud0922-iso tests/test_audit_atomic_readers.py::test_reader_contention_preserves_atomicity (x5)",
+      "rc": 0,
+      "salida": "4 passed en 11.03s / 10.06s / 12.50s / 8.82s / 12.14s",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "python -m pip_audit -r requirements.lock --progress-spinner off",
+      "rc": 0,
+      "salida": "No known vulnerabilities found",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "python scripts/sync_agent_instructions.py --check",
+      "rc": 0,
+      "salida": "Agent instructions: synchronized",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "gh run list --branch main --limit 8",
+      "rc": 0,
+      "salida": "7 success + 1 cancelled; ultimo run 35426317559 success (2026-09-19T06:20:06Z, commit HEAD 9fa276a)",
+      "clasificacion": "OK -- CI VERDE sobre el commit base"
+    },
+    {
+      "comando": "Get-ScheduledTask SQP_* | Get-ScheduledTaskInfo",
+      "rc": 0,
+      "salida": "Backfill Ready rc0 (21-09 09:00); Capture_Close Running rc267009=SCHED_S_TASK_RUNNING (22-09 09:30, arrancada hace 1 min, no es cuelgue); Dashboard Ready rc0 (disparador de inicio de sesion, sin NextRunTime por diseno); Diario_Completo Ready rc0 (21-09 12:00); Validate_OOS Ready rc0 (17-09 00:00)",
+      "clasificacion": "OK -- ninguna tarea en fallo"
+    },
+    {
+      "comando": "python (script propio) -- estado del prediction gate desde data/bets/prediction_gate.json",
+      "rc": 0,
+      "salida": "generated_at 2026-09-21T15:08:25Z; 49 mercados; 0 allowed; 0 latched; 49/49 muestra_insuficiente; alpha 0.0012195; family_alpha 0.05; k_bonferroni 41; n_cortes_evaluados 49; min_n 300",
+      "clasificacion": "evidencia de CLAUDE-001"
+    },
+    {
+      "comando": "python (script propio) -- estado de la pausa por degradacion",
+      "rc": 0,
+      "salida": "59 cortes; 12 pausados; toda 'pause' del log append-only tiene paused=true vivo y toda 'resume' tiene paused=false: SIN contradiccion",
+      "clasificacion": "candidato DESCARTADO"
+    },
+    {
+      "comando": "python (script propio) -- agregados de data/odds/team_totals_mlb_202609.csv",
+      "rc": 0,
+      "salida": "1128 filas; 19-09: 13 eventos/480 filas; 20-09: 15/540; 21-09: 3/108; Over+Under=1.000000 exacto en las 204 selecciones; 0 filas con captured_at>=commence_time; adelanto mediano 7,53 h; contadores .team_totals_credits_ = 46 / 30 / 6",
+      "clasificacion": "evidencia de CLAUDE-002 y CLAUDE-003"
+    },
+    {
+      "comando": "python (script propio) -- lineas de resumen de team_totals en logs/sqp.log (filtrado, <=30 lineas)",
+      "rc": 0,
+      "salida": "2026-09-19: 'tope de creditos alcanzado (46/45 hoy, 46/1400 mes)'; 2026-09-20: 15 eventos/30 creditos; 2026-09-21: 3 eventos/6 creditos SIN motivo de parada",
+      "clasificacion": "REPRODUCED para CLAUDE-003"
+    },
+    {
+      "comando": "python (script propio) -- divergencia del ROI realizado entre bankroll.summary() y settle.realized_roi_parts",
+      "rc": 0,
+      "salida": "1984 filas liquidadas (1172 loss, 748 win, 32 push, 27 void, 5 half_win); pnl todas=-84.25; pnl canonico=-84.25; pnl fuera del conjunto con stake=0.00 (n=59); stake 552.14; ROI -0.152588 por ambas vias; DIVERGE HOY: False",
+      "clasificacion": "evidencia de CLAUDE-005 (divergencia LATENTE, no actual)"
+    },
+    {
+      "comando": "python (script propio) -- repro de grade_captures sin ninguna fila graduable",
+      "rc": 0,
+      "salida": "No lanza: team_runs None y result None (pandas 3.0.2)",
+      "clasificacion": "candidato DESCARTADO"
+    },
+    {
+      "comando": "python (script propio) -- frontmatter y referencias del sistema de Skills",
+      "rc": 0,
+      "salida": "34 skills sin incidencias de frontmatter; 22 agentes (2 con nombre != fichero, por prefijo ordinal deliberado 00-/01-); 8 comandos; ninguna referencia rota a rutas .claude/ vigentes",
+      "clasificacion": "OK"
+    },
+    {
+      "comando": "python (script propio) -- Settings.load() efectivo (sin secretos)",
+      "rc": 0,
+      "salida": "execution.books=[] (line shopping INERTE); mode=demo (los BAT pasan --mode live); shadow_mode=False; prediction_gate_enabled=True; clv_gate_enabled=False; degradation_enabled=True (roi_pause -0.15 / roi_resume -0.05, ventana 60 d, min_n 30); bankroll_dynamic=True; revalidation_price_max_age_min=90; ODDS_CACHE_TTL_SECONDS=1200",
+      "clasificacion": "OK -- TTL de cache (20 min) coherente con la frescura exigida (90 min)"
+    },
+    {
+      "comando": "node .../codex/1.0.6/scripts/codex-companion.mjs task --json \"ping: responde OK\"",
+      "rc": 1,
+      "salida": "{\"status\": 1, \"threadId\": \"01a0c972-...\", \"rawOutput\": \"\", \"touchedFiles\": [], \"reasoningSummary\": []}",
+      "clasificacion": "REPRODUCED para CLAUDE-008: el runtime de Codex abre hilo y devuelve salida VACIA con codigo 1. Contraste: `codex --version` -> `codex-cli 0.155.1` rc 0 (el binario esta; el servicio no). Descubierto al intentar cerrar esta sesion, cuando el gate Stop del plugin codex bloqueo el turno atribuyendo el fallo a un DeprecationWarning de Node."
+    }
+  ],
+  "cobertura_resumen": {
+    "REVISADA": 17,
+    "REVISADA_PARCIALMENTE": 5,
+    "NO_APLICABLE": 2,
+    "NO_VERIFICABLE": 2,
+    "EXCLUIDA": 2,
+    "nota": "El area de hooks sigue REVISADA, pero su evidencia cambio: ahora incluye la EJECUCION del runtime, no solo su presencia."
+  },
+  "efectos_secundarios_declarados": [
+    "Escritura de audit/audit-2026-09-18/ (copia integra de la ronda anterior, exigida por el contrato antes de abrir ronda nueva).",
+    "Escritura de los entregables de esta ronda bajo audit/latest/.",
+    "Ficheros temporales de pytest bajo .codex-tmp/ (gitignored) y scripts de analisis en el scratchpad de sesion, fuera del repositorio.",
+    "Ninguna modificacion de src/, scripts/, configs/, tests/, *.bat, data/ ni logs/."
+  ],
+  "bookkeeping_excluido": [
+    ".claude/automation/runtime/current-task.md: NO actualizado. El contrato de auditoria declara el diagnostico de solo lectura del proyecto salvo los entregables de la fase; se registra aqui como limitacion en vez de escribir fuera del destino autorizado.",
+    "Obsidian/ y .claude/memory/: NO actualizados. Esta sesion no cambia codigo, configuracion ni datos operativos; el bookkeeping corresponde a una fase de remediacion autorizada."
+  ],
+  "correcciones_al_propio_informe": [
+    "El area de hooks se marco REVISADA en la primera pasada apoyandose en `command -v codex` y `codex --version`, que son INVENTARIO, no ESTADO. Al ejercitar el runtime con una tarea real, falla. El descarte 'el MCP caido no deja sin revision cruzada porque el hook usa la CLI' queda RETIRADO y promovido a CLAUDE-008; la matriz de cobertura recoge la limitacion."
+  ]
+}

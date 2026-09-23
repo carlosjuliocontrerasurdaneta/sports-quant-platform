@@ -249,6 +249,17 @@ def purge_old_artifacts(root: Path, *, days: int = PURGE_RETENTION_DAYS,
         "archive": (root / "data" / "predictions" / "archive", "*.csv"),
         "clv_reports": (root / "data" / "bets", "clv_*.md"),
         "closing_credits": (root / "data" / "odds", ".closing_credits_*"),
+        # Contador diario del colector de derivados (2026-09-19). Nacio con su
+        # prefijo propio -- bien, para no compartir presupuesto con la captura
+        # de cierre -- pero sin entrada aqui, asi que crecia sin techo: ~365
+        # ficheros al ano, exactamente la causa que esta lista existe para
+        # detener (auditoria integral 2026-09-22, AUD-006). Purgar por encima de
+        # 90 dias es seguro: `spent_this_month` solo consulta el mes corriente.
+        # Su fecha va con guiones (`2026-09-19`), asi que `_artifact_date` -- que
+        # busca `YYYYMMDD` compacto, el formato de la captura de cierre -- no la
+        # reconoce y la edad sale del mtime. Es correcto: el contador se escribe
+        # el dia que se gasta, asi que mtime ES su fecha.
+        "team_totals_credits": (root / "data" / "odds", ".team_totals_credits_*"),
         # Familias anadidas el 2026-09-13 (AUD-LOW-002): crecian sin techo.
         # Medido: report_*.html 81 ficheros / 36 MB (+1,2 MB/dia),
         # audit_*.md 87, segment_diagnostics_*.md 57, picks_ranked_*.md 14.

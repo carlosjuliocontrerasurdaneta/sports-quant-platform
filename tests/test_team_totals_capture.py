@@ -96,15 +96,35 @@ def test_captura_respeta_el_tope_diario_antes_de_llamar(entorno):
     now = datetime(2026, 9, 20, 15, tzinfo=timezone.utc)
     client = _Client(_events(30), cost=2)
     s = tt.capture_team_totals(object(), league="mlb", client=client, root=entorno, now=now)
-    # El guard corta cuando lo gastado YA alcanza el tope: 22 llamadas suman 44
-    # (< 45), la 23a entra y deja 46, y ahi se para. Nunca mas de una llamada
-    # por encima del tope, y el coste real lo dice el header, no el codigo.
-    assert s["credits_spent"] == 46 and len(client.fetched) == 23
-    assert s["stop"] and "tope" in s["stop"] and len(s["skipped"]) == 7
-    assert tt.spent_today(entorno / "data" / "odds", "2026-09-20", tt.CREDITS_PREFIX) == 46
+    # El guard comprueba el coste PREVISTO, no el gasto consumado: 22 llamadas
+    # suman 44 y la 23a se deniega porque 44+2 > 45. Hasta el 2026-09-22 este
+    # test fijaba 46 creditos y 23 llamadas -- es decir, codificaba el rebase
+    # como comportamiento esperado -- y produccion lo cumplia al pie de la letra
+    # el 2026-09-19, imprimiendo `tope de creditos alcanzado (46/45 hoy)`. El
+    # tope declarado del pre-registro es 45; 46 no es 45 (AUD-003, ronda
+    # audit-2026-09-22).
+    assert s["credits_spent"] == 44 and len(client.fetched) == 22
+    assert s["credits_spent"] <= tt.MAX_CREDITS_PER_DAY
+    assert s["stop"] and "tope" in s["stop"] and len(s["skipped"]) == 8
+    assert tt.spent_today(entorno / "data" / "odds", "2026-09-20", tt.CREDITS_PREFIX) == 44
     # Una segunda pasada el mismo dia no gasta nada.
     s2 = tt.capture_team_totals(object(), league="mlb", client=_Client(_events(3)), root=entorno, now=now)
-    assert s2["credits_spent"] == 0 and "agotado" in s2["stop"]
+    assert s2["credits_spent"] == 0 and s2["stop"]
+
+
+@pytest.mark.parametrize("tope", [45, 46, 7])
+def test_el_tope_diario_nunca_se_rebasa_sea_par_o_impar(entorno, monkeypatch, tope):
+    """El invariante, no un conteo concreto: el gasto del dia <= tope, siempre.
+
+    La clase de error era un tope IMPAR recorrido a saltos de 2 comprobando
+    "¿ya me pase?". Con el coste previsto delante, la paridad deja de importar.
+    """
+    monkeypatch.setattr(tt, "MAX_CREDITS_PER_DAY", tope)
+    now = datetime(2026, 9, 20, 15, tzinfo=timezone.utc)
+    s = tt.capture_team_totals(object(), league="mlb", client=_Client(_events(40), cost=2),
+                               root=entorno, now=now)
+    assert s["credits_spent"] <= tope
+    assert tt.spent_today(entorno / "data" / "odds", "2026-09-20", tt.CREDITS_PREFIX) <= tope
 
 
 def test_captura_excluye_eventos_comenzados_y_fuera_de_horizonte(entorno):
@@ -201,3 +221,53 @@ def test_consenso_conserva_una_captura_por_seleccion_la_primera():
     c = tt.consensus_novig(g)
     assert len(c) == 2 and set(c["captured_at"]) == {"c"}
     assert c.loc[c["side"] == "over", "price_median"].item() == 2.0
+
+
+def _sembrar_historico(root, dias):
+    """Escribe capturas previas: {dia: n_eventos}. Da la linea base de cobertura."""
+    filas = []
+    for dia, n in dias.items():
+        for i in range(n):
+            filas.append({"captured_at": f"{dia}T15:00:00+00:00", "event_id": f"{dia}-e{i}",
+                          "commence_time": f"{dia}T23:10:00+00:00", "home": "H", "away": "A",
+                          "team": "H", "side": "over", "point": 4.5, "price_decimal": 1.9,
+                          "bookmaker": "bk", "model_probability": 0.5,
+                          "home_pitcher": None, "away_pitcher": None})
+    tt.append_rows(root, "mlb", filas)
+
+
+def test_la_cobertura_baja_se_avisa_contra_la_mediana_reciente(entorno, caplog):
+    # Linea base: 15 y 13 eventos los dos dias anteriores (mediana 14). Hoy el
+    # proveedor solo ofrece 3 -- la caida real del 2026-09-21, que no dejo ni un
+    # aviso y degrado en silencio una medicion pre-registrada (AUD-002).
+    _sembrar_historico(entorno, {"2026-09-19": 15, "2026-09-20": 13})
+    now = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+    with caplog.at_level("WARNING"):
+        s = tt.capture_team_totals(object(), league="mlb",
+                                   client=_Client(_events(3, "2026-09-21T23:10:00Z")),
+                                   root=entorno, now=now)
+    assert s["candidates"] == 3 and s["coverage_baseline"] == 14.0
+    assert any("COBERTURA BAJA" in r.message for r in caplog.records)
+
+
+def test_una_jornada_normal_no_avisa_de_cobertura(entorno, caplog):
+    _sembrar_historico(entorno, {"2026-09-19": 15, "2026-09-20": 13})
+    now = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+    with caplog.at_level("WARNING"):
+        s = tt.capture_team_totals(object(), league="mlb",
+                                   client=_Client(_events(14, "2026-09-21T23:10:00Z")),
+                                   root=entorno, now=now)
+    assert s["candidates"] == 14
+    assert not any("COBERTURA BAJA" in r.message for r in caplog.records)
+
+
+def test_sin_historico_no_se_avisa_de_cobertura(entorno, caplog):
+    # Los primeros dias de la Fase 1 no tienen contra que comparar: un aviso que
+    # no distingue "hoy hay pocos partidos" de "fallo la recoleccion" no informa.
+    now = datetime(2026, 9, 21, 15, tzinfo=timezone.utc)
+    with caplog.at_level("WARNING"):
+        s = tt.capture_team_totals(object(), league="mlb",
+                                   client=_Client(_events(2, "2026-09-21T23:10:00Z")),
+                                   root=entorno, now=now)
+    assert s["coverage_baseline"] is None
+    assert not any("COBERTURA BAJA" in r.message for r in caplog.records)

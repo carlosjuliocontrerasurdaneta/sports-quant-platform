@@ -19,8 +19,8 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.exceptions import LedgerIntegridadError
-from sqp.settlement.settle import HALF_RESULTS
 from sqp.logging_config import get_logger
+from sqp.settlement.settle import realized_roi_parts, staked_mask
 
 log = get_logger("sqp.bankroll")
 
@@ -333,20 +333,32 @@ class BankrollLedger:
         df = self._settled()
         # Medias de linea de cuarto incluidas (AUD-MED-002): llevan pnl y su
         # stake debe contar en `total_staked`, o el ROI realizado no cuadra.
-        graded = (df[df["result"].isin(["win", "loss", *HALF_RESULTS])]
+        #
+        # ROI por la definicion CANONICA (`settle.realized_roi_parts`, AUD-002
+        # de la ronda 2026-09-17): numerador y denominador sobre EL MISMO
+        # conjunto de filas. Este era el unico consumidor que se habia quedado
+        # fuera de ese enrutado -- sumaba `pnl` de TODAS las filas liquidadas y
+        # lo dividia por el stake de solo las arriesgadas, y reimplementaba el
+        # filtro en linea --. Hoy los dos numeros coinciden porque `push` y
+        # `void` traen `pnl 0`, asi que la divergencia era LATENTE: bastaba una
+        # correccion manual sobre un void para que el panel de banca y el
+        # dashboard se separaran del resto del sistema en silencio y con la
+        # misma etiqueta (auditoria integral 2026-09-22, AUD-005).
+        #
+        # `realized_pnl` sigue siendo el pnl TOTAL del ledger: es lo que define
+        # el saldo, y ahi si cuentan todas las filas.
+        graded = (df[staked_mask(df["result"])]
                   if not df.empty and "result" in df.columns else df.iloc[0:0])
-        staked = (float(pd.to_numeric(graded["stake"], errors="coerce").fillna(0.0).sum())
-                  if not graded.empty and "stake" in graded.columns else 0.0)
-        pnl = self.realized_pnl()
+        pnl_arriesgado, staked = realized_roi_parts(df)
         return {
             "initial": round(self.initial, 2),
-            "realized_pnl": round(pnl, 2),
+            "realized_pnl": round(self.realized_pnl(), 2),
             "adjustments": round(self.adjustments_total(), 2),
             "current_balance": self.current_balance(),
             "n_settled": int(len(df)),
             "n_graded": int(len(graded)),
             "total_staked": round(staked, 2),
-            "realized_roi": round(pnl / staked, 4) if staked else 0.0,
+            "realized_roi": round(pnl_arriesgado / staked, 4) if staked else 0.0,
             "max_drawdown": self._max_drawdown(),
         }
 

@@ -1,0 +1,38 @@
+{
+  "round_id": "audit-2026-09-18",
+  "date_utc": "2026-09-18T03:04:15+00:00",
+  "scope": "Auditoria integral del repositorio (codigo, scripts, configuracion, datos operativos por agregados, modelos, pipeline, skills/instrucciones, CI, tareas programadas)",
+  "base_commit": "59521643440213f6a7982b10e71d349a8d8dd088",
+  "working_tree": "D audit/latest/BACKLOG.md\n D audit/latest/CHANGES.md\n D audit/latest/FINDINGS.md\n D audit/latest/MANIFEST.json\n D audit/latest/STATUS.md\n D audit/latest/VALIDATION.md\n D audit/latest/VERIFICATION.md\n D audit/latest/claude/EVIDENCE.json\n D audit/latest/claude/REPORT.md\n D audit/latest/history/manifest-20260917T121805Z/MANIFEST.json\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/BACKLOG.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/CHANGES.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/CLAUDE_CODE_REVIEW.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/EXECUTIVE_SUMMARY.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/FINDINGS.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/MANIFEST.json\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/POST-REMEDIATION-HASHES.json\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/QUANT_REVIEW.md\n D audit/latest/history/round-audit-2026-09-13-preserved-20260916/VALIDATION.md\n D audit/latest/history/verification-20260917T134633Z/MANIFEST.json\n D audit/latest/history/verification-20260917T134633Z/STATUS.md\n D audit/latest/openai/reproduce.py\n?? audit/audit-2026-09-16/",
+  "previous_round": {
+    "round_id": "audit-2026-09-16",
+    "preserved_at": "audit/audit-2026-09-16/",
+    "verified": "22 ficheros, hashes identicos"
+  },
+  "auditors": {
+    "claude": {
+      "available": true,
+      "model": "claude-opus-5 (coordinador) + especialistas por Agent con model explicito",
+      "report": "audit/latest/claude/REPORT.md",
+      "evidence": "audit/latest/claude/EVIDENCE.json",
+      "status": "pending"
+    },
+    "openai": {
+      "available": "por confirmar (codex-cli 0.154.0, gpt-6-astra, cuota disponible segun el operador el 17/09)",
+      "report": "audit/latest/openai/REPORT.md",
+      "status": "pending"
+    }
+  },
+  "source_reports": [],
+  "tests_initial": null,
+  "tests_final": null,
+  "files_modified": [],
+  "final_result": null,
+  "final_result_rationale": null,
+  "not_available": [
+    "tests_initial (se rellena en fase 0)",
+    "tests_final",
+    "final_result"
+  ],
+  "context_contamination": "El coordinador (sesion principal) conoce las conclusiones de las sesiones del 2026-09-17 (auditoria diaria, cross-review 32a572de, KI-053) y de la ronda audit-2026-09-16 (verificacion APTO CON PENDIENTES). Se declara; la comparacion historica se hace tras fijar conclusiones propias."
+}

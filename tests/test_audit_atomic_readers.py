@@ -31,7 +31,6 @@ def test_reader_contention_preserves_atomicity(tmp_path, monkeypatch, kind, tran
             raise
 
     monkeypatch.setattr(atomic.os, "replace", replace_with_reader_release)
-    started = time.monotonic()
     try:
         def publish():
             if kind == "csv":
@@ -43,10 +42,23 @@ def test_reader_contention_preserves_atomicity(tmp_path, monkeypatch, kind, tran
             assert "new" in path.read_text()
             assert len(conflicts) == 1
         else:
+            started = time.monotonic()
             with pytest.raises(PermissionError):
                 publish()
+            transcurrido = time.monotonic() - started
             assert path.read_text() == "old"
-            assert time.monotonic() - started < 4
+            # La propiedad que importa es que `_replace` NO reintente
+            # indefinidamente: se acota contra SU plazo, no contra un numero de
+            # reloj de pared elegido a ojo. El limite anterior eran 4 s fijos
+            # -- 2x el plazo -- y medido desde antes de `publish()`, asi que
+            # incluia la serializacion y los fixtures: bajo carga la suite se
+            # ponia en rojo sin que hubiera cambiado nada (fallo observado a
+            # 4,485 s en la auditoria integral 2026-09-22, AUD-004; la misma
+            # prueba pasaba 5/5 aislada). Ahora solo se mide la llamada, y el
+            # margen es explicito y proporcional al plazo que se comprueba.
+            assert transcurrido < 3 * atomic.REPLACE_RETRY_SECONDS, (
+                f"_replace tardo {transcurrido:.2f}s con un plazo de "
+                f"{atomic.REPLACE_RETRY_SECONDS}s: esta reintentando de mas")
     finally:
         reader.close()
     assert not list(tmp_path.glob("*.tmp"))

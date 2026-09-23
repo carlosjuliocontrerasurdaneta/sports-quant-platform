@@ -805,3 +805,54 @@ def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
     assert fila["p_value"] > PREDICTION_GATE_ALPHA, "premisa: al repartido, no"
     assert fila["allowed"] is False or fila["allowed"] == False  # noqa: E712
     assert fila["reason"] == "no_bate_al_mercado"
+
+
+# --- cota real del error de familia (AUD-001, ronda audit-2026-09-22) ---------
+# El reparto se hizo entre K=41 cortes. Cuando el universo crece, el alpha por
+# corte no se mueve y la cota sube: 49 cortes dan 0,0598, un 19,5 % por encima
+# del 0,05 declarado. El registro publicaba `family_alpha: 0.05` y
+# `n_cortes_evaluados: 49` uno al lado del otro sin que nada los comparara, y la
+# alarma solo saltaba por encima de 50 -- nunca habia saltado.
+
+def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          PREDICTION_GATE_FAMILY_ALPHA,
+                                          PREDICTION_GATE_K, fwer_bound)
+    # Con exactamente K cortes la cota ES el alpha de familia: el reparto cuadra.
+    assert fwer_bound(PREDICTION_GATE_K) == pytest.approx(PREDICTION_GATE_FAMILY_ALPHA)
+    # Con el universo real medido el 2026-09-22 se lo come y lo pasa.
+    assert fwer_bound(49) == pytest.approx(49 * PREDICTION_GATE_ALPHA)
+    assert fwer_bound(49) > PREDICTION_GATE_FAMILY_ALPHA
+    assert fwer_bound(0) == 0.0 and fwer_bound(-3) == 0.0
+
+
+def _muchos_cortes(n):
+    partes = [_rows(2, 2, p_model=0.5, p_market=0.5, price=2.0,
+                    league=f"liga{i}", market="totals") for i in range(n)]
+    return pd.concat(partes, ignore_index=True)
+
+
+def test_el_aviso_salta_al_superar_K_no_al_superar_el_limite_de_repregistro(tmp_path, caplog):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_K
+    # 49 cortes: por encima de K=41 y por DEBAJO del limite 50. Es justo la
+    # franja en la que el criterio ya estaba incumplido y nadie lo decia.
+    graded = _muchos_cortes(PREDICTION_GATE_K + 8)
+    with caplog.at_level("WARNING"):
+        ruta = write_prediction_gate(graded, tmp_path)
+    assert any("cota real de error de familia" in r.message for r in caplog.records)
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    assert payload["n_cortes_evaluados"] == PREDICTION_GATE_K + 8
+    assert payload["k_bonferroni"] == PREDICTION_GATE_K
+    # La cota REAL viaja en el registro, al lado del alpha declarado: la
+    # discrepancia se lee, no hay que calcularla a mano.
+    assert payload["fwer_bound"] > payload["family_alpha"]
+
+
+def test_con_el_universo_dentro_de_K_no_hay_aviso_y_la_cota_cuadra(tmp_path, caplog):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_K
+    graded = _muchos_cortes(PREDICTION_GATE_K - 1)
+    with caplog.at_level("WARNING"):
+        ruta = write_prediction_gate(graded, tmp_path)
+    assert not any("cota real de error de familia" in r.message for r in caplog.records)
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    assert payload["fwer_bound"] <= payload["family_alpha"]

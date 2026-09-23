@@ -485,3 +485,50 @@ def test_el_error_nombra_las_columnas_que_si_encontro(tmp_path):
     led = _ajustes(tmp_path, "date,importe,kind\n2026-01-01,-400,withdrawal\n")
     with pytest.raises(LedgerIntegridadError, match="importe"):
         led.current_balance()
+
+
+# --- ROI realizado por la definicion canonica (AUD-005, ronda audit-2026-09-22)
+# `summary()` era el UNICO consumidor de ROI que no pasaba por
+# `settle.realized_roi_parts`: sumaba el pnl de TODAS las filas liquidadas y lo
+# dividia por el stake de solo las arriesgadas. Coincidia por accidente de los
+# datos -- push y void traen pnl 0 --, asi que la divergencia era latente.
+
+def test_un_void_con_pnl_no_nulo_no_contamina_el_roi_realizado(tmp_path):
+    from sqp.settlement.settle import realized_roi_parts
+
+    bets = tmp_path / "data" / "bets"
+    filas = [_row(10.0, result="win", stake=10.0),
+             _row(-10.0, result="loss", stake=10.0),
+             # Correccion manual sobre un void: arriesga 0 stake, pero lleva
+             # importe. Antes entraba en el numerador y no en el denominador.
+             _row(50.0, result="void", stake=0.0)]
+    _write_settled(bets, "mlb", filas)
+    led = BankrollLedger(root=tmp_path, initial=1000.0)
+    s = led.summary()
+
+    df = pd.DataFrame(filas)
+    pnl_canon, stake_canon = realized_roi_parts(df)
+    assert s["total_staked"] == pytest.approx(stake_canon)
+    assert s["realized_roi"] == pytest.approx(round(pnl_canon / stake_canon, 4))
+    # El ROI mide lo arriesgado: 10 - 10 = 0 sobre 20.
+    assert s["realized_roi"] == 0.0
+    # El SALDO si cuenta el void: es dinero que entro en la banca.
+    assert s["realized_pnl"] == 50.0
+    assert led.current_balance() == 1050.0
+    assert s["n_graded"] == 2 and s["n_settled"] == 3
+
+
+def test_el_roi_de_summary_coincide_con_la_definicion_canonica(tmp_path):
+    from sqp.settlement.settle import realized_roi_parts
+
+    bets = tmp_path / "data" / "bets"
+    filas = [_row(9.0, result="win", stake=10.0),
+             _row(-10.0, result="loss", stake=10.0),
+             _row(4.5, result="half_win", stake=10.0),
+             _row(0.0, result="push", stake=10.0)]
+    _write_settled(bets, "mlb", filas)
+    s = BankrollLedger(root=tmp_path, initial=1000.0).summary()
+    pnl_canon, stake_canon = realized_roi_parts(pd.DataFrame(filas))
+    assert s["realized_roi"] == pytest.approx(round(pnl_canon / stake_canon, 4))
+    # El push no arriesga: queda fuera de las dos mitades del cociente.
+    assert s["total_staked"] == 30.0 and s["n_graded"] == 3

@@ -47,6 +47,20 @@ MAX_CREDITS_PER_MONTH = 1400
 MIN_REMAINING = 500  # no se toca el colchon del run diario
 CREDITS_PREFIX = ".team_totals_credits_"
 HORIZON_HOURS = 30  # partidos de hoy y de manana temprano; una captura por dia
+# Coste de una peticion por evento con `us,eu`. Se comprueba ANTES de pedir: la
+# guarda antigua miraba "¿ya me pase?" en vez de "¿me pasare si pido esto?", y
+# con el tope impar (45) y saltos de 2 el dia cerraba en 46. Reproducido en
+# produccion el 2026-09-19 -- el propio log imprimia `tope de creditos alcanzado
+# (46/45 hoy)` -- (auditoria integral 2026-09-22, AUD-003).
+CREDITS_PER_EVENT = 2
+# Cobertura: dias de historico que forman la linea base y fraccion por debajo de
+# la cual se avisa. La Fase 1 existe para ACUMULAR muestra fuera de muestra, y
+# una caida de cobertura la degrada en silencio: el 2026-09-21 se capturaron 3
+# eventos frente a 15 el dia anterior, sin motivo de parada y sin que ningun
+# control lo dijera (auditoria integral 2026-09-22, AUD-002). El resumen contaba
+# lo capturado, pero no habia expectativa contra la que compararlo.
+COVERAGE_BASELINE_DAYS = 7
+COVERAGE_MIN_FRACTION = 0.5
 
 # La fecha oficial MLB es la fecha LOCAL del partido; un nocturno de la costa
 # oeste comienza tras las 00:00Z y su fecha UTC va un dia por delante. La fecha
@@ -119,6 +133,39 @@ def store_path(root: Path, league: str, month: str) -> Path:
     return root / "data" / "odds" / f"team_totals_{league}_{month}.csv"
 
 
+def coverage_baseline(root: Path, league: str, *, day: str,
+                      days: int = COVERAGE_BASELINE_DAYS) -> float | None:
+    """Mediana de eventos capturados por dia en los ``days`` dias ANTERIORES.
+
+    ``None`` cuando no hay historico suficiente (los primeros dias de la Fase 1,
+    o tras una pausa larga): sin linea base no se avisa, porque un aviso que no
+    puede distinguir "hoy hay pocos partidos" de "hoy fallo la recoleccion" no
+    informa de nada.
+
+    El dia en curso se EXCLUYE a proposito: es lo que se quiere juzgar.
+    """
+    try:
+        caps = load_captures(root, league)
+    except (OSError, ValueError):
+        return None
+    if caps.empty or "captured_at" not in caps.columns:
+        return None
+    dias = caps["captured_at"].astype(str).str[:10]
+    previos = caps[(dias < day) & (dias >= _dias_antes(day, days))]
+    if previos.empty:
+        return None
+    por_dia = previos.groupby(previos["captured_at"].astype(str).str[:10])["event_id"].nunique()
+    return float(por_dia.median()) if len(por_dia) else None
+
+
+def _dias_antes(day: str, days: int) -> str:
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return (d - timedelta(days=days)).strftime("%Y-%m-%d")
+
+
 def append_rows(root: Path, league: str, rows: list[dict[str, Any]]) -> int:
     """Persiste las filas en el fichero mensual propio de team_totals. Es un
     artefacto NUEVO: no toca el contrato de `odds_<liga>_<mes>.csv`."""
@@ -182,7 +229,11 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
     day = now.strftime("%Y-%m-%d")
     odds_dir = root / "data" / "odds"
     summary: dict[str, Any] = {"league": league, "day": day, "events": 0, "rows": 0,
-                               "credits_spent": 0, "skipped": [], "stop": None}
+                               "credits_spent": 0, "skipped": [], "stop": None,
+                               # Cuantos eventos habia DISPONIBLES en el horizonte
+                               # (AUD-002): sin este numero, "3 eventos" no se
+                               # distingue de "3 partidos hoy".
+                               "candidates": 0, "coverage_baseline": None}
     already_day = spent_today(odds_dir, day, CREDITS_PREFIX)
     already_month = spent_this_month(odds_dir, day)
     if already_day >= MAX_CREDITS_PER_DAY or already_month >= MAX_CREDITS_PER_MONTH:
@@ -205,6 +256,22 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
         if t is None or t <= now or t > horizon_end:
             continue
         upcoming.append(e)
+    summary["candidates"] = len(upcoming)
+    # Cobertura (AUD-002): el aviso mira los CANDIDATOS, no lo capturado, porque
+    # una recoleccion que se queda corta puede fallar en dos sitios distintos --
+    # el proveedor devuelve pocos eventos, o el presupuesto corta el bucle -- y
+    # solo el primero se ve aqui. El segundo lo delata `stop`, mas abajo.
+    base = coverage_baseline(root, league, day=day)
+    summary["coverage_baseline"] = base
+    if base is not None and len(upcoming) < COVERAGE_MIN_FRACTION * base:
+        log.warning("team_totals: [%s] COBERTURA BAJA -- %d evento(s) en el "
+                    "horizonte de %d h frente a una mediana de %.1f en los "
+                    "ultimos %d dias. La Fase 1 acumula muestra fuera de "
+                    "muestra: una caida de cobertura la degrada en silencio. "
+                    "Revisar el calendario de la liga y la respuesta del "
+                    "proveedor antes de dar el dia por bueno.",
+                    league, len(upcoming), HORIZON_HOURS, base,
+                    COVERAGE_BASELINE_DAYS)
     if not upcoming:
         summary["stop"] = "sin eventos no comenzados en el horizonte"
         return summary
@@ -224,7 +291,10 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
 
     spent = 0
     for eo in events:
-        if already_day + spent >= MAX_CREDITS_PER_DAY or already_month + spent >= MAX_CREDITS_PER_MONTH:
+        # Coste PREVISTO, no gasto consumado (AUD-003): parar cuando esta
+        # peticion rebasaria el tope, no cuando ya lo rebaso.
+        if (already_day + spent + CREDITS_PER_EVENT > MAX_CREDITS_PER_DAY
+                or already_month + spent + CREDITS_PER_EVENT > MAX_CREDITS_PER_MONTH):
             summary["stop"] = (f"tope de creditos alcanzado ({already_day + spent}/{MAX_CREDITS_PER_DAY} "
                                f"hoy, {already_month + spent}/{MAX_CREDITS_PER_MONTH} mes)")
             summary["skipped"].append(eo.event.event_id)
@@ -279,9 +349,12 @@ def capture_team_totals(settings: Settings, *, league: str = "mlb", client=None,
         summary["events"] += 1
         summary["rows"] += n
     summary["credits_spent"] = spent
-    log.info("team_totals: [%s] %d eventos, %d filas, %d creditos (%d hoy / %d mes)%s",
-             league, summary["events"], summary["rows"], spent, already_day + spent,
-             already_month + spent, f"; parada: {summary['stop']}" if summary["stop"] else "")
+    log.info("team_totals: [%s] %d eventos de %d candidatos, %d filas, %d creditos "
+             "(%d hoy / %d mes)%s%s",
+             league, summary["events"], summary["candidates"], summary["rows"], spent,
+             already_day + spent, already_month + spent,
+             f"; mediana reciente {base:.1f}" if base is not None else "",
+             f"; parada: {summary['stop']}" if summary["stop"] else "")
     return summary
 
 

@@ -1,58 +1,36 @@
 {
-  "round_id": "audit-2026-09-18",
+  "round_id": "audit-2026-09-22-r2",
   "auditor": "claude",
-  "model": "claude-opus-5",
-  "date_utc": "2026-09-18T11:30:00+00:00",
-  "base_commit": "59521643440213f6a7982b10e71d349a8d8dd088",
-  "branch": "main (0 behind / 0 ahead of origin/main)",
-  "working_tree_at_start": "25 entradas en git status, todas bajo audit/ (ronda inicializada por el coordinador); guard scope (src scripts configs *.bat) limpio",
-  "python": "3.14.4",
-  "platform": "win32 (Windows 11 10.0.26200, UTC-3)",
-  "independence": {
-    "read_openai_report_before_conclusions": false,
-    "read_previous_round_before_conclusions": false,
-    "context_contamination": "memoria del proyecto en contexto (conclusiones de rondas anteriores); declarada en REPORT.md",
-    "openai_evidence_line_315": "inspeccionada solo esa linea con valor enmascarado por aviso reiterado del hook check-secrets; sin leer hallazgos"
-  },
-  "preservation_check": {
-    "previous_round": "audit-2026-09-16",
-    "preserved_at": "audit/audit-2026-09-16/",
-    "method": "sha256 de cada fichero de HEAD:audit/latest/* frente a audit/audit-2026-09-16/<mismo>",
-    "result": "22/22 OK (identicos)"
-  },
+  "model": "claude-opus-5-5",
+  "date_utc": "2026-09-23T00:05:00Z",
+  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
+  "working_tree": "sucio: 34 modificados + 3 sin seguimiento (remediacion r22 sin commit, reversion de full-audit, memoria, audit/)",
+  "contamination": "Se leyeron STATUS/matriz/FINDINGS de audit-2026-09-22 antes del diagnostico; segunda pasada informada, no ciega",
   "commands": [
-    {"cmd": "git status --short; git log --oneline -3; git rev-parse HEAD", "rc": 0, "note": "base y arbol"},
-    {"cmd": "git rev-list --count HEAD..@{u}; git rev-list --count @{u}..HEAD", "rc": 0, "result": "0 / 0"},
-    {"cmd": "gh run list --branch main --limit 5", "rc": 0, "result": "HEAD 5952164: CI success (run 35301664397, 2026-09-18T03:02:16Z)"},
-    {"cmd": "PYTHONPATH=src python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -x --no-header -rfE", "rc": 0, "result": "2191 passed, 1 skipped in 1498.64s (0:24:58)", "classification": "PASS", "note": "bajo carga concurrente de otras comprobaciones"},
-    {"cmd": "PYTHONPATH=src python -m pytest tests/ -q -x --maxfail=1 -m \"not slow\" -p no:cacheprovider --basetemp=.codex-tmp/pytest --durations=5", "rc": 0, "result": "1967 passed, 225 deselected in 489.76s (0:08:09)", "note": "medicion del subconjunto que ejecuta el hook Stop (timeout 600 s)"},
-    {"cmd": "ruff check src scripts tests", "rc": 0, "result": "All checks passed!"},
-    {"cmd": "mypy src", "rc": 0, "result": "Success: no issues found in 105 source files"},
-    {"cmd": "python scripts/sync_agent_instructions.py --check", "rc": 0, "result": "Agent instructions: synchronized"},
-    {"cmd": "python scripts/validate_claude_model_routing.py", "rc": 0, "result": "Claude model routing configuration: OK"},
-    {"cmd": "PYTHONPATH=src python -c 'Settings.load() ...' (impresion de config efectiva sin secretos)", "rc": 0, "result": "kelly 0.08, min_edge 0.02, max_stake 0.02, max_plausible_edge 0.075, market_shrink 0.5, shadow False, pick_mode edge, calibration auto, auto_promote False, clv_gate False, prediction_gate True, degradation True (60/30/0.01/-0.15/-0.05), revalidation 120/90, horizon 7, weather False, execution.books ()"},
-    {"cmd": "PYTHONPATH=src python - (structural_defect sobre los 4 calibradores del registro live)", "rc": 0, "result": "mlb_h2h_pergame/beta None; mlb_spreads/beta None; mlb_totals/iso None; wnba_spreads/beta None"},
-    {"cmd": "Get-ScheduledTask -TaskName 'SQP_*' | Get-ScheduledTaskInfo", "rc": 0, "result": "Backfill 14-09 0x0; Capture_Close 18-09 08:30 (0x41301 -> 0x0); Dashboard 17-09 0x0; Diario_Completo 17-09 12:00:01 0x0; Validate_OOS 17-09 0x0; Diario: S4U, Limited, WakeToRun, StartWhenAvailable, IgnoreNew, PT72H"},
-    {"cmd": "Get-WinEvent -ListLog 'Microsoft-Windows-TaskScheduler/Operational'", "rc": 0, "result": "IsEnabled=False Records=2 (CLAUDE-002)"},
-    {"cmd": "python (agregados de logs/diario_completo.log, run_diario.log, settle_all.log, capture_close.log)", "rc": 0, "result": "diario: cabeceras 10,12,12,13,14,17-09 (5 OK); run: 10,12,13,14,17; settle: idem; capture: 26/5/17/25/17/0/6/28 capturas los dias 10-17; ultima instancia con cabecera 17-09 23:30 y lineas Python 18-09 08:39; 88 capturas con credito, 1320 creditos", "note": "solo agregados; contenido de logs no cargado"},
-    {"cmd": "python (JSON de data/bets/prediction_gate.json, degradation_pause.json, clv_gate.json)", "rc": 0, "result": "prediction_gate 2026-09-17T15:09Z: 48 cortes, 0 allowed, K=41, alpha 0.00122, min_n 300, max n mlb 231; degradation: 58 mercados, 11 pausados; clv_gate: 50, 0 allowed"},
-    {"cmd": "head -25 data/bets/clv_20260917.md", "rc": 0, "result": "emparejadas 697, sin cierre 881, mediana +0.00%, batio cierre 35.0%"},
-    {"cmd": "python (claves de data/models/calibration_methods.json y staging/calibration_methods.json; grep promotion_log.csv)", "rc": 0, "result": "live: mlb_h2h_pergame, mlb_spreads, mlb_totals, wnba_spreads; staging 12 claves incl. mlb_h2h_pergame; promotion_log:102 promoted mlb_h2h_pergame 2026-08-23 (CLAUDE-001)"},
-    {"cmd": "PYTHONPATH=src python scripts/health_check.py", "rc": 0, "result": "Health report: OK (0 errors, 0 warnings); mlb calibration=True", "side_effect": "reescribe data/output/pipeline_health.json (artefacto regenerable, gitignored) -- escritura no intencionada registrada"},
-    {"cmd": "python .claude/hooks/_secret_literals.py sobre todos los ficheros versionados .py/.yaml/.json/.bat/.ps1/.sh/.md/.lock (excluyendo Obsidian, audit, audits, docs, graphify-out)", "rc": 0, "result": "tests/test_audit_hooks.py:29,30,31,49 y tests/test_portable_setup.py:36 (fixtures del detector; DISMISSED); 0 secretos reales"},
-    {"cmd": "python (clasificacion de la coincidencia audit/latest/openai/EVIDENCE.json:315 con ASSIGNMENT/PLACEHOLDER, valor enmascarado)", "rc": 0, "result": "ASSIGNMENT: nombre 'api_key =', valor = identificador + escape CRLF (11 chars), contexto = codigo fuente de odds_api.py citado -> falso positivo (DESCARTE-1, CLAUDE-004)"},
-    {"cmd": "python (tamanos agregados de data/*, logs, .codex-tmp)", "rc": 0, "result": "data/odds 953 MB; data/predictions 47 MB; data/calibration 15 MB; data/bets 5 MB; .codex-tmp 94 MB"}
+    {"cmd": "git status --short; git diff; git rev-parse HEAD origin/main", "rc": 0, "result": "34 M + 3 ??; HEAD == origin/main"},
+    {"cmd": "gh run list --limit 5", "rc": 0, "result": "5 success; ultimo 35426317559 sobre 9fa276a (2026-09-19)"},
+    {"cmd": "Get-ScheduledTask SQP_* | Get-ScheduledTaskInfo", "rc": 0, "result": "Diario rc0 12:00; Capture_Close rc0 20:30; Backfill rc0; Validate_OOS rc0; Dashboard 267014 (terminada, interactiva)"},
+    {"cmd": "ruff check src scripts tests --no-cache", "rc": 0, "result": "All checks passed"},
+    {"cmd": "mypy src", "rc": 0, "result": "no issues, 106 files"},
+    {"cmd": "PYTHONPATH=src python -m pytest tests/ -q -p no:cacheprovider -m \"not slow\"", "rc": 1, "result": "3 failed, 2049 passed, 225 deselected in 570.24s", "classification": "PRE_EXISTING_FAILURE (CLAUDE-004)"},
+    {"cmd": "python scripts/sync_agent_instructions.py --check", "rc": 0, "result": "synchronized"},
+    {"cmd": "python scripts/validate_claude_model_routing.py", "rc": 0, "result": "OK"},
+    {"cmd": "git status --porcelain -- src scripts configs '*.bat'", "rc": 0, "result": "6 lineas (guarda de DIARIO_COMPLETO.bat abortaria)", "finding": "CLAUDE-001"},
+    {"cmd": "PYTHONPATH=src python scratchpad/repro_latch.py", "rc": 0, "result": "registro ilegible -> mlb|h2h y mlb|totals allowed True, pestillo desarmado", "finding": "CLAUDE-002"},
+    {"cmd": "diff full-audit/SKILL.md vs git show <c>:", "rc": 0, "result": "working tree == 8952755 (2026-09-03)", "finding": "CLAUDE-004"},
+    {"cmd": "sha256sum audit/latest vs audit/audit-2026-09-22", "rc": 0, "result": "11/11 identicos"}
   ],
-  "not_run": ["pip-audit (corre en CI, verde)", "BATs", "codex review", "backfills", "backtests", "train_*", "promote_calibration.py"],
-  "not_verifiable": ["causa de los dias sin run 11/15/16-09 (historial del Programador deshabilitado)", ".env (por diseno)", "coste real de spreads/totals en tenis"],
-  "findings": [
-    {"id": "CLAUDE-001", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "STATICALLY_VERIFIED", "priority": "P2", "title": "Registro live de calibracion con clave sandbox mlb_h2h_pergame; mlb_h2h se sirve en crudo mientras health/dashboard lo cuentan como calibrado", "files": ["data/models/calibration_methods.json", "data/models/promotion_log.csv:102", "src/sqp/calibration/pergame.py:54-57", "src/sqp/calibration/calibrator.py:745-790,976-991", "src/sqp/monitoring/health.py:80-103", "src/sqp/audit/html_report.py:259-275", "Obsidian/Tareas.md:104"], "history": "nuevo"},
-    {"id": "CLAUDE-002", "severity": "MEDIUM", "confidence": "HIGH", "evidence": "STATICALLY_VERIFIED", "priority": "P2", "title": "Historial del Programador de tareas deshabilitado: tres dias sin run (11/15/16-09) sin causa diagnosticable", "files": ["Microsoft-Windows-TaskScheduler/Operational (IsEnabled=False)", "scripts/set_tasks_unattended.ps1", "src/sqp/monitoring/health.py:220-260"], "history": "nuevo"},
-    {"id": "CLAUDE-003", "severity": "LOW", "confidence": "HIGH", "evidence": "STATICALLY_VERIFIED", "priority": "P3", "title": "Captura de cierre en tenis pide 3 mercados (15 creditos) frente a h2h (5) del run diario", "files": ["src/sqp/pipeline/closing_capture.py:118", "src/sqp/providers/odds_api.py:288", "src/sqp/pipeline/daily.py:704"], "history": "nuevo"},
-    {"id": "CLAUDE-004", "severity": "LOW", "confidence": "HIGH", "evidence": "REPRODUCED", "priority": "P3", "title": "check-secrets.sh re-escanea todo el git status en cada comando y marca codigo fuente citado como secreto (falso positivo persistente)", "files": [".claude/hooks/check-secrets.sh", ".claude/hooks/_secret_literals.py:8-12", ".claude/hooks/_targets.py"], "history": "nuevo"}
-  ],
-  "observations": ["OBS-1 gate 48/50 cortes, 6 de tenis", "OBS-2 disponibilidad del host: capturas 0-28/48 por dia; 881/1578 sin cierre", "OBS-3 .tests-pending persistente entre sesiones; subconjunto not slow 489.8 s vs timeout 600 s", "OBS-4 ml_predict/*_moneyline_model.joblib sin consumidor en picks, health los reporta", "OBS-5 structural_defect por llamada", "OBS-6 B-02 acciones CI sin pin (heredado, persistente)"],
-  "dismissed": ["DESCARTE-1 EVIDENCE.json:315 no es secreto", "DESCARTE-2 fixtures del detector en tests"],
-  "bookkeeping_excluded": [".claude/automation/runtime/current-task.md (no actualizado en diagnostico; contenido de 2026-09-13)", "Obsidian y .claude/memory (sin cambios de codigo; se registran en consolidacion/cierre si procede)"],
-  "coverage_summary": {"REVISADA": 11, "REVISADA_PARCIALMENTE": 6, "NO_APLICABLE": 1, "NO_VERIFICABLE": 1, "EXCLUIDA": "documentacion no operativa (dentro de la fila Documentacion)"}
+  "coverage": {
+    "REVISADA": ["diff sin commit", "guarda de arbol", "gate de prediccion", "banca/ROI", "derivados", "pruebas", "CI", "tareas", "observabilidad", "hooks", "skills", "secretos", "salidas de apuestas", "limpieza"],
+    "REVISADA_PARCIALMENTE": ["degradacion", "logica/leakage/calibracion/line shopping (apoyo en r22)", "dependencias", "integraciones", "datos", "rendimiento", "documentacion"],
+    "NO_APLICABLE": ["codigo generado/vendorizado", "infraestructura declarativa"]
+  },
+  "findings": {
+    "CLAUDE-001": {"severity": "HIGH", "priority": "P0", "evidence": "REPRODUCED", "confidence": "HIGH"},
+    "CLAUDE-002": {"severity": "HIGH", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"},
+    "CLAUDE-003": {"severity": "MEDIUM", "priority": "P1", "evidence": "STATICALLY_VERIFIED", "confidence": "HIGH"},
+    "CLAUDE-004": {"severity": "MEDIUM", "priority": "P1", "evidence": "REPRODUCED", "confidence": "HIGH"}
+  },
+  "not_executed": ["suite slow", "pip-audit (sin cambios de dependencias)", "llamadas a proveedores", "revision Codex (MCP caido)"],
+  "files_written": ["audit/latest/**"]
 }

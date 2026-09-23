@@ -17,6 +17,15 @@ from pathlib import Path
 import pandas as pd
 
 
+# Plazo del reintento ante violaciones de uso compartido de Windows. Es una
+# CONSTANTE del modulo, no un literal enterrado en la funcion, para que la
+# prueba pueda acotarse contra ella en vez de contra un numero de reloj de pared
+# elegido a ojo: `tests/test_audit_atomic_readers.py` comparaba con 4 s fijos
+# -- solo 2x este plazo -- y se ponia en rojo bajo carga sin que nada hubiera
+# cambiado (auditoria integral 2026-09-22, AUD-004).
+REPLACE_RETRY_SECONDS = 2.0
+
+
 def _replace(tmp: Path, out: Path) -> None:
     """Retry transient Windows sharing violations for at most two seconds.
 
@@ -25,7 +34,7 @@ def _replace(tmp: Path, out: Path) -> None:
     Permanent access denial still raises the original error at the deadline.
     Unrelated errors are never retried.
     """
-    deadline = time.monotonic() + 2.0
+    deadline = time.monotonic() + REPLACE_RETRY_SECONDS
     while True:
         try:
             os.replace(tmp, out)

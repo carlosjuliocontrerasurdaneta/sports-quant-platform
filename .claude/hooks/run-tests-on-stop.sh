@@ -27,7 +27,28 @@
 # Los `slow` (pipeline completo, entrenamientos, walk-forward) los sigue
 # ejecutando CI en las patas 3.11/3.13/3.14. Aqui se excluyen a proposito: un
 # gate local que no cabe en su timeout no protege nada.
+#
+# VOLVIO A NO CABER (auditoria integral 2026-09-22, AUD-007). El presupuesto se
+# fijo en 600 s contra una medicion de 270,73 s, y la suite siguio creciendo sin
+# que nadie volviera a medir. Serie del MISMO subconjunto, con el comando exacto
+# de abajo:
+#
+#   2026-09-04  1269 pruebas  270,73 s   45 % del presupuesto
+#   2026-09-18  1967 pruebas  489,76 s   82 %
+#   2026-09-22  2040 pruebas  796,09 s   133 %   <-- el harness lo mataba
+#
+# Dos cambios, porque el fallo tenia dos mitades. (1) El presupuesto del hook
+# sube a 1200 s en settings.json. (2) Y sobre todo: el script se AUTOACOTA con
+# `timeout`, porque un proceso que mata el harness no ejecuta ni una linea mas
+# -- ni el `rm -f "$marker"`, ni un mensaje de error --, asi que la puerta moria
+# MUDA y el turno cerraba en verde. Con un presupuesto propio por debajo del del
+# harness, el script siempre gana la carrera y puede decir lo que paso. Es la
+# misma disciplina que `crossreview-on-stop.sh`: un fallo de infraestructura se
+# anuncia como tal, nunca se disfraza de veredicto ni de silencio.
 set -uo pipefail
+# Por debajo del timeout del hook (1200 s en settings.json) para que el aviso
+# salga de aqui y no del harness. Con 796 s medidos deja ~35 % de margen.
+PRESUPUESTO_S=1080
 input=$(cat)
 # Guard anti-bucle: si este Stop ya fue provocado por un hook Stop previo y los
 # tests vuelven a fallar, no bloquear indefinidamente.
@@ -38,7 +59,34 @@ marker=".claude/.tests-pending"
 [ -f "$marker" ] || exit 0
 command -v pytest >/dev/null 2>&1 || { rm -f "$marker"; exit 0; }
 log=$(mktemp)
-if ! PYTHONPATH=src pytest tests/ -q -x --maxfail=1 -m "not slow" >"$log" 2>&1; then
+# `timeout` acota el trabajo DENTRO del script. Si no esta disponible se corre
+# igual: perder el auto-acotado es peor que no correr la suite.
+if command -v timeout >/dev/null 2>&1; then
+  PYTHONPATH=src timeout "$PRESUPUESTO_S" pytest tests/ -q -x --maxfail=1 -m "not slow" >"$log" 2>&1
+else
+  PYTHONPATH=src pytest tests/ -q -x --maxfail=1 -m "not slow" >"$log" 2>&1
+fi
+rc=$?
+
+# 124 = `timeout` corto la ejecucion. NO son tests en rojo: la suite no llego a
+# terminar, asi que no hay veredicto. Se dice en voz alta y se sale sin bloquear
+# (el modelo no puede acortar la suite a mitad de turno), pero el centinela se
+# DEJA puesto: "no se pudo comprobar" no es "esta bien", y olvidarlo en silencio
+# es exactamente la averia que este bloque existe para impedir.
+if [ "$rc" -eq 124 ]; then
+  { echo "LA SUITE NO CABE EN SU PRESUPUESTO (${PRESUPUESTO_S}s): NO HAY VEREDICTO."
+    echo "Los cambios de este turno se quedan SIN comprobar por la suite local."
+    echo "Ultimas lineas antes del corte:"
+    tail -15 "$log"
+    echo
+    echo "Volver a medir y subir PRESUPUESTO_S y el timeout del hook en"
+    echo ".claude/settings.json, o acotar el alcance de la suite del hook."
+    echo "Ver audit/latest/FINDINGS.md AUD-007 (ronda audit-2026-09-22)."; } >&2
+  rm -f "$log"
+  exit 0
+fi
+
+if [ "$rc" -ne 0 ]; then
   echo "Tests fallaron tras las ediciones de este turno:" >&2
   tail -25 "$log" >&2
   rm -f "$log"

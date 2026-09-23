@@ -261,6 +261,7 @@ def test_purge_deletes_only_old_allowlisted_artifacts(tmp_path):
     out = purge_old_artifacts(tmp_path, days=90, now=now)
 
     assert out == {"archive": 1, "clv_reports": 1, "closing_credits": 1,
+                   "team_totals_credits": 0,
                    "reports": 0, "picks_ranked": 0, "settlement_audits": 0,
                    "segment_diagnostics": 0}
     assert not old_a.exists() and not old_r.exists() and not old_c.exists()
@@ -302,7 +303,8 @@ def test_purge_covers_reports_audits_and_segments_but_never_latest(tmp_path):
 def test_purge_missing_dirs_is_noop(tmp_path):
     from sqp.pipeline.cleanup import purge_old_artifacts
     out = purge_old_artifacts(tmp_path, days=90)
-    assert set(out) == {"archive", "clv_reports", "closing_credits", "reports",
+    assert set(out) == {"archive", "clv_reports", "closing_credits",
+                        "team_totals_credits", "reports",
                         "picks_ranked", "settlement_audits", "segment_diagnostics"}
     assert not any(out.values())
 
@@ -347,3 +349,33 @@ def test_missing_event_id_on_candidates_also_skips(tmp_path):
     pd.DataFrame([{"event_id": "e1", "start_time": _PAST}]).to_csv(
         preds / "predictions_mlb.csv", index=False)
     assert unsettled_completed_picks(preds, bets, ["mlb"], now=_NOW) == {}
+
+
+def test_purge_cubre_los_contadores_de_team_totals_sin_tocar_el_mes_corriente(tmp_path):
+    """AUD-006 (ronda audit-2026-09-22): la familia nacio el 2026-09-19 con su
+    prefijo propio pero sin entrada en la allowlist, asi que crecia sin techo.
+
+    Su fecha va con guiones, que `_artifact_date` no reconoce, asi que la edad
+    sale del mtime: el test lo fija explicitamente en vez de confiar en el
+    nombre. Purgar por encima de la retencion es seguro porque
+    `spent_this_month` solo consulta el mes corriente, y eso es lo que se
+    comprueba al final.
+    """
+    import os
+    from datetime import datetime, timezone
+    from sqp.pipeline.cleanup import purge_old_artifacts
+    from sqp.pipeline.team_totals_capture import CREDITS_PREFIX, spent_this_month
+
+    now = datetime(2026, 12, 15, tzinfo=timezone.utc)
+    odds = tmp_path / "data" / "odds"
+    viejo = _touch(odds / f"{CREDITS_PREFIX}2026-08-20", "44")   # ~117 d
+    corriente = _touch(odds / f"{CREDITS_PREFIX}2026-12-14", "30")
+    os.utime(viejo, (datetime(2026, 8, 20, tzinfo=timezone.utc).timestamp(),) * 2)
+    os.utime(corriente, (datetime(2026, 12, 14, tzinfo=timezone.utc).timestamp(),) * 2)
+
+    out = purge_old_artifacts(tmp_path, days=90, now=now)
+
+    assert out["team_totals_credits"] == 1
+    assert not viejo.exists() and corriente.exists()
+    # El presupuesto del mes corriente sobrevive intacto: purgar no regala cuota.
+    assert spent_this_month(odds, "2026-12-15") == 30

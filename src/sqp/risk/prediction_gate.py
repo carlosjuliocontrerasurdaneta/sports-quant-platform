@@ -112,6 +112,21 @@ PREDICTION_GATE_ALPHA = PREDICTION_GATE_FAMILY_ALPHA / PREDICTION_GATE_K
 # solo: se avisa, que es lo que este repositorio sabe hacer con los candados.
 PREDICTION_GATE_K_REPREGISTRO = 50
 
+
+def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
+    """Cota de Bonferroni del error de familia REAL: ``n_cortes * alpha``.
+
+    El reparto se hizo entre ``PREDICTION_GATE_K`` cortes. Si el universo crece,
+    el alpha por corte no se mueve y la cota sube: con K=41 y 49 cortes,
+    ``49 * 0,05/41 = 0,0598``, un 19,5 % por encima del 0,05 declarado.
+
+    Existe porque el registro publicaba ``family_alpha: 0.05`` y
+    ``n_cortes_evaluados: 49`` uno al lado del otro sin que nada los comparara
+    (auditoria integral 2026-09-22, AUD-001). Un numero que contradice a su
+    vecino en el mismo fichero no es trazabilidad.
+    """
+    return max(0, int(n_cortes)) * float(alpha)
+
 _REQUIRED = ("model_probability", "implied_probability_novig", "price_decimal")
 _TABLE_COLS = ["league", "market", "n", "wins", "p_value", "ev_flat",
                "allowed", "reason"]
@@ -449,13 +464,29 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
     # depende de el. Si el universo crece, el criterio hay que re-pre-registrarlo
     # ANTES de que un corte nuevo sea elegible. No se corrige solo -- se delata,
     # que es lo que hacen el resto de candados de este repositorio.
-    if len(markets) > PREDICTION_GATE_K_REPREGISTRO:
-        log.warning("prediction_gate: %d cortes evaluados, por encima del limite "
-                    "%d del pre-registro (K=%d). El reparto Bonferroni de alpha "
-                    "se queda corto: RE-PRE-REGISTRAR el criterio antes de que "
-                    "un corte nuevo alcance n>=%d.",
-                    len(markets), PREDICTION_GATE_K_REPREGISTRO,
-                    PREDICTION_GATE_K, min_n)
+    # Candado del pre-registro 2026-09-04: K se fijo en 41 y el reparto de alpha
+    # depende de el. El aviso se emite en cuanto el universo supera el PROPIO K,
+    # no al superar `PREDICTION_GATE_K_REPREGISTRO`: entre 42 y 50 cortes el
+    # criterio YA esta incumplido -- la cota real de error de familia excede el
+    # 0,05 declarado -- y nadie lo decia. Medido el 2026-09-22 con 49 cortes:
+    # cota 0,0598, un 19,5 % por encima, y la alarma sin disparar ni una vez
+    # (auditoria integral 2026-09-22, AUD-001). El umbral de 50 se conserva
+    # porque marca otra cosa: cuando el desvio deja de ser tolerable y toca
+    # re-pre-registrar, que es decision del operador y no de este modulo.
+    cota = fwer_bound(len(markets), alpha)
+    if len(markets) > PREDICTION_GATE_K:
+        severidad = (log.error if len(markets) > PREDICTION_GATE_K_REPREGISTRO
+                     else log.warning)
+        severidad("prediction_gate: %d cortes evaluados frente a los K=%d entre "
+                  "los que se repartio alpha. La cota real de error de familia "
+                  "es %.4f, por encima del %.2f declarado%s. RE-PRE-REGISTRAR "
+                  "el criterio antes de que un corte nuevo alcance n>=%d.",
+                  len(markets), PREDICTION_GATE_K, cota,
+                  PREDICTION_GATE_FAMILY_ALPHA,
+                  f" y por encima del limite {PREDICTION_GATE_K_REPREGISTRO} "
+                  f"del pre-registro"
+                  if len(markets) > PREDICTION_GATE_K_REPREGISTRO else "",
+                  min_n)
     payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
                # Trazabilidad del reparto: sin esto, leyendo el registro no se
@@ -463,6 +494,11 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
                "family_alpha": float(PREDICTION_GATE_FAMILY_ALPHA),
                "k_bonferroni": int(PREDICTION_GATE_K),
                "n_cortes_evaluados": len(markets),
+               # Cota REAL, no la declarada: `family_alpha` dice entre cuanto se
+               # repartio y este campo dice cuanto se esta gastando de verdad.
+               # Publicarlos juntos es lo que convierte la discrepancia en algo
+               # que se lee, en vez de en algo que hay que calcular a mano.
+               "fwer_bound": round(cota, 6),
                "validation_start": str(validation_start), "markets": markets}
     path = _write_payload(payload, bets_dir)
     _append_latch_log(transitions, bets_dir)

@@ -1,205 +1,63 @@
 {
-  "round_id": "audit-2026-09-18",
-  "date_utc": "2026-09-18T03:04:15+00:00",
-  "diagnosis_openai_utc": "2026-09-18T03:04:00Z/2026-09-18T03:19:00Z",
-  "diagnosis_claude_utc": "2026-09-18T11:30:00Z/2026-09-18T12:15:00Z",
-  "consolidated_utc": "2026-09-18T12:25:00Z",
-  "status": "remediacion aplicada (AUD-001..007; AUD-004 parcial: host pendiente del operador); pendiente de verificacion independiente",
-  "scope": "Auditoria integral del repositorio (codigo, scripts, configuracion, datos operativos por agregados, modelos, pipeline, skills/instrucciones, CI, tareas programadas)",
-  "base_commit": "59521643440213f6a7982b10e71d349a8d8dd088",
-  "branch": "main (0 por detras / 0 por delante de origin/main; CI success en HEAD, run 35301664397)",
-  "working_tree": "al inicio de la ronda: 25 entradas en git status, todas bajo audit/ (preparacion de ronda); guard scope (src scripts configs *.bat) limpio durante toda la ronda; ninguna entrada producida por los auditores fuera de audit/latest/",
+  "round_id": "audit-2026-09-22-r2",
+  "date_utc": "2026-09-23T00:05:00Z",
+  "diagnosis_claude_utc": "2026-09-23T00:05:00Z",
+  "diagnosis_openai_utc": null,
+  "consolidated_utc": "2026-09-23T00:10:00Z",
+  "remediation_utc": null,
+  "verification_utc": null,
+  "status": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION",
+  "scope": "auditoria integral del arbol de trabajo (= produccion), incluida la remediacion r22 sin commit",
+  "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
+  "branch": "main",
+  "working_tree": "sucio al inicio: 34 M + 3 ??. Durante la ronda solo se escribio audit/latest/.",
   "python_version": "3.14.4",
-  "platform": "win32",
+  "platform": "Windows 11",
   "previous_round": {
-    "round_id": "audit-2026-09-16",
-    "preserved_at": "audit/audit-2026-09-16/",
-    "verified": "22 ficheros, hashes identicos (coordinador 00:04 local; revalidado por el auditor Claude frente a HEAD:audit/latest/* con sha256, 22/22 OK)",
-    "note": "leida por ambos auditores solo en la comparacion historica posterior a fijar conclusiones"
+    "round_id": "audit-2026-09-22",
+    "path": "audit/audit-2026-09-22/",
+    "preservation": "11/11 sha256 identicos, verificado antes de escribir"
   },
-  "manifest_history": [
-    {
-      "path": "audit/latest/history/manifest-20260918T121551Z/MANIFEST.json",
-      "sha256": "90cdad7ed874c6a367c4",
-      "note": "manifest de inicializacion de la ronda (prefijo sha256), preservado antes de esta consolidacion"
-    }
+  "auditors": [
+    "claude (claude-opus-5-5)"
   ],
-  "auditors": {
-    "claude": {
-      "available": true,
-      "model": "claude-opus-5 (sesion principal, sin subagentes)",
-      "report": "audit/latest/claude/REPORT.md",
-      "report_sha256": "42c3467d47b5b3f025a75628b26ad1d31569c5aad49eda76d67f76e47793d2ab",
-      "evidence": "audit/latest/claude/EVIDENCE.json",
-      "evidence_sha256": "5f438b9af4125abcfddd7cf4afe6878325134df82d0a5c6b1f9960ed3ae69343",
-      "status": "delivered",
-      "findings": [
-        "CLAUDE-001",
-        "CLAUDE-002",
-        "CLAUDE-003",
-        "CLAUDE-004"
-      ]
-    },
-    "openai": {
-      "available": true,
-      "model": "segun openai/EVIDENCE.json (codex-cli; el coordinador registro gpt-6-astra como esperado)",
-      "report": "audit/latest/openai/REPORT.md",
-      "report_sha256": "a593000e9f5644a6b34879c980b4ea90a96bd3617118d043030da1b4221db863",
-      "evidence": "audit/latest/openai/EVIDENCE.json",
-      "evidence_sha256": "88219ecaaa2dfae87cfe4e028f149d53529c985288dd10554a9b3c24865057af",
-      "status": "delivered",
-      "findings": [
-        "OPENAI-001",
-        "OPENAI-002",
-        "OPENAI-003"
-      ]
-    }
+  "second_opinion": "no hubo: sin auditor OpenAI; MCP codex CONNECTION_CLOSED",
+  "source_reports": {
+    "claude/REPORT.md": "5609a5018950321a69e03e1402f9769d609c182804dd7aa311ff26882c2c3a57",
+    "claude/EVIDENCE.json": "6a3fea0964c85919634fa624ca182c39fddf27bea93f026a14edecf7a0066836"
   },
-  "second_opinion": true,
-  "source_reports": [
-    {
-      "path": "audit/latest/openai/REPORT.md",
-      "sha256": "a593000e9f5644a6b34879c980b4ea90a96bd3617118d043030da1b4221db863",
-      "ids": [
-        "OPENAI-001",
-        "OPENAI-002",
-        "OPENAI-003"
-      ]
-    },
-    {
-      "path": "audit/latest/claude/REPORT.md",
-      "sha256": "42c3467d47b5b3f025a75628b26ad1d31569c5aad49eda76d67f76e47793d2ab",
-      "ids": [
-        "CLAUDE-001",
-        "CLAUDE-002",
-        "CLAUDE-003",
-        "CLAUDE-004"
-      ]
-    }
-  ],
+  "stale_in_latest": {
+    "openai/": "pertenece a audit-2026-09-18; no forma parte de esta ronda",
+    "history/": "de rondas anteriores"
+  },
   "consolidated": {
-    "findings_file": "audit/latest/FINDINGS.md",
-    "backlog_file": "audit/latest/BACKLOG.md",
-    "ids": {
-      "AUD-001": [
-        "OPENAI-001"
-      ],
-      "AUD-002": [
-        "OPENAI-002",
-        "ampliacion en consolidacion: risk/degradation.py + run_all.py fallback"
-      ],
-      "AUD-003": [
-        "CLAUDE-001"
-      ],
-      "AUD-004": [
-        "CLAUDE-002"
-      ],
-      "AUD-005": [
-        "OPENAI-003"
-      ],
-      "AUD-006": [
-        "CLAUDE-003"
-      ],
-      "AUD-007": [
-        "CLAUDE-004"
-      ]
-    },
+    "FINDINGS.md": "2105cdbf7868431f255fd28d3d8716c1dee4eaddada598d250be3f9802652f19",
+    "BACKLOG.md": "a46a32fb5f9125bce402e174a782cbd77fe77a781f8afc81cec2c087e861d28a",
     "counts": {
-      "confirmed": 7,
-      "CRITICAL": 0,
-      "HIGH": 0,
-      "MEDIUM": 4,
-      "LOW": 3,
-      "P0": 0,
-      "P1": 0,
-      "P2": 4,
-      "P3": 3,
-      "dismissed": 4,
-      "not_verifiable": 5,
-      "observations": 9
+      "HIGH": 2,
+      "MEDIUM": 2,
+      "P0": 1,
+      "P1": 3
     }
   },
-  "tests_initial": {
-    "claude": "pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest -x: 2191 passed, 1 skipped in 1498.64s (rc 0); subconjunto -m 'not slow': 1967 passed, 225 deselected in 489.76s (rc 0); ruff 0; mypy 0 (105 ficheros)",
-    "openai": "306 tests focalizados (210 + 96) passed en basetemp propio; primera bateria 158 passed + 52 setup errors = ENVIRONMENTAL_FAILURE (WinError 5 sobre basetemp compartido); ruff 0; mypy 0",
-    "ci_remote": "success en HEAD (run 35301664397, 2026-09-18T03:02:16Z; verificado por Claude con gh; OpenAI sin gh)"
-  },
-  "tests_final": {
-    "suite_completa": "pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-final: 2251 passed, 1 skipped in 838.74s (rc 0)",
-    "primera_pasada": "2246 passed, 2 failed (ENVIRONMENTAL_FAILURE: basetemp compartido con el revisor fable; reejecutados aislados 2 passed), 1 skipped",
-    "ruff": "0",
-    "mypy": "0 (105 ficheros)",
-    "sync_agent_instructions": "synchronized",
-    "git_diff_check": "0"
-  },
+  "tests_initial": "not slow: 3 failed (AUD-004), 2049 passed, 225 deselected, 570.24 s; ruff rc0; mypy rc0",
+  "tests_final": "NO APLICA: sin remediacion en esta ronda",
   "files_modified": [
-    "src/sqp/risk/prediction_gate.py",
-    "src/sqp/risk/degradation.py",
-    "src/sqp/calibration/calibrator.py",
-    "src/sqp/calibration/pergame.py",
-    "src/sqp/monitoring/health.py",
-    "src/sqp/audit/html_report.py",
-    "src/sqp/pipeline/daily.py",
-    "src/sqp/pipeline/closing_capture.py",
-    "scripts/gate_status.py",
-    "scripts/run_all.py",
-    "scripts/promote_calibration.py",
-    "scripts/set_tasks_unattended.ps1",
-    ".claude/hooks/check-secrets.sh",
-    ".claude/hooks/_secret_literals.py",
-    ".claude/skills/clv-shadow-exit/SKILL.md",
-    "tests/test_audit_hooks.py",
-    "tests/test_registry_root_not_object.py (nuevo)",
-    "tests/test_gate_status_cli.py (nuevo)",
-    "tests/test_closing_capture_markets.py (nuevo)",
-    "tests/test_sandbox_calibration_keys.py (nuevo)",
-    "tests/test_health_scheduled_tasks.py (nuevo)",
-    "Obsidian/Bitácora/2026-09-18.md (nuevo)",
-    "Obsidian/Tareas.md",
-    ".claude/memory/{session-summaries,known-issues,project-decisions}.md",
-    ".claude/automation/runtime/current-task.md",
-    "audit/latest/{CHANGES,VALIDATION,STATUS}.md",
-    "DATO (fuera de git): data/models/calibration_methods.json, data/models/mlb_h2h_pergame_calibration_beta.joblib (retirado de live), data/models/promotion_log.csv (+1 demoted)"
+    "audit/latest/claude/REPORT.md",
+    "audit/latest/claude/EVIDENCE.json",
+    "audit/latest/FINDINGS.md",
+    "audit/latest/BACKLOG.md",
+    "audit/latest/STATUS.md",
+    "audit/latest/VALIDATION.md",
+    "audit/latest/CHANGES.md",
+    "audit/latest/MANIFEST.json"
   ],
   "final_result": null,
-  "final_result_rationale": "remediacion aplicada y validada por el implementador (suite completa verde); el veredicto de aptitud lo emite la verificacion independiente",
+  "final_result_rationale": "Sin verificacion: no se emite veredicto. Hay un P0 abierto con plazo (AUD-001, 2026-09-23 12:00).",
   "not_available": [
-    "final_result (sin verificacion independiente)",
-    "causa de los dias sin run 11/15/16-09 (historial del Programador deshabilitado, AUD-004)",
-    ".env (por diseno)",
-    "pip-audit local (corre en CI)",
-    "ejecucion de BATs, codex review, backfills, backtests"
-  ],
-  "side_effects_declared": [
-    "Claude: scripts/health_check.py reescribio data/output/pipeline_health.json (artefacto regenerable, gitignored) a las 2026-09-18 09:01:42 UTC-3",
-    "Claude: dos ejecuciones de pytest con --basetemp=.codex-tmp/pytest (gitignored); .mypy_cache/.ruff_cache (gitignored)",
-    "OpenAI: lineas de prueba emitidas a logs/sqp.log durante pytest; caches bajo .codex-tmp con nombres propios",
-    "Remediacion (autorizada): cambios en src/, scripts/, tests/, .claude/hooks, .claude/skills y DATO data/models (democion de mlb_h2h_pergame); ver files_modified"
-  ],
-  "bookkeeping_excluded": [
-    "(diagnostico) current-task.md no actualizado en esa fase; actualizado en remediacion",
-    "Obsidian y .claude/memory actualizados en remediacion (Bitacora/2026-09-18, Tareas, session-summaries, known-issues KI-054, project-decisions)"
-  ],
-  "context_contamination": "El coordinador (sesion principal) conoce las conclusiones de las sesiones del 2026-09-17 (auditoria diaria, cross-review 32a572de, KI-053) y de la ronda audit-2026-09-16 (verificacion APTO CON PENDIENTES) por la memoria del proyecto. Declarado en claude/REPORT.md; la comparacion historica se hizo tras fijar conclusiones propias. OpenAI declaro una lectura incidental de .claude/memory/project-decisions.md:282.",
-  "remediation_utc": "2026-09-18T12:30:00Z/2026-09-18T13:45:00Z",
-  "remediation_review": {
-    "model": "fable (Agent independent-code-reviewer)",
-    "scope": "AUD-003 (clase: contrato de artefacto persistido / parametro de modelo)",
-    "findings": 4,
-    "applied": 3,
-    "not_applied": "1 sugerencia (duplicacion de escritura del log)"
-  },
-  "blocked": [
-    "AUD-004 host: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` requiere consola elevada; el clasificador de permisos denego ejecutarlo (KI-054)"
-  ],
-  "remediation_commits": {
-    "branch": "audit/remediacion-20260918 (publicada)",
-    "commits": [
-      "c56fdf5 fix(audit-2026-09-18): AUD-001..007",
-      "ef48a62 audit: entregables + bookkeeping",
-      "d5ee9bd audit: ronda audit-2026-09-16 preservada"
-    ],
-    "merged_to_main": "ff-only, HEAD d5ee9bd, push a origin/main",
-    "ci_remote": "run 35351675211 success"
-  }
+    "suite slow",
+    "pip-audit",
+    "segunda opinion",
+    "cuota del proveedor"
+  ]
 }

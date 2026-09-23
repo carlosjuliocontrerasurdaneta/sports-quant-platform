@@ -1,0 +1,184 @@
+{
+  "round_id": "audit-2026-09-22",
+  "date_utc": "2026-09-22T13:20:00+00:00",
+  "diagnosis_claude_utc": "2026-09-22T13:00:00+00:00",
+  "diagnosis_openai_utc": null,
+  "consolidated_utc": "2026-09-22T13:20:00+00:00",
+  "remediation_utc": "2026-09-22T15:40:00+00:00",
+  "verification_utc": null,
+  "status": "DIAGNOSTICO, CONSOLIDACION Y REMEDIACION COMPLETADOS; VERIFICACION INDEPENDIENTE PENDIENTE",
+  "scope": "Auditoria integral del repositorio: codigo Python (src/sqp 106 modulos / 20.185 lineas, scripts), BAT y PowerShell, configuracion, dependencias, seguridad y secretos, datos operativos por AGREGADOS, modelos y calibracion, pipeline y control de riesgo, sistema de skills/agentes/comandos/hooks, CI y tareas programadas. Para cada control se evaluo tanto su configuracion como su ESTADO observado.",
+  "base_commit": "9fa276a",
+  "branch": "main",
+  "working_tree": "limpio al inicio (git status --porcelain vacio). Durante la ronda el auditor escribio UNICAMENTE audit/audit-2026-09-18/ (preservacion) y audit/latest/ (entregables). Ninguna entrada fuera de audit/: src, scripts, configs, tests, *.bat, data y logs sin tocar.",
+  "python_version": "3.14.4",
+  "platform": "win32 (Windows 11 Home Single Language 10.0.26200)",
+  "previous_round": {
+    "round_id": "audit-2026-09-18",
+    "preserved_at": "audit/audit-2026-09-18",
+    "files": 11,
+    "verification": "sha256 de los 11 ficheros identicos uno a uno entre audit/latest (estado previo) y audit/audit-2026-09-18",
+    "result": "IDENTICOS"
+  },
+  "manifest_history": [
+    "audit/audit-2026-09-18/MANIFEST.json (ronda anterior, preservada integra)",
+    "audit/latest/history/manifest-20260918T121551Z (historico de la ronda anterior; permanece en latest, ver residuo_ronda_anterior)"
+  ],
+  "auditors": {
+    "claude": {
+      "available": true,
+      "model": "claude-opus-5 (sesion principal, sin subagentes)",
+      "report": "audit/latest/claude/REPORT.md",
+      "report_sha256": "5709a2d8390bc242023b4243debedfc257d21807fd3a996d886839b50b08edf0",
+      "evidence": "audit/latest/claude/EVIDENCE.json",
+      "evidence_sha256": "66e4506ad2d7c57a86599f4f7a5a2798f6f535622d04bc42f001f2e88aa34d06"
+    },
+    "openai": {
+      "available": false,
+      "reason": "No se solicito ni se ejecuto un auditor OpenAI para esta ronda. NO se ha inventado informe del auditor ausente."
+    }
+  },
+  "second_opinion": {
+    "present": false,
+    "declaration": "Ronda con UN SOLO auditor. La consolidacion se realizo tras su diagnostico, segun el contrato. Ningun hallazgo se presenta como confirmado por coincidencia entre auditores."
+  },
+  "source_reports": [
+    {
+      "path": "audit/latest/claude/REPORT.md",
+      "sha256": "5709a2d8390bc242023b4243debedfc257d21807fd3a996d886839b50b08edf0",
+      "round": "audit-2026-09-22",
+      "ids": [
+        "CLAUDE-001",
+        "CLAUDE-002",
+        "CLAUDE-003",
+        "CLAUDE-004",
+        "CLAUDE-005",
+        "CLAUDE-006",
+        "CLAUDE-007",
+        "CLAUDE-008"
+      ]
+    }
+  ],
+  "consolidated": {
+    "findings": "audit/latest/FINDINGS.md",
+    "backlog": "audit/latest/BACKLOG.md",
+    "status": "audit/latest/STATUS.md",
+    "id_mapping": {
+      "AUD-001": "CLAUDE-001",
+      "AUD-002": "CLAUDE-002",
+      "AUD-003": "CLAUDE-003",
+      "AUD-004": "CLAUDE-004",
+      "AUD-005": "CLAUDE-005",
+      "AUD-006": "CLAUDE-006",
+      "AUD-007": "CLAUDE-007",
+      "AUD-008": "CLAUDE-008"
+    },
+    "counts": {
+      "confirmados": 8,
+      "por_severidad": {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 4,
+        "LOW": 4
+      },
+      "por_prioridad": {
+        "P0": 0,
+        "P1": 1,
+        "P2": 3,
+        "P3": 4
+      },
+      "descartados_con_evidencia": 12,
+      "descartes_retirados": 1,
+      "no_verificables": 2,
+      "observaciones_informativas": 5,
+      "regresiones": 0
+    },
+    "cobertura": {
+      "REVISADA": 17,
+      "REVISADA_PARCIALMENTE": 5,
+      "NO_APLICABLE": 2,
+      "NO_VERIFICABLE": 2,
+      "EXCLUIDA": 2
+    }
+  },
+  "tests_initial": {
+    "claude": "ruff check src scripts tests: rc 0 (All checks passed). mypy src: rc 0 (106 ficheros). pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-aud0922: 1 failed, 2263 passed, 1 skipped en 4031,25 s (rc 1); el fallo unico es tests/test_audit_atomic_readers.py::test_reader_contention_preserves_atomicity[False-csv], clasificado ENVIRONMENTAL_FAILURE y reejecutado aislado 5 veces en verde. Subconjunto -m 'not slow': 2040 passed, 225 deselected en 796,09 s (rc 0). pip-audit -r requirements.lock: rc 0, sin vulnerabilidades conocidas. codex-companion.mjs task --json: rc 1 con rawOutput vacio (CLAUDE-008); codex --version: rc 0, codex-cli 0.155.1."
+  },
+  "tests_final": {
+    "nota": "NO APLICA: no hubo remediacion en esta ronda, asi que no hay estado final distinto del inicial."
+  },
+  "files_modified": [
+    ".claude/settings.json (timeout del hook Stop de pruebas 600 -> 1200)",
+    ".claude/hooks/run-tests-on-stop.sh (autoacotado con timeout; rama propia para rc 124)",
+    ".claude/memory/known-issues.md (KI-056)",
+    "src/sqp/risk/prediction_gate.py (fwer_bound; aviso al superar K; fwer_bound en el registro)",
+    "src/sqp/risk/bankroll.py (summary enruta por realized_roi_parts/staked_mask)",
+    "src/sqp/pipeline/team_totals_capture.py (coverage_baseline + aviso; guarda de coste previsto)",
+    "src/sqp/pipeline/cleanup.py (familia team_totals_credits en la purga)",
+    "src/sqp/storage/atomic.py (REPLACE_RETRY_SECONDS como constante de modulo)",
+    "tests/test_prediction_gate.py",
+    "tests/test_bankroll.py",
+    "tests/test_team_totals_capture.py",
+    "tests/test_cleanup.py",
+    "tests/test_audit_atomic_readers.py",
+    "audit/latest/{CHANGES,VALIDATION,STATUS,FINDINGS,BACKLOG,MANIFEST}.* y claude/",
+    "audit/audit-2026-09-18/ (preservacion de la ronda anterior)",
+    "Obsidian/Bitacora/2026-09-22.md",
+    ".claude/memory/session-summaries.md"
+  ],
+  "files_modified_fuera_de_audit": [],
+  "final_result": null,
+  "final_result_rationale": "No procede emitir veredicto APTO / APTO CON PENDIENTES / VERIFICACION INCOMPLETA / NO APTO: esos estados califican una REMEDIACION verificada, y en esta ronda no hubo remediacion ni verificacion independiente. El resultado del diagnostico es la linea base de FINDINGS.md.",
+  "not_available": [
+    "Cuota real restante en The Odds API: exige una llamada externa, prohibida durante el diagnostico.",
+    "Calendario MLB del 2026-09-21: el almacen local de resultados llega al 2026-09-20.",
+    "Medicion de calibracion fuera de muestra: exigiria entrenar, fuera del alcance de solo lectura.",
+    "Contenido de .env: lectura denegada por la politica de permisos (el control funciono); la configuracion efectiva se obtuvo con Settings.load() sin imprimir secretos.",
+    "Historial de prediction_gate.json: no se versiona, asi que no es verificable cuando ni por que el universo crecio de 41 a 49 cortes."
+  ],
+  "side_effects_declared": [
+    "Ficheros temporales de pytest bajo .codex-tmp/ (gitignored): pytest-aud0922, aud0922-iso, aud0922-notslow, audit-20260922/.",
+    "Scripts de analisis en el scratchpad de sesion, fuera del repositorio.",
+    "Cero llamadas a proveedores externos. Cero creditos de API consumidos."
+  ],
+  "bookkeeping_excluido": [
+    ".claude/automation/runtime/current-task.md: NO actualizado. El contrato declara el diagnostico de solo lectura del proyecto salvo los entregables de la fase; escribir ahi seria escribir fuera del destino autorizado. Se registra como limitacion.",
+    "Obsidian/ y .claude/memory/: NO actualizados. Esta sesion no cambia codigo, configuracion, datos operativos ni decisiones; el bookkeeping corresponde a una fase de remediacion autorizada."
+  ],
+  "context_contamination": "NINGUNA durante la fase principal. Del MANIFEST.json previo solo se leyeron metadatos de ronda (round_id, fecha, base) para ejecutar la preservacion obligatoria, sin conclusiones. Los informes y consolidados de audit-2026-09-18 se leyeron DESPUES de fijar las conclusiones propias, para la comparacion historica (paso 7 del contrato).",
+  "residuo_ronda_anterior": {
+    "descripcion": "Ficheros que permanecen en audit/latest/ y pertenecen a la ronda audit-2026-09-18. NO forman parte de esta ronda. Estan preservados integros en audit/audit-2026-09-18/.",
+    "ficheros": [
+      {
+        "path": "audit/latest/openai/REPORT.md",
+        "sha256_prefijo": "a593000e9f5644a6"
+      },
+      {
+        "path": "audit/latest/openai/EVIDENCE.json",
+        "sha256_prefijo": "88219ecaaa2dfae8"
+      },
+      {
+        "path": "audit/latest/history/manifest-20260918T121551Z"
+      }
+    ],
+    "accion": "NO ejecutada. Retirarlos es una eliminacion y requiere autorizacion explicita del operador; se registra como pendiente en BACKLOG.md."
+  },
+  "blocked": [],
+  "remediation_commits": [],
+  "hallazgo_tardio": "CLAUDE-008 se descubrio AL CIERRE de la sesion, cuando el gate Stop del plugin codex bloqueo el turno. Se investigo, se reprodujo y se incorporo al informe, al consolidado, al backlog y al status. Obligo a RETIRAR un descarte de la primera pasada, registrado como tal en claude/REPORT.md seccion 6 y en claude/EVIDENCE.json.",
+  "remediation_authorization": "Operador, 2026-09-22: autorizacion expresa de las fases 4 y 5, con alcance 'todos los hallazgos confirmados del informe mas las mejoras sustentadas por la evidencia obtenida durante la auditoria'.",
+  "remediation_review": "NINGUNA. No hubo segundo auditor y la revision cruzada de Codex no pudo ejecutarse (AUD-008 / KI-056): esta remediacion NO ha sido revisada por un tercero. La afirmacion del implementador de que los tests pasan no sustituye a la verificacion independiente.",
+  "remediation_por_id": {
+    "AUD-007": "corregido (P1)",
+    "AUD-001": "corregido parcial por diseno: solo instrumentacion; K/alpha/min_n/pestillo INTACTOS (clase de escalacion). La decision de fondo sigue pendiente del operador",
+    "AUD-008": "no aplicable al repositorio; documentado como KI-056",
+    "AUD-002": "corregido",
+    "AUD-003": "corregido",
+    "AUD-004": "corregido",
+    "AUD-005": "corregido",
+    "AUD-006": "corregido"
+  },
+  "pruebas_discriminantes": "Demostrado para los 5 arreglos con prueba automatizable: cada prueba nueva FALLA contra la version de HEAD del fichero corregido (restaurado temporalmente con `git show HEAD:<path>`, ejecutado, y repuesto con verificacion de sha256) y pasa con el arreglo. AUD-001 rc 1 (2 failed), AUD-002/003 rc 1 (4 failed, 1 passed), AUD-005 rc 1 (1 failed), AUD-006 rc 1 (1 failed), AUD-004 rc 1 (assert '_replace tardo 12.69s con un plazo de 2.0s').",
+  "efectos_de_hooks_observados": "PostToolUse de formato (autofix de ruff) BORRO la linea de import de `sqp.settlement.settle` en bankroll.py al sustituirla antes de cambiar su consumidor; la suite fallo con NameError y el import se repuso. Declarado como efecto realmente observado, no asumido.",
+  "test_reescrito_que_codificaba_el_defecto": "tests/test_team_totals_capture.py::test_captura_respeta_el_tope_diario_antes_de_llamar fijaba `credits_spent == 46` y 23 llamadas -- el rebase del tope -- con un comentario que lo justificaba. Reescrito al invariante correcto (44 / 22 / <= MAX_CREDITS_PER_DAY) y acompanado de un test parametrizado con topes par e impar. Es un ENDURECIMIENTO de la asercion, no una relajacion."
+}
