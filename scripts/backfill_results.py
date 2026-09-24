@@ -19,6 +19,7 @@ from sqp.logging_config import get_logger
 from sqp.providers.espn_results import ESPNResultsProvider, ESPN_PATHS
 from sqp.providers.mlb_statsapi import MLBStatsProvider
 from sqp.storage.results_store import ResultsStore
+from sqp.storage.schedule_store import ScheduleStore
 
 log = get_logger("sqp.backfill")
 
@@ -36,7 +37,18 @@ def main() -> int:
     for league in args.leagues:
         try:
             provider = MLBStatsProvider() if league == "mlb" else espn
+            # MLB: el calendario (identidad de cada partido, KI-059) se DESCARGA
+            # antes que nada y se escribe antes que los resultados. Si falla, no
+            # se escribe ninguno de los dos: resultados al dia con un calendario
+            # viejo dejaban aparecer como "Scheduled" un partido ya aplazado
+            # (revision Fable, FABLE-K).
+            schedule = (MLBStatsProvider().fetch_schedule(days_back=args.days)
+                        if league == "mlb" else None)
             results = provider.fetch_results(league, days_back=args.days)
+            if schedule is not None:
+                total = ScheduleStore(ROOT).upsert(league, schedule)
+                log.info("[%s] calendario: %d apariciones en la ventana; %d filas -> %s",
+                         league, len(schedule), total, ScheduleStore(ROOT).path(league))
             added = store.upsert(league, results)
             log.info("[%s] fetched %d completed results (%d days back); %d new rows -> %s",
                      league, len(results), args.days, added, store.path(league))

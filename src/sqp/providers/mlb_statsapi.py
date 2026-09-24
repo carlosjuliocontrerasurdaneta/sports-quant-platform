@@ -80,6 +80,45 @@ class MLBStatsProvider(ResultsProvider):
                 })
         return out
 
+    def fetch_schedule(self, days_back: int = 365) -> list[dict]:
+        """Calendario COMPLETO de temporada regular, aplazados incluidos: la
+        identidad de cada partido (KI-059, 2026-09-24).
+
+        `fetch_results` guarda solo los terminados y solo su FECHA, asi que en un
+        doubleheader con un juego aplazado el unico resultado del dia es el del
+        OTRO juego (FABLE-R2-001). Aqui cada fila lleva ``gamePk``, la hora UTC
+        de inicio (``gameDate``), el estado y el numero de juego, que es lo que
+        permite saber CUAL de los partidos de un par es el de un pick."""
+        start, end = fetch_window(days_back)
+        r = _get_with_retry(self.session, f"{BASE}/schedule", params={
+            "sportId": 1, "startDate": start.isoformat(), "endDate": end.isoformat(),
+            "gameType": "R"}, timeout=60)
+        out = []
+        for d in r.json().get("dates", []):
+            for g in d.get("games", []):
+                try:
+                    teams = g["teams"]
+                    status = g.get("status", {})
+                    # Un aplazado recuperado CONSERVA su gamePk y aparece dos
+                    # veces (fecha original `Postponed` + recuperacion); un
+                    # suspendido y reanudado, igual. Cada APARICION es una fila
+                    # (revision Fable, FABLE-K-001/002).
+                    out.append({
+                        "game_id": str(g["gamePk"]),
+                        "date": d["date"],
+                        "start_time": str(g["gameDate"]),
+                        "home": teams["home"]["team"]["name"],
+                        "away": teams["away"]["team"]["name"],
+                        "state": str(status.get("detailedState", "")),
+                        "abstract_state": str(status.get("abstractGameState", "")),
+                        "start_time_tbd": bool(status.get("startTimeTBD", False)),
+                        "double_header": str(g.get("doubleHeader", "")),
+                        "game_number": g.get("gameNumber"),
+                    })
+                except (KeyError, TypeError):
+                    continue  # una entrada malformada no tumba el calendario
+        return out
+
     def fetch_starters(self, days_back: int = 365) -> list[dict]:
         """Starter map per game keyed by gamePk. Uses probablePitcher hydration:
         for past games it reflects the announced starter (per-game boxscore

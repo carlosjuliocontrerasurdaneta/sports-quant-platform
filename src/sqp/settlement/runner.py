@@ -294,7 +294,14 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
     Sustituye a la tolerancia de +-1 dia de `history_scores_map` en todo lo que
     liquida: con tolerancia, el juego de hoy de una serie (o uno aplazado) se
     graduaba con el marcador del de ayer, y liquidar es irreversible (FABLE-001,
-    KI-058). Un partido sin resultado en su fecha no se gradua: expira."""
+    KI-058). Un partido sin resultado en su fecha no se gradua: expira.
+
+    NO vale para MLB, y para MLB devuelve {}: series en dias consecutivos,
+    doubleheaders con un juego aplazado (el historico no lo guarda) y series en
+    Asia rompen la identidad por fecha (FABLE-R2-001/002, verificacion 2). MLB
+    usa `mlb_schedule_scores_map` (identidad de calendario, KI-059)."""
+    if league == "mlb":
+        return {}
     now = now or datetime.now(timezone.utc)
     # Doubleheader visto desde NUESTROS registros (FABLE-R2-001, 2026-09-24): si
     # The Odds API listo mas de un evento del mismo par en la misma fecha, un
@@ -325,13 +332,6 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
         st = pd.to_datetime(start, errors="coerce", utc=True)
         if pd.isna(st) or st.to_pydatetime() > now:
             continue
-        # MLB fuera de America (FABLE-R2-002): la fecha ET solo es la oficial
-        # para estadios de America. Ningun partido medido de MLB en America
-        # empieza entre las 03:00Z y las 10:00Z (692 filas, 2026-09-24); en esa
-        # franja caen los de Asia, donde la regla asignaria la fecha del juego
-        # anterior de la serie. Sin identidad demostrable, no se gradua.
-        if league == "mlb" and 3 <= st.hour < 10:
-            continue
         day = expected_result_date(league, start)
         home = str(r.home)
         clave = (normalize_key(home), normalize_key(str(r.away)), str(day))
@@ -348,6 +348,124 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
         if len(hits) == 1:
             scores[str(r.event_id)] = (hits[0][0], hits[0][1], home)
     return scores
+
+
+_NO_JUGADO = ("Postponed", "Cancelled", "Suspended")
+
+
+def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
+                            results: list[dict], *, now: datetime | None = None,
+                            known_events: pd.DataFrame | None = None
+                            ) -> dict[str, tuple[int, int, str]]:
+    """event_id -> (home_score, away_score, home) para MLB con IDENTIDAD DE
+    CALENDARIO (KI-059, 2026-09-24).
+
+    El partido de un pick es la APARICION del calendario de MLB Stats API
+    (aplazados incluidos; clave ``(game_id, date)``, ver `ScheduleStore`) del
+    mismo par ORDENADO cuya hora de inicio es la mas cercana a la de The Odds
+    API. Se gradua solo si:
+
+    - es la unica mas cercana (un empate no identifica);
+    - cae en la misma fecha en America/New_York que el pick (un partido fuera
+      del calendario -- postemporada -- no se empareja con uno de otro dia);
+    - ningun partido del par ese dia tiene la hora por confirmar
+      (``startTimeTBD``: en un doubleheader tradicional el juego 2 figura a la
+      hora del 1 mas 5 min, y la hora deja de identificar; FABLE-K-003);
+    - la aparicion esta TERMINADA (``abstract_state == "Final"`` y no
+      aplazada/cancelada/suspendida): un aplazado empareja con SU aparicion
+      aplazada y no gradua (FABLE-K-001), y un calendario desactualizado
+      ("Scheduled") tampoco;
+    - ningun otro evento conocido (``pending`` + ``known_events``) apunta a la
+      misma aparicion: uno a uno o nada (FABLE-K-003);
+    - su marcador existe en `ResultsStore` con el MISMO ``game_id`` (gamePk).
+
+    Medido el 2026-09-24 sobre 692 eventos MLB graduados por el feed: 668
+    coinciden, 0 no coinciden, 24 sin graduar. El partido correcto queda a
+    <= 5 min (705/710; el resto a 61 min, tambien correctos) y el siguiente del
+    par, a >= 181 min: basta con el mas cercano, sin umbral."""
+    now = now or datetime.now(timezone.utc)
+    needed = {"game_id", "date", "start_time", "home", "away", "state"}
+    if schedule is None or schedule.empty or not needed.issubset(schedule.columns):
+        return {}
+    marcador: dict[str, tuple[str, int, int]] = {}
+    for m in results:
+        try:
+            gid = str(m.get("game_id", "") or "")
+            if not gid:
+                continue
+            fecha = str(m.get("date", ""))[:10]
+            # Un suspendido y reanudado deja dos filas del mismo gamePk: vale la
+            # de la fecha MAS TARDIA, la que cierra el partido.
+            if gid not in marcador or fecha >= marcador[gid][0]:
+                marcador[gid] = (fecha, int(m["home_score"]), int(m["away_score"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    # (pair) -> [(inicio, aparicion, estado, abstracto, tbd, fecha_et)]
+    por_par: dict[tuple[str, str], list[tuple]] = {}
+    for g in schedule.itertuples(index=False):
+        gd = pd.to_datetime(getattr(g, "start_time"), errors="coerce", utc=True)
+        if pd.isna(gd):
+            continue
+        tbd = str(getattr(g, "start_time_tbd", "False")).strip().lower() in ("true", "1")
+        por_par.setdefault((normalize_key(str(g.home)), normalize_key(str(g.away))), []).append(
+            (gd, (str(g.game_id), str(g.date)), str(g.state),
+             str(getattr(g, "abstract_state", "")), tbd,
+             gd.tz_convert(_MLB_DATE_TZ).date()))
+
+    def aparicion(home: str, away: str, st: pd.Timestamp) -> tuple | None:
+        juegos = por_par.get((normalize_key(home), normalize_key(away)), [])
+        if not juegos:
+            return None
+        dia = st.tz_convert(_MLB_DATE_TZ).date()
+        if any(j[4] and j[5] == dia for j in juegos):
+            return None
+        orden = sorted(juegos, key=lambda j: abs((j[0] - st).total_seconds()))
+        if len(orden) > 1 and (abs((orden[1][0] - st).total_seconds())
+                               == abs((orden[0][0] - st).total_seconds())):
+            return None
+        return orden[0] if orden[0][5] == dia else None
+
+    # Uno a uno: que aparicion elige cada evento conocido.
+    elegida: dict[tuple[str, str], set[str]] = {}
+    for frame in (pending, known_events):
+        if frame is None or frame.empty or not {"event_id", "home", "away",
+                                                 "start_time"}.issubset(frame.columns):
+            continue
+        for r in frame[["event_id", "home", "away", "start_time"]].itertuples(index=False):
+            st = pd.to_datetime(r.start_time, errors="coerce", utc=True)
+            if pd.isna(st):
+                continue
+            ap = aparicion(str(r.home), str(r.away), st)
+            if ap is not None:
+                elegida.setdefault(ap[1], set()).add(str(r.event_id))
+
+    scores: dict[str, tuple[int, int, str]] = {}
+    for r in pending.itertuples():
+        st = pd.to_datetime(getattr(r, "start_time", None), errors="coerce", utc=True)
+        if pd.isna(st) or st.to_pydatetime() > now:
+            continue
+        home = str(r.home)
+        ap = aparicion(home, str(r.away), st)
+        if ap is None or len(elegida.get(ap[1], ())) > 1:
+            continue
+        if ap[3] != "Final" or ap[2].startswith(_NO_JUGADO):
+            continue
+        gid = ap[1][0]
+        if gid in marcador:
+            scores[str(r.event_id)] = (marcador[gid][1], marcador[gid][2], home)
+    return scores
+
+
+def _mlb_history_scores(pending: pd.DataFrame, results: list[dict],
+                        known_events: pd.DataFrame | None = None
+                        ) -> dict[str, tuple[int, int, str]]:
+    """`mlb_schedule_scores_map` con el calendario almacenado y todos los eventos
+    MLB que servimos como `known_events`; {} sin calendario (MLB sigue la
+    expiracion hasta que el backfill lo cree)."""
+    from sqp.storage.schedule_store import ScheduleStore
+    return mlb_schedule_scores_map(
+        pending, ScheduleStore(ROOT).load("mlb"), results,
+        known_events=known_events if known_events is not None else _served_rows("mlb"))
 
 
 def _served_rows(league: str) -> pd.DataFrame:
@@ -424,14 +542,15 @@ def _grade_served_from_history(league: str, three_way: bool = False) -> int:
             # Identidad EXACTA, no +-1 dia (KI-058, 2026-09-24): con tolerancia,
             # un juego APLAZADO de una serie se graduaba con el marcador del
             # juego anterior -- y este stream decide el prediction gate.
-            # MLB NO, igual que en candidatos (FABLE-R3-001): la guarda de
-            # doubleheader solo ve los juegos que servimos, y medido solo
-            # habria cubierto 4 de 10 doubleheaders. Pendiente de KI-059.
+            # MLB por identidad de CALENDARIO, no por fecha (FABLE-R3-001 y
+            # KI-059): la guarda de doubleheader por fecha solo veia los juegos
+            # que servimos (4 de 10 medidos).
             if league == "mlb":
-                return 0
-            scores = exact_history_scores_map(
-                still, results, league,
-                known_events=_served_rows(league))
+                scores = _mlb_history_scores(still, results)
+            else:
+                scores = exact_history_scores_map(
+                    still, results, league,
+                    known_events=_served_rows(league))
         if not scores:
             return 0
         return _grade_served(league, scores, three_way=three_way)
@@ -686,19 +805,16 @@ def _candidate_history_scores(league: str, pending: pd.DataFrame
     la liquidacion."""
     if pending.empty:
         return {}
-    # MLB NO (FABLE-R2-001/002, revision Fable 2026-09-24): el historico de MLB
-    # guarda solo la FECHA y descarta los aplazados, asi que en un doubleheader
-    # con un juego aplazado el unico resultado del dia es el del OTRO juego, y
-    # liquidar es irreversible. Hasta persistir la identidad de calendario
-    # (hora `gameDate` y numero de juego del doubleheader, KI-059), los
-    # candidatos de MLB fuera de la ventana del feed siguen la expiracion.
-    if league == "mlb":
-        return {}
     try:
         from sqp.storage.results_store import ResultsStore
         results = ResultsStore(ROOT).load(league)
         if not results:
             return {}
+        # MLB por identidad de CALENDARIO (KI-059): la fecha no identifica el
+        # partido en series, doubleheaders con un aplazado ni series en Asia
+        # (FABLE-R2-001/002). Sin calendario almacenado, {}: expira como antes.
+        if league == "mlb":
+            return _mlb_history_scores(pending, results)
         return exact_history_scores_map(pending, results, league)
     except Exception as exc:
         log.warning("[%s] history fallback for candidates failed: %s", league, exc)
@@ -845,7 +961,7 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     if not pending_served.empty:
         _grade_served(league, scores, days_from=days_from, three_way=three_way)
         # What the 3-day feed could not grade may still grade from the
-        # historical store (backfilled daily); whatever remains ungradable
+        # historical store (backfill semanal, BACKFILL_ALL.bat); whatever remains ungradable
         # past the stale window is voided (audit 2026-08-02, M-01).
         _grade_served_from_history(league, three_way=three_way)
         if scores_trusted:

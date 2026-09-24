@@ -7,6 +7,10 @@ audit-2026-09-23).
   America/New_York en MLB Stats API), resultado unico y partido empezado. La
   tolerancia de +-1 dia liquidaba el pick de hoy de una serie MLB con el
   marcador de ayer (FABLE-001) y un juego aplazado con el del anterior (KI-058).
+- KI-059: MLB no se identifica por fecha sino por CALENDARIO
+  (`mlb_schedule_scores_map`): el partido del par mas cercano en hora en el
+  calendario de MLB Stats API (aplazados incluidos), misma fecha ET, estado no
+  aplazado y marcador del mismo gamePk.
 - AUD-004 (CLAUDE-002 a): un pick desplazado (`superseded`) no tenia
   `start_time` -- se buscaba solo en el `predictions` vigente --, asi que nunca
   expiraba y a los 14 dias salia del escaneo sin veredicto.
@@ -211,48 +215,20 @@ def test_mapa_exacto_serie_aplazado_back_to_back_y_contraprueba():
         "gN": (3, 1, "Home Team")}
 
 
-def test_mapa_exacto_nocturno_mlb_usa_la_fecha_del_este():
-    """Partido de 01:10Z: su resultado esta en la fecha ET del dia anterior;
-    la fecha UTC NO debe emparejar (discrimina ET frente a UTC)."""
-    pendiente = pd.DataFrame([_fila("n1", "2026-09-02T01:10:00Z")])
-    base = {"home": "Home Team", "away": "Away Team"}
-    ahora = datetime(2026, 9, 10, tzinfo=timezone.utc)
-    assert runner.exact_history_scores_map(
-        pendiente, [{**base, "date": "2026-09-01", "home_score": 6, "away_score": 2}],
-        "mlb", now=ahora) == {"n1": (6, 2, "Home Team")}
-    assert runner.exact_history_scores_map(
-        pendiente, [{**base, "date": "2026-09-02", "home_score": 6, "away_score": 2}],
-        "mlb", now=ahora) == {}
-
-
 def test_mapa_exacto_no_gradua_si_nuestros_registros_ven_un_doubleheader():
     """FABLE-R2-001 en el stream servido: dos eventos del par el mismo dia en
     lo que listo The Odds API -> un unico resultado no identifica cual."""
-    g1, g2 = "2026-09-10T17:05:00Z", "2026-09-10T23:10:00Z"   # mismo dia ET
+    g1, g2 = "2026-09-10T17:05:00Z", "2026-09-10T23:10:00Z"   # mismo dia UTC
     ahora = datetime(2026, 9, 15, tzinfo=timezone.utc)
     pendiente = pd.DataFrame([_fila("G2", g2)])
     conocidos = pd.DataFrame([_fila("G1", g1), _fila("G2", g2)])
     resultados = [{"date": "2026-09-10", "home": "Home Team",
                    "away": "Away Team", "home_score": 7, "away_score": 1}]
-    assert runner.exact_history_scores_map(pendiente, resultados, "mlb", now=ahora,
+    assert runner.exact_history_scores_map(pendiente, resultados, ESPN, now=ahora,
                                            known_events=conocidos) == {}
     # Contraprueba: sin el otro evento, el unico resultado si identifica.
-    assert runner.exact_history_scores_map(pendiente, resultados, "mlb",
+    assert runner.exact_history_scores_map(pendiente, resultados, ESPN,
                                            now=ahora) == {"G2": (7, 1, "Home Team")}
-
-
-def test_mapa_exacto_no_gradua_mlb_fuera_de_america():
-    """FABLE-R2-002: serie en Tokio, juego 2 de dia (03:05Z): la fecha ET no
-    es la oficial y apuntaria al juego 1. No se gradua."""
-    j2 = "2026-03-19T03:05:00Z"
-    pendiente = pd.DataFrame([_fila("J2", j2)])
-    resultados = [{"date": "2026-03-18", "home": "Home Team", "away": "Away Team",
-                   "home_score": 4, "away_score": 2},
-                  {"date": "2026-03-19", "home": "Home Team", "away": "Away Team",
-                   "home_score": 1, "away_score": 0}]
-    ahora = datetime(2026, 3, 25, tzinfo=timezone.utc)
-    assert runner.exact_history_scores_map(pendiente, resultados, "mlb",
-                                           now=ahora) == {}
 
 
 def _servida(lg):
@@ -290,6 +266,303 @@ def test_stream_servido_mlb_no_se_gradua_desde_el_historico(tmp_path, monkeypatc
     ServedStore(tmp_path).append_served(LEAGUE, [_servida(LEAGUE)])
     _resultado(tmp_path, _dia_mlb(GAME), 7, 1, "g1")
     assert runner._grade_served_from_history(LEAGUE) == 0
+
+
+def test_el_mapa_por_fecha_no_acepta_mlb():
+    """MLB no se identifica por fecha (series, doubleheader con aplazado,
+    Asia): el mapa por fecha devuelve {} y MLB usa el calendario (KI-059)."""
+    pendiente = pd.DataFrame([_fila("n1", "2026-09-02T01:10:00Z")])
+    resultados = [{"date": "2026-09-01", "home": "Home Team", "away": "Away Team",
+                   "home_score": 6, "away_score": 2}]
+    ahora = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    assert runner.exact_history_scores_map(pendiente, resultados, "mlb",
+                                           now=ahora) == {}
+
+
+def test_stream_servido_espn_no_gradua_con_el_resultado_de_la_vispera(
+        tmp_path, monkeypatch):
+    """REG-001 (verificacion 2): con el resultado a -1 dia, el +-1 anterior lo
+    graduaba; la identidad exacta no. Este test falla si se vuelve al +-1."""
+    from sqp.storage.served_store import ServedStore
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    ServedStore(tmp_path).append_served(ESPN, [_servida(ESPN)])
+    _resultado(tmp_path, _dia_utc(GAME - timedelta(days=1)), 2, 5, "otro", lg=ESPN)
+    assert runner._grade_served_from_history(ESPN) == 0
+
+
+# --- KI-059: MLB por identidad de CALENDARIO -----------------------------------
+
+AHORA = datetime(2026, 9, 20, tzinfo=timezone.utc)
+
+
+def _cal(gid, start, state="Final", home="Home Team", away="Away Team",
+         abstract="Final", tbd=False, date=None):
+    # Como la API real: un aplazado tambien trae abstractGameState "Final".
+    return {"game_id": gid, "date": date or start[:10], "start_time": start,
+            "home": home, "away": away, "state": state, "abstract_state": abstract,
+            "start_time_tbd": tbd, "double_header": "N", "game_number": 1}
+
+
+def _res(gid, hs, as_, date="2026-09-10"):
+    return {"game_id": gid, "date": date, "home": "Home Team", "away": "Away Team",
+            "home_score": hs, "away_score": as_}
+
+
+def _mapa(picks, calendario, resultados):
+    return runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila(e, st) for e, st in picks]), pd.DataFrame(calendario),
+        resultados, now=AHORA)
+
+
+def test_calendario_gradua_con_el_marcador_de_su_propio_partido():
+    cal = [_cal("100", "2026-09-10T23:05:00Z")]
+    assert _mapa([("e1", "2026-09-10T23:05:00Z")], cal, [_res("100", 5, 2)]) == {
+        "e1": (5, 2, "Home Team")}
+
+
+def test_calendario_serie_cada_pick_con_su_juego():
+    """Serie en dias consecutivos: la fecha no bastaba; la hora si."""
+    cal = [_cal("1", "2026-09-09T23:05:00Z"), _cal("2", "2026-09-10T23:05:00Z"),
+           _cal("3", "2026-09-11T17:10:00Z")]
+    res = [_res("1", 1, 0), _res("2", 2, 7), _res("3", 4, 4)]
+    m = _mapa([("a", "2026-09-09T23:05:00Z"), ("b", "2026-09-10T23:06:00Z")], cal, res)
+    assert m == {"a": (1, 0, "Home Team"), "b": (2, 7, "Home Team")}
+
+
+def test_calendario_doubleheader_con_un_juego_aplazado_no_gradua_el_aplazado():
+    """FABLE-R2-001: el juego 2 se aplaza; el unico resultado del dia es el del
+    juego 1. El pick del juego 2 empareja con SU entrada (aplazada) y no
+    gradua; el del juego 1 si."""
+    cal = [_cal("G1", "2026-09-10T17:05:00Z"),
+           _cal("G2", "2026-09-10T23:10:00Z", state="Postponed")]
+    res = [_res("G1", 7, 1)]
+    m = _mapa([("p1", "2026-09-10T17:05:00Z"), ("p2", "2026-09-10T23:10:00Z")], cal, res)
+    assert m == {"p1": (7, 1, "Home Team")}
+
+
+def test_calendario_doubleheader_jugado_cada_uno_con_su_marcador():
+    cal = [_cal("G1", "2026-09-10T17:05:00Z"), _cal("G2", "2026-09-10T22:40:00Z")]
+    res = [_res("G1", 7, 1), _res("G2", 0, 3)]
+    m = _mapa([("p1", "2026-09-10T17:05:00Z"), ("p2", "2026-09-10T22:40:00Z")], cal, res)
+    assert m == {"p1": (7, 1, "Home Team"), "p2": (0, 3, "Home Team")}
+
+
+def test_calendario_serie_en_asia_se_identifica_por_la_hora():
+    """FABLE-R2-002: juego 2 de dia en Tokio (03:05Z). La fecha ET apuntaba al
+    juego 1; la hora identifica el suyo."""
+    cal = [_cal("J1", "2026-03-18T10:10:00Z"), _cal("J2", "2026-03-19T03:05:00Z")]
+    res = [_res("J1", 4, 2, "2026-03-18"), _res("J2", 1, 0, "2026-03-19")]
+    ahora = datetime(2026, 3, 25, tzinfo=timezone.utc)
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("j2", "2026-03-19T03:05:00Z")]), pd.DataFrame(cal), res,
+        now=ahora)
+    assert m == {"j2": (1, 0, "Home Team")}
+
+
+def test_calendario_partido_fuera_del_calendario_no_toma_el_de_otro_dia():
+    """Un pick sin entrada en el calendario (postemporada, otro tipo): el mas
+    cercano es de OTRO dia ET y no se empareja."""
+    cal = [_cal("100", "2026-09-05T23:05:00Z")]
+    assert _mapa([("post", "2026-09-10T23:05:00Z")], cal, [_res("100", 5, 2)]) == {}
+
+
+def test_calendario_empate_futuro_y_sin_marcador_no_gradua():
+    cal = [_cal("A", "2026-09-10T18:00:00Z"), _cal("B", "2026-09-10T22:00:00Z")]
+    res = [_res("A", 1, 0), _res("B", 0, 1)]
+    # Equidistante de los dos: no identifica.
+    assert _mapa([("x", "2026-09-10T20:00:00Z")], cal, res) == {}
+    # Futuro respecto a `now`.
+    assert runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("f", "2026-09-10T18:00:00Z")]), pd.DataFrame(cal), res,
+        now=datetime(2026, 9, 10, 12, tzinfo=timezone.utc)) == {}
+    # Identificado pero sin marcador con ese game_id.
+    assert _mapa([("y", "2026-09-10T18:00:00Z")], cal, [_res("B", 0, 1)]) == {}
+
+
+def test_sin_calendario_mlb_sigue_la_expiracion(tmp_path, monkeypatch):
+    """Hasta que el backfill cree el calendario, nada cambia para MLB."""
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write(tmp_path, current_cands=[_cand("e1")], current_preds=[_pred("e1")])
+    _resultado(tmp_path, _dia_mlb(GAME), 7, 1, "g1")
+    settled = _settle(tmp_path)
+    assert settled.iloc[0]["result"] == "void"
+
+
+def _calendario(root, gid, start, state="Final"):
+    from sqp.storage.schedule_store import ScheduleStore
+    ScheduleStore(root).upsert(LEAGUE, [_cal(gid, start.strftime(ISO), state=state)])
+
+
+def test_candidato_mlb_con_calendario_se_gradua_de_punta_a_punta(tmp_path, monkeypatch):
+    """AUD-003 en MLB (KI-059): fuera de la ventana del feed, con su partido
+    identificado en el calendario, se gradua en vez de anularse."""
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write(tmp_path, current_cands=[_cand("e1")], current_preds=[_pred("e1")])
+    _calendario(tmp_path, "g1", GAME)
+    _resultado(tmp_path, _dia_mlb(GAME), 70, 80, "g1")
+    settled = _settle(tmp_path)
+    assert settled.iloc[0]["result"] == "loss"
+    assert float(settled.iloc[0]["pnl"]) == -100.0
+    assert _settle(tmp_path).empty                      # idempotente
+
+
+def test_candidato_mlb_del_juego_aplazado_expira_de_punta_a_punta(tmp_path, monkeypatch):
+    """FABLE-R2-001 de punta a punta: el aplazado no toma el marcador del otro
+    juego del doubleheader."""
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write(tmp_path, current_cands=[_cand("G2", selection="Away Team")],
+           current_preds=[_pred("G2")])
+    _calendario(tmp_path, "g1", GAME - timedelta(hours=6))
+    _calendario(tmp_path, "g2", GAME, state="Postponed")
+    _resultado(tmp_path, _dia_mlb(GAME), 7, 1, "g1")
+    settled = _settle(tmp_path)
+    assert settled.iloc[0]["result"] == "void"
+    assert float(settled.iloc[0]["pnl"]) == 0.0
+
+
+def test_stream_servido_mlb_con_calendario_se_gradua(tmp_path, monkeypatch):
+    from sqp.storage.served_store import ServedStore
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    ServedStore(tmp_path).append_served(LEAGUE, [_servida(LEAGUE)])
+    _calendario(tmp_path, "gN-1", GAME - timedelta(days=1))
+    _resultado(tmp_path, _dia_mlb(GAME - timedelta(days=1)), 2, 5, "gN-1")
+    assert runner._grade_served_from_history(LEAGUE) == 0   # solo la vispera
+    _calendario(tmp_path, "gN", GAME)
+    _resultado(tmp_path, _dia_mlb(GAME), 3, 1, "gN")
+    assert runner._grade_served_from_history(LEAGUE) == 1
+
+
+def test_schedule_store_una_fila_por_aparicion(tmp_path):
+    """FABLE-K-001: el aplazado recuperado conserva su gamePk en DOS fechas;
+    ambas apariciones se guardan. Dentro de una aparicion, gana la ultima."""
+    from sqp.storage.schedule_store import ScheduleStore
+    st = ScheduleStore(tmp_path)
+    st.upsert(LEAGUE, [_cal("9", "2026-09-10T23:05:00Z", state="Scheduled",
+                            abstract="Preview")])
+    st.upsert(LEAGUE, [_cal("9", "2026-09-10T23:05:00Z", state="Postponed"),
+                       _cal("9", "2026-09-11T17:05:00Z")])
+    df = st.load(LEAGUE).sort_values("date")
+    assert list(zip(df["date"], df["state"])) == [("2026-09-10", "Postponed"),
+                                                  ("2026-09-11", "Final")]
+    assert ScheduleStore(tmp_path / "vacio").load(LEAGUE).empty
+
+
+def _por_store(tmp_path, apariciones):
+    from sqp.storage.schedule_store import ScheduleStore
+    ScheduleStore(tmp_path).upsert(LEAGUE, apariciones)
+    return ScheduleStore(tmp_path).load(LEAGUE)
+
+
+def test_aplazado_recuperado_no_toma_el_marcador_del_otro_juego(tmp_path):
+    """FABLE-K-001 con la forma de BOS-BAL 2025-05-23: juego 1 final 17:35Z,
+    juego 2 (777809) aplazado 23:10Z y recuperado al dia siguiente con el MISMO
+    gamePk, pasando por el store. El pick del aplazado no gradua; el de la
+    recuperacion, con el marcador de SU partido."""
+    cal = _por_store(tmp_path, [
+        _cal("777815", "2025-05-23T17:35:00Z"),
+        _cal("777809", "2025-05-23T23:10:00Z", state="Postponed"),
+        _cal("777809", "2025-05-24T17:35:00Z", date="2025-05-24")])
+    res = [_res("777815", 19, 5, "2025-05-23"), _res("777809", 3, 4, "2025-05-24")]
+    ahora = datetime(2025, 5, 30, tzinfo=timezone.utc)
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("ev_ppd", "2025-05-23T23:10:00Z"),
+                      _fila("ev_rec", "2025-05-24T17:35:00Z")]), cal, res, now=ahora)
+    assert m == {"ev_rec": (3, 4, "Home Team")}
+
+
+def test_suspendido_y_reanudado_se_gradua_con_el_marcador_final(tmp_path):
+    """FABLE-K-002: dos apariciones Final del mismo gamePk (suspension y
+    reanudacion); el pick del dia original se gradua con el marcador final."""
+    cal = _por_store(tmp_path, [
+        _cal("824912", "2026-06-16T23:15:00Z"),
+        _cal("824912", "2026-06-17T18:00:00Z", date="2026-06-17")])
+    res = [_res("824912", 1, 1, "2026-06-16"), _res("824912", 2, 7, "2026-06-17")]
+    ahora = datetime(2026, 6, 25, tzinfo=timezone.utc)
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("s1", "2026-06-16T23:15:00Z")]), cal, res, now=ahora)
+    assert m == {"s1": (2, 7, "Home Team")}
+
+
+def test_dos_eventos_hacia_la_misma_aparicion_no_gradua_ninguno():
+    """FABLE-K-003: uno a uno o nada."""
+    cal = pd.DataFrame([_cal("G1", "2026-09-10T17:05:00Z")])
+    conocidos = pd.DataFrame([_fila("a", "2026-09-10T17:05:00Z"),
+                              _fila("b", "2026-09-10T17:06:00Z")])
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("a", "2026-09-10T17:05:00Z")]), cal, [_res("G1", 7, 1)],
+        now=AHORA, known_events=conocidos)
+    assert m == {}
+
+
+def test_doubleheader_con_hora_por_confirmar_no_gradua():
+    """FABLE-K-003: juego 2 TBD (hora del 1 mas 5 min): la hora no identifica."""
+    cal = pd.DataFrame([_cal("G1", "2026-09-10T17:05:00Z"),
+                        _cal("G2", "2026-09-10T17:10:00Z", tbd=True)])
+    res = [_res("G1", 7, 1), _res("G2", 0, 3)]
+    assert _mapa([("p1", "2026-09-10T17:05:00Z")], cal.to_dict("records"), res) == {}
+
+
+def test_calendario_desactualizado_no_gradua():
+    """Aparicion aun 'Scheduled' (calendario viejo) con marcador del gamePk: no
+    se gradua; solo una aparicion terminada identifica un resultado."""
+    cal = [_cal("100", "2026-09-10T23:05:00Z", state="Scheduled", abstract="Preview")]
+    assert _mapa([("e1", "2026-09-10T23:05:00Z")], cal, [_res("100", 5, 2)]) == {}
+
+
+def test_backfill_mlb_no_escribe_resultados_si_falla_el_calendario(tmp_path, monkeypatch):
+    """Calendario y resultados van juntos: sin calendario, ninguno se escribe."""
+    import importlib.util
+    import sys
+    from pathlib import Path as _P
+    raiz = _P(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("backfill_k", raiz / "scripts" / "backfill_results.py")
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+
+    class _Prov:
+        def fetch_schedule(self, days_back):  # noqa: ARG002
+            raise RuntimeError("calendario caido")
+
+        def fetch_results(self, league, days_back):  # noqa: ARG002
+            return [_res("1", 1, 0)]
+
+    monkeypatch.setattr(mod, "MLBStatsProvider", _Prov)
+    monkeypatch.setattr(sys, "argv", ["backfill_results.py", "--leagues", "mlb"])
+    assert mod.main() == 1
+    assert not ResultsStore(tmp_path).path("mlb").exists()
+
+
+def test_fetch_schedule_incluye_aplazados_con_su_hora():
+    from sqp.providers.mlb_statsapi import MLBStatsProvider
+
+    class _R:
+        status_code = 200
+
+        def json(self):
+            return {"dates": [{"date": "2026-09-10", "games": [
+                {"gamePk": 1, "gameDate": "2026-09-10T17:05:00Z",
+                 "status": {"detailedState": "Final"}, "doubleHeader": "S",
+                 "gameNumber": 1,
+                 "teams": {"home": {"team": {"name": "H"}}, "away": {"team": {"name": "A"}}}},
+                {"gamePk": 2, "gameDate": "2026-09-10T23:10:00Z",
+                 "status": {"detailedState": "Postponed"}, "doubleHeader": "S",
+                 "gameNumber": 2,
+                 "teams": {"home": {"team": {"name": "H"}}, "away": {"team": {"name": "A"}}}},
+                {"gamePk": 3}]}]}
+
+        def raise_for_status(self):
+            return None
+
+    class _S:
+        def get(self, url, **kwargs):  # noqa: ARG002
+            return _R()
+
+    filas = MLBStatsProvider(_S()).fetch_schedule(days_back=3)
+    assert [(f["game_id"], f["state"], f["start_time"]) for f in filas] == [
+        ("1", "Final", "2026-09-10T17:05:00Z"), ("2", "Postponed", "2026-09-10T23:10:00Z")]
+    assert filas[0]["start_time_tbd"] is False
 
 
 # --- AUD-004 ------------------------------------------------------------------
