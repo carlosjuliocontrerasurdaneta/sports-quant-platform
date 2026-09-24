@@ -6,7 +6,7 @@
   "consolidated_utc": "2026-09-23T18:48:05Z",
   "remediation_utc": "2026-09-23T21:30:00Z",
   "verification_utc": "2026-09-24T12:52:03Z",
-  "status": "REMEDIACION 3 COMPLETADA: AUD-003 implementado en ESPN y MLB; veredicto vigente NO APTO hasta nueva verificacion independiente",
+  "status": "REMEDIACION 2 COMPLETADA: AUD-003 implementado parcial (ESPN), pendiente de re-verificacion; veredicto vigente NO APTO (verificacion del 2026-09-24 sobre 1a0f746)",
   "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
   "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
   "branch": "main",
@@ -222,7 +222,8 @@
   "final_result": "NO APTO",
   "final_result_rationale": "Regla 1 del contrato: P1 original AUD-003 abierto (bloqueado por identidad de eventos entre proveedores, KI-057). Resto verificado sin regresiones; validacion global verde.",
   "not_available": [
-    "verificacion independiente de las remediaciones 2 y 3",
+    "verificacion independiente de la remediacion 2",
+    "KI-059 (identidad de calendario MLB)",
     "verificacion independiente de la ronda previa audit-2026-09-22-r2",
     "barrido de secretos en logs/ y data/output/"
   ],
@@ -310,37 +311,5 @@
       "STATUS.md": "e9293baaa136330b3a45f79086005abf392d1ac2a91aa2f55433919474decc7f"
     },
     "history": "audit/latest/history/remediacion2-20260924T204629Z/"
-  },
-  "verification_2": {
-    "date_utc": "2026-09-24",
-    "evaluated_commit": "8b19c5d",
-    "verifier": "fable (solo lectura)",
-    "result": "NO APTO: AUD-003 corregido en ESPN, abierto en MLB; KI-058 corregido; REG-001 (LOW, test no discriminante)",
-    "path": "audit/latest/VERIFICATION.md#8",
-    "history": "audit/latest/history/verificacion2-20260924T230500Z/"
-  },
-  "remediation_3": {
-    "date_utc": "2026-09-25",
-    "scope": "AUD-003 en MLB (KI-059) y REG-001",
-    "decision": "identidad MLB por calendario de MLB Stats API: aparicion (game_id, date) mas cercana en hora, unica, misma fecha ET, sin startTimeTBD, terminada, uno a uno, marcador del mismo gamePk",
-    "independent_review": "fable: NO APTO (FABLE-K-001 ALTA reproducido con datos reales, K-002, K-003) -> APTO",
-    "real_data_validation": "667 coinciden / 0 no coinciden / 25 sin graduar (a traves del store)",
-    "tests": "2380 passed, 1 skipped (24m05s, exit 0); ruff OK; mypy OK (107)",
-    "files_modified": [
-      "src/sqp/providers/mlb_statsapi.py",
-      "src/sqp/storage/schedule_store.py",
-      "src/sqp/settlement/runner.py",
-      "scripts/backfill_results.py",
-      "tests/settlement/test_candidate_history_fallback.py"
-    ],
-    "activation": "cuando el backfill semanal cree data/historical/schedule_mlb.csv; hasta entonces MLB expira como antes",
-    "residual": "fallback limitado por backfill semanal frente a STALE_VOID_DAYS=3 (preexistente)",
-    "deliverables": {
-      "CHANGES.md": "c0c35762e18716743a2cc216e663720e411816a826b3387d0df56b8428f02b4f",
-      "VALIDATION.md": "67c58e8de17f6c1b26904b3f4b361046a9d57ad1d235af86d67fe291fd81a21d",
-      "STATUS.md": "5b51728a69cd111ed13f40d14dc0a3ab52ea47110ca3e895c99b2815c5a2f72f",
-      "VERIFICATION.md": "247185bbfdfaf7e656fe748928f5cd2bbd76a69880b5859f2cd80e5b79d96be3"
-    },
-    "history": "audit/latest/history/remediacion3-20260924T234113Z/"
   }
 }

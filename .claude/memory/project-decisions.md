@@ -390,3 +390,18 @@ Format:
   - mantener el bloqueo (sin coste de corrección, pero anula resultados que existen);
   - ±1 día (causa del fallo).
 - Consequences: AUD-003 resuelto para ligas ESPN y KI-058 para ESPN. Pérdida de evidencia medida: 7 eventos ESPN por desfase de día y 4 de WNBA por la guarda de adyacencia. 0 graduaciones contradictorias.
+
+- Date: 2026-09-25
+- Decision: **La identidad de un partido MLB entre The Odds API y el histórico sale del CALENDARIO de MLB Stats API, no de la fecha.** Es la aparición del mismo par más cercana en hora, con estas condiciones:
+  - única y en la misma fecha ET;
+  - sin hora por confirmar;
+  - terminada;
+  - uno a uno;
+  - marcador del mismo `gamePk`.
+
+  El calendario se guarda con una fila por aparición.
+- Reason: la fecha no identifica en MLB (series, doubleheaders con un aplazado, series en Asia). La hora sí: 705/710 a 5 minutos o menos y el siguiente juego a 181 minutos o más, así que no hace falta umbral. Validado 667/0 con datos reales a través del store. Revisión Fable NO APTO → APTO.
+- Alternatives:
+  - excluir MLB del fallback (dejaba AUD-003 abierto en la liga con más picks);
+  - deduplicar por `gamePk` (borraba la aparición aplazada, FABLE-K-001).
+- Consequences: AUD-003 implementado en ESPN y MLB. Queda como decisión operativa aparte: un backfill diario para que el fallback actúe antes de la expiración a los 3 días.

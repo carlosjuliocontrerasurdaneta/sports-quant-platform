@@ -455,3 +455,14 @@ Format:
 - Affected files: src/sqp/providers/mlb_statsapi.py (`fetch_results`), src/sqp/storage/results_store.py, src/sqp/settlement/runner.py
 - Proposed fix: persistir la identidad de calendario (`gameDate` UTC, `gameNumber`, `doubleHeader`) en el ingest y en `ResultsStore`, con enriquecimiento de las filas existentes. Después, emparejar por la hora de inicio, midiendo antes la diferencia entre The Odds API y `gameDate`.
 - Status: ABIERTO (2026-09-24).
+
+- Actualización 2026-09-25 (KI-059): **implementado.** El calendario MLB (`fetch_schedule` → `ScheduleStore`, una fila por aparición `(game_id, date)`) identifica el partido de un pick así:
+  - el más cercano en hora, único y en la misma fecha ET;
+  - sin hora por confirmar (`startTimeTBD`) ese día;
+  - aparición terminada;
+  - emparejamiento uno a uno;
+  - marcador del mismo `gamePk`.
+
+  Revisión Fable: NO APTO la primera vez (K-001: el upsert por `game_id` borraba la aparición aplazada, reproducido con BOS–BAL 2025) y APTO la segunda. Validado con datos reales a través del store: 667/0. Se activa cuando el backfill semanal cree `data/historical/schedule_mlb.csv`.
+
+  **Residual:** el fallback solo actúa si el histórico se actualizó antes de los 3 días de expiración; el backfill es semanal.

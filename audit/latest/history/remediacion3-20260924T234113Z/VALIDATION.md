@@ -87,17 +87,3 @@ Script `scratchpad/aud013_before.py`, con un registro legible y un centinela pre
 | `ruff check src scripts tests` / `mypy src` | exit 0 / 106 ficheros OK |
 | Suite completa v1 y v2 (ambas superadas) | 2355 passed, 1 skipped / 2360 passed, 1 skipped |
 | Suite completa v3 (código final) | ver el manifest (`remediation_2.tests`) |
-
-## 9. Remediación 3 (KI-059)
-
-| Evidencia | Resultado |
-|---|---|
-| Medición del calendario (`medir_ki059.py`) | 705 de 710 a 5 min o menos; el segundo juego del par, a 181 min o más |
-| Función real con calendario en memoria (`validar_ki059.py`) | 668 coinciden / 0 no coinciden |
-| Función real a través del store, con todas las guardas (`validar_ki059_store.py`) | **667 coinciden / 0 no coinciden** / 25 sin graduar |
-| Reproducción real de Fable (`repro.py`, `repro2.py`) | BOS–BAL y CHC–MIL `{}`; ATL–SF `(2,7)`; KC–COL (hora por confirmar) `{}` |
-| `test_candidate_history_fallback.py` contra `8b19c5d` | 13 fallan (todos los de calendario) |
-| REG-001 contra `6676e9a` | falla (±1); pasa ahora |
-| `tests/settlement` + liquidación + backfill | 165 passed |
-| ruff / mypy | exit 0 / 107 ficheros OK |
-| Suite completa | ver `remediation_3.tests` en el manifest |
