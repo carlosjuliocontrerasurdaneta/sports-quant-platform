@@ -426,3 +426,13 @@ Format:
 - Affected files: src/sqp/settlement/runner.py (`fetch_and_settle`), src/sqp/domain/models.py (`BetCandidate`)
 - Proposed fix: decisión del operador sobre la identidad del evento. Opciones: persistir un id del vendor en el candidato, o fecha local exacta con zona horaria por liga. Después, tests de serie, aplazado y doubleheader. Los tests de `tests/settlement/test_candidate_history_fallback.py` fijan hoy el estado seguro.
 - Status: ABIERTO (2026-09-23). Con el gate en default-deny (0/49) el stake es 0.
+
+- ID: KI-058
+- Severity: Media
+- Description: **El stream servido tiene la clase de fallo de FABLE-001.** `_grade_served_from_history` usa `history_scores_map`, que empareja por (local, visitante) ordenados ± 1 día.
+  - Una fila servida de un juego de serie **aplazado** (su `start_time` ya pasó y está en `pending`) se gradúa con el marcador del juego anterior de la serie.
+  - Lo reprodujo el verificador independiente de la ronda `audit-2026-09-23` (2026-09-24): `gN` quedó `loss` con el 2-5 de `gN-1`.
+  - Ese stream alimenta el prediction gate y los calibradores. Impacto INFERRED, porque la frecuencia no se midió.
+- Affected files: src/sqp/settlement/runner.py (`_grade_served_from_history`, `history_scores_map`)
+- Proposed fix: la misma decisión de identidad de eventos que KI-057; aplicarla a los dos caminos a la vez.
+- Status: ABIERTO (2026-09-24). Preexistente, no es regresión de `33ba978`; para la próxima ronda (MEDIUM/P2 propuesto).

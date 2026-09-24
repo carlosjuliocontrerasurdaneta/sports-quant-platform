@@ -258,3 +258,11 @@ independiente** del diff se despacha con `model: "fable"` (subagente
 `independent-code-reviewer`), mismo patrón que la ronda del 2026-09-13. No se
 toca ningún umbral, pre-registro, registro productivo del gate ni dato de
 `data/`.
+
+## Registro de enrutamiento — verificación independiente de `audit-2026-09-23` (2026-09-24)
+
+Orden del operador: ejecutar íntegramente `audits/prompts/verificar-remediacion.md`. La sesión principal (`claude-opus-5-5`) fue la IMPLEMENTADORA, así que no puede verificarse a sí misma. La verificación se despachó a un agente nuevo `independent-code-reviewer` con `model: "fable"` (regla 1 de despacho: gates, ledger, calibración, cifras publicables), de solo lectura sobre `1a0f746`. La sesión principal solo redactó `VERIFICATION.md`, `STATUS.md` y el manifest a partir de su evidencia.
+
+Veredicto: **NO APTO** (AUD-003, P1, bloqueado). 12 verificados-corregidos, 1 mitigado, 0 regresiones. Nuevo preexistente: KI-058.
+
+Incidencia del verificador: hasta 7 llamadas reales a `codex review` sobre un repo vacío del scratchpad, por un PATH mal formado; puede haber consumido cuota de Codex.

@@ -5,8 +5,8 @@
   "diagnosis_openai_utc": "2026-09-23T16:36:04.040Z",
   "consolidated_utc": "2026-09-23T18:48:05Z",
   "remediation_utc": "2026-09-23T21:30:00Z",
-  "verification_utc": "2026-09-24T12:52:03Z",
-  "status": "VERIFICACION COMPLETADA: NO APTO (AUD-003 P1 bloqueado); 12 verificados-corregidos, 1 verificado-mitigado, 0 regresiones",
+  "verification_utc": null,
+  "status": "REMEDIACION COMPLETADA SIN COMMIT: 13 IMPLEMENTADOS pendientes de verificacion independiente, AUD-003 BLOQUEADO (FABLE-001); VERIFICACION PENDIENTE",
   "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
   "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
   "branch": "main",
@@ -177,10 +177,6 @@
       "path": "audit/latest/history/remediacion-20260923T210514Z/MANIFEST.json",
       "sha256": "ce9911f8fc96ed4ed3673cb5a68d565a4d77019c1c23afc04cebfe56bf7f005e",
       "note": "manifest previo a la remediacion; copia verificada"
-    },
-    {
-      "path": "audit/latest/history/verificacion-20260924T125203Z/",
-      "note": "STATUS.md y MANIFEST.json previos a la verificacion; copia verificada por sha256"
     }
   ],
   "tests_initial": "2299 passed, 1 skipped in 1359.66s (exit 0) [Claude, suite completa]; 844 passed focalizados [OpenAI]",
@@ -219,13 +215,14 @@
     "tests/test_prediction_gate.py",
     "tests/test_store_concurrency.py"
   ],
-  "final_result": "NO APTO",
-  "final_result_rationale": "Regla 1 del contrato: P1 original AUD-003 abierto (bloqueado por identidad de eventos entre proveedores, KI-057). Resto verificado sin regresiones; validacion global verde.",
+  "final_result": null,
+  "final_result_rationale": "Sin verificacion independiente no hay resultado final. No se emite PASS: AUD-003 (HIGH/P1) bloqueado y nada commiteado (el guard KI-036 abortara el run programado).",
   "not_available": [
-    "decision de identidad de eventos (AUD-003, KI-057)",
+    "verificacion independiente",
     "verificacion independiente de la ronda previa audit-2026-09-22-r2",
-    "frecuencia productiva de stale_void con resultado historico",
-    "barrido de secretos en logs/ y data/output/"
+    "CI remoto de los cambios (sin push)",
+    "barrido de secretos en logs/ y data/output/",
+    "decision de identidad de eventos (AUD-003)"
   ],
   "remediation": {
     "authorized_scope": "todos los confirmados (AUD-001..AUD-014); orden: ejecutar integramente audits/prompts/corregir-auditoria.md",
@@ -255,41 +252,5 @@
       "VALIDATION.md": "41c6cbf3ce551b71357a4fca712cee107e50db4e55f3752e66471aa15b856502",
       "STATUS.md": "7151e8e4d5801b11dfc284ea09447da5e8d85751a505195d4bd2e32c8e71f1e7"
     }
-  },
-  "verification": {
-    "verifier": "subagente independent-code-reviewer en fable (sin contexto de la implementacion; solo lectura)",
-    "evaluated_commit": "1a0f746",
-    "remediation_commit": "33ba978",
-    "path": "audit/latest/VERIFICATION.md",
-    "sha256": "43822bd3497b0ae0ad9620128f9fd3233c74c2d263a0de606cf7a98aed329344",
-    "status_sha256": "1db2f4a111925397800c93fb662a0cbb38b7e3b54aa69faf557520f5e063e124",
-    "states": {
-      "verificado-corregido": [
-        "AUD-001",
-        "AUD-002",
-        "AUD-005",
-        "AUD-006",
-        "AUD-007",
-        "AUD-008",
-        "AUD-009",
-        "AUD-010",
-        "AUD-011",
-        "AUD-012",
-        "AUD-013",
-        "AUD-014"
-      ],
-      "verificado-mitigado": [
-        "AUD-004"
-      ],
-      "abierto": [
-        "AUD-003"
-      ]
-    },
-    "regressions": [],
-    "new_preexisting_candidates": {
-      "KI-058": "stream servido: history_scores_map gradua un juego aplazado de una serie con el marcador del juego anterior (clase FABLE-001); reproducido; MEDIUM/P2 propuesto"
-    },
-    "tests": "2350 passed, 1 skipped (19m55s, exit 0); ruff OK; mypy OK (106); CI success en 1a0f746",
-    "incidental_effects": "hasta 7 invocaciones reales de 'codex review' sobre un repo vacio del scratchpad por un PATH mal formado del verificador (posible consumo de cuota Codex); posibles lineas en logs/sqp.log"
   }
 }

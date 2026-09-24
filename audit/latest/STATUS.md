@@ -1,22 +1,30 @@
 # Estado por hallazgo · ronda `audit-2026-09-23`
 
-Línea base: `FINDINGS.md` (sin modificar). Actualizado por la fase de **remediación** el 2026-09-23. La columna de verificación la rellena la fase de verificación independiente, que debe conservar las columnas anteriores.
+Línea base: `FINDINGS.md` (sin modificar).
+
+- **Remediación:** 2026-09-23, commit `33ba978`.
+- **Verificación independiente:** 2026-09-24, en `fable` sobre `1a0f746`. Detalle en `VERIFICATION.md`.
+- La versión previa de este fichero está en `history/verificacion-20260924T125203Z/STATUS.md`.
+
+**Veredicto de la ronda: NO APTO**, por AUD-003 (P1, bloqueado).
 
 | ID | Sev. | Prio. | Remediación | Verificación independiente | Evidencia | Próxima acción |
 |---|---|---|---|---|---|---|
-| AUD-001 | HIGH | P1 | IMPLEMENTADO | PENDIENTE | `CHANGES.md` §2; tests `test_orchestrator_safety.py`, `test_live_gate_integration.py` | Verificar; decidir el commit antes del run de las 12:00 (guard KI-036) |
-| AUD-002 | HIGH | P1 | IMPLEMENTADO | PENDIENTE | `test_prediction_gate.py` (dos tests de concurrencia) | Verificar |
-| AUD-003 | HIGH | P1 | **BLOQUEADO** | NO APLICA hasta desbloquear | FABLE-001 (CRITICAL, reproducido): el fallback por (local, visitante) ± 1 día liquidaba picks sin jugar con el marcador de otro partido. Revertido; tests de regresión | **Decisión del operador** sobre la identidad de eventos entre proveedores (abierta desde AUD-002, 2026-09-14) |
-| AUD-004 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_candidate_history_fallback.py`; medición FABLE-002: 0 anulaciones en la primera pasada | Verificar |
-| AUD-005 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_live_gate_integration.py::test_banca_cero_*` | Verificar |
-| AUD-006 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_daily_picks.py`, `test_breakeven.py` | Verificar |
-| AUD-007 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_calibrator.py` (objetivo del contrato; igualdad sin medias) | Verificar; no promueve nada |
-| AUD-008 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_edge_information.py` | Verificar |
-| AUD-009 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_store_concurrency.py` | Verificar; `log_pitcher_confirmation` queda como candidato de la misma clase |
-| AUD-010 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_fip_boxscore_errors.py` | Verificar |
-| AUD-011 | MEDIUM | P2 | IMPLEMENTADO | PENDIENTE | `test_audit_hooks.py::test_crossreview_*` | Verificar |
-| AUD-012 | LOW | P3 | IMPLEMENTADO | PENDIENTE | `test_candidate_history_fallback.py::test_dos_generaciones_*` | Verificar |
-| AUD-013 | LOW | P3 | IMPLEMENTADO | PENDIENTE | `test_gate_block_visibility.py` + comprobación de comportamiento en HEAD | Verificar |
-| AUD-014 | LOW | P3 | IMPLEMENTADO | PENDIENTE | `test_monte_carlo.py` | Verificar |
+| AUD-001 | HIGH | P1 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | `CHANGES.md` §2; `VERIFICATION.md` §2 (prueba de extremo a extremo: stake 0 en HEAD, stakes > 0 en la base) | — (residual: `run_daily.py` manual) |
+| AUD-002 | HIGH | P1 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | tests de concurrencia; revisión estructural del lock | — |
+| AUD-003 | HIGH | P1 | **BLOQUEADO** | **ABIERTO** (escenario original reproducido; FABLE-001 no ocurre) | `VERIFICATION.md` §2; KI-057 | **Decisión del operador** sobre la identidad de eventos entre proveedores |
+| AUD-004 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-MITIGADO** | test discriminante; FABLE-002: 0 casos en la primera pasada | Riesgo residual: `stale_void` irreversible de desplazados jugados (depende de AUD-003) |
+| AUD-005 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | 2 tests (edge y accuracy); topes de exposición seguros | — |
+| AUD-006 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | tests; `roi_esp` = `estimated_edge` | — |
+| AUD-007 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | 0,6667 sobre 100 filas; sin medias, bit a bit | — |
+| AUD-008 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | −0,3636 con n = 11, igual que el ledger | — |
+| AUD-009 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | 3 tests con barrera | Próxima ronda: `log_pitcher_confirmation` |
+| AUD-010 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | 4 casos | — |
+| AUD-011 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | `codex` falso: HEAD frente a base | Próxima ronda: borrado del marcador cuando falta `codex` |
+| AUD-012 | LOW | P3 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | test; orden por nombre | Observación: fragilidad del test entre las 01:00 y las 03:00 UTC |
+| AUD-013 | LOW | P3 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | aviso en health y mensaje en `gate_status` | — |
+| AUD-014 | LOW | P3 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | MC 0,52349 frente a 0,52330 analítico | — |
 
-**Resumen:** 13 implementados y pendientes de verificación, 1 bloqueado, 0 cerrados. **Nada commiteado.**
+**Fuera de la línea base:** KI-058, un defecto preexistente de la clase FABLE-001 en el stream servido (`_grade_served_from_history`). Reproducido por el verificador; propuesto MEDIUM/P2 para la próxima ronda.
+
+**Resumen:** 12 verificados-corregidos, 1 verificado-mitigado, 1 abierto (P1). Sin regresiones.
