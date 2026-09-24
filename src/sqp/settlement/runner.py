@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from sqp.config import ROOT, Settings
@@ -35,6 +36,9 @@ SUPERSEDED_LOOKBACK_DAYS = 14
 # `_<dia>.csv` o, si ese hueco ya lo ocupaba otra generacion del mismo dia,
 # `_<dia>_<HHMMSS>.csv` (AUD-012, ronda audit-2026-09-23; ver
 # `daily._archive_existing`). El grupo 1 es siempre el dia.
+# Fecha oficial de MLB Stats API = fecha local del estadio = fecha en esta zona
+# (misma convencion que `pipeline.team_totals_capture.MLB_TZ`).
+_MLB_DATE_TZ = ZoneInfo("America/New_York")
 _ARCHIVE_DAY = re.compile(r"_(\d{4}-\d{2}-\d{2})(?:_\d{6})?\.csv$")
 
 
@@ -221,7 +225,12 @@ def history_scores_map(pending: pd.DataFrame, results: list[dict],
 
     An ambiguous match (two results for the same pair within tolerance, e.g. an
     MLB doubleheader) is SKIPPED: grading with the wrong game's score would
-    corrupt the calibration evidence, so ambiguity never grades."""
+    corrupt the calibration evidence, so ambiguity never grades.
+
+    NO SE USA PARA LIQUIDAR desde el 2026-09-24: la tolerancia de +-1 dia no
+    prueba identidad (un juego de serie de hoy, o aplazado, recibia el marcador
+    del de ayer; FABLE-001, KI-058). La liquidacion usa
+    `exact_history_scores_map`."""
     keyed: dict[tuple[str, str], list[tuple[str, int, int]]] = {}
     for m in results:
         try:
@@ -240,6 +249,121 @@ def history_scores_map(pending: pd.DataFrame, results: list[dict],
         if len(hits) == 1:
             scores[eid] = (hits[0][0], hits[0][1], home)
     return scores
+
+
+def expected_result_date(league: str, start_time: object) -> str | None:
+    """Fecha con la que ``data/historical/`` guarda EL partido que empieza en
+    ``start_time`` (UTC, The Odds API), segun la convencion de su vendor
+    (`scripts/backfill_results.py`: MLB Stats API para ``mlb``, ESPN el resto):
+
+    - ESPN guarda ``event.date[:10]``, la fecha UTC del inicio.
+    - MLB Stats API guarda la fecha OFICIAL, la local del estadio, que para
+      todo partido de MLB coincide con la fecha en ``America/New_York`` (la
+      zona que ya usa `pipeline.team_totals_capture.MLB_TZ`).
+
+    Medido el 2026-09-24 sobre el stream servido graduado por el feed: MLB con
+    esta regla, 655 coinciden y 0 no coinciden (13 doubleheaders ambiguos, 24
+    sin resultado); ESPN, el marcador coincide en el mismo dia UTC, con 7
+    excepciones de ~617 (inicio de The Odds API en otro dia UTC que ESPN, casi
+    siempre cerca de medianoche; revision Fable, FABLE-R3-002): esas no
+    empatan y expiran, nunca se graduan mal. None si ``start_time`` no se
+    puede leer."""
+    st = pd.to_datetime(start_time, errors="coerce", utc=True)
+    if pd.isna(st):
+        return None
+    if league == "mlb":
+        return st.tz_convert(_MLB_DATE_TZ).date().isoformat()
+    return st.date().isoformat()
+
+
+def _adjacent_days(day: str) -> tuple[str, str]:
+    d = datetime.strptime(day, "%Y-%m-%d")
+    return ((d - timedelta(days=1)).strftime("%Y-%m-%d"),
+            (d + timedelta(days=1)).strftime("%Y-%m-%d"))
+
+
+def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
+                             league: str, *, now: datetime | None = None,
+                             known_events: pd.DataFrame | None = None
+                             ) -> dict[str, tuple[int, int, str]]:
+    """event_id -> (home_score, away_score, home) con IDENTIDAD EXACTA: mismo
+    par (local, visitante) ORDENADO y normalizado, la fecha exacta que el
+    vendor guarda para ese partido (`expected_result_date`), UN solo resultado
+    (un doubleheader es ambiguo y no gradua) y partido ya empezado.
+
+    Sustituye a la tolerancia de +-1 dia de `history_scores_map` en todo lo que
+    liquida: con tolerancia, el juego de hoy de una serie (o uno aplazado) se
+    graduaba con el marcador del de ayer, y liquidar es irreversible (FABLE-001,
+    KI-058). Un partido sin resultado en su fecha no se gradua: expira."""
+    now = now or datetime.now(timezone.utc)
+    # Doubleheader visto desde NUESTROS registros (FABLE-R2-001, 2026-09-24): si
+    # The Odds API listo mas de un evento del mismo par en la misma fecha, un
+    # unico resultado en el historico NO identifica cual se jugo -- el otro pudo
+    # aplazarse, y MLB Stats API descarta los aplazados. Se cuenta sobre
+    # `pending` mas ``known_events`` (el resto de filas propias de la liga).
+    eventos: dict[tuple[str, str, str], set[str]] = {}
+    for frame in (pending, known_events):
+        if frame is None or frame.empty or not {"event_id", "home", "away",
+                                                 "start_time"}.issubset(frame.columns):
+            continue
+        for r in frame[["event_id", "home", "away", "start_time"]].itertuples(index=False):
+            dia = expected_result_date(league, r.start_time)
+            if dia:
+                eventos.setdefault((normalize_key(str(r.home)), normalize_key(str(r.away)),
+                                    dia), set()).add(str(r.event_id))
+    keyed: dict[tuple[str, str, str], list[tuple[int, int]]] = {}
+    for m in results:
+        try:
+            k = (normalize_key(str(m["home"])), normalize_key(str(m["away"])),
+                 str(m.get("date", ""))[:10])
+            keyed.setdefault(k, []).append((int(m["home_score"]), int(m["away_score"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    scores: dict[str, tuple[int, int, str]] = {}
+    for r in pending.itertuples():
+        start = getattr(r, "start_time", None)
+        st = pd.to_datetime(start, errors="coerce", utc=True)
+        if pd.isna(st) or st.to_pydatetime() > now:
+            continue
+        # MLB fuera de America (FABLE-R2-002): la fecha ET solo es la oficial
+        # para estadios de America. Ningun partido medido de MLB en America
+        # empieza entre las 03:00Z y las 10:00Z (692 filas, 2026-09-24); en esa
+        # franja caen los de Asia, donde la regla asignaria la fecha del juego
+        # anterior de la serie. Sin identidad demostrable, no se gradua.
+        if league == "mlb" and 3 <= st.hour < 10:
+            continue
+        day = expected_result_date(league, start)
+        home = str(r.home)
+        clave = (normalize_key(home), normalize_key(str(r.away)), str(day))
+        if len(eventos.get(clave, ())) > 1:
+            continue
+        # Back-to-back del mismo par (FABLE-R3-003): The Odds API a veces
+        # desplaza el inicio a otro dia UTC, y entonces el partido caeria en la
+        # fecha del OTRO. Con resultado del par tambien en un dia adyacente, la
+        # fecha no identifica cual es: no se gradua.
+        if day and any(keyed.get((clave[0], clave[1], adj))
+                       for adj in _adjacent_days(str(day))):
+            continue
+        hits = keyed.get(clave, [])
+        if len(hits) == 1:
+            scores[str(r.event_id)] = (hits[0][0], hits[0][1], home)
+    return scores
+
+
+def _served_rows(league: str) -> pd.DataFrame:
+    """Todas las filas servidas de la liga (pendientes y graduadas), solo las
+    columnas de identidad: con que eventos listo The Odds API cada par y dia.
+    Best-effort: vacio si no se puede leer."""
+    store = ServedStore(ROOT)
+    frames = []
+    for path in (store.served_path(league), store.graded_path(league)):
+        try:
+            if path.exists():
+                frames.append(pd.read_csv(path, usecols=lambda c: c in (
+                    "event_id", "home", "away", "start_time")))
+        except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError):
+            continue
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def tennis_history_results(league: str) -> list[dict]:
@@ -297,7 +421,17 @@ def _grade_served_from_history(league: str, three_way: bool = False) -> int:
             results = ResultsStore(ROOT).load(history_key)
             if not results:
                 return 0
-            scores = history_scores_map(still, results)
+            # Identidad EXACTA, no +-1 dia (KI-058, 2026-09-24): con tolerancia,
+            # un juego APLAZADO de una serie se graduaba con el marcador del
+            # juego anterior -- y este stream decide el prediction gate.
+            # MLB NO, igual que en candidatos (FABLE-R3-001): la guarda de
+            # doubleheader solo ve los juegos que servimos, y medido solo
+            # habria cubierto 4 de 10 doubleheaders. Pendiente de KI-059.
+            if league == "mlb":
+                return 0
+            scores = exact_history_scores_map(
+                still, results, league,
+                known_events=_served_rows(league))
         if not scores:
             return 0
         return _grade_served(league, scores, three_way=three_way)
@@ -545,6 +679,32 @@ def _candidate_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
     return preds[["event_id", "home", "away", "start_time"]].reset_index(drop=True)
 
 
+def _candidate_history_scores(league: str, pending: pd.DataFrame
+                              ) -> dict[str, tuple[int, int, str]]:
+    """Marcadores de data/historical/ para candidatos de equipo con identidad
+    EXACTA (`exact_history_scores_map`). Best-effort: un fallo no puede abortar
+    la liquidacion."""
+    if pending.empty:
+        return {}
+    # MLB NO (FABLE-R2-001/002, revision Fable 2026-09-24): el historico de MLB
+    # guarda solo la FECHA y descarta los aplazados, asi que en un doubleheader
+    # con un juego aplazado el unico resultado del dia es el del OTRO juego, y
+    # liquidar es irreversible. Hasta persistir la identidad de calendario
+    # (hora `gameDate` y numero de juego del doubleheader, KI-059), los
+    # candidatos de MLB fuera de la ventana del feed siguen la expiracion.
+    if league == "mlb":
+        return {}
+    try:
+        from sqp.storage.results_store import ResultsStore
+        results = ResultsStore(ROOT).load(league)
+        if not results:
+            return {}
+        return exact_history_scores_map(pending, results, league)
+    except Exception as exc:
+        log.warning("[%s] history fallback for candidates failed: %s", league, exc)
+        return {}
+
+
 def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     """Grade tennis candidates via ESPN results matched by player name + date.
     Players and match dates come from current predictions, with archived
@@ -700,17 +860,19 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     preds = _candidate_metadata(league, cands)
     start_times = {**{str(r.event_id): str(r.start_time) for r in preds.itertuples()},
                    **_prediction_start_times(league)}
-    # SIN fallback historico para candidatos de equipo, a proposito (AUD-003,
-    # ronda audit-2026-09-23: BLOQUEADO). Se implemento con `history_scores_map`
-    # y la revision Fable lo tumbo con una reproduccion: emparejar por (local,
-    # visitante) +-1 dia NO prueba identidad, y en una serie MLB el pick de HOY,
-    # sin jugar, se liquidaba con el marcador de AYER -- de forma irreversible,
-    # porque DEDUP_KEY no lleva `result`. Es el problema abierto de identidad
-    # entre proveedores (AUD-002, remediacion 2026-09-14). Hasta decidirlo, un
-    # candidato fuera de la ventana del feed sigue la politica de expiracion.
-    settled = settle_candidates(cands, scores, three_way)
+    # Lo que el feed de 3 dias ya no lista se gradua contra data/historical/ SOLO
+    # con identidad EXACTA (`exact_history_scores_map`: mismo par ordenado, la
+    # fecha que el vendor guarda para ESE partido, resultado unico y partido ya
+    # empezado) -- AUD-003, ronda audit-2026-09-23. El primer intento emparejaba
+    # +-1 dia y liquidaba el pick de HOY de una serie MLB con el marcador de AYER,
+    # irreversiblemente (FABLE-001). El feed vivo manda cuando ambos responden.
+    pending_meta = preds.assign(start_time=preds["event_id"].astype(str).map(
+        lambda e: start_times.get(e, "")))
+    cand_scores = {**_candidate_history_scores(league, pending_meta), **scores}
+    settled = settle_candidates(cands, cand_scores, three_way)
     if scores_trusted:
-        settled = _with_stale_voids(league, cands, settled, scores, start_times)
+        settled = _with_stale_voids(league, cands, settled, cand_scores,
+                                    start_times)
     settled = _attach_event_meta(settled, _event_meta_map(raw))
     return _persist_settled(league, settled)
 
