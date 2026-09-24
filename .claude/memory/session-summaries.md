@@ -700,3 +700,21 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - El autofix `ruff --fix` del hook retiró dos veces imports añadidos antes de su primer uso.
 
 **PENDIENTE CRÍTICO:** **nada está commiteado**, así que el guard KI-036 abortará el `DIARIO_COMPLETO` de las 12:00. Además: verificación independiente de esta ronda y de la r2, y la decisión de identidad de eventos para AUD-003.
+
+## 2026-09-24 — Verificación de `audit-2026-09-23` e identidad exacta de eventos
+
+**Verificación independiente** (agente Fable nuevo, sobre `1a0f746`): **NO APTO** por AUD-003 (P1, bloqueado). 12 corregidos, AUD-004 mitigado, 0 regresiones. Nuevo KI-058: el stream servido gradúa un aplazado de serie con el marcador del día anterior. Commit `6676e9a`, push y CI verde.
+
+**Identidad de eventos** (el operador delegó la decisión: «elige la mejor opción y aplícala»):
+- Medido primero. ESPN guarda la fecha UTC; MLB guarda la fecha en `America/New_York` (655/0).
+- Regla `exact_history_scores_map`: par ordenado, fecha exacta del vendor, resultado único, partido empezado, sin doubleheader en nuestros registros y sin back-to-back.
+- Revisión Fable en tres rondas:
+  - R2, NO APTO: doubleheader MLB con un juego aplazado; series en Asia.
+  - R3, NO APTO: el stream servido de MLB con la guarda solo parcial.
+  - v3, APTO.
+- Resultado: ESPN resuelto en candidatos y en el stream servido (593 eventos, 0 contradicciones). MLB fuera del fallback hasta KI-059.
+- Efecto real hoy: 0 graduaciones nuevas y 0 `stale_void` que reconciliar.
+
+**Entregables:** CHANGES §6, VALIDATION §7 y STATUS (AUD-003 IMPLEMENTADO PARCIAL, pendiente de re-verificación). Memoria: KI-057/058 actualizados, KI-059 nuevo y decisión 2026-09-24. Obsidian: `Bitácora/2026-09-24`.
+
+**Pendiente:** verificación independiente de la remediación 2; KI-059; verificación de la ronda r2.

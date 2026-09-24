@@ -381,3 +381,12 @@ Format:
 - Reason: FABLE-001 (CRITICAL, reproducido). El emparejamiento (local, visitante) ± 1 día liquidaba de forma irreversible picks sin jugar con el marcador de otro partido de la serie. Acotarlo con una regla de fechas sería un umbral inventado sobre una operación irreversible.
 - Alternatives: fallback con filtro `start_time <= now` (rechazado: un partido jugado sin resultado ingerido se empareja con el vecino de la serie); ventana de fecha más estrecha (sin zona horaria por liga no se puede definir la fecha local).
 - Consequences: KI-057 abierto. Tests de regresión en `tests/settlement/test_candidate_history_fallback.py`. Se prioriza no corromper el ledger frente a graduar más picks.
+
+- Date: 2026-09-24
+- Decision: **Identidad de un partido entre The Odds API y `data/historical/` = par ordenado + la fecha EXACTA que el vendor guarda para ese partido + resultado único + partido empezado + sin doubleheader ni back-to-back visibles.** La fecha es la UTC en ESPN y la de `America/New_York` en MLB. MLB queda fuera del fallback hasta tener identidad de calendario (KI-059). Supera a la decisión del 2026-09-23 (no liquidar desde el histórico).
+- Reason: la medición (MLB 655/0 con ET; ESPN mismo día UTC) muestra que la tolerancia de ±1 día sobraba y era la causa de FABLE-001 y KI-058. Revisado por Fable en tres rondas (R2 y R3 NO APTO, corregidos; v3 APTO).
+- Alternatives:
+  - persistir la hora de inicio en el histórico ya (preferible para MLB, pero requiere re-ingesta: KI-059);
+  - mantener el bloqueo (sin coste de corrección, pero anula resultados que existen);
+  - ±1 día (causa del fallo).
+- Consequences: AUD-003 resuelto para ligas ESPN y KI-058 para ESPN. Pérdida de evidencia medida: 7 eventos ESPN por desfase de día y 4 de WNBA por la guarda de adyacencia. 0 graduaciones contradictorias.

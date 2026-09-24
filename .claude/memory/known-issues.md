@@ -436,3 +436,22 @@ Format:
 - Affected files: src/sqp/settlement/runner.py (`_grade_served_from_history`, `history_scores_map`)
 - Proposed fix: la misma decisión de identidad de eventos que KI-057; aplicarla a los dos caminos a la vez.
 - Status: ABIERTO (2026-09-24). Preexistente, no es regresión de `33ba978`; para la próxima ronda (MEDIUM/P2 propuesto).
+
+- Actualización 2026-09-24 (KI-057 y KI-058): identidad EXACTA de eventos implementada (`runner.exact_history_scores_map`). Condiciones:
+  - fecha del vendor: UTC en ESPN, `America/New_York` en MLB;
+  - par ordenado y resultado único;
+  - partido ya empezado;
+  - sin doubleheader en nuestros registros;
+  - sin back-to-back.
+
+  Resuelto para ligas ESPN, en candidatos y en el stream servido. **MLB queda excluido** del fallback histórico (ver KI-059). Revisión Fable en tres rondas, APTO en la tercera.
+
+- ID: KI-059
+- Severity: Media
+- Description: **MLB no tiene fallback histórico de liquidación** (candidatos ni stream servido): cualquier fila MLB que el feed de The Odds API (3 días) no gradúe expira como `stale_void`.
+  - Motivo: `data/historical/results_mlb.csv` guarda solo la FECHA.
+  - Además, `MLBStatsProvider.fetch_results` descarta los aplazados, así que en un doubleheader con un juego aplazado el único resultado del día es el del otro juego (FABLE-R2-001, reproducido).
+  - Las series en Asia rompen la regla de fecha ET (FABLE-R2-002).
+- Affected files: src/sqp/providers/mlb_statsapi.py (`fetch_results`), src/sqp/storage/results_store.py, src/sqp/settlement/runner.py
+- Proposed fix: persistir la identidad de calendario (`gameDate` UTC, `gameNumber`, `doubleHeader`) en el ingest y en `ResultsStore`, con enriquecimiento de las filas existentes. Después, emparejar por la hora de inicio, midiendo antes la diferencia entre The Odds API y `gameDate`.
+- Status: ABIERTO (2026-09-24).

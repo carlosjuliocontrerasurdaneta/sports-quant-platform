@@ -6,7 +6,7 @@
   "consolidated_utc": "2026-09-23T18:48:05Z",
   "remediation_utc": "2026-09-23T21:30:00Z",
   "verification_utc": "2026-09-24T12:52:03Z",
-  "status": "REMEDIACION 2 COMPLETADA: AUD-003 implementado parcial (ESPN), pendiente de re-verificacion; veredicto vigente NO APTO (verificacion del 2026-09-24 sobre 1a0f746)",
+  "status": "VERIFICACION COMPLETADA: NO APTO (AUD-003 P1 bloqueado); 12 verificados-corregidos, 1 verificado-mitigado, 0 regresiones",
   "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
   "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
   "branch": "main",
@@ -222,9 +222,9 @@
   "final_result": "NO APTO",
   "final_result_rationale": "Regla 1 del contrato: P1 original AUD-003 abierto (bloqueado por identidad de eventos entre proveedores, KI-057). Resto verificado sin regresiones; validacion global verde.",
   "not_available": [
-    "verificacion independiente de la remediacion 2",
-    "KI-059 (identidad de calendario MLB)",
+    "decision de identidad de eventos (AUD-003, KI-057)",
     "verificacion independiente de la ronda previa audit-2026-09-22-r2",
+    "frecuencia productiva de stale_void con resultado historico",
     "barrido de secretos en logs/ y data/output/"
   ],
   "remediation": {
@@ -291,25 +291,5 @@
     },
     "tests": "2350 passed, 1 skipped (19m55s, exit 0); ruff OK; mypy OK (106); CI success en 1a0f746",
     "incidental_effects": "hasta 7 invocaciones reales de 'codex review' sobre un repo vacio del scratchpad por un PATH mal formado del verificador (posible consumo de cuota Codex); posibles lineas en logs/sqp.log"
-  },
-  "remediation_2": {
-    "date_utc": "2026-09-24",
-    "scope": "AUD-003 (identidad de eventos, autorizada por el operador: 'elige la mejor opcion y aplicala') y KI-058",
-    "decision": "identidad exacta: par ordenado + fecha exacta del vendor (ESPN UTC; MLB America/New_York) + resultado unico + partido empezado + sin doubleheader en registros propios + sin back-to-back; MLB fuera del fallback historico (KI-059)",
-    "independent_review": "fable, 3 rondas: R2 NO APTO (FABLE-R2-001 HIGH reproducido, R2-002), R3 NO APTO (R3-001), v3 APTO",
-    "states": {
-      "AUD-003": "IMPLEMENTADO PARCIAL (ESPN); MLB -> KI-059; pendiente de re-verificacion"
-    },
-    "tests": "2361 passed, 1 skipped (26m27s, exit 0); ruff OK; mypy OK (106)",
-    "files_modified": [
-      "src/sqp/settlement/runner.py",
-      "tests/settlement/test_candidate_history_fallback.py"
-    ],
-    "deliverables": {
-      "CHANGES.md": "10e068b614c165d4c0b6677422269189dbd57a509445917657c6ae80f1023695",
-      "VALIDATION.md": "5b29cd45c15d7578602c2705c92d8db0e9ec222545ae6a85c893078136a59cde",
-      "STATUS.md": "e9293baaa136330b3a45f79086005abf392d1ac2a91aa2f55433919474decc7f"
-    },
-    "history": "audit/latest/history/remediacion2-20260924T204629Z/"
   }
 }

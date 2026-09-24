@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-23
+actualizada: 2026-09-24
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-09-24]] — verificación de `audit-2026-09-23`: NO APTO por AUD-003; identidad exacta de eventos aplicada (ESPN resuelto, MLB fuera del fallback hasta KI-059) tras tres rondas de revisión Fable.
 - [[Bitácora/2026-09-23]] — ronda `audit-2026-09-23` con dos auditores (Claude 5 + OpenAI 9 → 14 AUD); remediación: 13 implementados sin commit, AUD-003 bloqueado por FABLE-001 (el fallback histórico liquidaba picks sin jugar con el marcador de otro partido de la serie).
 - [[Bitácora/2026-09-17]] — `SQP_Validate_OOS_Cdev` lanzada a mano: rc=0, 33/34 ligas validadas, sin overfit sistemático pero MLB/NHL mejor con historia completa; marcador modelo-vs-mercado: mercado mejor (Brier), selección con delta −6,45 % IC95 que roza el cero.
 - [[Bitácora/2026-09-16]] — (a) correcciones de prompts/skills/loops y rediseño de fuentes únicas con generación y compatibilidad (83 pruebas, sin commit ese día; commiteado el 17/09 en `f93bdc1`); (b) directorio de producción restaurado desde copia del 14/09 (15 y 16/09 sin run); rama `codex/feature-signal-shadow` en verde tras renombrar `surface_elo`; la rama toca builders/mlb/ml_train (clase model-change, no mergeable sin champion-challenger); cross-review V2 INCOMPLETE: CLAUDE CLEAN, CODEX sin cuota.

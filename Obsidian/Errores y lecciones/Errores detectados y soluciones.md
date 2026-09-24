@@ -1,7 +1,7 @@
 ---
 tags: [errores, bugs, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-23
+actualizada: 2026-09-24
 ---
 
 # Errores detectados y soluciones
@@ -9,6 +9,8 @@ actualizada: 2026-09-23
 Fuente canónica: `.claude/memory/known-issues.md` (KI-001…KI-018, con estado). Aquí, los errores más instructivos y su solución. Todos los KI están RESUELTOS o mitigados al 2026-07-08, salvo KI-002 (nombres soccer, verificable ~post 19-jul), KI-005 (vendor Frauen-Bundesliga) y KI-006 parcial (moneyline MLB/NHL sin señal específica).
 
 ## Integridad de datos
+
+- **Identidad de eventos, 2026-09-24 (KI-058/059):** una medición solo valida lo que su muestra ve. La regla de fecha exacta daba 655/0 en MLB sobre filas que el feed graduó, pero un partido aplazado nunca lo gradúa el feed: un doubleheader con un juego aplazado deja un único resultado ajeno. Fable lo encontró; MLB queda fuera del fallback hasta guardar la hora y el número de juego. Ver [[Bitácora/2026-09-24]].
 
 - **Fallback histórico de candidatos, 2026-09-23 (FABLE-001, revertido):** emparejar un pick con un resultado por (local, visitante) ± 1 día no prueba identidad; en una serie MLB un pick de hoy sin jugar se liquidaba, de forma irreversible, con el marcador de ayer. El stream servido lo evita porque `pending` filtra por `start_time <= now`; los candidatos no. Liquidar es irreversible (`DEDUP_KEY` sin `result`): sin identidad demostrada, no se gradúa. AUD-003 queda bloqueado. Ver [[Bitácora/2026-09-23]].
 
