@@ -852,3 +852,24 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Pendiente:**
   - CLN-001: 40 directorios con ACL en consola elevada, a cargo del operador;
   - 19 ficheros sueltos de `.codex-tmp` a la espera de su decisión.
+
+## 2026-09-25 — Cierre de sesión
+
+- **Hecho en la sesión:**
+  - verificación independiente de KI-061 (CORREGIDO CON PENDIENTES);
+  - KI-063, KI-064 (a y b) y KI-065 corregidos;
+  - KI-062 registrado en la bitácora;
+  - re-pre-registro del gate a K = 52, con techo 63 confirmado por el operador;
+  - límites de uso de ESPN medidos y documentados, con `Retry-After` respetado;
+  - CLN-001 parcial (92 directorios de `.codex-tmp` borrados).
+- **Commits (todos en `main`, publicados):** `a9170e5`, `fbc4076`, `3cc8e69`, `7664f88`, `1b7b6fc`, `9884c4b`, `33d3466`, `8bc0ead`, `8609c07`, `b3d6d09`, `787bff3`, `3356cb9`, `607c209`, `1596291`, `8425d14` y `3e6ff7e`. Última suite: 2405 passed, 1 skipped; ruff y mypy limpios.
+- **Estado operativo:**
+  - el run de las 12:00 aplicó K = 52;
+  - `mlb|h2h` y `mlb|spreads` gastaron su test único (no baten al mercado; EV < 0);
+  - `mlb|totals` va por n = 295 y gastará el suyo en unos días.
+- **Pendiente (operador):**
+  - 40 directorios de `.codex-tmp` con ACL del sandbox de Codex (consola elevada);
+  - decidir si se borran los 19 ficheros sueltos de `.codex-tmp`.
+- **Pendiente (siguiente sesión):**
+  - comprobar que el paso diario del 26/09 recoge el hueco ATP del 25/09 (KI-065);
+  - vigilar el test único de `mlb|totals`.
