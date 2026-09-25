@@ -93,9 +93,3 @@ Regla 3 del contrato (`audits/prompts/verificar-remediacion.md`): no queda ning�
 1. **Corregir REG-001** (P2), con su test.
 2. **Decisión del operador:** re-pre-registrar el criterio del gate para K = 52.
 3. CLN-001: inspeccionar los 8 directorios con ACL denegada usando la cuenta que los creó.
-
-## 8. Remediación posterior de REG-001 (2026-09-25)
-
-REG-001 se corrigió después de esta verificación (ver `STATUS.md` y KI-061).
-- Esta verificación no evalúa esa corrección, y su veredicto (APTO CON PENDIENTES) no cambia hasta una nueva verificación.
-- Versión previa de este fichero: `history/remediacion-reg001-20260925T045722Z/`.

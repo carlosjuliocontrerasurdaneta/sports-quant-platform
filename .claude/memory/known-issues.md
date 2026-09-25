@@ -487,3 +487,5 @@ Format:
 - Affected files: src/sqp/risk/degradation.py:204-217, :313
 - Proposed fix: en el fallback, `evaluate_pauses(metrics, previous=<estado reconstruido desde el log>)` sin reescribir el registro, con un test de un mercado que se degrada nuevo con el registro corrupto.
 - Status: ABIERTO (P2). Compensado por el prediction gate en default-deny (0 mercados `allowed`) y por un ERROR diario.
+
+- Actualización 2026-09-25 (KI-061): **CORREGIDO en código.** Con el registro ilegible, `auto_pauses_from_persisted_registry` evalúa el gate de hoy con los umbrales del monitor, que le pasa `run_all`, sobre el estado reconstruido desde el log, y no escribe nada. Tests nuevos en `test_degradation.py`. Pendiente de verificación independiente.

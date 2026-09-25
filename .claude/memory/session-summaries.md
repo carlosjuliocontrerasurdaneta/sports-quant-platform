@@ -742,3 +742,15 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Nuevo:** REG-001 → KI-061 (la degradación con el registro ilegible no pausa mercados nuevos). P2, abierto.
 - **Aviso operativo:** el gate evalúa **52 cortes**, por encima del límite de 50, así que **el operador debe re-pre-registrar**.
 - **Entregables:** `audit/audit-2026-09-22-r2/VERIFICATION.md` y `STATUS.md`/`MANIFEST.json` actualizados, con copia previa en `history/verificacion-20260925T043504Z/`.
+
+## 2026-09-25 (cierre) — KI-061 corregido
+
+- **KI-061** (REG-001 de la verificación de r2) corregido: con el registro de degradación ilegible, el fallback evalúa el gate de hoy sobre el estado del log, con los umbrales del monitor, y no escribe nada.
+  - Antes: `{'nba': ['h2h']}`. Ahora: `{'mlb': ['totals'], 'nba': ['h2h']}`.
+  - Revisión Codex (hook Stop): sin defectos; 52 tests focalizados.
+  - Commit publicado con CI.
+- **Pendiente:**
+  - verificación independiente de KI-061;
+  - **re-pre-registro del gate** (52 cortes > 50), que es decisión del operador;
+  - confirmar el paso 0.5 del backfill en el run de las 12:00;
+  - P3: límites de uso de ESPN y CLN-001.

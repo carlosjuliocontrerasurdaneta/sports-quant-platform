@@ -22,9 +22,3 @@
 | r18 `AUD-004` | persistente (KI-054) |
 
 **Regresión encontrada en la verificación:** REG-001 (MEDIUM/P2, ligada a AUD-002). Con `degradation_pause.json` ilegible, un mercado que se degrada por primera vez no se pausa. Próxima acción: corrección y test. **Aviso operativo:** 52 cortes en el gate (> 50): re-pre-registro pendiente del operador.
-
-**REG-001 (KI-061), remediado el 2026-09-25** (versión previa de este fichero en `history/remediacion-reg001-20260925T045722Z/`).
-- Con el registro de degradación ilegible, el fallback evalúa el gate de hoy (mismos umbrales que el monitor, pasados desde `run_all`) sobre el estado reconstruido desde `degradation_log.csv`, y no escribe nada.
-- Antes, con un mercado degradado HOY y el registro corrupto, devolvía solo `{'nba': ['h2h']}`. Ahora devuelve `{'mlb': ['totals'], 'nba': ['h2h']}`.
-- Tests: `test_degradation.py::test_fallback_con_registro_ilegible_pausa_un_mercado_que_se_degrada_ahora` y `::test_fallback_conserva_la_histeresis_del_log`.
-- Estado: **IMPLEMENTADO, pendiente de verificación independiente**.

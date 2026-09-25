@@ -94,16 +94,5 @@
     },
     "tests": "2386 passed, 1 skipped (1235 s); ruff OK; mypy OK (107); CI verde en 52867ab",
     "history": "audit/audit-2026-09-22-r2/history/verificacion-20260925T043504Z/"
-  },
-  "remediation_reg001": {
-    "date_utc": "2026-09-25T04:57:22+00:00",
-    "files": [
-      "src/sqp/risk/degradation.py",
-      "scripts/run_all.py",
-      "tests/test_degradation.py"
-    ],
-    "behavior": "registro ilegible: antes {'nba': ['h2h']}; ahora {'mlb': ['totals'], 'nba': ['h2h']}",
-    "state": "implementado, pendiente de verificacion independiente",
-    "history": "audit/audit-2026-09-22-r2/history/remediacion-reg001-20260925T045722Z/"
   }
 }
