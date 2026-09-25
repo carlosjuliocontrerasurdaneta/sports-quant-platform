@@ -166,21 +166,3 @@ Este veredicto califica solo la remediación evaluada. No garantiza ausencia de 
 1. REG-002, con uno a uno sobre todas las apariciones del día, antes del backfill del 2026-09-28.
 2. Decidir la cadencia del backfill.
 3. Confirmar que el 2026-09-28 se crea `schedule_mlb.csv`.
-
-### 9.1 Confirmación del delta REG-002 / M14 (mismo verificador, 2026-09-25)
-
-**REG-002: verificado-corregido.**
-- CIN–ARI (`fetch_and_settle` real): antes `loss −100`; ahora `void/stale_void`.
-- Temporada 2025 a través del store, con desfases de ±61 y +150 min: 0 mal en el conjunto y 0 mal en los 94 casos de riesgo aislados (antes 1, 1 y 4).
-
-**M14: verificado-corregido.** La mutación la detecta el test nuevo de cableado.
-
-**Mutaciones:**
-- N1 (quitar la guarda) y N2 (exigir el uno a uno solo a la aparición propia): detectadas.
-- N3 (excluir los aplazados del recuento del día) sobrevivía (P3). Añadido el test `test_doubleheader_con_aplazado_y_pick_desfasado_no_toma_el_juego_jugado`, que ya la detecta.
-
-**Datos reales a través del store:** 661 coinciden, 0 no coinciden, 31 sin graduar. Con resultados frescos de la API, 684 coinciden y 0 no coinciden.
-
-**Riesgo residual (observación, no demostrado):** si The Odds API desfasa los dos juegos de un doubleheader en sentidos opuestos, podrían liquidarse intercambiados. En 710 eventos de 2026 no aparece ningún caso.
-
-**Veredicto de la ronda: APTO CON PENDIENTES.** No hay P0, P1 ni regresiones abiertas.

@@ -466,3 +466,13 @@ Format:
   Revisión Fable: NO APTO la primera vez (K-001: el upsert por `game_id` borraba la aparición aplazada, reproducido con BOS–BAL 2025) y APTO la segunda. Validado con datos reales a través del store: 667/0. Se activa cuando el backfill semanal cree `data/historical/schedule_mlb.csv`.
 
   **Residual:** el fallback solo actúa si el histórico se actualizó antes de los 3 días de expiración; el backfill es semanal.
+
+- ID: KI-060
+- Severity: Alta
+- Description: **ESPN dejó de aceptar rangos de fechas en `scoreboard`**: `dates=AAAAMMDD-AAAAMMDD` devuelve 400 «Failed to get events endpoint», mientras que el día suelto da 200 (observado 2026-09-24).
+  - El proveedor pedía rangos: las 11 ligas ESPN devolvían 0 resultados y `backfill_results` salía con rc=0.
+  - El histórico `results_*` de ESPN estuvo parado desde el 2026-09-14 sin ningún aviso; el backfill semanal del 21/09 salió en verde.
+  - Afecta al fallback de liquidación y a las ratings y features de esas ligas.
+- Affected files: src/sqp/providers/espn_results.py, scripts/backfill_results.py
+- Fix: un 400 sobre un rango se repite día a día; las ventanas fallidas quedan en `failed_windows` y hacen rc=1. Además hay backfill diario de 3 días en `DIARIO_COMPLETO.bat` (paso 0.5).
+- Status: CORREGIDO en código (2026-09-25). El hueco de datos del 14/09 al 21/09 se rellena con el backfill semanal del 2026-09-28 o con `BACKFILL_ALL.bat` manual.

@@ -6,7 +6,7 @@
   "consolidated_utc": "2026-09-23T18:48:05Z",
   "remediation_utc": "2026-09-23T21:30:00Z",
   "verification_utc": "2026-09-24T12:52:03Z",
-  "status": "APTO CON PENDIENTES (verificacion 3 + confirmaciones); remediacion 4 aplicada y revisada",
+  "status": "REMEDIACION 3 COMPLETADA: AUD-003 implementado en ESPN y MLB; veredicto vigente NO APTO hasta nueva verificacion independiente",
   "scope": "Auditoria integral del repositorio (src/sqp, scripts, tests, configs, BAT, .claude/ skills-loops-routing, CI) en HEAD 7bd565e",
   "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
   "branch": "main",
@@ -219,10 +219,10 @@
     "tests/test_prediction_gate.py",
     "tests/test_store_concurrency.py"
   ],
-  "final_result": "APTO CON PENDIENTES",
-  "final_result_rationale": "Regla 3: sin P0/P1 ni regresiones abiertas. Pendientes: activacion de MLB y del historico ESPN tras el primer run diario (schedule_mlb.csv, ingesta > 2026-09-14); P3: limites de uso de ESPN no documentados; verificacion de la ronda previa r2.",
+  "final_result": "NO APTO",
+  "final_result_rationale": "Regla 1 del contrato: P1 original AUD-003 abierto (bloqueado por identidad de eventos entre proveedores, KI-057). Resto verificado sin regresiones; validacion global verde.",
   "not_available": [
-    "confirmacion operativa tras el primer run diario con el backfill 0.5",
+    "verificacion independiente de las remediaciones 2 y 3",
     "verificacion independiente de la ronda previa audit-2026-09-22-r2",
     "barrido de secretos en logs/ y data/output/"
   ],
@@ -342,36 +342,5 @@
       "VERIFICATION.md": "247185bbfdfaf7e656fe748928f5cd2bbd76a69880b5859f2cd80e5b79d96be3"
     },
     "history": "audit/latest/history/remediacion3-20260924T234113Z/"
-  },
-  "verification_3": {
-    "date_utc": "2026-09-25",
-    "evaluated_commit": "cabe5ab",
-    "verifier": "fable (solo lectura)",
-    "result": "APTO CON PENDIENTES: AUD-003 verificado-mitigado (P1 cerrado), KI-058 y REG-001 corregidos; REG-002 (MEDIUM/P2) encontrado y luego verificado-corregido junto con M14 y N3",
-    "path": "audit/latest/VERIFICATION.md#9",
-    "history": "audit/latest/history/verificacion3-20260925T014248Z/"
-  },
-  "remediation_4": {
-    "date_utc": "2026-09-25",
-    "scope": "REG-002 (uno a uno por dia), M14 y N3 (tests), KI-060 (ESPN rechaza rangos: historico ESPN parado desde 2026-09-14), backfill diario de 3 dias en DIARIO_COMPLETO (decision delegada) y pasos del backfill semanal siempre ejecutados",
-    "review": "verificador fable: delta REG-002/M14 APTO; delta ESPN+BAT APTO",
-    "real_data_validation": "MLB a traves del store: 661 coinciden / 0 no coinciden / 31 sin graduar; backfill 3 dias en ROOT temporal: 117 s, rc=0, ESPN con datos",
-    "tests": "2386 passed, 1 skipped (27m11s, exit 0); ruff OK; mypy OK (107)",
-    "files_modified": [
-      "src/sqp/settlement/runner.py",
-      "src/sqp/providers/espn_results.py",
-      "scripts/backfill_results.py",
-      "DIARIO_COMPLETO.bat",
-      "BACKFILL_ALL.bat",
-      "tests/settlement/test_candidate_history_fallback.py",
-      "tests/test_espn_results.py"
-    ],
-    "deliverables": {
-      "CHANGES.md": "d014357dfc9bec499040043152a52d2eb431d9be7c97d3a0dc42c4f4ac4a9b23",
-      "VALIDATION.md": "2d42bd6695479688edf7e0df45988d4b82bad5ffbb3a705c86ff7a695806bf8e",
-      "STATUS.md": "6479522e4968817253f34f0b5241685381328662f3e7a5e3c960d7826069090a",
-      "VERIFICATION.md": "27d00ff0af2afabfc0e54557818ec34482adfb86c9aa435d602fec4cc96e8a38"
-    },
-    "history": "audit/latest/history/remediacion4-20260925T023732Z/"
   }
 }

@@ -6,13 +6,13 @@ Línea base: `FINDINGS.md` (sin modificar).
 - **Verificación independiente:** 2026-09-24, en `fable` sobre `1a0f746`. Detalle en `VERIFICATION.md`.
 - La versión previa de este fichero está en `history/verificacion-20260924T125203Z/STATUS.md`.
 
-**Veredicto de la ronda: APTO CON PENDIENTES** (verificación 3 sobre `cabe5ab` y su confirmación del delta REG-002/M14; `VERIFICATION.md` §9 y §9.1). Sin P0, P1 ni regresiones abiertas. Veredictos anteriores (NO APTO sobre `1a0f746` y `8b19c5d`) conservados en `VERIFICATION.md` §1-§8.
+**Veredicto de la ronda: NO APTO**, por AUD-003 (P1, bloqueado) — emitido por la verificación del 2026-09-24 sobre `1a0f746`. La verificación 2 (sobre `8b19c5d`) lo mantuvo por MLB. Después, la **remediación 3** (calendario MLB, KI-059) implementó AUD-003 en MLB; hace falta una nueva verificación independiente para revisar el veredicto.
 
 | ID | Sev. | Prio. | Remediación | Verificación independiente | Evidencia | Próxima acción |
 |---|---|---|---|---|---|---|
 | AUD-001 | HIGH | P1 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | `CHANGES.md` §2; `VERIFICATION.md` §2 (prueba de extremo a extremo: stake 0 en HEAD, stakes > 0 en la base) | — (residual: `run_daily.py` manual) |
 | AUD-002 | HIGH | P1 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | tests de concurrencia; revisión estructural del lock | — |
-| AUD-003 | HIGH | P1 | **IMPLEMENTADO** (ESPN: identidad exacta; MLB: calendario, KI-059; REG-002 corregido) | **VERIFICADO-MITIGADO** (verificación 3: MLB real `win +100` con calendario, ESPN `win`; 0 contradicciones con datos reales) | `CHANGES.md` §6-§8; `VERIFICATION.md` §8-§9.1 | Residual: en MLB se activa con el calendario (backfill); cobertura por el backfill diario (`CHANGES.md` §8) |
+| AUD-003 | HIGH | P1 | **IMPLEMENTADO** (remediación 2: identidad exacta en ESPN; remediación 3: identidad de calendario en MLB, KI-059; ver `CHANGES.md` §6 y §7). Antes: IMPLEMENTADO PARCIAL | **PENDIENTE DE RE-VERIFICACIÓN** (verificación 1: ABIERTO sobre `1a0f746`; verificación 2: corregido en ESPN y abierto en MLB sobre `8b19c5d`, `VERIFICATION.md` §8) | `CHANGES.md` §6-§7; `VALIDATION.md` §7-§9; revisión Fable APTO (identidad exacta v3 y calendario MLB v2) | Verificación independiente de las remediaciones 2 y 3 |
 | AUD-004 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-MITIGADO** | test discriminante; FABLE-002: 0 casos en la primera pasada | Riesgo residual: `stale_void` irreversible de desplazados jugados (depende de AUD-003) |
 | AUD-005 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | 2 tests (edge y accuracy); topes de exposición seguros | — |
 | AUD-006 | MEDIUM | P2 | IMPLEMENTADO | **VERIFICADO-CORREGIDO** | tests; `roi_esp` = `estimated_edge` | — |
@@ -28,5 +28,3 @@ Línea base: `FINDINGS.md` (sin modificar).
 **Fuera de la línea base:** KI-058, un defecto preexistente de la clase FABLE-001 en el stream servido (`_grade_served_from_history`). Reproducido por el verificador. **Corregido en la remediación 2** para ligas ESPN (identidad exacta); MLB queda fuera del fallback (KI-059).
 
 **Resumen:** 12 verificados-corregidos, 1 verificado-mitigado, 1 abierto (P1). Sin regresiones.
-
-**Regresiones de la ronda:** REG-001 (LOW, test) verificado-corregido; REG-002 (MEDIUM/P2, MLB con inicio desfasado) verificado-corregido. **Hallazgo nuevo fuera de la línea base:** KI-060 (histórico ESPN parado desde el 14/09 por rangos rechazados), corregido en código en la remediación 4, pendiente de verificación.

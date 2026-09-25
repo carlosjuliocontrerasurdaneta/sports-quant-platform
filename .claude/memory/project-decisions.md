@@ -405,3 +405,12 @@ Format:
   - excluir MLB del fallback (dejaba AUD-003 abierto en la liga con más picks);
   - deduplicar por `gamePk` (borraba la aparición aplazada, FABLE-K-001).
 - Consequences: AUD-003 implementado en ESPN y MLB. Queda como decisión operativa aparte: un backfill diario para que el fallback actúe antes de la expiración a los 3 días.
+
+- Date: 2026-09-25
+- Decision: **Backfill del histórico DIARIO de 3 días dentro de `DIARIO_COMPLETO.bat`**, como paso 0.5 antes de liquidar y sin abortar la cadena. El semanal de 14 días se mantiene.
+- Reason: el fallback de liquidación solo gradúa lo que ya está en `data/historical/`, y un pick sin marcador expira de forma irreversible a los 3 días. Con el backfill solo semanal, el fallback actuaba aproximadamente 1 de cada 7 días (verificación 3). Medido: 117 s y solo APIs gratuitas.
+- Alternatives:
+  - tarea programada diaria nueva (exige proceso elevado, y el orden respecto a la liquidación no está garantizado);
+  - `--days 14` diario (unas 4 veces más tiempo);
+  - seguir con el semanal (el fallback queda casi inútil).
+- Consequences: la cadena diaria tarda unos 2 min más. Un fallo del backfill solo deja un AVISO.

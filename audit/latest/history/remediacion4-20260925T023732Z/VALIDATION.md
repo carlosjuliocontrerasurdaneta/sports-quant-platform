@@ -101,16 +101,3 @@ Script `scratchpad/aud013_before.py`, con un registro legible y un centinela pre
 | `tests/settlement` + liquidación + backfill | 165 passed |
 | ruff / mypy | exit 0 / 107 ficheros OK |
 | Suite completa | ver `remediation_3.tests` en el manifest |
-
-## 10. Remediación 4
-
-| Evidencia | Resultado |
-|---|---|
-| Consulta ESPN (NFL) | rango `20260921-20260926` → 400; día `20260921` → 200 |
-| `results_*` ESPN en producción (agregado) | última ingesta 2026-09-14 en las 11 ligas; MLB 2026-09-21 |
-| Backfill de 3 días en ROOT temporal, antes de la corrección | 247 s; todas las ligas ESPN 0 resultados; rc=0 |
-| Backfill de 3 días en ROOT temporal, después | 117 s; ESPN con datos (WNBA 12, NHL 28…); rc=0; 0 ventanas fallidas |
-| Mutación N3 | detectada por el test nuevo |
-| `tests/test_espn_results.py` + backfill + ventana de fechas | 45 passed |
-| Validación MLB a través del store tras REG-002 | 661 coinciden / 0 no coinciden / 31 sin graduar |
-| Suite completa | ver el manifest (`remediation_4.tests`) |
