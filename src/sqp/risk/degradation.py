@@ -219,9 +219,12 @@ def auto_pauses_from_persisted_registry(bets_dir: Path, *,
         try:
             previous = _previous_from_log(bets_dir)
         except Exception as exc2:  # defensa final: el consumidor no debe caer
-            log.warning("log de degradacion tambien ilegible (%s); se continua "
-                        "sin auto-pausas.", exc2)
-            return {}
+            # KI-064 (OBS-002 de la verificacion de KI-061): devolver {} aqui
+            # dejaba sin pausar lo que se degrada HOY. Sin log no hay histeresis
+            # recuperable, pero el gate de hoy se sigue evaluando desde cero.
+            log.warning("log de degradacion tambien ilegible (%s); se evalua hoy "
+                        "sin pausas previas.", exc2)
+            previous = {}
         # KI-061 (REG-001 de la verificacion de r2): devolver SOLO las pausas del
         # log dejaba sin pausar a un mercado que se degrada por primera vez
         # mientras el registro siga ilegible -- y ya no se reescribe, asi que

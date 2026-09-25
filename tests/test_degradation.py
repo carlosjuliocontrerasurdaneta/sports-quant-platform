@@ -236,6 +236,21 @@ def test_fallback_con_registro_ilegible_pausa_un_mercado_que_se_degrada_ahora(tm
     assert len(pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)) == 1
 
 
+@pytest.mark.parametrize("log_ilegible", [b"", b"foo,bar\n1,2\n"],
+                         ids=["vacio", "sin_columnas"])
+def test_fallback_con_log_ilegible_evalua_hoy_desde_cero(tmp_path, log_ilegible):
+    """KI-064: con registro Y log ilegibles se devolvia {} sin evaluar el dia;
+    un mercado que se degrada hoy debe pausarse igualmente, sin escribir nada."""
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    (tmp_path / DEGRADATION_LOG_FILENAME).write_bytes(log_ilegible)
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    assert auto_pauses_from_persisted_registry(
+        tmp_path, min_n=30, today=TODAY) == {"mlb": ["totals"]}
+    assert (tmp_path / DEGRADATION_FILENAME).read_text(encoding="utf-8") == "[1]"
+    assert (tmp_path / DEGRADATION_LOG_FILENAME).read_bytes() == log_ilegible
+
+
 def test_fallback_conserva_la_histeresis_del_log(tmp_path):
     """Un corte pausado segun el log que HOY esta en zona intermedia (ni peor
     que el mercado ni recuperado) sigue pausado: la histeresis sale del log."""
