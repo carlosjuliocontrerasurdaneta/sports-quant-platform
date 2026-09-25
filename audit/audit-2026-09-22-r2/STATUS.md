@@ -38,3 +38,4 @@
   - OBS-002 y OBS-003 → KI-064 (P3): con el log ilegible, no se evalúa el día; y el fallback solo conoce el log.
 - **KI-064 (a) corregido** después de la verificación (2026-09-25): con el log también ilegible, el fallback evalúa hoy desde cero en lugar de devolver `{}`. El test falla antes y pasa después. Pendiente: KI-063 (P2, decisión de diseño) y KI-064 (b).
 - **KI-064 (b) corregido** (2026-09-25): el monitor reconcilia el log con el registro en cada ejecución, así que un apéndice fallido se repara en la siguiente. KI-064 queda cerrado. Sigue abierto KI-063 (P2, decisión de diseño).
+- **KI-063 corregido** (2026-09-25): el fallback anota sus transiciones en el log (`fallback_registro_ilegible`), así que la histéresis sobrevive a varios días de registro corrupto. Las observaciones de la verificación de KI-061 (OBS-001..003) quedan resueltas.

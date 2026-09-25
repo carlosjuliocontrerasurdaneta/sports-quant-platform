@@ -794,3 +794,14 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - KI-063 (P2, diseño);
   - re-pre-registro del gate;
   - paso 0.5 a las 12:00.
+
+## 2026-09-25 — KI-063 corregido
+
+- **Cambio:** el fallback de degradación anota sus transiciones en el log (`fallback_registro_ilegible`), así que la histéresis sobrevive a varios días de registro corrupto. El registro no se toca y un log ilegible no se pisa.
+- **Tests:** 2 nuevos, más uno actualizado. 50 focalizados passed; ruff y mypy limpios. El test del segundo día falla con el código anterior.
+- **Límite:** borrar el registro corrupto reinicia el estado ese día. Hay que repararlo, no borrarlo.
+- **Pendiente:**
+  - re-pre-registro del gate (52 > 50);
+  - paso 0.5 a las 12:00;
+  - P3 de ESPN y CLN-001.
+- **Revisión Codex de KI-063:** P2 aceptado. El apéndice al log de degradación reescribía un log no parseable y borraba su historial (defecto anterior). Ahora lanza y no lo toca. 3 tests nuevos; 53 focalizados passed.

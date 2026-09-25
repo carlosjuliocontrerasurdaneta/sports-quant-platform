@@ -535,3 +535,16 @@ Format:
   - Si el log es ilegible, no se reconcilia (aviso).
   - Test `test_un_apendice_fallido_al_log_se_reconcilia_en_la_siguiente_corrida`: falla con el código anterior. Hay otro test de no duplicación.
   - Simulación sin escribir sobre `data/bets` de producción: 62 cortes (12 pausados) y 0 filas de reconciliación.
+
+- Actualización 2026-09-25 (KI-063): **CORREGIDO** (decisión del operador: anotar las pausas en el log).
+  - Con el registro ilegible, el fallback anota en `degradation_log.csv` las transiciones que decide (pausas y reanudaciones), con `reasons` prefijado `fallback_registro_ilegible`. Al día siguiente reconstruye `previous` desde ese log y conserva la histéresis.
+  - El registro ilegible no se toca nunca.
+  - Si el log es ilegible, no se escribe (no se pisa). Si falla el apéndice, solo avisa y las pausas de hoy se aplican igual.
+  - Tests: `test_la_pausa_del_fallback_sobrevive_a_un_segundo_dia_de_corrupcion` (ROI -0,10 el día 2 → sigue pausado; falla con el código anterior) y `test_si_el_log_no_se_puede_escribir_el_fallback_aplica_igual`. Se actualizó el test de KI-061, que ahora espera la fila del fallback en el log.
+  - Límite conocido (sin cambios): si el operador BORRA el registro corrupto, el monitor arranca con `previous={}` como en una instalación nueva, y la reconciliación de KI-064 (b) alinea el log con lo que decida. La histéresis de los cortes en zona intermedia se pierde ese día. La alternativa es reparar el registro, no borrarlo.
+  - **Revisión Codex (hook Stop), hallazgo P2 aceptado y corregido.**
+    - `append_degradation_log` trataba un log NO PARSEABLE (`ParserError`: una fila con un campo de más) como vacío y lo reescribía solo con las filas nuevas, lo que borraba el historial de pausas. `_previous_from_log` (con usecols) sí lo leía, así que el fallback nuevo habría escrito sobre él.
+    - Defecto ANTERIOR al cambio: afectaba también al monitor normal.
+    - Ahora el apéndice lanza `RegistroEstadoIlegibleError` y deja el log intacto, tanto con `ParserError` como con columnas desplazadas (pandas 3, con todas las filas con un campo de más; mismo patrón que `risk.bankroll`). El fallback avisa y aplica las pausas igualmente.
+    - Tests: `test_el_apendice_no_reescribe_un_log_no_parseable` (2 casos) y `test_fallback_con_log_parcialmente_roto_no_borra_el_historial`; detectan tanto HEAD como el mutante con el apéndice destructivo.
+    - El log de producción parsea entero (16 filas, `RangeIndex`).
