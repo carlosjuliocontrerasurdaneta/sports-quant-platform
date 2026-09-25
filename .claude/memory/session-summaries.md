@@ -817,7 +817,7 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - documento nuevo y nota en el pre-registro del 2026-09-04;
   - decisión registrada.
 - **Revisión Fable independiente:** APTO CON OBSERVACIONES. Se aplicaron las cinco: el techo 63 se registra como derivado y pendiente de confirmación, la predicción se cita literal, docstring, tests de los bordes K y techo, y commit antes de las 12:00 (guarda KI-036).
-- **Pendiente:** que el operador confirme el techo 63.
+- **Techo 63 confirmado por el operador.**
 - **Pendiente:**
   - paso 0.5 a las 12:00;
   - P3 de ESPN y CLN-001.

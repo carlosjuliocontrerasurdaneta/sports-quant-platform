@@ -86,7 +86,7 @@ Si alguno pasara, habrá superado un listón del 59,3 % a n = 300.
 ## 6. Decisión del operador
 
 - [x] **ORDENADO** el 2026-09-25: K = 52.
-- [ ] **Techo de 63 cortes: DERIVADO, pendiente de confirmación del operador.** El pre-registro del 2026-09-04 fija qué pasa por encima de 50, pero no cómo se calcula el techo en un re-pre-registro futuro. El 63 sale de mantener los dos invariantes de aquella aprobación: la misma tolerancia relativa (50/41, +22 %) y una cota tolerada que no empeora (0,0606 ≤ 0,0610; con 64 cortes serían 0,0615). Se implementa así porque es el máximo que no relaja lo aprobado; el operador puede fijar otro valor, siempre que sea igual o menor.
+- [x] **Techo de 63 cortes: CONFIRMADO por el operador el 2026-09-25** («Confirmo el techo de 63»). Es un valor derivado. El pre-registro del 2026-09-04 fija qué pasa por encima de 50, pero no cómo se calcula el techo en un re-pre-registro futuro. El 63 sale de mantener los dos invariantes de aquella aprobación: la misma tolerancia relativa (50/41, +22 %) y una cota tolerada que no empeora (0,0606 ≤ 0,0610; con 64 cortes serían 0,0615). Es el máximo que no relaja lo aprobado.
 
 Implementado el mismo día:
 

@@ -416,7 +416,7 @@ Format:
 - Consequences: la cadena diaria tarda unos 2 min más. Un fallo del backfill solo deja un AVISO.
 
 - Date: 2026-09-25
-- Decision: **Re-pre-registro del prediction gate a K = 52** (orden del operador). α_corte = 0,05/52 = 0,000962 (antes 0,05/41 = 0,00122). El techo de re-pre-registro pasa a 63 = ⌊52 × 50/41⌋, **derivado y pendiente de confirmación del operador** (es el máximo que no empeora la cota aprobada).
+- Decision: **Re-pre-registro del prediction gate a K = 52** (orden del operador). α_corte = 0,05/52 = 0,000962 (antes 0,05/41 = 0,00122). El techo de re-pre-registro pasa a 63 = ⌊52 × 50/41⌋, derivado (el máximo que no empeora la cota aprobada) y **confirmado por el operador el 2026-09-25**.
 - Reason:
   - El universo llegó a 52 cortes, por encima del techo de 50 que fija §3.1 del pre-registro del 2026-09-04, que ordena re-pre-registrar antes de que ningún corte nuevo sea elegible.
   - Medido antes de fijar nada: 52/52 en `muestra_insuficiente`, ningún test gastado. MLB está en n = 287–293, así que el cambio tenía que entrar antes del run de las 12:00.

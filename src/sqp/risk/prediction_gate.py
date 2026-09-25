@@ -123,6 +123,7 @@ PREDICTION_GATE_ALPHA = PREDICTION_GATE_FAMILY_ALPHA / PREDICTION_GATE_K
 # solo: se avisa, que es lo que este repositorio sabe hacer con los candados.
 # 63 = floor(52 * 50/41): la misma tolerancia relativa aprobada el 2026-09-04,
 # que mantiene la cota maxima tolerada en ~0,061 (63 * 0,05/52 = 0,0606).
+# Confirmado por el operador el 2026-09-25.
 PREDICTION_GATE_K_REPREGISTRO = 63
 
 
