@@ -476,3 +476,4 @@ Format:
 - Affected files: src/sqp/providers/espn_results.py, scripts/backfill_results.py
 - Fix: un 400 sobre un rango se repite día a día; las ventanas fallidas quedan en `failed_windows` y hacen rc=1. Además hay backfill diario de 3 días en `DIARIO_COMPLETO.bat` (paso 0.5).
 - Status: CORREGIDO en código (2026-09-25). El hueco de datos del 14/09 al 21/09 se rellena con el backfill semanal del 2026-09-28 o con `BACKFILL_ALL.bat` manual.
+- Actualización 2026-09-25 03:51Z (KI-060): el operador lanzó `BACKFILL_ALL.bat` con el código corregido. Terminó con rc=0; el histórico ESPN se reanudó (ingesta del 25/09) y se creó `schedule_mlb.csv` (222 apariciones). Queda por confirmar el paso diario 0.5 en el run de las 12:00.

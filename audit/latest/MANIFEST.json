@@ -222,9 +222,9 @@
   "final_result": "APTO CON PENDIENTES",
   "final_result_rationale": "Regla 3: sin P0/P1 ni regresiones abiertas. Pendientes: activacion de MLB y del historico ESPN tras el primer run diario (schedule_mlb.csv, ingesta > 2026-09-14); P3: limites de uso de ESPN no documentados; verificacion de la ronda previa r2.",
   "not_available": [
-    "confirmacion operativa tras el primer run diario con el backfill 0.5",
     "verificacion independiente de la ronda previa audit-2026-09-22-r2",
-    "barrido de secretos en logs/ y data/output/"
+    "barrido de secretos en logs/ y data/output/",
+    "confirmacion del paso 0.5 (backfill diario) en el run programado de las 12:00"
   ],
   "remediation": {
     "authorized_scope": "todos los confirmados (AUD-001..AUD-014); orden: ejecutar integramente audits/prompts/corregir-auditoria.md",
@@ -373,5 +373,10 @@
       "VERIFICATION.md": "27d00ff0af2afabfc0e54557818ec34482adfb86c9aa435d602fec4cc96e8a38"
     },
     "history": "audit/latest/history/remediacion4-20260925T023732Z/"
+  },
+  "operational_confirmation": {
+    "date_utc": "2026-09-25T03:51Z",
+    "action": "BACKFILL_ALL.bat ejecutado a mano por el operador (codigo de c4d90f2)",
+    "result": "rc=0, sin etapa fallida; schedule_mlb.csv creado (222 apariciones 2026-09-10..09-26); historico ESPN reanudado (ingesta 2026-09-25 en las ligas con partidos: wnba/nfl/nhl hasta 09-25, mls/ncaaf 09-24, ligamx 09-21, epl/laliga/brasileirao 09-20); ucl sin partidos en ESPN en la ventana (comprobado)"
   }
 }

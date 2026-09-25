@@ -718,3 +718,15 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 **Entregables:** CHANGES §6, VALIDATION §7 y STATUS (AUD-003 IMPLEMENTADO PARCIAL, pendiente de re-verificación). Memoria: KI-057/058 actualizados, KI-059 nuevo y decisión 2026-09-24. Obsidian: `Bitácora/2026-09-24`.
 
 **Pendiente:** verificación independiente de la remediación 2; KI-059; verificación de la ronda r2.
+
+## 2026-09-25 — Cierre de `audit-2026-09-23`: APTO CON PENDIENTES
+
+- **KI-059 (calendario MLB), REG-002 (uno a uno por día), M14 y N3.** Tres verificaciones independientes en Fable; veredicto final **APTO CON PENDIENTES**, sin P0, P1 ni regresiones.
+- **KI-060.** ESPN rechaza los rangos de fechas y el histórico ESPN estaba parado desde el 14/09 con rc=0. Corregido: fallback día a día y rc=1 si falla una ventana.
+- **Decisión delegada.** Backfill diario de 3 días como paso 0.5 de `DIARIO_COMPLETO.bat`; los pasos del backfill semanal se ejecutan siempre.
+- **Commits.** `519d580`, `8b19c5d`, `cabe5ab`, `4da1ed8` y `c4d90f2`, todos con CI verde. Suite: 2386 passed.
+- **Operación.** El operador lanzó `BACKFILL_ALL.bat`: rc=0, histórico ESPN al día y `schedule_mlb.csv` creado. En Git Bash hay que usar `cmd //c "ruta\BAT"`: `/c` se convierte en ruta y un BAT relativo no se encuentra.
+- **Pendiente.**
+  - Confirmar el paso 0.5 en el run de las 12:00.
+  - P3: límites de uso de ESPN.
+  - Verificación de la ronda r2.
