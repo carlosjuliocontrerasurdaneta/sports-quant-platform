@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from sqp.config import Settings
+from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.risk.degradation import (DEGRADATION_FILENAME, DEGRADATION_LOG_FILENAME,
                                   degradation_metrics, evaluate_pauses,
                                   load_degradation_registry, paused_from_registry,
@@ -231,9 +232,13 @@ def test_fallback_con_registro_ilegible_pausa_un_mercado_que_se_degrada_ahora(tm
     _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
     pausas = auto_pauses_from_persisted_registry(tmp_path, min_n=30, today=TODAY)
     assert pausas == {"mlb": ["totals"], "nba": ["h2h"]}
-    # No escribe nada: el registro ilegible queda intacto y el log no crece.
+    # El registro ilegible queda intacto; la pausa nueva se anota en el log
+    # (KI-063) marcada como decision del fallback.
     assert (tmp_path / DEGRADATION_FILENAME).read_bytes() == ilegible
-    assert len(pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)) == 1
+    filas = pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)
+    assert filas[["league", "market", "action"]].values.tolist() == [
+        ["nba", "h2h", "pause"], ["mlb", "totals", "pause"]]
+    assert filas["reasons"].iloc[1].startswith("fallback_registro_ilegible;")
 
 
 @pytest.mark.parametrize("log_ilegible", [b"", b"foo,bar\n1,2\n"],
@@ -296,6 +301,78 @@ def test_la_reconciliacion_no_duplica_la_transicion_de_hoy(tmp_path):
     filas = pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)
     assert filas["action"].tolist() == ["pause"]
     assert "reconciliacion_registro" not in filas["reasons"].tolist()
+
+
+def test_la_pausa_del_fallback_sobrevive_a_un_segundo_dia_de_corrupcion(tmp_path):
+    """KI-063: la pausa que decide el fallback se anota en el log; al dia
+    siguiente, con el registro aun ilegible y el corte en zona de histeresis,
+    sigue pausado como lo mantendria el monitor normal (hysteresis_hold)."""
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    settled = tmp_path / "settled_mlb.csv"
+    _settled(40).to_csv(settled, index=False)
+    kw = dict(min_n=30, roi_pause=-0.15, roi_resume=-0.05, today=TODAY)
+    assert auto_pauses_from_persisted_registry(tmp_path, **kw) == {"mlb": ["totals"]}
+    # Mismo dia otra vez: idempotente, el log no crece.
+    auto_pauses_from_persisted_registry(tmp_path, **kw)
+    assert len(pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)) == 1
+    # Dia 2: 20 ganadas y 20 perdidas a 1.8 con estimada 0.5 -> ROI -0.10,
+    # Brier igual al mercado: ni pausa nueva ni reanudacion (zona intermedia).
+    pd.concat([_settled(20, result="win", est=0.5, price=1.8),
+               _settled(20, result="loss", est=0.5, price=1.8)]).to_csv(
+        settled, index=False)
+    assert auto_pauses_from_persisted_registry(tmp_path, **kw) == {"mlb": ["totals"]}
+    assert (tmp_path / DEGRADATION_FILENAME).read_text(encoding="utf-8") == "[1]"
+
+
+def test_si_el_log_no_se_puede_escribir_el_fallback_aplica_igual(tmp_path, monkeypatch):
+    from sqp.risk import degradation as deg
+
+    def falla(transitions, bets_dir):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(deg, "append_degradation_log", falla)
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    assert deg.auto_pauses_from_persisted_registry(
+        tmp_path, min_n=30, today=TODAY) == {"mlb": ["totals"]}
+
+
+_LOG_PARCIALMENTE_ROTO = [
+    # Una fila con un campo de mas: ParserError en la lectura completa, pero
+    # `_previous_from_log` (usecols) si lo lee (revision Codex de KI-063).
+    "timestamp,league,market,action\nt1,nba,h2h,pause\nt2,wnba,spreads,pause,x\n",
+    # TODAS las filas con un campo de mas: pandas 3 desplaza al indice.
+    "timestamp,league,market,action\nt1,nba,h2h,pause,x\nt2,wnba,spreads,pause,x\n",
+]
+
+
+@pytest.mark.parametrize("contenido", _LOG_PARCIALMENTE_ROTO,
+                         ids=["una_fila", "todas_las_filas"])
+def test_el_apendice_no_reescribe_un_log_no_parseable(tmp_path, contenido):
+    from sqp.risk.degradation import append_degradation_log
+    ruta = tmp_path / DEGRADATION_LOG_FILENAME
+    ruta.write_text(contenido, encoding="utf-8")
+    with pytest.raises(RegistroEstadoIlegibleError):
+        append_degradation_log([{"timestamp": "t3", "league": "mlb",
+                                 "market": "totals", "action": "pause"}], tmp_path)
+    assert ruta.read_text(encoding="utf-8") == contenido
+
+
+def test_fallback_con_log_parcialmente_roto_no_borra_el_historial(tmp_path):
+    """El fallback aplica la pausa nueva y las del log, pero no puede anotarla
+    sin reescribir el log: lo deja intacto y, al dia siguiente, las pausas
+    antiguas siguen ahi."""
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    ruta = tmp_path / DEGRADATION_LOG_FILENAME
+    ruta.write_text(_LOG_PARCIALMENTE_ROTO[0], encoding="utf-8")
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    esperado = {"mlb": ["totals"], "nba": ["h2h"], "wnba": ["spreads"]}
+    for _ in range(2):
+        assert auto_pauses_from_persisted_registry(
+            tmp_path, min_n=30, today=TODAY) == esperado
+        assert ruta.read_text(encoding="utf-8") == _LOG_PARCIALMENTE_ROTO[0]
 
 
 def test_fallback_conserva_la_histeresis_del_log(tmp_path):

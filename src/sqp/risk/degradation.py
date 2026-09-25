@@ -202,7 +202,9 @@ def auto_pauses_from_persisted_registry(bets_dir: Path, *,
     """Auto-pausas vigentes segun el ULTIMO registro persistido, sin recalcular.
 
     Es el camino de degradacion de `run_all.py` cuando el monitor falla: se
-    aplican las pausas ya conocidas (conservador) y el run sigue. Nunca lanza:
+    aplican las pausas ya conocidas (conservador) y el run sigue. Con el
+    registro ilegible evalua el dia sobre el log y anota ahi sus transiciones
+    (KI-063); el registro nunca se escribe desde aqui. Nunca lanza:
     un registro ilegible o con forma inesperada equivale a "sin auto-pausas",
     y se deja constancia en el log, porque abortar el run del dinero por un
     fichero de observabilidad es el modo de fallo que AUD-002 documento.
@@ -216,6 +218,7 @@ def auto_pauses_from_persisted_registry(bets_dir: Path, *,
         # cada pause/resume: su ultima accion por corte ES la pausa vigente.
         log.error("registro de degradacion ilegible (%s); auto-pausas "
                   "reconstruidas desde %s.", exc, DEGRADATION_LOG_FILENAME)
+        log_legible = True
         try:
             previous = _previous_from_log(bets_dir)
         except Exception as exc2:  # defensa final: el consumidor no debe caer
@@ -224,19 +227,21 @@ def auto_pauses_from_persisted_registry(bets_dir: Path, *,
             # recuperable, pero el gate de hoy se sigue evaluando desde cero.
             log.warning("log de degradacion tambien ilegible (%s); se evalua hoy "
                         "sin pausas previas.", exc2)
-            previous = {}
+            previous, log_legible = {}, False
         # KI-061 (REG-001 de la verificacion de r2): devolver SOLO las pausas del
         # log dejaba sin pausar a un mercado que se degrada por primera vez
         # mientras el registro siga ilegible -- y ya no se reescribe, asi que
         # indefinidamente. Se evalua el gate de HOY con los mismos umbrales que
-        # el monitor, sobre el estado reconstruido del log, y NO se escribe nada:
-        # el registro ilegible sigue intacto para revisarlo a mano.
+        # el monitor, sobre el estado reconstruido del log. El registro ilegible
+        # NO se toca: queda intacto para revisarlo a mano.
         try:
             metrics = degradation_metrics(load_all_settled(Path(bets_dir)),
                                           window_days=window_days, today=today)
-            markets, _ = evaluate_pauses(metrics, previous, min_n=min_n,
-                                         brier_margin=brier_margin,
-                                         roi_pause=roi_pause, roi_resume=roi_resume)
+            markets, transitions = evaluate_pauses(
+                metrics, previous, min_n=min_n, brier_margin=brier_margin,
+                roi_pause=roi_pause, roi_resume=roi_resume)
+            if log_legible:
+                _log_fallback_transitions(transitions, bets_dir)
             return paused_from_registry(markets)
         except Exception as exc3:  # sin metricas: al menos las pausas conocidas
             log.warning("no se pudo evaluar la degradacion de hoy (%s); se aplican "
@@ -246,6 +251,28 @@ def auto_pauses_from_persisted_registry(bets_dir: Path, *,
         log.warning("registro de degradacion ilegible (%s); se continua sin "
                     "auto-pausas.", exc)
         return {}
+
+
+FALLBACK_REASON = "fallback_registro_ilegible"
+
+
+def _log_fallback_transitions(transitions: list[dict], bets_dir: Path) -> None:
+    """Anota en el log las transiciones que decide el fallback (KI-063).
+
+    Sin esto, una pausa del fallback vivia solo en memoria: si el registro
+    seguia ilegible al dia siguiente, el fallback reconstruia `previous` desde
+    un log que no la tenia y, en la zona de histeresis, despausaba lo que el
+    monitor normal mantendria pausado. El log es append-only y el registro
+    ilegible no se toca. Un fallo aqui solo avisa: el run no debe caer."""
+    if not transitions:
+        return
+    rows = [{**t, "reasons": ";".join(filter(None, [FALLBACK_REASON, t.get("reasons")]))}
+            for t in transitions]
+    try:
+        append_degradation_log(rows, Path(bets_dir))
+    except Exception as exc:
+        log.warning("no se pudieron anotar en el log las transiciones del "
+                    "fallback (%s); la histeresis de hoy no se conservara.", exc)
 
 
 def _load_previous_state(bets_dir: Path) -> dict[str, dict]:
@@ -313,8 +340,22 @@ def append_degradation_log(transitions: list[dict], bets_dir: Path) -> Path | No
     if path.exists():
         try:
             prior = pd.read_csv(path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            prior = pd.DataFrame()
+        except pd.errors.EmptyDataError:
+            prior = pd.DataFrame()  # 0 bytes: no hay historial que perder
+        except pd.errors.ParserError as exc:
+            # Antes se trataba como vacio y el log se REESCRIBIA solo con las
+            # filas nuevas: se borraba el historial del que el fallback saca
+            # las pausas vigentes (revision Codex de KI-063). Se deja intacto.
+            raise RegistroEstadoIlegibleError(
+                f"{path} no es parseable ({exc}); no se reescribe para no "
+                "perder el historial de pausas. Revisar a mano.") from exc
+        if not isinstance(prior.index, pd.RangeIndex):
+            # pandas 3 no lanza ParserError si TODAS las filas traen un campo de
+            # mas: desplaza la primera columna al indice y el `to_csv` sin
+            # indice la perderia (mismo patron que `risk.bankroll`).
+            raise RegistroEstadoIlegibleError(
+                f"{path} tiene las columnas desplazadas; no se reescribe. "
+                "Revisar a mano.")
         if not prior.empty:
             cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
             new = pd.concat([prior.reindex(columns=cols), new.reindex(columns=cols)],
