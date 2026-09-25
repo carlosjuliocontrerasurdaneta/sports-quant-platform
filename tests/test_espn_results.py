@@ -6,10 +6,12 @@ from sqp.providers.espn_results import ESPNResultsProvider
 
 
 class _Resp:
-    def __init__(self, status_code: int, payload: dict | None = None):
+    def __init__(self, status_code: int, payload: dict | None = None,
+                 headers: dict | None = None):
         self.status_code = status_code
         self.reason = "Error" if status_code >= 400 else "OK"
         self._payload = payload or {"events": []}
+        self.headers = headers or {}
 
     def json(self) -> dict:
         return self._payload
@@ -160,3 +162,48 @@ def test_el_backfill_no_sale_en_verde_si_una_ventana_fallo(tmp_path, monkeypatch
     # Lo que si llego se guarda igualmente.
     from sqp.storage.results_store import ResultsStore
     assert ResultsStore(tmp_path).path("nfl").exists()
+
+
+# --- Limites de uso: un 429 con Retry-After se respeta (revision 2026-09-25) ---
+
+
+def test_un_429_con_retry_after_espera_lo_que_pide_espn(monkeypatch):
+    esperas: list[float] = []
+    monkeypatch.setattr(espn_results.time, "sleep", esperas.append)
+    session = _FakeSession([_Resp(429, headers={"Retry-After": "30"}),
+                            _Resp(200, _GAME)])
+    rows = ESPNResultsProvider(session=session)._fetch({"path": "soccer/eng.1"}, "20240101")
+    assert len(rows) == 1 and esperas == [30.0]
+
+
+def test_la_espera_de_retry_after_tiene_tope_y_la_ventana_queda_registrada(monkeypatch):
+    esperas: list[float] = []
+    monkeypatch.setattr(espn_results.time, "sleep", esperas.append)
+    session = _FakeSession([_Resp(429, headers={"Retry-After": "3600"})])
+    provider = ESPNResultsProvider(session=session)
+    assert provider._fetch({"path": "soccer/eng.1"}, "20240101") == []
+    assert esperas == [espn_results._RETRY_AFTER_CAP_SECONDS] * (espn_results._MAX_ATTEMPTS - 1)
+    assert len(provider.failed_windows) == 1 and "429" in provider.failed_windows[0]
+
+
+def test_sin_retry_after_util_se_mantiene_la_espera_lineal(monkeypatch):
+    from sqp.providers.espn_results import retry_wait_seconds
+    lineal = 2.0 * 3
+    assert retry_wait_seconds(_Resp(429), 3, 2.0) == lineal
+    fecha = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+    assert retry_wait_seconds(_Resp(429, headers=fecha), 3, 2.0) == lineal
+    # Un Retry-After menor que la espera lineal no la acorta.
+    assert retry_wait_seconds(_Resp(429, headers={"Retry-After": "1"}), 3, 2.0) == lineal
+    # Solo aplica a 429; un 503 con la cabecera sigue siendo lineal.
+    assert retry_wait_seconds(_Resp(503, headers={"Retry-After": "30"}), 3, 2.0) == lineal
+    # Sin respuesta (timeout de red): lineal.
+    assert retry_wait_seconds(None, 3, 2.0) == lineal
+
+
+def test_el_proveedor_de_tenis_tambien_respeta_retry_after(monkeypatch):
+    from sqp.providers import espn_tennis
+    esperas: list[float] = []
+    monkeypatch.setattr(espn_tennis.time, "sleep", esperas.append)
+    session = _FakeSession([_Resp(429, headers={"Retry-After": "20"}), _Resp(200)])
+    espn_tennis.ESPNTennisResultsProvider(session=session)._fetch("atp", "20240101", "2024-01-01")
+    assert esperas == [20.0]

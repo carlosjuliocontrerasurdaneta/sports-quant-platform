@@ -20,6 +20,7 @@ from sqp.exceptions import ProviderNotConfiguredError
 from sqp.logging_config import get_logger
 from .base import ResultsProvider
 from .date_window import fetch_window
+from .espn_results import retry_wait_seconds
 
 log = get_logger("sqp.espn_tennis")
 
@@ -107,6 +108,7 @@ class ESPNTennisResultsProvider(ResultsProvider):
         url = f"{BASE}/{tour}/scoreboard"
         last_error: str | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
+            r: requests.Response | None = None
             try:
                 r = self.session.get(url, params={"dates": dates}, timeout=60)
                 if r.status_code == 404:
@@ -124,7 +126,8 @@ class ESPNTennisResultsProvider(ResultsProvider):
             except (requests.RequestException, ValueError) as exc:
                 last_error = f"{exc.__class__.__name__}: {exc}"
             if attempt < _MAX_ATTEMPTS:
-                time.sleep(_BACKOFF_SECONDS * attempt)
+                # Respeta el `Retry-After` de un 429 (ver `espn_results`).
+                time.sleep(retry_wait_seconds(r, attempt, _BACKOFF_SECONDS))
         log.warning("[tennis/%s] ESPN window %s failed after %d attempts (%s); skipped.",
                     tour, dates, _MAX_ATTEMPTS, last_error)
         return []

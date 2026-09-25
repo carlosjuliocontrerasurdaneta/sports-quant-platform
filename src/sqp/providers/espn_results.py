@@ -4,6 +4,24 @@ Free and unauthenticated; used to backfill full-season final scores so ratings
 are not limited to The Odds API 3-day scores window. Unofficial endpoint: the
 schema may change without notice, so the backfill script reports per-league
 counts to make silent breakage visible.
+
+LIMITES DE USO (revisado 2026-09-25). ESPN no publica ninguno: el endpoint no
+es oficial, asi que no hay cuota que consultar ni que verificar. Lo que SI se
+sabe:
+
+- Carga real. Ventana = ``days_back + 3`` dias (margen UTC, `date_window`).
+  Desde el 2026-09-24 ESPN rechaza los rangos (400), asi que cada ventana de 30
+  dias cuesta 1 rango rechazado + 1 peticion por dia (KI-060):
+    * paso 0.5 diario (``--days 3``): ~126 peticiones (16 ligas x 7, 2
+      universitarias x 6, tenis 2);
+    * ``BACKFILL_ALL.bat`` semanal (``--days 14``): ~328;
+    * siembra de 365 dias: ~381 por liga.
+- Observado: ningun 429 en ``logs/backfill.log`` hasta el 2026-09-25 (17
+  ventanas fallidas: 16 rangos rechazados antes de KI-060 y un error SSL).
+- Cortesia y defensa: 0,3 s entre dias sueltos; 429 y 5xx se reintentan con
+  espera lineal o, si ESPN manda ``Retry-After``, esa espera (tope
+  ``_RETRY_AFTER_CAP_SECONDS``); una ventana que agota los intentos queda en
+  ``failed_windows`` y el backfill sale con rc=1, asi que un rate limit se VE.
 """
 from __future__ import annotations
 import time
@@ -27,6 +45,27 @@ BASE = "https://site.api.espn.com/apis/site/v2/sports"
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 4
 _BACKOFF_SECONDS = 2.0  # multiplied by attempt number (linear backoff)
+# Tope a la espera que pida ESPN con `Retry-After`: el mismo que el timeout de
+# la peticion. Si pidiera mas, la ventana agota sus intentos y queda registrada
+# como fallida (rc=1) en vez de colgar el run diario.
+_RETRY_AFTER_CAP_SECONDS = 60.0
+
+
+def retry_wait_seconds(resp: object, attempt: int, backoff: float) -> float:
+    """Espera antes del siguiente intento: el `Retry-After` de un 429 (en
+    segundos, con tope) si ESPN lo manda; si no, la espera lineal de siempre.
+
+    Antes se ignoraba: un 429 con `Retry-After: 30` se reintentaba a los 2, 4 y
+    6 s, es decir, justo cuando el servidor habia pedido que no."""
+    lineal = backoff * attempt
+    if getattr(resp, "status_code", None) != 429:
+        return lineal
+    headers = getattr(resp, "headers", None) or {}
+    try:
+        pedido = float(headers.get("Retry-After", ""))
+    except (TypeError, ValueError):  # ausente o en formato fecha HTTP
+        return lineal
+    return min(max(pedido, lineal), _RETRY_AFTER_CAP_SECONDS)
 
 # league_id -> ESPN scoreboard config. Soccer slugs use ESPN's country.tier scheme.
 # College basketball rejects date ranges (404) and defaults to top-25 games only,
@@ -133,6 +172,7 @@ class ESPNResultsProvider(ResultsProvider):
         url = f"{BASE}/{cfg['path']}/scoreboard"
         last_error: str | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
+            r: requests.Response | None = None
             try:
                 r = self.session.get(url, params=params, timeout=60)
                 if r.status_code == 404:
@@ -152,7 +192,7 @@ class ESPNResultsProvider(ResultsProvider):
             except (requests.RequestException, ValueError) as exc:
                 last_error = f"{exc.__class__.__name__}: {exc}"
             if attempt < _MAX_ATTEMPTS:
-                time.sleep(_BACKOFF_SECONDS * attempt)
+                time.sleep(retry_wait_seconds(r, attempt, _BACKOFF_SECONDS))
         log.warning("[%s] ESPN window %s failed after %d attempts (%s); "
                     "skipping this window, keeping the rest.",
                     cfg["path"], dates, _MAX_ATTEMPTS, last_error)
