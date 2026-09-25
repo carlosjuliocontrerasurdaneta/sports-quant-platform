@@ -873,3 +873,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Pendiente (siguiente sesión):**
   - comprobar que el paso diario del 26/09 recoge el hueco ATP del 25/09 (KI-065);
   - vigilar el test único de `mlb|totals`.
+- **Addendum de cierre:** el operador ordenó borrar los 19 ficheros sueltos de `.codex-tmp` y se borraron. Quedan 40 directorios con ACL del sandbox, a borrar en consola elevada, y `sqp-agent/`.
