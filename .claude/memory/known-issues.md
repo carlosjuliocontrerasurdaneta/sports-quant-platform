@@ -489,3 +489,15 @@ Format:
 - Status: ABIERTO (P2). Compensado por el prediction gate en default-deny (0 mercados `allowed`) y por un ERROR diario.
 
 - Actualización 2026-09-25 (KI-061): **CORREGIDO en código.** Con el registro ilegible, `auto_pauses_from_persisted_registry` evalúa el gate de hoy con los umbrales del monitor, que le pasa `run_all`, sobre el estado reconstruido desde el log, y no escribe nada. Tests nuevos en `test_degradation.py`. Pendiente de verificación independiente.
+
+- ID: KI-062
+- Severity: Baja
+- Description: **Test intermitente bajo carga:** `tests/test_audit_atomic_readers.py::test_reader_contention_preserves_atomicity[False-csv]`.
+  - Afirmaba con el reloj de pared que `_replace` no reintenta sin límite (la llamada completa en menos de 3 veces `REPLACE_RETRY_SECONDS`).
+  - Falló el 2026-09-25, con la suite local en paralelo a la revisión de Codex del hook Stop. Aislado pasaba 25/25 y el CI estaba verde.
+  - Ya había fallado igual el 2026-09-22 con el límite anterior de 4 s (AUD-004).
+- Affected files: tests/test_audit_atomic_readers.py
+- Fix: se cuentan los INTENTOS de `os.replace` (como mucho unos 40 en el plazo de 2 s; la carga solo los reduce) en lugar del tiempo. Una guarda aborta con AssertionError si se superan, para no colgar la suite.
+  - La mutación «reintento sin plazo» se detecta (2 fallos).
+  - Con 8 procesos saturando la CPU: 3/3 en verde.
+- Status: CORREGIDO (2026-09-25).

@@ -1,6 +1,5 @@
 """AUD-006: native Windows readers may temporarily deny replacement."""
 import os
-import time
 
 import pandas as pd
 import pytest
@@ -17,8 +16,17 @@ def test_reader_contention_preserves_atomicity(tmp_path, monkeypatch, kind, tran
     reader = path.open()
     conflicts = []
     original_replace = atomic.os.replace
+    # Cota de INTENTOS, no de reloj (KI-062): `_replace` duerme >= 0,05 s entre
+    # intentos durante REPLACE_RETRY_SECONDS, asi que hace como mucho ~40. La
+    # carga solo puede REDUCIR el numero de intentos (cada uno tarda mas), nunca
+    # aumentarlo: la cota detecta un reintento sin limite y no depende de la
+    # maquina. Pasada la guarda se aborta con AssertionError para que un
+    # `_replace` que reintente para siempre falle en vez de colgar la suite.
+    max_intentos = int(atomic.REPLACE_RETRY_SECONDS / 0.05) + 5
 
     def replace_with_reader_release(source, destination):
+        if len(conflicts) > 2 * max_intentos:
+            raise AssertionError("_replace reintenta sin limite")
         try:
             return original_replace(source, destination)
         except PermissionError:
@@ -42,22 +50,18 @@ def test_reader_contention_preserves_atomicity(tmp_path, monkeypatch, kind, tran
             assert "new" in path.read_text()
             assert len(conflicts) == 1
         else:
-            started = time.monotonic()
             with pytest.raises(PermissionError):
                 publish()
-            transcurrido = time.monotonic() - started
             assert path.read_text() == "old"
             # La propiedad que importa es que `_replace` NO reintente
-            # indefinidamente: se acota contra SU plazo, no contra un numero de
-            # reloj de pared elegido a ojo. El limite anterior eran 4 s fijos
-            # -- 2x el plazo -- y medido desde antes de `publish()`, asi que
-            # incluia la serializacion y los fixtures: bajo carga la suite se
-            # ponia en rojo sin que hubiera cambiado nada (fallo observado a
-            # 4,485 s en la auditoria integral 2026-09-22, AUD-004; la misma
-            # prueba pasaba 5/5 aislada). Ahora solo se mide la llamada, y el
-            # margen es explicito y proporcional al plazo que se comprueba.
-            assert transcurrido < 3 * atomic.REPLACE_RETRY_SECONDS, (
-                f"_replace tardo {transcurrido:.2f}s con un plazo de "
+            # indefinidamente. Se comprobaba con el reloj de pared -- 4 s fijos
+            # (AUD-004, 2026-09-22) y luego 3x el plazo --, y las dos versiones
+            # fallaron bajo carga sin que cambiara nada: la ultima el
+            # 2026-09-25, con la suite en paralelo a la revision de Codex
+            # (KI-062; aislada pasaba 25/25). Contar intentos mide la propiedad
+            # sin depender de la velocidad de la maquina.
+            assert 1 <= len(conflicts) <= max_intentos, (
+                f"_replace hizo {len(conflicts)} intentos con un plazo de "
                 f"{atomic.REPLACE_RETRY_SECONDS}s: esta reintentando de mas")
     finally:
         reader.close()
