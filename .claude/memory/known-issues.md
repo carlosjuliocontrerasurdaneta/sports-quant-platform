@@ -528,3 +528,10 @@ Format:
   - Pausa lo que se degrada hoy; las pausas antiguas se pierden, porque no hay de dónde recuperarlas. No escribe nada.
   - Test `test_fallback_con_log_ilegible_evalua_hoy_desde_cero` (log vacío y log sin columnas): falla con el código anterior y pasa con el nuevo.
   - **(b) sigue ABIERTO** (P3): el orden de escritura registro/log.
+
+- Actualización 2026-09-25 (KI-064): **(b) CORREGIDO. KI-064 queda CERRADO.**
+  - Se mantiene el orden: primero el registro, después el log. Si el apéndice falla, el fallback de `run_all` lee un registro legible que ya contiene la pausa de hoy.
+  - Cada ejecución del monitor reconcilia ahora el log con el registro (`_reconciliation_rows`): un corte cuya última acción en el log difiere del registro, y que hoy no tiene transición propia, recibe una fila `reasons=reconciliacion_registro`. Un apéndice fallido se repara en la siguiente ejecución que funcione.
+  - Si el log es ilegible, no se reconcilia (aviso).
+  - Test `test_un_apendice_fallido_al_log_se_reconcilia_en_la_siguiente_corrida`: falla con el código anterior. Hay otro test de no duplicación.
+  - Simulación sin escribir sobre `data/bets` de producción: 62 cortes (12 pausados) y 0 filas de reconciliación.

@@ -785,3 +785,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - KI-064 (b);
   - re-pre-registro del gate;
   - paso 0.5 a las 12:00.
+
+## 2026-09-25 — KI-064 (b) corregido; KI-064 cerrado
+
+- **Cambio:** el monitor de degradación reconcilia `degradation_log.csv` con el registro en cada ejecución (filas `reconciliacion_registro`), así que un apéndice fallido se repara en la siguiente ejecución que funcione. Se mantiene el orden registro→log.
+- **Tests:** 2 nuevos; el principal falla con el código anterior. 48 focalizados passed; ruff y mypy limpios. Simulación sobre producción: 0 filas.
+- **Pendiente:**
+  - KI-063 (P2, diseño);
+  - re-pre-registro del gate;
+  - paso 0.5 a las 12:00.
