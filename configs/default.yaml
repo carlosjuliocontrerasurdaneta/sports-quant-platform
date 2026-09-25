@@ -232,8 +232,8 @@ paused_markets: {}
 # CONSECUENCIA A SABER: con shadow apagado, un mercado pasa a llevar stake real
 # AUTOMATICAMENTE en cuanto `scripts/update_prediction_gate.py` escriba
 # `allowed: true` para el (modelo puro que bate al mercado en test de signo
-# pareado fuera de muestra, n >= 300 y p < 0,00122 --- que es el umbral POR
-# MERCADO, el de familia 0,05 repartido por Bonferroni sobre K = 41 cortes ---,
+# pareado fuera de muestra, n >= 300 y p < 0,000962 --- que es el umbral POR
+# MERCADO, el de familia 0,05 repartido por Bonferroni sobre K = 52 cortes ---,
 # Y EV a stake plano positivo).
 # No hace falta una aprobacion humana adicional en ese punto. Para mantener la
 # aprobacion manual: `prediction_gate.enabled: false` y curar el registro a mano,
@@ -259,7 +259,8 @@ clv_gate:
 #      unilateral, empates excluidos, n >= 300 no empatadas y
 #      p < PREDICTION_GATE_ALPHA. Ese alpha NO es 0,05: desde el pre-registro
 #      del 2026-09-04 el de FAMILIA (0,05) se reparte por Bonferroni sobre
-#      K = 41 cortes, asi que el umbral POR MERCADO es 0,05/41 = 0,00122.
+#      K cortes: K = 52 desde el re-pre-registro del 2026-09-25 (antes 41), asi
+#      que el umbral POR MERCADO es 0,05/52 = 0,000962.
 #      Este comentario decia 0.05 desde antes de aquel reparto.
 #   2. Su EV a stake plano es positivo (acertar mas que el precio no basta si el
 #      margen no cubre el vig -- leccion de pick_mode accuracy a cuotas 1.07).

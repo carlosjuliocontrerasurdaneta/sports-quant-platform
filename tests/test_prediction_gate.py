@@ -620,7 +620,8 @@ def test_prediction_gate_outranks_the_clv_gate():
 
 # --- multiplicidad y miradas repetidas ---------------------------------------
 # Pre-registro 2026-09-04, aprobado por el operador. Dos reglas: alpha repartido
-# por Bonferroni sobre K=41 cortes, y UN SOLO test de entrada por corte.
+# por Bonferroni sobre K cortes (41; 52 desde el re-pre-registro del
+# 2026-09-25), y UN SOLO test de entrada por corte.
 
 def test_alpha_is_the_family_alpha_split_by_bonferroni():
     """El numero no se escribe a mano: se DERIVA, para que no pueda derivar de
@@ -629,8 +630,9 @@ def test_alpha_is_the_family_alpha_split_by_bonferroni():
                                           PREDICTION_GATE_FAMILY_ALPHA,
                                           PREDICTION_GATE_K)
     assert PREDICTION_GATE_FAMILY_ALPHA == 0.05
-    assert PREDICTION_GATE_K == 41
-    assert PREDICTION_GATE_ALPHA == pytest.approx(0.05 / 41)
+    # Re-pre-registro 2026-09-25 (docs/research/2026-09-25-repreregistro-gate-k52.md).
+    assert PREDICTION_GATE_K == 52
+    assert PREDICTION_GATE_ALPHA == pytest.approx(0.05 / 52)
     assert PREDICTION_GATE_ALPHA < 0.05, "Bonferroni solo puede ENDURECER"
 
 
@@ -711,14 +713,14 @@ def test_vanishing_from_the_stream_does_not_return_the_entry_test(tmp_path):
 
 def test_the_registry_records_how_alpha_was_split(tmp_path):
     """Sin esto, leyendo el registro no se puede reconstruir de donde sale un
-    alpha de 0,00122 -- y un umbral que no se puede auditar no es un candado."""
+    alpha de 0,000962 -- y un umbral que no se puede auditar no es un candado."""
     import json
     write_prediction_gate(_rows(60, 40, p_model=0.6, p_market=0.5, price=2.0),
                           tmp_path)
     payload = json.loads((tmp_path / "prediction_gate.json").read_text(encoding="utf-8"))
     assert payload["family_alpha"] == 0.05
-    assert payload["k_bonferroni"] == 41
-    assert payload["alpha"] == pytest.approx(0.05 / 41)
+    assert payload["k_bonferroni"] == 52
+    assert payload["alpha"] == pytest.approx(0.05 / 52)
 
 
 def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
@@ -913,7 +915,8 @@ def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
 # corte no se mueve y la cota sube: 49 cortes dan 0,0598, un 19,5 % por encima
 # del 0,05 declarado. El registro publicaba `family_alpha: 0.05` y
 # `n_cortes_evaluados: 49` uno al lado del otro sin que nada los comparara; ahora
-# viaja `fwer_bound`. Hasta 50 cortes es tolerancia PRE-REGISTRADA (§3.1 del
+# viaja `fwer_bound`. Hasta el techo (50 con K=41; 63 con K=52 desde el
+# re-pre-registro del 2026-09-25) es tolerancia PRE-REGISTRADA (§3.1 del
 # pre-registro 2026-09-04): se informa, no se ordena (AUD-003, ronda r2).
 
 def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
@@ -922,10 +925,38 @@ def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
                                           PREDICTION_GATE_K, fwer_bound)
     # Con exactamente K cortes la cota ES el alpha de familia: el reparto cuadra.
     assert fwer_bound(PREDICTION_GATE_K) == pytest.approx(PREDICTION_GATE_FAMILY_ALPHA)
-    # Con el universo real medido el 2026-09-22 se lo come y lo pasa.
-    assert fwer_bound(49) == pytest.approx(49 * PREDICTION_GATE_ALPHA)
-    assert fwer_bound(49) > PREDICTION_GATE_FAMILY_ALPHA
+    # Con el universo por encima de K se lo come y lo pasa (el 2026-09-22 eran
+    # 49 cortes frente a K=41).
+    n = PREDICTION_GATE_K + 8
+    assert fwer_bound(n) == pytest.approx(n * PREDICTION_GATE_ALPHA)
+    assert fwer_bound(n) > PREDICTION_GATE_FAMILY_ALPHA
     assert fwer_bound(0) == 0.0 and fwer_bound(-3) == 0.0
+
+
+def test_el_techo_de_repregistro_conserva_la_tolerancia_del_2026_09_04():
+    """Re-pre-registro 2026-09-25: el techo se DERIVA de la regla aprobada el
+    2026-09-04 (50 sobre K=41, +22 %), no se elige; y la cota maxima tolerada
+    del error de familia no crece respecto de la que se aprobo."""
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_K,
+                                          PREDICTION_GATE_K_REPREGISTRO, fwer_bound)
+    assert PREDICTION_GATE_K_REPREGISTRO == PREDICTION_GATE_K * 50 // 41 == 63
+    assert fwer_bound(PREDICTION_GATE_K_REPREGISTRO) <= 50 * 0.05 / 41
+
+
+def test_en_los_bordes_K_y_techo_no_se_ordena_repregistro(tmp_path, caplog):
+    """Bordes exactos (revision Fable del re-pre-registro 2026-09-25): con
+    n == K (el caso de hoy, 52) no hay aviso; con n == techo (63) solo INFO."""
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_K,
+                                          PREDICTION_GATE_K_REPREGISTRO)
+    for n, esperado in ((PREDICTION_GATE_K, set()),
+                        (PREDICTION_GATE_K_REPREGISTRO, {"INFO"})):
+        caplog.clear()
+        with caplog.at_level("INFO"):
+            write_prediction_gate(_muchos_cortes(n), tmp_path / str(n))
+        niveles = {r.levelname for r in caplog.records
+                   if "cota real de error de familia" in r.message
+                   or "RE-PRE-REGISTRAR" in r.message}
+        assert niveles == esperado, (n, niveles)
 
 
 def _muchos_cortes(n):
@@ -936,7 +967,7 @@ def _muchos_cortes(n):
 
 def test_en_la_tolerancia_pre_registrada_se_informa_la_cota_sin_ordenar_repregistro(tmp_path, caplog):
     from sqp.risk.prediction_gate import PREDICTION_GATE_K
-    # 49 cortes: por encima de K=41 y por DEBAJO del limite 50. El pre-registro
+    # K+8 cortes: por encima de K y por DEBAJO del techo (+22 %). El pre-registro
     # del 2026-09-04 (§3.1) tolera esta franja: se informa la cota, pero ni se
     # avisa ni se ordena re-pre-registrar (AUD-003, ronda audit-2026-09-22-r2).
     graded = _muchos_cortes(PREDICTION_GATE_K + 8)

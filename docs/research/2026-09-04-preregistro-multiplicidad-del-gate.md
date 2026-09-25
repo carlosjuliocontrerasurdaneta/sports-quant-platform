@@ -1,8 +1,10 @@
 # Pre-registro — multiplicidad y miradas repetidas del prediction gate
 
 **Fecha:** 2026-09-04.
-**Estado:** **VIGENTE.** Aprobado por el operador el 2026-09-04 e implementado el
-mismo día en `src/sqp/risk/prediction_gate.py`.
+**Estado:** **VIGENTE**, salvo el valor de K y el techo de §3.1: **re-pre-registrados
+el 2026-09-25 a K = 52 y techo 63** en
+`docs/research/2026-09-25-repreregistro-gate-k52.md`. Aprobado por el operador el
+2026-09-04 e implementado el mismo día en `src/sqp/risk/prediction_gate.py`.
 **Modifica:** `docs/research/2026-08-16-preregistro-regla-de-salida.md`, sección
 «Criterios de descarte» → «Comparaciones múltiples».
 
