@@ -14,7 +14,7 @@ provider is keyed by tour (atp/wta) derived from the league/sport key.
 """
 from __future__ import annotations
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 import requests
 from sqp.exceptions import ProviderNotConfiguredError
 from sqp.logging_config import get_logger
@@ -84,6 +84,26 @@ def parse_tennis_scoreboard(payload: dict, since: str | None = None) -> list[dic
     return out
 
 
+def query_days(start: date, end: date) -> list[date]:
+    """Fechas a consultar: una cada `_STEP_DAYS` desde `start` y, SIEMPRE, `end`.
+
+    El scoreboard de una fecha devuelve los torneos en curso ese dia. Con solo
+    el paso semanal, una ventana corta (el backfill diario de 3 dias = 6 dias)
+    consultaba unicamente su primer dia: un torneo que empezaba despues no
+    aparecia hasta el backfill semanal. Observado el 2026-09-25: ATP 20260921
+    -> 0 partidos; 20260926 -> 56 (del 22 al 25), y el historico ATP se quedo
+    en el 24/09. Consultar tambien el ultimo dia cuesta a lo sumo una peticion
+    mas por circuito."""
+    days = []
+    day = start
+    while day <= end:
+        days.append(day)
+        day += timedelta(days=_STEP_DAYS)
+    if days and days[-1] != end:
+        days.append(end)
+    return days
+
+
 class ESPNTennisResultsProvider(ResultsProvider):
     def __init__(self, session: requests.Session | None = None):
         self.session = session or requests.Session()
@@ -97,11 +117,9 @@ class ESPNTennisResultsProvider(ResultsProvider):
         start, end = fetch_window(days_back)
         since = start.isoformat()
         by_id: dict[str, dict] = {}
-        day = start
-        while day <= end:
+        for day in query_days(start, end):
             for m in self._fetch(tour, f"{day:%Y%m%d}", since):
                 by_id[m["game_id"]] = m  # dedupe matches seen across overlapping queries
-            day += timedelta(days=_STEP_DAYS)
         return sorted(by_id.values(), key=lambda r: r["date"])
 
     def _fetch(self, tour: str, dates: str, since: str) -> list[dict]:

@@ -68,3 +68,35 @@ def test_tennis_scores_map_matches_by_name_and_date():
     assert scores["e1"] == (1, 0, "Iga Swiatek")   # home player won
     assert scores["e2"] == (0, 1, "Carlos Alcaraz")  # away player (Sinner) won
     assert "e3" not in scores  # no result available -> unsettled
+
+
+def test_una_ventana_corta_consulta_tambien_su_ultimo_dia():
+    """2026-09-25: con --days 3 solo se consultaba el primer dia de la ventana y
+    un torneo ATP que empezaba despues no llegaba al historico."""
+    from datetime import date
+    from sqp.providers.espn_tennis import query_days
+    assert query_days(date(2026, 9, 21), date(2026, 9, 26)) == [
+        date(2026, 9, 21), date(2026, 9, 26)]
+    # Si el paso semanal ya cae en el ultimo dia, no se repite.
+    assert query_days(date(2026, 9, 1), date(2026, 9, 15)) == [
+        date(2026, 9, 1), date(2026, 9, 8), date(2026, 9, 15)]
+    assert query_days(date(2026, 9, 1), date(2026, 9, 17))[-1] == date(2026, 9, 17)
+    assert query_days(date(2026, 9, 5), date(2026, 9, 5)) == [date(2026, 9, 5)]
+
+
+def test_el_backfill_diario_ve_un_torneo_que_empieza_dentro_de_la_ventana(monkeypatch):
+    from sqp.providers import espn_tennis
+    from sqp.providers.date_window import fetch_window
+    start, end = fetch_window(3)
+    pedidas: list[str] = []
+    torneo = [{"date": f"{end:%Y-%m-%d}", "home": "A", "away": "B", "home_score": 1,
+               "away_score": 0, "neutral": True, "game_id": "g1", "winner": "A"}]
+
+    def fake_fetch(self, tour, dates, since):
+        pedidas.append(dates)
+        return torneo if dates == f"{end:%Y%m%d}" else []
+
+    monkeypatch.setattr(espn_tennis.ESPNTennisResultsProvider, "_fetch", fake_fetch)
+    rows = espn_tennis.ESPNTennisResultsProvider().fetch_results("atp", days_back=3)
+    assert pedidas == [f"{start:%Y%m%d}", f"{end:%Y%m%d}"]
+    assert len(rows) == 1
