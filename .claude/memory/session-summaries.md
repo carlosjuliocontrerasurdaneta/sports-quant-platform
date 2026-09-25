@@ -832,3 +832,14 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Pendiente:**
   - paso 0.5 a las 12:00;
   - CLN-001.
+
+## 2026-09-25 — CLN-001 (limpieza de `.codex-tmp/`)
+
+- **Borrados:** 92 directorios accesibles de rondas cerradas.
+- **Conservados:**
+  - 19 ficheros sueltos: borradores de Codex y scripts, sin referencias; se ofrecen al operador antes de borrarlos;
+  - `sqp-agent/sessions.db`.
+- **Quedan 40 directorios** con ACL del sandbox de Codex, que no se pueden leer sin elevación. Crecen con cada revisión del hook Stop (eran 8).
+- **Pendiente:**
+  - el operador, en consola elevada: `takeown` + `icacls` + borrar;
+  - paso 0.5 y gate con K=52 tras el run de las 12:00.

@@ -40,3 +40,10 @@
 - **KI-064 (b) corregido** (2026-09-25): el monitor reconcilia el log con el registro en cada ejecución, así que un apéndice fallido se repara en la siguiente. KI-064 queda cerrado. Sigue abierto KI-063 (P2, decisión de diseño).
 - **KI-063 corregido** (2026-09-25): el fallback anota sus transiciones en el log (`fallback_registro_ilegible`), así que la histéresis sobrevive a varios días de registro corrupto. Las observaciones de la verificación de KI-061 (OBS-001..003) quedan resueltas.
 - **Aviso operativo resuelto** (2026-09-25): el gate se re-pre-registró a K = 52 (techo 63) por orden del operador, con 52/52 cortes en `muestra_insuficiente` y ningún test gastado. Ver `docs/research/2026-09-25-repreregistro-gate-k52.md`.
+- **CLN-001 ejecutado (2026-09-25), sigue PARCIAL.**
+  - En `.codex-tmp/` había 554 MB: 133 directorios y 19 ficheros.
+  - Borrados los **92 directorios accesibles**: bases de pytest y mypy de rondas cerradas y dos copias antiguas del repositorio. Ninguno se había modificado en la última hora.
+  - Se conservan:
+    - los 19 ficheros sueltos (~1,9 MB): borradores de Codex y scripts de un solo uso, sin referencias en `audit/`. El informe de OpenAI del 23/09 es un borrador de `audit/latest/openai/REPORT.md` (1 línea distinta);
+    - `sqp-agent/sessions.db` (24 KB, origen desconocido).
+  - **Los 40 directorios con ACL denegada** (eran 8) no dejan ni leer sus permisos: los crea el sandbox de Codex en cada revisión. Borrarlos exige tomar la propiedad desde una consola elevada; es acción del operador.
