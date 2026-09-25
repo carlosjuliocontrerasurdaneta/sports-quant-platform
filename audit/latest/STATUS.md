@@ -30,3 +30,14 @@ Línea base: `FINDINGS.md` (sin modificar).
 **Resumen:** 12 verificados-corregidos, 1 verificado-mitigado, 1 abierto (P1). Sin regresiones.
 
 **Regresiones de la ronda:** REG-001 (LOW, test) verificado-corregido; REG-002 (MEDIUM/P2, MLB con inicio desfasado) verificado-corregido. **Hallazgo nuevo fuera de la línea base:** KI-060 (histórico ESPN parado desde el 14/09 por rangos rechazados), corregido en código en la remediación 4, pendiente de verificación.
+
+**P3 «límites de uso de ESPN no documentados» (`CHANGES.md:287`), resuelto el 2026-09-25.**
+- ESPN no publica límites: el endpoint no es oficial.
+- Carga medida sobre el código y los BAT:
+  - paso 0.5 diario: ~126 peticiones;
+  - `BACKFILL_ALL` semanal: ~328;
+  - siembra de 365 días: ~381 por liga.
+  - La estimación de ~5-6 por liga no contaba el rango que ESPN rechaza con un 400.
+- Observado: 0 respuestas 429 en `logs/backfill.log`.
+- Documentado en el docstring de `src/sqp/providers/espn_results.py`.
+- Corrección: los dos proveedores ESPN respetan ahora el `Retry-After` de un 429 (tope de 60 s). Antes reintentaban a los 2, 4 y 6 s. 4 tests nuevos; fallan con el código anterior.

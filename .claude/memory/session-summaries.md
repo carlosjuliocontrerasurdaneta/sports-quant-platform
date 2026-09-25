@@ -821,3 +821,14 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Pendiente:**
   - paso 0.5 a las 12:00;
   - P3 de ESPN y CLN-001.
+
+## 2026-09-25 — Límites de uso de ESPN (P3 de audit-2026-09-23)
+
+- **Sin límites publicados** (el endpoint no es oficial).
+- **Carga medida:** ~126 peticiones/día (paso 0.5), ~328/semana (`BACKFILL_ALL`), ~381 por liga en una siembra anual. 0 respuestas 429 en el log.
+- **Documentado** en el docstring de `espn_results.py`.
+- **Corregido:** los dos proveedores ESPN respetan el `Retry-After` de un 429 (tope de 60 s).
+- **Tests:** 4 nuevos; fallan con el código anterior.
+- **Pendiente:**
+  - paso 0.5 a las 12:00;
+  - CLN-001.
