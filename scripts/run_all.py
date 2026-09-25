@@ -244,7 +244,15 @@ def main() -> int:
             # (audit-2026-09-18) llamaba al lector fuera de este `try`, y un
             # registro con raiz no objeto abortaba el run entero antes de la
             # primera liga. El helper absorbe cualquier fallo y avisa.
-            auto_paused = auto_pauses_from_persisted_registry(ROOT / "data" / "bets")
+            # Mismos umbrales que el monitor: con el registro ilegible, el
+            # fallback evalua el gate de hoy sobre el estado del log (KI-061).
+            auto_paused = auto_pauses_from_persisted_registry(
+                ROOT / "data" / "bets",
+                window_days=settings.degradation_window_days,
+                min_n=settings.degradation_min_n,
+                brier_margin=settings.degradation_brier_margin,
+                roi_pause=settings.degradation_roi_pause,
+                roi_resume=settings.degradation_roi_resume)
         for lg, mks in auto_paused.items():
             settings.paused_markets[lg] = sorted(
                 set(settings.paused_markets.get(lg, [])) | set(mks))

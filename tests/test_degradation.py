@@ -210,3 +210,44 @@ def test_fallback_con_registro_legible_no_mira_el_log(tmp_path):
                    "action": "pause"}]).to_csv(tmp_path / DEGRADATION_LOG_FILENAME,
                                                 index=False)
     assert auto_pauses_from_persisted_registry(tmp_path) == {"mlb": ["totals"]}
+
+
+# --- KI-061 (REG-001 de la verificacion de r2) -------------------------------------
+#
+# Con el registro ilegible, el fallback devolvia SOLO las pausas del log: un
+# mercado que se degradaba por primera vez no se pausaba mientras durase la
+# corrupcion (indefinidamente: el registro ya no se reescribe).
+
+
+def test_fallback_con_registro_ilegible_pausa_un_mercado_que_se_degrada_ahora(tmp_path):
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    ilegible = b'{"markets": {"nba|h2h": '
+    (tmp_path / DEGRADATION_FILENAME).write_bytes(ilegible)
+    # nba|h2h ya estaba pausado segun el log; mlb|totals se degrada HOY
+    # (40 perdidas con estimada 0.7: Brier 0.49 frente a 0.25 y ROI -1).
+    pd.DataFrame([{"timestamp": "t1", "league": "nba", "market": "h2h",
+                   "action": "pause"}]).to_csv(tmp_path / DEGRADATION_LOG_FILENAME,
+                                               index=False)
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    pausas = auto_pauses_from_persisted_registry(tmp_path, min_n=30, today=TODAY)
+    assert pausas == {"mlb": ["totals"], "nba": ["h2h"]}
+    # No escribe nada: el registro ilegible queda intacto y el log no crece.
+    assert (tmp_path / DEGRADATION_FILENAME).read_bytes() == ilegible
+    assert len(pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)) == 1
+
+
+def test_fallback_conserva_la_histeresis_del_log(tmp_path):
+    """Un corte pausado segun el log que HOY esta en zona intermedia (ni peor
+    que el mercado ni recuperado) sigue pausado: la histeresis sale del log."""
+    from sqp.risk.degradation import auto_pauses_from_persisted_registry
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    pd.DataFrame([{"timestamp": "t1", "league": "mlb", "market": "totals",
+                   "action": "pause"}]).to_csv(tmp_path / DEGRADATION_LOG_FILENAME,
+                                               index=False)
+    # 20 ganadas y 20 perdidas a 2.0 con estimada 0.5: Brier igual al mercado,
+    # ROI 0 -> no reanuda con roi_resume=0.05 (zona de histeresis).
+    pd.concat([_settled(20, result="win", est=0.5),
+               _settled(20, result="loss", est=0.5)]).to_csv(
+        tmp_path / "settled_mlb.csv", index=False)
+    assert auto_pauses_from_persisted_registry(
+        tmp_path, min_n=30, roi_resume=0.05, today=TODAY) == {"mlb": ["totals"]}

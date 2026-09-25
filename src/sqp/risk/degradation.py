@@ -191,7 +191,14 @@ def load_degradation_registry(bets_dir: Path) -> dict[str, dict]:
     return markets if isinstance(markets, dict) else {}
 
 
-def auto_pauses_from_persisted_registry(bets_dir: Path) -> dict[str, list[str]]:
+def auto_pauses_from_persisted_registry(bets_dir: Path, *,
+                                        window_days: int = DEFAULT_WINDOW_DAYS,
+                                        min_n: int = DEFAULT_MIN_N,
+                                        brier_margin: float = DEFAULT_BRIER_MARGIN,
+                                        roi_pause: float = DEFAULT_ROI_PAUSE,
+                                        roi_resume: float = DEFAULT_ROI_RESUME,
+                                        today: date | None = None,
+                                        ) -> dict[str, list[str]]:
     """Auto-pausas vigentes segun el ULTIMO registro persistido, sin recalcular.
 
     Es el camino de degradacion de `run_all.py` cuando el monitor falla: se
@@ -210,11 +217,28 @@ def auto_pauses_from_persisted_registry(bets_dir: Path) -> dict[str, list[str]]:
         log.error("registro de degradacion ilegible (%s); auto-pausas "
                   "reconstruidas desde %s.", exc, DEGRADATION_LOG_FILENAME)
         try:
-            return _pauses_from_log(bets_dir)
+            previous = _previous_from_log(bets_dir)
         except Exception as exc2:  # defensa final: el consumidor no debe caer
             log.warning("log de degradacion tambien ilegible (%s); se continua "
                         "sin auto-pausas.", exc2)
             return {}
+        # KI-061 (REG-001 de la verificacion de r2): devolver SOLO las pausas del
+        # log dejaba sin pausar a un mercado que se degrada por primera vez
+        # mientras el registro siga ilegible -- y ya no se reescribe, asi que
+        # indefinidamente. Se evalua el gate de HOY con los mismos umbrales que
+        # el monitor, sobre el estado reconstruido del log, y NO se escribe nada:
+        # el registro ilegible sigue intacto para revisarlo a mano.
+        try:
+            metrics = degradation_metrics(load_all_settled(Path(bets_dir)),
+                                          window_days=window_days, today=today)
+            markets, _ = evaluate_pauses(metrics, previous, min_n=min_n,
+                                         brier_margin=brier_margin,
+                                         roi_pause=roi_pause, roi_resume=roi_resume)
+            return paused_from_registry(markets)
+        except Exception as exc3:  # sin metricas: al menos las pausas conocidas
+            log.warning("no se pudo evaluar la degradacion de hoy (%s); se aplican "
+                        "solo las pausas del log.", exc3)
+            return paused_from_registry(previous)
     except Exception as exc:  # defensa final: el consumidor no debe caer
         log.warning("registro de degradacion ilegible (%s); se continua sin "
                     "auto-pausas.", exc)
@@ -246,16 +270,22 @@ def _load_previous_state(bets_dir: Path) -> dict[str, dict]:
     return markets
 
 
-def _pauses_from_log(bets_dir: Path) -> dict[str, list[str]]:
-    """Pausas vigentes segun la ULTIMA accion de cada corte en el log
-    append-only (orden de fichero = orden cronologico de escritura)."""
+def _previous_from_log(bets_dir: Path) -> dict[str, dict]:
+    """Estado pausado/no pausado de cada corte segun la ULTIMA accion en el log
+    append-only (orden de fichero = orden cronologico de escritura). Sirve de
+    ``previous`` para `evaluate_pauses` cuando el registro no se lee."""
     path = Path(bets_dir) / DEGRADATION_LOG_FILENAME
     if not path.exists():
         return {}
     df = pd.read_csv(path, usecols=["league", "market", "action"], dtype=str)
     last = df.dropna().drop_duplicates(["league", "market"], keep="last")
-    return paused_from_registry({f"{r.league}|{r.market}": {"paused": r.action == "pause"}
-                                 for r in last.itertuples()})
+    return {f"{r.league}|{r.market}": {"paused": r.action == "pause"}
+            for r in last.itertuples()}
+
+
+def _pauses_from_log(bets_dir: Path) -> dict[str, list[str]]:
+    """Pausas vigentes segun el log (ver `_previous_from_log`)."""
+    return paused_from_registry(_previous_from_log(bets_dir))
 
 
 def paused_from_registry(markets: dict[str, dict]) -> dict[str, list[str]]:
