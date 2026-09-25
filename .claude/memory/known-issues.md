@@ -548,3 +548,13 @@ Format:
     - Ahora el apéndice lanza `RegistroEstadoIlegibleError` y deja el log intacto, tanto con `ParserError` como con columnas desplazadas (pandas 3, con todas las filas con un campo de más; mismo patrón que `risk.bankroll`). El fallback avisa y aplica las pausas igualmente.
     - Tests: `test_el_apendice_no_reescribe_un_log_no_parseable` (2 casos) y `test_fallback_con_log_parcialmente_roto_no_borra_el_historial`; detectan tanto HEAD como el mutante con el apéndice destructivo.
     - El log de producción parsea entero (16 filas, `RangeIndex`).
+
+- ID: KI-065
+- Severity: Baja (P3)
+- Description: **El backfill diario de tenis no veía los torneos que empiezan dentro de la ventana.**
+  - `espn_tennis` consulta una fecha cada 7 días desde el inicio de la ventana y confía en que el scoreboard devuelva los torneos en curso ese día.
+  - Con `--days 3` (paso 0.5, ventana de 6 días) solo se consultaba el primer día.
+  - Observado el 2026-09-25: ATP `20260921` devolvió 0 partidos y `20260926` devolvió 56 (del 22 al 25). El paso 0.5 registró «ATP 0 results» y el histórico ATP se quedó en el 24/09. WTA no se vio afectada, porque su torneo ya estaba en curso el 21.
+- Affected files: src/sqp/providers/espn_tennis.py
+- Fix: `query_days` consulta también, siempre, el último día de la ventana (como mucho una petición más por circuito). Tests `test_una_ventana_corta_consulta_tambien_su_ultimo_dia` y `test_el_backfill_diario_ve_un_torneo_que_empieza_dentro_de_la_ventana`; fallan con el código anterior.
+- Status: CORREGIDO (2026-09-25). El hueco del 25/09 lo recoge el paso diario del 26/09, cuya ventana empieza el 22.

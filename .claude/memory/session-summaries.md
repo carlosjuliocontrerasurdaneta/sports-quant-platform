@@ -843,3 +843,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Pendiente:**
   - el operador, en consola elevada: `takeown` + `icacls` + borrar;
   - paso 0.5 y gate con K=52 tras el run de las 12:00.
+
+## 2026-09-25 (tarde) — Comprobación del run de las 12:00 y KI-065
+
+- **Gate:** reescrito con K = 52. `mlb|h2h` y `mlb|spreads` llegaron a n = 301 y gastaron su test único con el α nuevo: `no_bate_al_mercado`, EV negativo. El re-pre-registro llegó a tiempo.
+- **Paso 0.5:** correcto (19 ligas y tenis, sin fallos).
+- **KI-065 corregido:** el tenis diario no consultaba el último día de la ventana (ATP 0 resultados).
+- **Pendiente:**
+  - CLN-001: 40 directorios con ACL en consola elevada, a cargo del operador;
+  - 19 ficheros sueltos de `.codex-tmp` a la espera de su decisión.
