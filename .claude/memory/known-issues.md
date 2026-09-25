@@ -523,3 +523,8 @@ Format:
 - Affected files: src/sqp/risk/degradation.py:219-224, 273-283, 349-350
 - Proposed fix: (a) tratar el log ilegible como `previous={}` y evaluar igualmente; (b) revisar el orden o la atomicidad de la escritura registro/log.
 - Status: ABIERTO (P3). Requiere doble fallo.
+
+- Actualización 2026-09-25 (KI-064): **(a) CORREGIDO.** Con el registro y el log de degradación ilegibles, `auto_pauses_from_persisted_registry` ya no devuelve `{}`: toma `previous={}` y evalúa el gate de hoy.
+  - Pausa lo que se degrada hoy; las pausas antiguas se pierden, porque no hay de dónde recuperarlas. No escribe nada.
+  - Test `test_fallback_con_log_ilegible_evalua_hoy_desde_cero` (log vacío y log sin columnas): falla con el código anterior y pasa con el nuevo.
+  - **(b) sigue ABIERTO** (P3): el orden de escritura registro/log.

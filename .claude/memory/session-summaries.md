@@ -775,3 +775,13 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - re-pre-registro del gate (52 > 50);
   - paso 0.5 a las 12:00;
   - P3 de ESPN y CLN-001.
+
+## 2026-09-25 — KI-064 (a) corregido
+
+- **Cambio:** con el registro y el log de degradación ilegibles, el fallback evalúa hoy con `previous={}` en lugar de devolver `{}`.
+- **Test nuevo** (2 casos): falla con el código anterior y pasa con el nuevo. 46 tests focalizados passed; ruff y mypy limpios.
+- **Pendiente:**
+  - KI-063 (P2, decisión de diseño);
+  - KI-064 (b);
+  - re-pre-registro del gate;
+  - paso 0.5 a las 12:00.
