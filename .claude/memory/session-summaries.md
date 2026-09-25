@@ -805,3 +805,19 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - paso 0.5 a las 12:00;
   - P3 de ESPN y CLN-001.
 - **Revisión Codex de KI-063:** P2 aceptado. El apéndice al log de degradación reescribía un log no parseable y borraba su historial (defecto anterior). Ahora lanza y no lo toca. 3 tests nuevos; 53 focalizados passed.
+
+## 2026-09-25 — Re-pre-registro del gate a K = 52
+
+- **Orden del operador.** α = 0,05/52 = 0,000962; techo 63 (+22 %, la regla del 2026-09-04).
+- **Estado previo medido:** 52/52 en `muestra_insuficiente`, sin tests gastados; MLB en n = 287–293.
+- **Cambios:**
+  - constantes en `prediction_gate.py`;
+  - documentación del umbral (`default.yaml`, `gate_status.py`, skill `clv-shadow-exit`);
+  - tests relativos a K, más un test nuevo del techo;
+  - documento nuevo y nota en el pre-registro del 2026-09-04;
+  - decisión registrada.
+- **Revisión Fable independiente:** APTO CON OBSERVACIONES. Se aplicaron las cinco: el techo 63 se registra como derivado y pendiente de confirmación, la predicción se cita literal, docstring, tests de los bordes K y techo, y commit antes de las 12:00 (guarda KI-036).
+- **Pendiente:** que el operador confirme el techo 63.
+- **Pendiente:**
+  - paso 0.5 a las 12:00;
+  - P3 de ESPN y CLN-001.

@@ -414,3 +414,16 @@ Format:
   - `--days 14` diario (unas 4 veces más tiempo);
   - seguir con el semanal (el fallback queda casi inútil).
 - Consequences: la cadena diaria tarda unos 2 min más. Un fallo del backfill solo deja un AVISO.
+
+- Date: 2026-09-25
+- Decision: **Re-pre-registro del prediction gate a K = 52** (orden del operador). α_corte = 0,05/52 = 0,000962 (antes 0,05/41 = 0,00122). El techo de re-pre-registro pasa a 63 = ⌊52 × 50/41⌋, **derivado y pendiente de confirmación del operador** (es el máximo que no empeora la cota aprobada).
+- Reason:
+  - El universo llegó a 52 cortes, por encima del techo de 50 que fija §3.1 del pre-registro del 2026-09-04, que ordena re-pre-registrar antes de que ningún corte nuevo sea elegible.
+  - Medido antes de fijar nada: 52/52 en `muestra_insuficiente`, ningún test gastado. MLB está en n = 287–293, así que el cambio tenía que entrar antes del run de las 12:00.
+- Alternatives:
+  - No tocar: la cota real del error de familia se quedaría en 0,0634 y el run seguiría emitiendo el ERROR diario.
+  - Otro techo: se descartó elegirlo, porque un techo elegido sería un umbral inventado; se aplica la misma tolerancia relativa ya aprobada (+22 %).
+- Consequences:
+  - A n = 300 hacen falta 178 victorias pareadas (59,3 %) en lugar de 177 (59,0 %): solo endurece.
+  - El ERROR «RE-PRE-REGISTRAR» desaparece (52 = K).
+  - Documento: `docs/research/2026-09-25-repreregistro-gate-k52.md`.
