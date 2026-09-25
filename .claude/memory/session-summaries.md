@@ -754,3 +754,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - **re-pre-registro del gate** (52 cortes > 50), que es decisión del operador;
   - confirmar el paso 0.5 del backfill en el run de las 12:00;
   - P3: límites de uso de ESPN y CLN-001.
+
+## 2026-09-25 (cierre 2) — KI-062 y registro en Obsidian
+
+- **KI-062** corregido en `4c63323`: `test_reader_contention_preserves_atomicity[False-csv]` fallaba bajo carga porque medía el tiempo de reloj. Ahora cuenta los intentos de `os.replace` y tiene una guarda que aborta. La mutación «reintento sin plazo» se detecta, y con la CPU saturada pasó 3/3.
+- **Obsidian:** nueva `Bitácora/2026-09-25` con la verificación de r2, KI-061 y KI-062, e índice actualizado.
+- **Pendiente:** sin cambios respecto al cierre anterior (verificación de KI-061, re-pre-registro del gate, paso 0.5 a las 12:00, P3).

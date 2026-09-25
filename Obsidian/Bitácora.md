@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-24
+actualizada: 2026-09-25
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-09-25]] — verificación de `audit-2026-09-22-r2`: APTO CON PENDIENTES; KI-061 corregido (la degradación con el registro ilegible no pausaba mercados); KI-062 (test de contención medido en intentos, no en reloj); el gate evalúa 52 cortes, por encima del límite de 50.
 - [[Bitácora/2026-09-24]] — verificación de `audit-2026-09-23`: NO APTO por AUD-003; identidad exacta de eventos aplicada (ESPN resuelto, MLB fuera del fallback hasta KI-059) tras tres rondas de revisión Fable.
 - [[Bitácora/2026-09-23]] — ronda `audit-2026-09-23` con dos auditores (Claude 5 + OpenAI 9 → 14 AUD); remediación: 13 implementados sin commit, AUD-003 bloqueado por FABLE-001 (el fallback histórico liquidaba picks sin jugar con el marcador de otro partido de la serie).
 - [[Bitácora/2026-09-17]] — `SQP_Validate_OOS_Cdev` lanzada a mano: rc=0, 33/34 ligas validadas, sin overfit sistemático pero MLB/NHL mejor con historia completa; marcador modelo-vs-mercado: mercado mejor (Brier), selección con delta −6,45 % IC95 que roza el cero.
