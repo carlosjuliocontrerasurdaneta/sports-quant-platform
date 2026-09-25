@@ -27,12 +27,4 @@
 - Con el registro de degradación ilegible, el fallback evalúa el gate de hoy (mismos umbrales que el monitor, pasados desde `run_all`) sobre el estado reconstruido desde `degradation_log.csv`, y no escribe nada.
 - Antes, con un mercado degradado HOY y el registro corrupto, devolvía solo `{'nba': ['h2h']}`. Ahora devuelve `{'mlb': ['totals'], 'nba': ['h2h']}`.
 - Tests: `test_degradation.py::test_fallback_con_registro_ilegible_pausa_un_mercado_que_se_degrada_ahora` y `::test_fallback_conserva_la_histeresis_del_log`.
-- Estado: ~~IMPLEMENTADO, pendiente de verificación independiente~~ → **VERIFICADO: CORREGIDO CON PENDIENTES** (2026-09-25, ver abajo).
-
-**Verificación independiente de REG-001 (KI-061), 2026-09-25T06:56Z** (versión previa de este fichero en `audit/audit-2026-09-22-r2/history/verificacion-ki061-20260925T065602Z/`).
-- Veredicto: **CORREGIDO CON PENDIENTES**. Informe: `VERIFICATION-KI-061.md`.
-- El caso del hallazgo pasa de `{'nba':['h2h']}` a `{'mlb':['totals'],'nba':['h2h']}`, sin escribir nada. Umbrales idénticos a la ruta normal.
-- La mutación se detecta. 302 tests del área passed; ruff y mypy limpios. No hay regresiones.
-- Pendientes (ninguno es regresión):
-  - OBS-001 → KI-063 (P2): la histéresis se pierde mientras dura la corrupción.
-  - OBS-002 y OBS-003 → KI-064 (P3): con el log ilegible, no se evalúa el día; y el fallback solo conoce el log.
+- Estado: **IMPLEMENTADO, pendiente de verificación independiente**.

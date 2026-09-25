@@ -103,21 +103,7 @@
       "tests/test_degradation.py"
     ],
     "behavior": "registro ilegible: antes {'nba': ['h2h']}; ahora {'mlb': ['totals'], 'nba': ['h2h']}",
-    "state": "verificado: corregido con pendientes",
+    "state": "implementado, pendiente de verificacion independiente",
     "history": "audit/audit-2026-09-22-r2/history/remediacion-reg001-20260925T045722Z/"
-  },
-  "verification_reg001": {
-    "date_utc": "2026-09-25T06:56:02+00:00",
-    "verifier": "claude-fable-5-1 (subagente independiente, solo lectura)",
-    "base_commit": "a9170e5",
-    "verdict": "CORREGIDO CON PENDIENTES",
-    "report": "audit/audit-2026-09-22-r2/VERIFICATION-KI-061.md",
-    "tests": "44 passed focalizados; 302 passed area run_all/degradation; ruff y mypy limpios; mutacion detectada",
-    "observations": {
-      "OBS-001": "KI-063 (P2)",
-      "OBS-002": "KI-064 (P3)",
-      "OBS-003": "KI-064 (P3)"
-    },
-    "history": "audit/audit-2026-09-22-r2/history/verificacion-ki061-20260925T065602Z/"
   }
 }

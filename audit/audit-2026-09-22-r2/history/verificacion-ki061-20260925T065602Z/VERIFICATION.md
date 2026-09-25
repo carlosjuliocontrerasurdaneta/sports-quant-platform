@@ -99,10 +99,3 @@ Regla 3 del contrato (`audits/prompts/verificar-remediacion.md`): no queda ning�
 REG-001 se corrigió después de esta verificación (ver `STATUS.md` y KI-061).
 - Esta verificación no evalúa esa corrección, y su veredicto (APTO CON PENDIENTES) no cambia hasta una nueva verificación.
 - Versión previa de este fichero: `history/remediacion-reg001-20260925T045722Z/`.
-
-## 9. Verificación independiente de la remediación de REG-001 (2026-09-25)
-
-Veredicto **CORREGIDO CON PENDIENTES** (Fable, solo lectura). El detalle está en `VERIFICATION-KI-061.md`.
-- REG-001 queda cerrado como regresión.
-- Quedan abiertos KI-063 (P2, histéresis durante la corrupción) y KI-064 (P3).
-- El veredicto global de la ronda sigue siendo **APTO CON PENDIENTES**.

@@ -490,6 +490,8 @@ Format:
 
 - Actualización 2026-09-25 (KI-061): **CORREGIDO en código.** Con el registro ilegible, `auto_pauses_from_persisted_registry` evalúa el gate de hoy con los umbrales del monitor, que le pasa `run_all`, sobre el estado reconstruido desde el log, y no escribe nada. Tests nuevos en `test_degradation.py`. Pendiente de verificación independiente.
 
+- Verificación 2026-09-25 (KI-061): **CORREGIDO CON PENDIENTES** (Fable independiente; ver `audit/audit-2026-09-22-r2/VERIFICATION-KI-061.md`). Sin regresiones y mutación detectada. Las observaciones se abren como KI-063 y KI-064.
+
 - ID: KI-062
 - Severity: Baja
 - Description: **Test intermitente bajo carga:** `tests/test_audit_atomic_readers.py::test_reader_contention_preserves_atomicity[False-csv]`.
@@ -501,3 +503,23 @@ Format:
   - La mutación «reintento sin plazo» se detecta (2 fallos).
   - Con 8 procesos saturando la CPU: 3/3 en verde.
 - Status: CORREGIDO (2026-09-25).
+
+- ID: KI-063
+- Severity: Media (P2)
+- Description: **OBS-001 de la verificación de KI-061. La histéresis se pierde mientras el registro de degradación siga ilegible.**
+  - Una pausa que decide el fallback no se persiste, porque el fallback no escribe nada.
+  - Al día siguiente, si el registro sigue corrupto y el mercado está en la zona intermedia (`roi_pause <= roi_flat < roi_resume` y Brier dentro del margen), el fallback lo despausa. El monitor normal lo mantendría por `hysteresis_hold`.
+  - Reproducido: ROI -0,10 con los defaults -0,15/-0,05 devuelve `{}` frente a `{'mlb':['totals']}`.
+  - No es regresión: antes ni siquiera se pausaba.
+- Affected files: src/sqp/risk/degradation.py:231-237
+- Proposed fix: decidir cómo persistir el estado del fallback sin romper el contrato de «no escribir sobre un registro ilegible». Por ejemplo, anotar las transiciones en `degradation_log.csv`. Es una decisión de diseño.
+- Status: ABIERTO (P2). Lo compensan el ERROR diario del registro ilegible y el prediction gate en default-deny.
+
+- ID: KI-064
+- Severity: Baja (P3)
+- Description: **OBS-002 y OBS-003 de la verificación de KI-061.**
+  - (a) Si `degradation_log.csv` tampoco se lee (0 bytes lanza `EmptyDataError`; sin columnas lanza `ValueError`), el fallback devuelve `{}` sin evaluar las métricas de hoy, y un mercado degradado hoy queda sin pausar.
+  - (b) El fallback solo conoce el log. El registro se escribe antes que el log, así que una pausa cuyo apéndice al log falló no la ve un fallback posterior (se deduce del orden de escritura; no se reprodujo).
+- Affected files: src/sqp/risk/degradation.py:219-224, 273-283, 349-350
+- Proposed fix: (a) tratar el log ilegible como `previous={}` y evaluar igualmente; (b) revisar el orden o la atomicidad de la escritura registro/log.
+- Status: ABIERTO (P3). Requiere doble fallo.

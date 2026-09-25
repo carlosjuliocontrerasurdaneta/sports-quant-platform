@@ -760,3 +760,18 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **KI-062** corregido en `4c63323`: `test_reader_contention_preserves_atomicity[False-csv]` fallaba bajo carga porque medía el tiempo de reloj. Ahora cuenta los intentos de `os.replace` y tiene una guarda que aborta. La mutación «reintento sin plazo» se detecta, y con la CPU saturada pasó 3/3.
 - **Obsidian:** nueva `Bitácora/2026-09-25` con la verificación de r2, KI-061 y KI-062, e índice actualizado.
 - **Pendiente:** sin cambios respecto al cierre anterior (verificación de KI-061, re-pre-registro del gate, paso 0.5 a las 12:00, P3).
+
+## 2026-09-25 — Verificación independiente de KI-061
+
+- **Veredicto:** CORREGIDO CON PENDIENTES (Fable, en solo lectura).
+  - Caso reproducido contra el código anterior y el actual.
+  - Mutación detectada; 302 tests del área passed; sin regresiones.
+- **Informe:** `audit/audit-2026-09-22-r2/VERIFICATION-KI-061.md`. STATUS, VERIFICATION §9 y MANIFEST actualizados (copia previa en `history/verificacion-ki061-20260925T065602Z/`).
+- **Nuevos:**
+  - KI-063 (P2): la histéresis se pierde con la corrupción persistente; es una decisión de diseño.
+  - KI-064 (P3): log ilegible y fallback que solo conoce el log.
+- **Pendiente:**
+  - KI-063 y KI-064;
+  - re-pre-registro del gate (52 > 50);
+  - paso 0.5 a las 12:00;
+  - P3 de ESPN y CLN-001.
