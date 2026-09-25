@@ -350,5 +350,41 @@ def run_degradation_monitor(bets_dir: Path, *,
               "brier_margin": float(brier_margin), "roi_pause": float(roi_pause),
               "roi_resume": float(roi_resume)}
     path = write_degradation_registry(markets, bets_dir, params=params)
-    append_degradation_log(transitions, bets_dir)
+    append_degradation_log(transitions + _reconciliation_rows(markets, transitions,
+                                                              bets_dir), bets_dir)
     return path, transitions, paused_from_registry(markets)
+
+
+def _reconciliation_rows(markets: dict[str, dict], transitions: list[dict],
+                         bets_dir: Path) -> list[dict]:
+    """Filas que devuelven el log a la par con el registro (KI-064 b).
+
+    El registro se escribe antes que el log: si un dia falla el apendice, el
+    registro ya no produce esa transicion (el estado previo ya es el nuevo) y
+    el log -- la unica fuente del fallback con el registro ilegible -- se queda
+    sin ella. Cada corte cuya ultima accion en el log difiere del registro, y
+    que hoy no tiene transicion propia, recibe una fila de reconciliacion."""
+    try:
+        logged = _previous_from_log(bets_dir)
+    except Exception as exc:  # log ilegible: no hay contra que reconciliar
+        log.warning("log de degradacion ilegible (%s); no se reconcilia con el "
+                    "registro.", exc)
+        return []
+    today_keys = {f"{t['league']}|{t['market']}" for t in transitions}
+    now = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for key in sorted((set(markets) | set(logged)) - today_keys):
+        entry = markets.get(key) or {}
+        paused = bool(entry.get("paused"))
+        if paused == bool((logged.get(key) or {}).get("paused")) or "|" not in key:
+            continue
+        lg, mk = key.split("|", 1)
+        rows.append({
+            "timestamp": now, "league": lg, "market": mk,
+            "action": "pause" if paused else "resume",
+            "reasons": "reconciliacion_registro", "n": entry.get("n"),
+            "brier_model": entry.get("brier_model"),
+            "brier_market": entry.get("brier_market"),
+            "roi_flat": entry.get("roi_flat"),
+        })
+    return rows

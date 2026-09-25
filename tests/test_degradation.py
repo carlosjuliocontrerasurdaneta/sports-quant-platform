@@ -251,6 +251,53 @@ def test_fallback_con_log_ilegible_evalua_hoy_desde_cero(tmp_path, log_ilegible)
     assert (tmp_path / DEGRADATION_LOG_FILENAME).read_bytes() == log_ilegible
 
 
+def test_un_apendice_fallido_al_log_se_reconcilia_en_la_siguiente_corrida(
+        tmp_path, monkeypatch):
+    """KI-064 (b): el registro se escribe antes que el log. Si el apendice
+    falla, la pausa vive solo en el registro; la corrida siguiente ya no ve
+    transicion. Sin reconciliar, un registro corrupto despues la hacia
+    invisible para el fallback, que solo conoce el log."""
+    from sqp.risk import degradation as deg
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    real_append = deg.append_degradation_log
+
+    def falla(transitions, bets_dir):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(deg, "append_degradation_log", falla)
+    with pytest.raises(OSError):
+        run_degradation_monitor(tmp_path, min_n=30, today=TODAY)
+    assert load_degradation_registry(tmp_path)["mlb|totals"]["paused"]
+    assert not (tmp_path / DEGRADATION_LOG_FILENAME).exists()
+
+    monkeypatch.setattr(deg, "append_degradation_log", real_append)
+    _, trans, paused = run_degradation_monitor(tmp_path, min_n=30, today=TODAY)
+    assert not trans and paused == {"mlb": ["totals"]}
+    filas = pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)
+    assert filas[["league", "market", "action", "reasons"]].values.tolist() == [
+        ["mlb", "totals", "pause", "reconciliacion_registro"]]
+    # Idempotente: una tercera corrida no anade nada.
+    run_degradation_monitor(tmp_path, min_n=30, today=TODAY)
+    assert len(pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)) == 1
+
+    # Con el registro corrupto, el fallback ve la pausa aunque hoy no haya
+    # liquidadas en la ventana (sin metricas: manda el estado del log).
+    (tmp_path / DEGRADATION_FILENAME).write_text("[1]", encoding="utf-8")
+    (tmp_path / "settled_mlb.csv").unlink()
+    assert deg.auto_pauses_from_persisted_registry(
+        tmp_path, min_n=30, today=TODAY) == {"mlb": ["totals"]}
+
+
+def test_la_reconciliacion_no_duplica_la_transicion_de_hoy(tmp_path):
+    """Un corte con transicion propia hoy no recibe ademas una fila de
+    reconciliacion, aunque el log estuviera desfasado."""
+    _settled(40).to_csv(tmp_path / "settled_mlb.csv", index=False)
+    run_degradation_monitor(tmp_path, min_n=30, today=TODAY)
+    filas = pd.read_csv(tmp_path / DEGRADATION_LOG_FILENAME)
+    assert filas["action"].tolist() == ["pause"]
+    assert "reconciliacion_registro" not in filas["reasons"].tolist()
+
+
 def test_fallback_conserva_la_histeresis_del_log(tmp_path):
     """Un corte pausado segun el log que HOY esta en zona intermedia (ni peor
     que el mercado ni recuperado) sigue pausado: la histeresis sale del log."""
