@@ -55,6 +55,15 @@ def main() -> int:
             if not results:
                 log.warning("[%s] provider returned 0 results. Check the league path "
                             "and whether the league played in the requested window.", league)
+            # Una ventana que falla del todo ya no pasa por "0 resultados, rc=0":
+            # asi estuvo el historico ESPN parado del 2026-09-14 al 2026-09-24
+            # sin que la tarea semanal dejara de salir en verde.
+            fallidas = list(getattr(provider, "failed_windows", []) or [])
+            if fallidas:
+                failures += 1
+                log.error("[%s] %d ventana(s) del proveedor fallaron del todo; el "
+                          "historico queda INCOMPLETO: %s", league, len(fallidas),
+                          "; ".join(fallidas[:3]))
         except Exception as exc:
             failures += 1
             log.error("[%s] backfill failed: %s", league, exc)

@@ -381,8 +381,11 @@ def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
 
     Medido el 2026-09-24 sobre 692 eventos MLB graduados por el feed: 668
     coinciden, 0 no coinciden, 24 sin graduar. El partido correcto queda a
-    <= 5 min (705/710; el resto a 61 min, tambien correctos) y el siguiente del
-    par, a >= 181 min: basta con el mas cercano, sin umbral."""
+    <= 5 min (705/710; el resto a 61 min, tambien correctos). "El mas cercano"
+    NO basta en un dia con varios partidos del par: la verificacion 3 midio
+    desfases de The Odds API de 61-301 min frente a juegos del mismo dia
+    separados 120-300 min (REG-002). Ese dia solo se gradua si cada aparicion
+    la reclama exactamente un evento conocido."""
     now = now or datetime.now(timezone.utc)
     needed = {"game_id", "date", "start_time", "home", "away", "state"}
     if schedule is None or schedule.empty or not needed.issubset(schedule.columns):
@@ -447,6 +450,17 @@ def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
         home = str(r.home)
         ap = aparicion(home, str(r.away), st)
         if ap is None or len(elegida.get(ap[1], ())) > 1:
+            continue
+        # Dia con VARIOS partidos del par (REG-002, verificacion 3): "el mas
+        # cercano" no identifica si The Odds API desfasa el inicio -- medido:
+        # desfases de 61-301 min frente a juegos del mismo dia separados 120-300
+        # min. Reproducido con CIN-ARI 2025-06-07: el pick del juego 2 desfasado
+        # -61 min se liquidaba con el marcador del juego 1. Solo se gradua si
+        # CADA aparicion del par ese dia (aplazadas incluidas) la reclama
+        # exactamente un evento conocido; si no, expira.
+        par = (normalize_key(home), normalize_key(str(r.away)))
+        del_dia = [j for j in por_par.get(par, []) if j[5] == ap[5]]
+        if len(del_dia) > 1 and any(len(elegida.get(j[1], ())) != 1 for j in del_dia):
             continue
         if ap[3] != "Final" or ap[2].startswith(_NO_JUGADO):
             continue

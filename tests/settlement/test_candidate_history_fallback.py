@@ -347,16 +347,23 @@ def test_calendario_doubleheader_jugado_cada_uno_con_su_marcador():
     assert m == {"p1": (7, 1, "Home Team"), "p2": (0, 3, "Home Team")}
 
 
-def test_calendario_serie_en_asia_se_identifica_por_la_hora():
-    """FABLE-R2-002: juego 2 de dia en Tokio (03:05Z). La fecha ET apuntaba al
-    juego 1; la hora identifica el suyo."""
+def test_calendario_serie_en_asia_nunca_toma_el_marcador_del_otro_juego():
+    """FABLE-R2-002: serie en Tokio, juego 1 a las 10:10Z del 18 y juego 2 de
+    dia a las 03:05Z del 19: los DOS caen el 18 en hora ET. Con un solo evento
+    conocido, dos apariciones del par ese dia no se identifican (REG-002) y no
+    se gradua. Con los dos reclamados uno a uno, cada uno con el suyo."""
     cal = [_cal("J1", "2026-03-18T10:10:00Z"), _cal("J2", "2026-03-19T03:05:00Z")]
     res = [_res("J1", 4, 2, "2026-03-18"), _res("J2", 1, 0, "2026-03-19")]
     ahora = datetime(2026, 3, 25, tzinfo=timezone.utc)
     m = runner.mlb_schedule_scores_map(
         pd.DataFrame([_fila("j2", "2026-03-19T03:05:00Z")]), pd.DataFrame(cal), res,
         now=ahora)
-    assert m == {"j2": (1, 0, "Home Team")}
+    assert m == {}
+    ambos = pd.DataFrame([_fila("j1", "2026-03-18T10:10:00Z"),
+                          _fila("j2", "2026-03-19T03:05:00Z")])
+    m = runner.mlb_schedule_scores_map(ambos, pd.DataFrame(cal), res, now=ahora,
+                                       known_events=ambos)
+    assert m == {"j1": (4, 2, "Home Team"), "j2": (1, 0, "Home Team")}
 
 
 def test_calendario_partido_fuera_del_calendario_no_toma_el_de_otro_dia():
@@ -500,6 +507,59 @@ def test_doubleheader_con_hora_por_confirmar_no_gradua():
                         _cal("G2", "2026-09-10T17:10:00Z", tbd=True)])
     res = [_res("G1", 7, 1), _res("G2", 0, 3)]
     assert _mapa([("p1", "2026-09-10T17:05:00Z")], cal.to_dict("records"), res) == {}
+
+
+def test_dos_partidos_del_par_el_mismo_dia_con_inicio_desfasado_no_gradua():
+    """REG-002 (verificacion 3, reproducido con CIN-ARI 2025-06-07): juegos a
+    las 18:10Z y 20:10Z. El pick del juego 2 llega desfasado -61 min (19:09Z)
+    y el mas cercano pasa a ser el juego 1. Con el otro partido del dia sin
+    reclamar por ningun evento conocido, no se gradua."""
+    cal = [_cal("777623", "2025-06-07T18:10:00Z"), _cal("777612", "2025-06-07T20:10:00Z")]
+    res = [_res("777623", 4, 3, "2025-06-07"), _res("777612", 13, 1, "2025-06-07")]
+    ahora = datetime(2025, 6, 15, tzinfo=timezone.utc)
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("g2", "2025-06-07T19:09:00Z")]), pd.DataFrame(cal), res,
+        now=ahora)
+    assert m == {}
+    # Contraprueba: con los dos juegos reclamados uno a uno, cada pick se
+    # gradua con el marcador de SU juego.
+    conocidos = pd.DataFrame([_fila("g1", "2025-06-07T18:10:00Z"),
+                              _fila("g2", "2025-06-07T20:10:00Z")])
+    m = runner.mlb_schedule_scores_map(conocidos, pd.DataFrame(cal), res, now=ahora,
+                                       known_events=conocidos)
+    assert m == {"g1": (4, 3, "Home Team"), "g2": (13, 1, "Home Team")}
+
+
+def test_doubleheader_con_aplazado_y_pick_desfasado_no_toma_el_juego_jugado():
+    """N3 (verificacion de REG-002): el aplazado CUENTA en la guarda del dia.
+    Juego 1 final a las 18:10Z, juego 2 aplazado a las 20:10Z; el pick del
+    juego 2 llega desfasado -61 min y el mas cercano es el juego 1. Como la
+    aparicion aplazada no la reclama nadie mas, el dia no se identifica."""
+    cal = [_cal("G1", "2025-06-07T18:10:00Z"),
+           _cal("G2", "2025-06-07T20:10:00Z", state="Postponed")]
+    res = [_res("G1", 4, 3, "2025-06-07")]
+    m = runner.mlb_schedule_scores_map(
+        pd.DataFrame([_fila("p2", "2025-06-07T19:09:00Z")]), pd.DataFrame(cal), res,
+        now=datetime(2025, 6, 15, tzinfo=timezone.utc))
+    assert m == {}
+
+
+def test_los_candidatos_mlb_usan_los_eventos_servidos_como_conocidos(
+        tmp_path, monkeypatch):
+    """M14 (verificacion 3): el cableado de produccion de la regla uno a uno.
+    Si el stream servido tiene OTRO evento que reclama la misma aparicion, el
+    candidato no se gradua; sin ese cableado, se graduaria."""
+    from sqp.storage.served_store import ServedStore
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _write(tmp_path, current_cands=[_cand("e1")], current_preds=[_pred("e1")])
+    _calendario(tmp_path, "g1", GAME)
+    _resultado(tmp_path, _dia_mlb(GAME), 70, 80, "g1")
+    otro = _servida(LEAGUE)
+    otro["event_id"] = "e-duplicado"
+    otro["start_time"] = (GAME + timedelta(minutes=1)).strftime(ISO)
+    ServedStore(tmp_path).append_served(LEAGUE, [otro])
+    settled = _settle(tmp_path)
+    assert settled.iloc[0]["result"] == "void"
 
 
 def test_calendario_desactualizado_no_gradua():

@@ -63,11 +63,18 @@ ESPN_UNAVAILABLE: frozenset[str] = frozenset({"frauen_bundesliga"})
 _CHUNK_DAYS = 30  # range queries are capped server-side; chunk to avoid dropped events
 
 
+class _RangoRechazado(Exception):
+    """ESPN rechazo (400) una consulta por RANGO de fechas."""
+
+
 class ESPNResultsProvider(ResultsProvider):
     def __init__(self, session: requests.Session | None = None):
         self.session = session or requests.Session()
+        # Ventanas que fallaron del todo en la ULTIMA llamada a `fetch_results`.
+        self.failed_windows: list[str] = []
 
     def fetch_results(self, league: str, days_back: int = 365) -> list[dict]:
+        self.failed_windows = []
         if league in ESPN_UNAVAILABLE:
             raise ProviderNotConfiguredError(
                 f"League '{league}' is not available on ESPN's scoreboard API "
@@ -93,15 +100,35 @@ class ESPNResultsProvider(ResultsProvider):
             chunk_start = start
             while chunk_start <= end:
                 chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS - 1), end)
-                out.extend(self._fetch(cfg, f"{chunk_start:%Y%m%d}-{chunk_end:%Y%m%d}"))
+                try:
+                    out.extend(self._fetch(
+                        cfg, f"{chunk_start:%Y%m%d}-{chunk_end:%Y%m%d}", rango=True))
+                except _RangoRechazado:
+                    # ESPN dejo de aceptar rangos (`dates=A-B` -> 400 "Failed to
+                    # get events endpoint", observado el 2026-09-24; el dia suelto
+                    # sigue funcionando). Sin esto TODAS las ligas ESPN quedaban
+                    # en 0 resultados con rc=0: historico parado desde el
+                    # 2026-09-14 sin que nadie lo viera. Se repite la ventana dia
+                    # a dia, como ya hacen las ligas universitarias.
+                    day = chunk_start
+                    while day <= chunk_end:
+                        out.extend(self._fetch(cfg, f"{day:%Y%m%d}"))
+                        day += timedelta(days=1)
+                        if day <= chunk_end:
+                            time.sleep(0.3)
                 chunk_start = chunk_end + timedelta(days=1)
         out.sort(key=lambda r: r["date"])
         return out
 
-    def _fetch(self, cfg: dict, dates: str) -> list[dict]:
+    def _fetch(self, cfg: dict, dates: str, *, rango: bool = False) -> list[dict]:
         """Fetch one date window. Retries transient 5xx/timeouts with linear
         backoff; if the window keeps failing it is skipped (logged) instead of
-        aborting the whole league backfill."""
+        aborting the whole league backfill. The skipped window is recorded in
+        ``failed_windows`` so the caller can report the failure instead of a
+        silent 0-result success.
+
+        ``rango=True``: a 400 on a date RANGE raises `_RangoRechazado` so the
+        caller can retry the window day by day."""
         params = {"dates": dates, "limit": 500, **cfg.get("params", {})}
         url = f"{BASE}/{cfg['path']}/scoreboard"
         last_error: str | None = None
@@ -110,6 +137,8 @@ class ESPNResultsProvider(ResultsProvider):
                 r = self.session.get(url, params=params, timeout=60)
                 if r.status_code == 404:
                     return []  # ESPN 404s some offseason dates instead of empty events
+                if rango and r.status_code == 400:
+                    raise _RangoRechazado(dates)
                 if r.status_code in _RETRY_STATUS:
                     last_error = f"{r.status_code} {r.reason}"
                 else:
@@ -127,6 +156,7 @@ class ESPNResultsProvider(ResultsProvider):
         log.warning("[%s] ESPN window %s failed after %d attempts (%s); "
                     "skipping this window, keeping the rest.",
                     cfg["path"], dates, _MAX_ATTEMPTS, last_error)
+        self.failed_windows.append(f"{cfg['path']} {dates}: {last_error}")
         return []
 
 

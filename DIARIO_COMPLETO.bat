@@ -164,6 +164,23 @@ call :log "[AVISO] Revisar con: git log --oneline HEAD..%SQP_UPSTREAM%"
 call :log "[AVISO] Se CONTINUA: esto avisa, no aborta."
 :tree_ok
 
+REM [0.5/3] HISTORICO FRESCO ANTES DE LIQUIDAR (2026-09-25, AUD-003/KI-059).
+REM La liquidacion solo gradua desde data\historical\ lo que ya este ahi, y un
+REM pick sin marcador expira como void IRREVERSIBLE a los 3 dias
+REM (STALE_VOID_DAYS). Con el backfill solo semanal (SQP_Backfill_Cdev), el
+REM fallback llegaba a tiempo ~1 dia de cada 7. Aqui se refrescan los ultimos
+REM 3 dias de resultados (y el calendario MLB) justo antes de liquidar: ~2 min,
+REM solo APIs publicas gratuitas (ESPN, MLB Stats). NO aborta la cadena: un
+REM fallo deja el historico como estaba y la liquidacion sigue su politica.
+REM El backfill semanal de 14 dias se mantiene como red de seguridad.
+call :log "[0.5/3] Refrescando el historico (3 dias) antes de liquidar..."
+set "PYTHONPATH=src"
+call scripts\rotate_log.cmd logs\backfill_diario.log
+"%SQP_PYTHON%" scripts\backfill_results.py --days 3 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill_diario.log 2>&1
+if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco del historico fallo (ver logs\backfill_diario.log); se liquida con el historico existente."
+"%SQP_PYTHON%" scripts\backfill_tennis_results.py --tours atp wta --days 3 >> logs\backfill_diario.log 2>&1
+if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco del historico de tenis fallo (ver logs\backfill_diario.log); se liquida con el historico existente."
+
 call :log "[1/3] Liquidando picks del dia anterior..."
 call "%~dp0SETTLE_ALL.bat"
 if %ERRORLEVEL% neq 0 goto :error_settle

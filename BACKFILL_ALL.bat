@@ -19,17 +19,22 @@ if not exist logs mkdir logs
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) ===
 call scripts\rotate_log.cmd logs\backfill.log
 echo === SQP - BACKFILL SEMANAL (%DATE% %TIME%) === >> logs\backfill.log
+REM Los tres pasos se ejecutan SIEMPRE y el fallo se reporta al final: desde
+REM 2026-09-25 una sola ventana fallida da rc=1 en backfill_results (KI-060), y
+REM saltar al error ahi perdia el backfill de tenis y la purga de la semana.
+set "SQP_BACKFILL_FALLO="
 "%SQP_PYTHON%" scripts\backfill_results.py --days 14 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill.log 2>&1
-if %ERRORLEVEL% neq 0 goto :error
+if %ERRORLEVEL% neq 0 set "SQP_BACKFILL_FALLO=1"
 REM Tenis: store por tour (results_atp/wta), no por torneo; sin esto los Elo de
 REM tenis corren con forma vieja (causa #1 de la sobreconfianza del 2026-07-04).
 "%SQP_PYTHON%" scripts\backfill_tennis_results.py --tours atp wta --days 14 >> logs\backfill.log 2>&1
-if %ERRORLEVEL% neq 0 goto :error
+if %ERRORLEVEL% neq 0 set "SQP_BACKFILL_FALLO=1"
 
 REM Purga semanal de artefactos regenerables (>90 dias): archive/, clv_*.md,
 REM .closing_credits_*. Best-effort a proposito: un fallo de la purga no debe
 REM marcar el backfill como fallido (por eso no hay chequeo de errorlevel).
 "%SQP_PYTHON%" scripts\purge_artifacts.py >> logs\backfill.log 2>&1
+if defined SQP_BACKFILL_FALLO goto :error
 
 REM Backfill correcto: limpia SOLO esta etapa.
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage backfill
