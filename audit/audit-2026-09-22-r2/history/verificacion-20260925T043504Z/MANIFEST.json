@@ -5,8 +5,8 @@
   "diagnosis_openai_utc": null,
   "consolidated_utc": "2026-09-23T00:10:00Z",
   "remediation_utc": null,
-  "verification_utc": "2026-09-25T04:35Z",
-  "status": "VERIFICACION COMPLETADA: APTO CON PENDIENTES",
+  "verification_utc": null,
+  "status": "DIAGNOSTICO Y CONSOLIDACION COMPLETADOS; REMEDIACION PENDIENTE DE AUTORIZACION",
   "scope": "auditoria integral del arbol de trabajo (= produccion), incluida la remediacion r22 sin commit",
   "base_commit": "9fa276a3958cb0a601791d6606f61929cd880516",
   "branch": "main",
@@ -52,47 +52,12 @@
     "audit/latest/CHANGES.md",
     "audit/latest/MANIFEST.json"
   ],
-  "final_result": "APTO CON PENDIENTES",
-  "final_result_rationale": "Regla 3: sin P0/P1 abiertos; pendientes REG-001 (P2), riesgo residual de AUD-002 y CLN-001 (P3).",
+  "final_result": null,
+  "final_result_rationale": "Sin verificacion: no se emite veredicto. Hay un P0 abierto con plazo (AUD-001, 2026-09-23 12:00).",
   "not_available": [
     "suite slow",
     "pip-audit",
     "segunda opinion",
     "cuota del proveedor"
-  ],
-  "remediation": {
-    "commits": [
-      "c6f1971",
-      "d718fa1",
-      "af9d156",
-      "4fa1673",
-      "efe09bb"
-    ],
-    "ids": [
-      "AUD-001",
-      "AUD-002",
-      "AUD-003",
-      "AUD-004",
-      "CLN-001 (parcial)"
-    ],
-    "note": "registrada solo en STATUS.md y en los commits; CHANGES/VALIDATION de la ronda no se actualizaron en su dia"
-  },
-  "verification": {
-    "verifier": "fable (solo lectura)",
-    "evaluated_commit": "52867ab",
-    "path": "audit/audit-2026-09-22-r2/VERIFICATION.md",
-    "sha256": "eec593d09d88416863dd3d8ef7e92c0d2c3b4c44e4818682a4a35cfd162ec4ae",
-    "states": {
-      "AUD-001": "verificado-corregido",
-      "AUD-002": "verificado-mitigado",
-      "AUD-003": "verificado-corregido",
-      "AUD-004": "verificado-corregido",
-      "CLN-001": "parcial"
-    },
-    "regressions": {
-      "REG-001": "MEDIUM/P2: degradacion con registro ilegible no pausa mercados que se degradan por primera vez"
-    },
-    "tests": "2386 passed, 1 skipped (1235 s); ruff OK; mypy OK (107); CI verde en 52867ab",
-    "history": "audit/audit-2026-09-22-r2/history/verificacion-20260925T043504Z/"
-  }
+  ]
 }

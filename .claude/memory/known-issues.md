@@ -477,3 +477,13 @@ Format:
 - Fix: un 400 sobre un rango se repite día a día; las ventanas fallidas quedan en `failed_windows` y hacen rc=1. Además hay backfill diario de 3 días en `DIARIO_COMPLETO.bat` (paso 0.5).
 - Status: CORREGIDO en código (2026-09-25). El hueco de datos del 14/09 al 21/09 se rellena con el backfill semanal del 2026-09-28 o con `BACKFILL_ALL.bat` manual.
 - Actualización 2026-09-25 03:51Z (KI-060): el operador lanzó `BACKFILL_ALL.bat` con el código corregido. Terminó con rc=0; el histórico ESPN se reanudó (ingesta del 25/09) y se creó `schedule_mlb.csv` (222 apariciones). Queda por confirmar el paso diario 0.5 en el run de las 12:00.
+
+- ID: KI-061
+- Severity: Media
+- Description: **REG-001 de la verificación de la ronda r2** (2026-09-25). Con `degradation_pause.json` ilegible, `run_degradation_monitor` lanza error y el fallback devuelve solo las pausas que ya constaban en `degradation_log.csv`. Consecuencias:
+  - un mercado que se degrada por primera vez **no se pausa** mientras dure la corrupción;
+  - la corrupción puede durar indefinidamente, porque el registro ya no se reescribe;
+  - reproducido: `mlb|totals` degradado no se pausa.
+- Affected files: src/sqp/risk/degradation.py:204-217, :313
+- Proposed fix: en el fallback, `evaluate_pauses(metrics, previous=<estado reconstruido desde el log>)` sin reescribir el registro, con un test de un mercado que se degrada nuevo con el registro corrupto.
+- Status: ABIERTO (P2). Compensado por el prediction gate en default-deny (0 mercados `allowed`) y por un ERROR diario.

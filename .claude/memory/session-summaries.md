@@ -730,3 +730,15 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - Confirmar el paso 0.5 en el run de las 12:00.
   - P3: límites de uso de ESPN.
   - Verificación de la ronda r2.
+
+## 2026-09-25 (madrugada) — Verificación de la ronda `audit-2026-09-22-r2`
+
+- **Verificador:** Fable, en solo lectura, sobre `52867ab`. Veredicto **APTO CON PENDIENTES**.
+- **Estados:**
+  - AUD-001 (P0) corregido;
+  - AUD-002 (P1) mitigado, con el riesgo residual reproducido: doble fallo del centinela;
+  - AUD-003 y AUD-004 corregidos;
+  - CLN-001 parcial.
+- **Nuevo:** REG-001 → KI-061 (la degradación con el registro ilegible no pausa mercados nuevos). P2, abierto.
+- **Aviso operativo:** el gate evalúa **52 cortes**, por encima del límite de 50, así que **el operador debe re-pre-registrar**.
+- **Entregables:** `audit/audit-2026-09-22-r2/VERIFICATION.md` y `STATUS.md`/`MANIFEST.json` actualizados, con copia previa en `history/verificacion-20260925T043504Z/`.
