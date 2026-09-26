@@ -292,3 +292,15 @@ Orden del operador: «Sí, implementa el candado pre-commit». Cambio de políti
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO PARA CABLEAR (2.ª ronda; 1.ª APTO CON CAMBIOS, 10 cambios aplicados + huecos A y B) | rutas: .claude/hooks/fable_gate.py, .claude/automation/fable-gate.json, tests/test_fable_gate.py
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO CON CAMBIOS aplicados (script del descanso; enmiendas E1-E6) | rutas: scripts/research/measure_rest_basketball.py, docs/research/2026-09-26-preregistro-descanso-basket.md
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO CON CONDICIONES (activar rest_points_per_day=0.795 solo nba, tras los addenda previos en gate K=52 y «el modelo manda»; rest_days_coef en 0; recalibrar nba_h2h/nba_spreads; re-medir margin_sigma; test de back-to-back) | rutas: configs/leagues/ratings.yaml, docs/research/2026-09-26-resultado-descanso-basket.md
+
+## Registro de enrutamiento — «Clima y Parque» (2026-09-26, tarde)
+
+Orden del operador: «Clima y Parque. Continúa». Reapertura del clima MLB con una forma funcional DISTINTA: viento según la orientación del estadio (a favor o en contra del jardín central). Reparto: **Haiku** viabilidad (dirección del viento en la Previous Runs API y rumbos home→CF con fuente); **Fable** pre-registro (incluye si reutilizar la muestra 2024-26 ya usada en el test rechazado es admisible y cómo se corrige la multiplicidad frente a ese test); **Sonnet** scripts; **Fable** revisión y veredicto; **Opus** orquesta y commitea. Push de los 17 commits de la sesión hecho (`921572d..3648b17`), CI `36266777058`.
+
+## Cola aprobada — features por deporte (2026-09-26, «Sí, házlo»)
+
+1. **NHL: portero titular + calidad del portero** (en curso). Reparto: Haiku viabilidad (API NHL, históricos, sello temporal del anuncio del portero) → Fable pre-registro (disponibilidad en el corte del pick: el run es a las 12:00 y el portero se confirma horas antes del partido) → Sonnet ingesta y scripts → Fable revisión y veredicto → Opus orquesta y commitea.
+2. **NBA: pace, ratings ofensivo/defensivo y lesionados** (octubre).
+3. **MLB: bullpen** (preparado para 2027).
+En paralelo: barrido de nombres de equipo (Hawái NCAAF) y orientación de estadios («Clima y Parque»). Sigue en cola: batería de los 10 ajustes.
+FABLE-REVIEW: 2026-09-26 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
