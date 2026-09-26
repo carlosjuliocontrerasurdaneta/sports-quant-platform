@@ -45,8 +45,20 @@ regla se corrige, no al revés.
 registrada) decidido enteramente en Opus. La revisión de Fable llegó después y
 encontró un bloqueante (`starters_mlb.csv` congelado desde el 12/06). El
 principio ya estaba escrito: faltaba que se cumpliera. El candado pre-commit
-(`.claude/hooks/fable_gate.py`, en revisión) convierte esta regla en mecanismo
-para las rutas sensibles.
+convierte esta regla en mecanismo para las rutas sensibles: **activo desde el
+2026-09-26**.
+
+**Candado `fable_gate` (PreToolUse, `Bash|PowerShell`):**
+- Antes de cada `git commit` lanzado por Claude Code, si el commit incluye rutas de
+  `.claude/automation/fable-gate.json` (las cinco clases llevadas a rutas), exige
+  en `current-task.md` una línea
+  `FABLE-REVIEW: <hoy> | veredicto: APTO... | rutas: ...` que cubra cada ruta; si
+  falta, bloquea (`exit 2`).
+- Escape solo para el operador: `SQP_FABLE_GATE=off` como variable de entorno de
+  la sesión, o commitear desde su propia terminal.
+- Si falla por error, deja pasar el commit. Impide olvidarse, no elegir mal.
+- Implementado por Sonnet; revisado por Fable dos veces (APTO CON CAMBIOS, luego
+  APTO PARA CABLEAR); 52 tests; verificado en vivo.
 
 **Relación con la tabla de rutas, dicha sin ambigüedad.** El principio y el
 `default: sonnet` de `model-routing.json` **no** se contradicen, y conviene que

@@ -1,0 +1,19 @@
+{
+  "_why": "Rutas OBSERVABLES de las cinco clases del disparador de escalado en MODEL_ROUTING.md (parametros de riesgo/modelo/estrategia/umbral/gate, cifras publicables, contrato de un artefacto persistido). Motivo puntual: el 2026-09-26 se commiteo configs/leagues/ratings.yaml sin la revision Fable previa que exige la politica. Consumido por .claude/hooks/fable_gate.py con fnmatch.fnmatchcase (sensible a mayusculas/minusculas) sobre rutas POSIX relativas a la raiz del repo; ampliar o recortar esta lista es un acto deliberado (ver tests/test_fable_gate.py). Ampliacion 2026-09-26 (revision Fable, APTO CON CAMBIOS): se anadieron src/sqp/config.py (defaults de riesgo y de estrategia -- clase 2 del disparador), src/sqp/markets/edge.py y src/sqp/markets/vig.py (formulas de edge y de probabilidad implicita -- clase 3), y src/sqp/markets/settlement_math.py (matematica de liquidacion -- clase 5). Deliberadamente FUERA de esta lista: DIARIO_COMPLETO.bat y src/sqp/pipeline/daily.py -- son orquestacion del pipeline diario (encadenan pasos ya cubiertos por sus propias rutas sensibles), reciben arreglos urgentes y frecuentes de fontaneria operativa que no cambian ningun parametro de riesgo/modelo/estrategia/umbral/gate por si mismos, y los parametros que de verdad importan (config.py, edge.py, vig.py, settlement_math.py, y las rutas ya listadas de risk/settlement/calibration/storage/models) ya viven en rutas cubiertas; anadir el orquestador solo generaria ruido de revision sin cubrir un riesgo nuevo.",
+  "patrones": [
+    "configs/**",
+    "docs/research/*preregistro*",
+    "docs/research/*resultado*",
+    "src/sqp/risk/**",
+    "src/sqp/settlement/**",
+    "src/sqp/calibration/**",
+    "src/sqp/storage/**",
+    "src/sqp/models/**",
+    "src/sqp/pipeline/probabilities.py",
+    "src/sqp/sports/adapters.py",
+    "src/sqp/config.py",
+    "src/sqp/markets/edge.py",
+    "src/sqp/markets/vig.py",
+    "src/sqp/markets/settlement_math.py"
+  ]
+}
