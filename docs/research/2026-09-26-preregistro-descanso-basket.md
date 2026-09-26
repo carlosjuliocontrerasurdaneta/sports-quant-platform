@@ -395,3 +395,16 @@ La revisión del script frente a este texto dio **APTO CON CAMBIOS**. La parte q
 - **E4 (sección 4):** la sonda de Δr usa `RestModel(points_per_day=1.0)` con `margin_adjustment`. Es equivalente a la definición del texto: vale hr − ar si los dos descansos se conocen y 0 si no.
 - **E5:** la paridad de los spreads contra `spread_lines` del motor se implementa (con `c_C`, tolerancia 1e-12). No hace falta enmienda.
 - **E6 (sección 12):** el informe `.md` de resultado se redacta a partir del JSON; el script no lo genera.
+
+**Contraste de `--pre` con la sección 9 (2026-09-26, antes del modo completo).**
+- Las tres particiones que deciden coinciden **exactamente**: test n, afectados, |Δr| 1/2/3, local más descansado, media y RMS de Δr, y n de entrenamiento. También cuadra «5 o más días: 3.408».
+- En los totales de toda la NBA hay una diferencia menor:
+
+| Total NBA | Sección 9 | `--pre` | Diferencia |
+|---|---:|---:|---:|
+| Partidos con los dos descansos conocidos | 33.979 | 33.939 | −40 |
+| Afectados | 15.930 | 15.909 | −21 |
+| Δr = 0 | 18.049 | 18.030 | −19 |
+| Descanso de 1 día | 16.838 | 16.812 | −26 |
+
+Explicación compatible con los números: el recuento de la sección 9 incluyó partidos del calentamiento (los primeros 60), que el script excluye (`evaluados_tras_warmup` = 34.005). No afecta a nada que decida: los criterios se evalúan en las particiones, que coinciden.
