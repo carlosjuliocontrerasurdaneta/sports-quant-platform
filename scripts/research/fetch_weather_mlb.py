@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import requests
@@ -23,6 +23,8 @@ import requests
 SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule"
 PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 VARS = ("wind_speed_10m_previous_day1", "precipitation_previous_day1")
+# Enmienda E1 del pre-registro: modelo fijo (best_match cambia de composicion).
+MODEL = "gfs_seamless"
 TIMEOUT_S = 60
 PAUSE_S = 1.0
 
@@ -53,20 +55,28 @@ def fetch_schedule(start: str, end: str) -> list[dict]:
         nm = date(y + (m == 12), m % 12 + 1, 1)
         d1 = min(end, (nm.fromordinal(nm.toordinal() - 1)).isoformat())
         data = _get(SCHEDULE_URL, {"sportId": 1, "startDate": d0, "endDate": d1,
-                                   "hydrate": "venue(location,fieldInfo)"})
+                                   "hydrate": "venue(location,fieldInfo),linescore"})
         for day in data.get("dates", []):
             for g in day.get("games", []):
                 if g.get("status", {}).get("abstractGameState") != "Final":
                     continue
                 v = g.get("venue", {})
                 coords = (v.get("location") or {}).get("defaultCoordinates") or {}
+                ls = g.get("linescore") or {}
+                estado = g.get("status", {}).get("detailedState", "")
+                # E3: reanudados otro dia (suspendidos) se excluyen del universo.
+                reanudado = bool(g.get("resumeDate") or g.get("resumedFrom")
+                                 or g.get("resumeGameDate") or g.get("resumedFromDate")
+                                 or "suspend" in estado.lower())
                 games.append({
                     "game_id": str(g["gamePk"]),
                     "game_date_utc": g.get("gameDate", ""),
                     "official_date": g.get("officialDate", ""),
                     "venue_id": v.get("id"), "venue": v.get("name", ""),
                     "roof_type": (v.get("fieldInfo") or {}).get("roofType", ""),
-                    "lat": coords.get("latitude"), "lon": coords.get("longitude")})
+                    "lat": coords.get("latitude"), "lon": coords.get("longitude"),
+                    "current_inning": ls.get("currentInning"),
+                    "detailed_state": estado, "resumed": reanudado})
         print(f"calendario {y:04d}-{m:02d}: {len(games)} acumulados")
         time.sleep(PAUSE_S)
         y, m = y + (m == 12), m % 12 + 1
@@ -86,13 +96,15 @@ def attach_forecasts(games: list[dict]) -> None:
         fechas = sorted(g["game_date_utc"][:10] for g in gs)
         data = _get(PREVIOUS_RUNS_URL, {
             "latitude": lat, "longitude": lon, "hourly": ",".join(VARS),
+            "models": MODEL, "wind_speed_unit": "kmh",
             "start_date": fechas[0], "end_date": fechas[-1], "timezone": "UTC"})
         hourly = data.get("hourly") or {}
         idx = {t: k for k, t in enumerate(hourly.get("time", []))}
         for g in gs:
             t = datetime.fromisoformat(g["game_date_utc"].replace("Z", "+00:00"))
-            # hora mas proxima al inicio (19:07 -> 19:00, 19:35 -> 20:00)
-            h = (t + timedelta(minutes=30)).replace(minute=0, second=0)
+            # E1: hora TRUNCADA, la regla de produccion (weather._hourly_at con
+            # dt.hour): 19:07 -> 19:00 y 19:40 -> 19:00.
+            h = t.replace(minute=0, second=0)
             k = idx.get(h.strftime("%Y-%m-%dT%H:00"))
             for var, col in zip(VARS, ("wind_kmh", "precip_mm")):
                 vals = hourly.get(var) or []
@@ -112,7 +124,8 @@ def main() -> int:
     attach_forecasts(games)
     args.out.mkdir(parents=True, exist_ok=True)
     cols = ["game_id", "game_date_utc", "official_date", "venue_id", "venue",
-            "roof_type", "lat", "lon", "wind_kmh", "precip_mm", "fetched_at"]
+            "roof_type", "lat", "lon", "current_inning", "detailed_state",
+            "resumed", "wind_kmh", "precip_mm", "fetched_at"]
     path = args.out / "games_weather_mlb.csv"
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
