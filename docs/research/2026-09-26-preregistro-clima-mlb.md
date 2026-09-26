@@ -155,3 +155,25 @@ Los aplazados ya faltan del histórico: es un sesgo de selección benigno, porqu
 - Δ log loss con el viento **centrado por estadio**, para medir cuánto del efecto es residuo del factor parque.
 
 **E12. Activación, si llegara.** Filtrar **también** `Retractable`, además de `Dome`. Usar el mismo `models`. Recalibrar en staging, porque los calibradores MLB se entrenaron sin clima. Anotar el efecto sobre el test de `mlb|totals` del gate y sobre «el modelo manda».
+
+**E13. Limpieza del calendario (detectada antes de medir, sin marcadores).** El calendario de MLB repite el `gamePk` de cada partido aplazado en su fecha original, con estado `Postponed` y `abstractGameState` Final: 94 `Postponed` y 35 `Cancelled` en la descarga. Esas filas se descartan y el clima es el de la fecha en que el partido **sí** se jugó. También trae pretemporada y exhibiciones, que no están en el histórico: el universo son los `game_id` del histórico. Tras la limpieza hay 7.244 partidos, justo los del histórico de 2024–2026.
+
+## Informe previo (solo clima, SIN marcadores), 2026-09-26
+
+`measure_weather_mlb.py --pre` sobre la descarga con las enmiendas (`gfs_seamless`, hora truncada):
+
+| Concepto | Valor |
+|---|---|
+| Partidos 2024–2026 | 7.244 |
+| Excluidos: techo no abierto | 1.852 |
+| Excluidos: menos de 9 entradas | 10 |
+| Excluidos: reanudados | 8 |
+| **Universo abierto** | **5.374** (5.370 con pronóstico) |
+| Primera fecha con pronóstico | 2024-03-20 (toda la temporada 2024 cubierta) |
+| Fracción afectada f (viento > 20 km/h o lluvia > 0) | **0,181** |
+| Afectados por temporada | 2024: 313 · 2025: 317 · 2026: 344 |
+| Viento: mediana / p90 / p95 / p99 | 13,4 / 22,5 / 25,6 / 30,8 km/h |
+| Partidos con viento sobre el umbral | 15,9 % |
+| Partidos con lluvia pronosticada > 0 | 3,0 % (mediana 0,7 mm) |
+
+**Potencia (derivación de la revisión de Fable):** para mejorar el log loss en 0,002 hace falta una corrección de ≈ 3,2 pp de media cuadrática, porque cerca de p = 0,5 la ganancia es ≈ 2δ². En el test hay 661 partidos afectados (317 de 2025 y 344 de 2026).

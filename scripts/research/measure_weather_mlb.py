@@ -47,8 +47,15 @@ N_BOOT, SEED = 10_000, 42  # E8
 
 # ---------------------------------------------------------------- universo --
 def universo_clima(w: pd.DataFrame) -> pd.DataFrame:
-    """E3: estadio abierto con techo conocido, 9+ entradas, no reanudado."""
-    w = w.copy()
+    """E3: estadio abierto con techo conocido, 9+ entradas, no reanudado.
+
+    E13: el calendario repite el `gamePk` de un partido aplazado en su fecha
+    original con estado `Postponed` (y `abstractGameState` Final). Esa fila no
+    se jugo: se descarta, y el clima es el de la fecha en que SI se jugo. Si
+    tras eso un id sigue repetido (suspendido y reanudado), el partido ya queda
+    excluido como `reanudado`."""
+    w = w[~w["detailed_state"].isin(["Postponed", "Cancelled"])]
+    w = w.drop_duplicates("game_id", keep="last").copy()
     w["date"] = w["official_date"].astype(str).str[:10]
     en_periodo = (w["date"] >= PERIODO[0]) & (w["date"] <= PERIODO[1])
     completo = pd.to_numeric(w["current_inning"], errors="coerce") >= 9
@@ -201,6 +208,10 @@ def main() -> int:
 
     threshold = float(Settings.load().weather.wind_threshold_kmh)
     w = pd.read_csv(args.weather, dtype={"game_id": str})
+    # El calendario trae pretemporada y exhibiciones que el historico no tiene:
+    # el universo son los `game_id` del historico (solo ids, sin marcadores).
+    ids = {str(r.get("game_id")) for r in ResultsStore(ROOT).load("mlb")}
+    w = w[w["game_id"].isin(ids)]
     if args.pre:
         out = {"modo": "pre (sin marcadores)", "threshold_kmh": threshold,
                **informe_pre(w, threshold)}
