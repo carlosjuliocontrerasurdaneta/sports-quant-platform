@@ -95,3 +95,7 @@ Implementado el mismo día:
 | `α_corte = 0,05/52`, derivado y no escrito a mano | `PREDICTION_GATE_K = 52` |
 | Techo de 63 cortes | `PREDICTION_GATE_K_REPREGISTRO = 63` |
 | Umbral citado en la documentación operativa | `configs/default.yaml`, `scripts/gate_status.py` y `.claude/skills/clv-shadow-exit/SKILL.md` (lo fija `test_ningun_documento_presenta_el_alpha_de_familia_como_umbral_por_mercado`) |
+
+## Addendum 2026-09-26 — cambio de régimen del modelo MLB (antes de ejecutar)
+
+Desde el run del 2026-09-26, MLB sirve con `pitcher_bound: 0.05` (commit `49a6181`, orden del operador); hasta el 25/09 era 0.0. Las filas MLB servidas desde el 26/09 salen de ese modelo. Se registra **antes** de mirar ningún resultado del test. **No altera ningún criterio de este documento** y queda prohibido usarlo después para recortar o re-segmentar la ventana: el test evalúa el sistema tal como operó. Revisión independiente (Fable, 2026-09-26): no invalida el test; en `mlb|totals`, como mucho ~13 de 300 filas vendrán del modelo nuevo.

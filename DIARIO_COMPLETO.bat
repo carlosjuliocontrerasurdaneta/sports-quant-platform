@@ -178,6 +178,11 @@ set "PYTHONPATH=src"
 call scripts\rotate_log.cmd logs\backfill_diario.log
 "%SQP_PYTHON%" scripts\backfill_results.py --days 3 --leagues mlb nba wnba ncaab wncaab nfl ncaaf nhl epl laliga bundesliga seriea ligue1 ucl ligamx mls brasileirao chile uwcl >> logs\backfill_diario.log 2>&1
 if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco del historico fallo (ver logs\backfill_diario.log); se liquida con el historico existente."
+REM Abridores MLB (2026-09-26): con pitcher_bound > 0 el rating de cada abridor
+REM se construye con sus aperturas; sin este refresco el fichero se congelo el
+REM 2026-06-12 (ningun .bat lo llamaba) y el factor en vivo usaba ratings viejos.
+"%SQP_PYTHON%" scripts\backfill_starters.py --days 3 >> logs\backfill_diario.log 2>&1
+if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco de abridores MLB fallo (ver logs\backfill_diario.log); el factor de abridor usa el fichero existente."
 "%SQP_PYTHON%" scripts\backfill_tennis_results.py --tours atp wta --days 3 >> logs\backfill_diario.log 2>&1
 if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco del historico de tenis fallo (ver logs\backfill_diario.log); se liquida con el historico existente."
 

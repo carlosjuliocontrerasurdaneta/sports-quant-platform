@@ -252,3 +252,7 @@ documento no produzca un número público.
 Relacionado: [[2026-08-16-preregistro-regla-de-salida]],
 [[2026-08-25-preregistro-suelo-de-precio]],
 [[2026-07-02-calibrar-pmodel-puro-vs-blend]].
+
+## Addendum 2026-09-26 — cambio de régimen del modelo MLB (antes de ejecutar)
+
+Desde el run del 2026-09-26, MLB sirve con `pitcher_bound: 0.05` (commit `49a6181`, orden del operador); hasta el 25/09 era 0.0. Las filas MLB servidas desde el 26/09 salen de ese modelo. Se registra **antes** de mirar ningún resultado del test. **No altera ningún criterio de este documento** y queda prohibido usarlo después para recortar o re-segmentar la ventana: el test evalúa el sistema tal como operó. Revisión independiente (Fable, 2026-09-26): no invalida el test; en `mlb|totals`, como mucho ~13 de 300 filas vendrán del modelo nuevo.

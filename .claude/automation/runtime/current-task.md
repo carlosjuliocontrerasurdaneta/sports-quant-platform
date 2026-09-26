@@ -266,3 +266,7 @@ Orden del operador: ejecutar íntegramente `audits/prompts/verificar-remediacion
 Veredicto: **NO APTO** (AUD-003, P1, bloqueado). 12 verificados-corregidos, 1 mitigado, 0 regresiones. Nuevo preexistente: KI-058.
 
 Incidencia del verificador: hasta 7 llamadas reales a `codex review` sobre un repo vacío del scratchpad, por un PATH mal formado; puede haber consumido cuota de Codex.
+
+## Registro de enrutamiento — activación del abridor MLB (2026-09-26)
+
+Orden del operador: «Activa el factor del abridor en MLB». Cae en DOS clases del disparador: (2) parámetro de modelo y (4) contradice decisiones registradas (2026-06-12, 2026-06-16). **Fallo de despacho:** la sesión principal (`claude-opus-5-5`) midió, decidió e implementó (`49a6181`) sin escalar ni registrar aquí. La revisión cruzada de Codex (stop hook) no sustituye al escalón Fable. Corrección a posteriori: revisión independiente del commit despachada con `model: "fable"` (subagente `independent-code-reviewer`), solo lectura.
