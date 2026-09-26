@@ -113,3 +113,45 @@ aprobación:
 Una sola ejecución. Los scripts viven en `scripts/research/`. NFL y NCAAF quedan
 fuera: no hay coordenadas de estadio en `venues.yaml`, y desde 2024 la muestra de
 NFL es de unos 780 partidos.
+
+---
+
+## Enmiendas previas a la ejecución (2026-09-26, revisión independiente de Fable 5.1)
+
+Revisión en solo lectura: **APTO CON CAMBIOS**. Se aplican todos. Se redactan **antes** de la ejecución y **antes** de unir clima con carreras. La descarga ya hecha con el texto original **se descarta** y se repite con estas reglas. Donde chocan con el texto de arriba, mandan estas.
+
+**E1. Clima (fuente y hora).** `models=gfs_seamless` fijo. Es el modelo de la API con archivo de pronósticos previos más largo (temperatura desde 2021), y la primera fecha con datos que devuelva para viento y lluvia se registra en el informe. `wind_speed_unit=kmh`, `timezone=UTC`. Se toma la **hora truncada** del inicio (`dt.hour`, la regla de `weather._hourly_at` en producción), no la más próxima. Si se activa, producción debe pasar el mismo `models`.
+
+**E2. Base con abridores.** Las filas de `ResultsStore("mlb")` se enriquecen con `StartersStore.attach` y `StarterFIPStore.attach`, igual que en la re-medición del abridor. Se informa la cobertura. Limitación: son los abridores anunciados que guarda el histórico, y afectan igual a los dos brazos.
+
+**E3. Universo.** Además de `roofType == "Open"`, se excluyen de los dos brazos:
+- `roofType` ausente;
+- partidos con menos de 9 entradas completas, salvo los que terminan en la parte alta de la 9.ª porque gana el local. Las casas anulan los totales de partidos acortados. Si solo se excluyeran los que tienen menos de 8,5 entradas, el coeficiente de lluvia ganaría log loss por un canal que no paga;
+- partidos suspendidos y reanudados otro día.
+Los aplazados ya faltan del histórico: es un sesgo de selección benigno, porque en producción esos picks se anulan. `roofType` es metadato actual del estadio: cubre bien las sedes de cada partido, no reformas del techo.
+
+**E4. Alineación.** La base se reconstruye con el mismo orden que `engine.walk_forward_backtest`. El script comprueba con aserciones que la probabilidad de cada línea coincide con la del motor (tolerancia 1e-12) y aborta si no.
+
+**E5. Brazo de control.** Además de la base (Δp = 0), un brazo `Δp = c` constante para todos los partidos del universo, estimado en el mismo entrenamiento. El tratamiento debe batirlo en el test (criterio 5). Se informa el `bias` de la base por partición. Motivo: sin intercepto, un coeficiente negativo puede ganar log loss solo por corregir una sobreestimación general del Over.
+
+**E6. Criterio 1 (decisión del operador, 2026-09-26: «Solo afectados»).** El margen se exige sobre el **subconjunto afectado** del test: partidos con viento pronosticado > 20 km/h o lluvia pronosticada > 0. Se define solo con el pronóstico, antes del resultado, así que no hay leakage. Motivo: el precedente de 0,002 venía de un parámetro que actuaba en todos los partidos evaluados. Aplicarlo a partidos donde Δp = 0 por construcción diluye el efecto y rechaza por diseño. Antes de unir con carreras se informan la fracción afectada f y la distribución de viento y lluvia.
+
+**E7. Criterios, sustituyen a los de arriba (todos a la vez):**
+1. Δ log loss tratamiento − base **≤ −0,002** en el subconjunto afectado del test combinado.
+2. Δ log loss tratamiento − base **< 0** en el subconjunto afectado de cada partición.
+3. ECE del tratamiento **≤** ECE de la base en todo el universo abierto del test combinado.
+4. Coeficientes de la partición B **negativos**. Es una convención de la forma funcional (`weather.py`), no un argumento físico: la velocidad sin dirección no tiene signo a priori.
+5. Log loss del tratamiento **<** log loss del control de intercepto, en todo el universo abierto del test combinado.
+«Test combinado» = unión de los partidos de test de A y B, con media por partido y línea.
+
+**E8. Incertidumbre.** Bootstrap por **bloques de fecha** (se remuestrean días completos), 10.000 réplicas, semilla 42, para el Δ del criterio 1. Se informa el IC95. No es puerta de aceptación: exigir que el extremo superior sea < 0 sería un umbral nuevo que el operador no ha fijado.
+
+**E9. Estimación.** Nelder-Mead desde (0, 0) sobre el log loss medio de las tres líneas, con el recorte [0,01; 0,99] incluido, `xatol=1e-7`, `fatol=1e-10`, `maxiter=2000`, sin límites. Si un solo coeficiente sale negativo, **no** se reajusta con un solo coeficiente: el criterio 4 falla. ECE con la función `expected_calibration_error` del proyecto por defecto, uniendo las tres líneas.
+
+**E10. Regla de re-ejecución.** Solo se repite la ejecución si aparece un defecto de **código o datos** demostrable sin mirar el resultado: paridad rota, filas mal unidas o descarga incompleta. Se documenta el defecto y se commitean las dos salidas. Un resultado adverso no es motivo para repetir.
+
+**E11. Informes secundarios añadidos (no deciden):**
+- el mismo Δp evaluado contra la **línea de totales capturada** (`roi_engine.load_closing_odds`, línea principal del consenso) sobre la muestra con cuotas disponible;
+- Δ log loss con el viento **centrado por estadio**, para medir cuánto del efecto es residuo del factor parque.
+
+**E12. Activación, si llegara.** Filtrar **también** `Retractable`, además de `Dome`. Usar el mismo `models`. Recalibrar en staging, porque los calibradores MLB se entrenaron sin clima. Anotar el efecto sobre el test de `mlb|totals` del gate y sobre «el modelo manda».
