@@ -31,7 +31,7 @@ mlb:
   san diego padres: [32.7076, -117.1570]        # Petco Park
   san francisco giants: [37.7786, -122.3893]    # Oracle Park
   seattle mariners: [47.5914, -122.3322]        # T-Mobile Park (retractable)
-  st. louis cardinals: [38.6226, -90.1928]      # Busch Stadium
+  st louis cardinals: [38.6226, -90.1928]       # Busch Stadium (sin puntos: normalize_key() los pliega a espacio)
   tampa bay rays: [27.7683, -82.6534]           # Tropicana Field (dome)
   texas rangers: [32.7512, -97.0827]            # Globe Life Field (retractable)
   toronto blue jays: [43.6414, -79.3894]        # Rogers Centre (dome)
@@ -45,18 +45,18 @@ mls:
   fc cincinnati: [39.1115, -84.5221]
   colorado rapids: [39.8059, -104.8922]
   columbus crew: [39.9681, -82.9905]
-  d.c. united: [38.8682, -77.0125]
+  d c united: [38.8682, -77.0125]                # sin puntos: normalize_key() los pliega a espacio
   fc dallas: [33.1547, -97.0820]
   houston dynamo fc: [29.7523, -95.3510]
   la galaxy: [33.8641, -118.2611]
   lafc: [34.0131, -118.2845]
   inter miami cf: [26.1905, -80.1873]
   minnesota united fc: [44.9536, -93.1643]
-  cf montréal: [45.4625, -73.5746]
+  cf montreal: [45.4625, -73.5746]              # sin acento: normalize_key() lo pliega
   nashville sc: [36.1327, -86.7712]
   new england revolution: [42.0909, -71.2643]
   new york city fc: [40.8296, -73.9262]
-  new york red bulls: [40.7368, -74.1502]
+  red bull new york: [40.7368, -74.1502]
   orlando city sc: [28.5408, -81.3886]
   philadelphia union: [39.8327, -75.3804]
   portland timbers: [45.5213, -122.6917]
@@ -64,9 +64,9 @@ mls:
   san jose earthquakes: [37.3517, -121.9250]
   seattle sounders fc: [47.5952, -122.3316]
   sporting kc: [39.1215, -94.8236]
-  st. louis city sc: [38.6284, -90.2083]
+  st louis city sc: [38.6284, -90.2083]         # sin puntos: normalize_key() los pliega a espacio
   toronto fc: [43.6336, -79.4189]
-  vancouver whitecaps fc: [49.2776, -123.1118]
+  vancouver whitecaps: [49.2776, -123.1118]
   san diego fc: [32.7076, -117.1570]
 
 wnba:
@@ -86,7 +86,7 @@ wnba:
 epl:
   arsenal: [51.5549, -0.1084]
   aston villa: [52.5092, -1.8847]
-  bournemouth: [50.7352, -1.8381]
+  afc bournemouth: [50.7352, -1.8381]
   brentford: [51.4882, -0.3088]
   brighton: [50.8615, -0.0837]
   chelsea: [51.4816, -0.1909]
@@ -130,7 +130,7 @@ laliga:
 ligamx:
   america: [19.3029, -99.1505]
   atlas: [20.6534, -103.4184]
-  atletico san luis: [22.1473, -100.9736]
+  atletico de san luis: [22.1473, -100.9736]
   chivas: [20.6534, -103.4184]
   deportivo toluca: [19.2810, -99.6610]
   fc juarez: [31.6904, -106.4245]
@@ -142,7 +142,7 @@ ligamx:
   puebla: [18.9990, -98.2083]
   pumas unam: [19.3232, -99.1847]
   queretaro: [20.6073, -100.3869]
-  santos laguna: [25.4384, -103.9560]
+  santos: [25.4384, -103.9560]
   tigres uanl: [25.7330, -100.3082]
   tijuana: [32.5312, -116.9858]
   cruz azul: [19.4831, -99.1471]
@@ -159,7 +159,7 @@ seriea:
   fiorentina: [43.7802, 11.2822]
   genoa: [44.4148, 8.9520]
   hellas verona: [45.4349, 10.9676]
-  inter milan: [45.4781, 9.1240]
+  internazionale: [45.4781, 9.1240]
   juventus: [45.1096, 7.6412]
   lazio: [41.9340, 12.4547]
   lecce: [40.3518, 18.1743]
@@ -172,7 +172,7 @@ seriea:
 
 ligue1:
   brest: [48.3898, -4.4860]
-  le havre: [49.4860, 0.1102]
+  le havre ac: [49.4860, 0.1102]
   lens: [50.4323, 2.8153]
   lille: [50.6117, 3.1303]
   lyon: [45.7656, 4.9825]
@@ -181,19 +181,19 @@ ligue1:
   montpellier: [43.6220, 3.8133]
   nantes: [47.2560, -1.5252]
   nice: [43.7056, 7.2619]
-  paris saint-germain: [48.8414, 2.2530]
-  rennes: [48.1074, -1.7063]
+  paris saint germain: [48.8414, 2.2530]        # sin guion: normalize_key() lo pliega a espacio
+  stade rennais: [48.1074, -1.7063]
   reims: [49.2458, 4.0258]
-  saint-etienne: [45.4607, 4.3899]
+  saint etienne: [45.4607, 4.3899]              # sin guion: normalize_key() lo pliega a espacio
   strasbourg: [48.5607, 7.7541]
   toulouse: [43.5832, 1.4333]
   angers: [47.4606, -0.5502]
-  auxerre: [47.7977, 3.5703]
+  aj auxerre: [47.7977, 3.5703]
   niza: [43.7056, 7.2619]
 
 brasileirao:
-  atletico-mg: [-19.9350, -43.9278]
-  atletico-pr: [-25.4284, -49.2769]
+  atletico mg: [-19.9350, -43.9278]             # sin guion: normalize_key() lo pliega a espacio
+  athletico pr: [-25.4284, -49.2769]             # sin guion: normalize_key() lo pliega a espacio
   bahia: [-12.9800, -38.5043]
   botafogo: [-22.9068, -43.1729]
   corinthians: [-23.5455, -46.4740]
@@ -214,7 +214,7 @@ brasileirao:
   criciuma: [-28.6773, -49.3697]
 
 chile:
-  colo-colo: [-33.4569, -70.6483]
+  colo colo: [-33.4569, -70.6483]               # sin guion: normalize_key() lo pliega a espacio
   universidad de chile: [-33.4569, -70.6483]
   universidad catolica: [-33.4596, -70.6083]
   union espanola: [-33.4076, -70.6450]

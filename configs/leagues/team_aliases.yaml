@@ -20,4 +20,100 @@
 #     "Nott'm Forest": "Nottingham Forest"
 #   mlb:
 #     "St. Louis Cardinals": "St. Louis Cardinals"   # already auto-matches; example only
-leagues: {}
+#
+# Barrido de integridad 2026-09-26 (Carlos): comparadas TODAS las ligas con
+# odds capturadas (data/odds/odds_<liga>_*.csv) contra su historico
+# (ResultsStore). Las entradas de abajo son SOLO los desajustes donde se pudo
+# confirmar, por conocimiento del dominio, que ambas grafias son el MISMO
+# equipo (traduccion, sigla, apodo, articulo/prefijo, renombramiento oficial,
+# o un caracter que normalize_key no pliega como 'and'/'&' o la 'o' nordica
+# o/oslash). Los emparejamientos meramente similares por cadena pero de
+# equipos DISTINTOS (p.ej. Inter Milan/AC Milan, Sparta Praga/Slavia Praga,
+# New York Red Bulls/NYCFC, Los Angeles Clippers/Lakers) se descartaron
+# explicitamente y NO estan aliaseados. Nombres de jugadores de tenis y
+# equipos sin historial real (recien ascendidos, ligas sin backfill como
+# frauen_bundesliga, o clubes sin partidos aun en su competicion) tampoco se
+# aliasearon: quedan documentados en el informe de la sesion, no aqui.
+leagues:
+  brasileirao:
+    "Atletico Mineiro": "Atlético-MG"  # grafia sin acentos vs sigla del historico, mismo club (Atl. Mineiro != America Mineiro) (2026-09-26)
+    "Atletico Paranaense": "Athletico-PR"  # grafia con th oficial del club, mismo club (2026-09-26)
+    "Bragantino-SP": "Red Bull Bragantino"  # sponsor vs nombre corto, mismo club (2026-09-26)
+  bundesliga:
+    "1. FC Köln": "FC Cologne"  # nombre aleman vs traduccion inglesa, mismo club (2026-09-26)
+    "Augsburg": "FC Augsburg"  # nombre corto vs oficial, mismo club (2026-09-26)
+    "Elversberg": "SV Elversberg"  # nombre corto vs oficial, mismo club (2026-09-26)
+    "FC Schalke 04": "Schalke 04"  # nombre oficial vs corto, mismo club (2026-09-26)
+    "FSV Mainz 05": "Mainz"  # nombre oficial vs corto, mismo club (2026-09-26)
+    "Hamburger SV": "Hamburg SV"  # aleman vs ingles, mismo club (2026-09-26)
+    "SC Paderborn": "SC Paderborn 07"  # nombre corto vs oficial, mismo club (2026-09-26)
+    "Union Berlin": "1. FC Union Berlin"  # nombre corto vs oficial, mismo club (2026-09-26)
+  chile:
+    "Everton de Viña del Mar": "Everton CD"  # nombre largo vs sigla historica, mismo club (2026-09-26)
+    "Universidad Católica (CHI)": "Universidad Católica"  # sufijo de pais de odds vs nombre historico, mismo club (2026-09-26)
+  epl:
+    "Bournemouth": "AFC Bournemouth"  # nombre corto vs oficial, mismo club (2026-09-26)
+    "Brighton and Hove Albion": "Brighton & Hove Albion"  # 'and' vs '&' (normalize_key no expande '&'), mismo club (2026-09-26)
+  laliga:
+    "Athletic Bilbao": "Athletic Club"  # apodo vs nombre oficial, mismo club (2026-09-26)
+    "CA Osasuna": "Osasuna"  # sigla vs nombre corto historico, mismo club (2026-09-26)
+    "Deportivo La Coruña": "Deportivo"  # nombre largo vs corto historico, mismo club (2026-09-26)
+    "Elche CF": "Elche"  # nombre oficial vs corto, mismo club (2026-09-26)
+    "Real Racing Club de Santander": "Racing Santander"  # nombre oficial vs corto, mismo club (2026-09-26)
+  ligamx:
+    "Atlante FC": "Atlante"  # oficial vs corto, mismo club (2026-09-26)
+    "Atlético San Luis": "Atlético de San Luis"  # 'Atletico San Luis' vs 'Atletico de San Luis', mismo club (preposicion) (2026-09-26)
+    "Pumas": "Pumas UNAM"  # apodo vs oficial, mismo club (2026-09-26)
+    "Santos Laguna": "Santos"  # oficial vs corto historico, mismo club (2026-09-26)
+    "Tigres": "Tigres UANL"  # apodo vs oficial, mismo club (2026-09-26)
+  ligue1:
+    "Auxerre": "AJ Auxerre"  # corto vs oficial, mismo club (2026-09-26)
+    "Le Havre": "Le Havre AC"  # corto vs oficial, mismo club (2026-09-26)
+    "Le Mans FC": "Le Mans"  # oficial vs corto historico, mismo club (2026-09-26)
+    "RC Lens": "Lens"  # sigla vs nombre corto historico, mismo club (2026-09-26)
+    "Rennes": "Stade Rennais"  # apodo/ciudad vs nombre oficial del club, mismo club (2026-09-26)
+  mls:
+    "Chicago Fire": "Chicago Fire FC"  # corto vs oficial, mismo club (2026-09-26)
+    "Columbus Crew SC": "Columbus Crew"  # oficial vs corto historico, mismo club (2026-09-26)
+    "Houston Dynamo": "Houston Dynamo FC"  # corto vs oficial, mismo club (2026-09-26)
+    "Los Angeles FC": "LAFC"  # nombre largo vs sigla oficial, mismo club (2026-09-26)
+    "New York Red Bulls": "Red Bull New York"  # orden de palabras distinto, mismo club (no confundir con NYCFC) (2026-09-26)
+    "Vancouver Whitecaps FC": "Vancouver Whitecaps"  # oficial vs corto historico, mismo club (2026-09-26)
+  nba:
+    "Los Angeles Clippers": "LA Clippers"  # nombre largo vs sigla historica, mismo club (no confundir con Lakers) (2026-09-26)
+  ncaaf:
+    "Albany": "UAlbany Great Danes"  # nombre corto de odds vs oficial historico, mismo equipo (2026-09-26)
+    "Citadel Bulldogs": "The Citadel Bulldogs"  # articulo 'The' oficial ausente en odds, mismo equipo (2026-09-26)
+    "Grambling State Tigers": "Grambling Tigers"  # abreviatura historica, mismo equipo (2026-09-26)
+    "Hawaii Rainbow Warriors": "Hawai'i Rainbow Warriors"  # apostrofo hawaiano ausente en odds, mismo equipo (bug confirmado) (2026-09-26)
+    "Houston Baptist Huskies": "Houston Christian Huskies"  # universidad renombrada (2023), mismo equipo (2026-09-26)
+    "LIU Sharks": "Long Island University Sharks"  # sigla vs nombre oficial, mismo equipo (2026-09-26)
+    "Nicholls State Colonels": "Nicholls Colonels"  # la universidad elimino 'State' del nombre, mismo equipo (2026-09-26)
+    "Sam Houston State Bearkats": "Sam Houston Bearkats"  # la universidad elimino 'State' del nombre, mismo equipo (2026-09-26)
+    "Southeastern Louisiana Lions": "SE Louisiana Lions"  # oficial vs abreviatura historica, mismo equipo (2026-09-26)
+    "Southern Mississippi Golden Eagles": "Southern Miss Golden Eagles"  # oficial vs abreviatura historica, mismo equipo (2026-09-26)
+    "Southern University Jaguars": "Southern Jaguars"  # oficial vs abreviatura historica, mismo equipo (no confundir con South Alabama Jaguars) (2026-09-26)
+    "UMass Minutemen": "Massachusetts Minutemen"  # sigla vs nombre oficial, mismo equipo (2026-09-26)
+    "William and Mary Tribe": "William & Mary Tribe"  # 'and' vs '&' (normalize_key no expande '&'), mismo equipo (2026-09-26)
+    "Youngstown St Penguins": "Youngstown State Penguins"  # 'St' abreviado vs 'State', mismo equipo (2026-09-26)
+  seriea:
+    "Atalanta BC": "Atalanta"  # oficial vs corto historico, mismo club (2026-09-26)
+    "Inter Milan": "Internazionale"  # apodo internacional vs nombre oficial, mismo club (no confundir con AC Milan) (2026-09-26)
+  ucl:
+    "Bodø/Glimt": "Bodo/Glimt"  # 'o' con barra nordica (o/oslash) no normalizada por normalize_key, mismo club (2026-09-26)
+    "Feyenoord": "Feyenoord Rotterdam"  # corto vs con ciudad, mismo club (2026-09-26)
+    "Inter Milan": "Internazionale"  # apodo internacional vs nombre oficial, mismo club (no confundir con AC Milan) (2026-09-26)
+    "LASK": "LASK Linz"  # sigla vs nombre con ciudad, mismo club (2026-09-26)
+    "Porto": "FC Porto"  # corto vs oficial, mismo club (2026-09-26)
+    "RC Lens": "Lens"  # sigla vs nombre corto historico, mismo club (alias separado del de ligue1) (2026-09-26)
+    "Slavia Praha": "Slavia Prague"  # checo vs ingles, mismo club (2026-09-26)
+    "Sporting Lisbon": "Sporting CP"  # apodo en ingles vs sigla oficial, mismo club (2026-09-26)
+    "ŠK Slovan Bratislava": "Slovan Bratislava"  # prefijo 'SK'/caracter especial en odds vs nombre corto historico, mismo club (2026-09-26)
+  uwcl:
+    "AS Roma": "Roma"  # oficial vs corto historico, mismo club (2026-09-26)
+    "Ajax": "Ajax Amsterdam"  # corto vs con ciudad, mismo club (2026-09-26)
+    "Austria Wien": "Austria Vienna"  # aleman vs ingles, mismo club (2026-09-26)
+    "Leuven": "OH Leuven"  # corto vs oficial, mismo club (2026-09-26)
+    "Lyon": "OL Lyonnes"  # equipo femenino renombrado 'OL Lyonnes' en la temporada 2024-25, mismo club (2026-09-26)
+    "SKN St. Pölten": "St. Pölten"  # prefijo de seccion 'SKN' en odds vs nombre corto historico, mismo club (2026-09-26)
+    "Servette FC": "Servette"  # oficial vs corto historico, mismo club (2026-09-26)

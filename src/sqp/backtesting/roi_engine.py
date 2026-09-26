@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -50,7 +51,7 @@ from sqp.pipeline.probabilities import (_consensus_spread, adjust_model_probabil
 from sqp.risk.kelly import edge, kelly_fraction_stake
 from sqp.settlement.settle import realized_roi_parts, settle_candidates, staked_mask
 from sqp.sports.registry import get_adapter
-from sqp.sports.team_names import normalize_key
+from sqp.sports.team_names import get_team_normalizer, normalize_key
 
 log = get_logger("sqp.roi_engine")
 
@@ -118,24 +119,32 @@ def load_closing_odds(root: Path, league: str,
     return out
 
 
-def _pair_key(home: str, away: str, order_insensitive: bool):
+def _pair_key(home: str, away: str, order_insensitive: bool,
+             normalize: Callable[[str | None], str] = normalize_key):
     """Match key for a (home, away) pair. Team sports keep orientation (home
     advantage distinguishes the two games of a series); tennis has no home/away,
-    so players match order-insensitively (frozenset)."""
-    a, b = normalize_key(home), normalize_key(away)
+    so players match order-insensitively (frozenset).
+
+    ``normalize`` defaults to the bare deterministic key for backward
+    compatibility; callers matching real leagues should pass
+    ``get_team_normalizer(league)`` so vendor-spelling aliases
+    (configs/leagues/team_aliases.yaml) resolve on both sides (KI-067)."""
+    a, b = normalize(home), normalize(away)
     return frozenset((a, b)) if order_insensitive else (a, b)
 
 
-def _match_index(odds_by_id: dict[str, EventOdds], order_insensitive: bool = False) -> dict:
+def _match_index(odds_by_id: dict[str, EventOdds], order_insensitive: bool = False,
+                 normalize: Callable[[str | None], str] = normalize_key) -> dict:
     idx: dict = defaultdict(list)
     for eo in odds_by_id.values():
-        idx[_pair_key(eo.event.home, eo.event.away, order_insensitive)].append(
+        idx[_pair_key(eo.event.home, eo.event.away, order_insensitive, normalize)].append(
             (str(eo.event.start_time)[:10], eo))
     return idx
 
 
 def _match_result(r: dict, idx: dict, used: set[str],
-                  order_insensitive: bool = False) -> EventOdds | None:
+                  order_insensitive: bool = False,
+                  normalize: Callable[[str | None], str] = normalize_key) -> EventOdds | None:
     """Match a result row to its odds event by normalized players/teams and a
     commence date within +-1 day (UTC vs local date drift). Each odds event is
     consumed at most once. Tennis matches order-insensitively (no home/away).
@@ -163,7 +172,7 @@ def _match_result(r: dict, idx: dict, used: set[str],
     Si el resultado SI trae un instante verificable -- `date` con hora, no solo
     el dia --, se usa para desempatar: la abstencion es por falta de evidencia,
     no por principio."""
-    cands = idx.get(_pair_key(r["home"], r["away"], order_insensitive))
+    cands = idx.get(_pair_key(r["home"], r["away"], order_insensitive, normalize))
     if not cands:
         return None
     rday = str(r.get("date", ""))[:10]
@@ -284,7 +293,13 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                                              str(r.get("home_score", "")),
                                              str(r.get("away_score", ""))))
     order_insensitive = family == "tennis"  # players have no home/away orientation
-    idx = _match_index(odds_by_id, order_insensitive)
+    # League-aware match key (KI-067): resolves configs/leagues/team_aliases.yaml
+    # on both the result's and the odds event's team names, so a vendor spelling
+    # mismatch (e.g. "Hawaii Rainbow Warriors" vs "Hawai'i Rainbow Warriors")
+    # still matches instead of silently dropping the game from the backtest.
+    # Leagues without aliases get byte-identical behavior to normalize_key.
+    match_normalize = get_team_normalizer(league)
+    idx = _match_index(odds_by_id, order_insensitive, match_normalize)
     # Historial walk-forward por equipo: (indice, fecha, fila) apendizados en
     # despues de cada prediccion. Las features de ajuste de un partido
     # solo pueden ver partidos de fechas estrictamente anteriores (via
@@ -316,7 +331,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
             pending.clear()
         in_window = bet_from_date is None or str(r.get("date", ""))[:10] >= bet_from_date
         if i >= warmup and in_window:
-            eo = _match_result(r, idx, used, order_insensitive)
+            eo = _match_result(r, idx, used, order_insensitive, match_normalize)
             if eo is not None:
                 n_matched += 1
                 ev = Event(event_id=eo.event.event_id, sport_key="bt", league=league,
@@ -329,7 +344,7 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                 cons_n = _consensus_counts(eo)
                 cons_spread = _consensus_spread(eo)
                 # Map final score to the odds' home/away orientation.
-                if normalize_key(r["home"]) == normalize_key(eo.event.home):
+                if match_normalize(r["home"]) == match_normalize(eo.event.home):
                     hs, as_ = int(r["home_score"]), int(r["away_score"])
                 else:
                     hs, as_ = int(r["away_score"]), int(r["home_score"])

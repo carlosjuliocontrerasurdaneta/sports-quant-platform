@@ -504,6 +504,7 @@ Format:
   - Con 8 procesos saturando la CPU: 3/3 en verde.
 - Status: CORREGIDO (2026-09-25).
 
+- Addendum (2026-09-26): mismo modo de fallo en `tests/test_audit_pipeline_isolation.py::test_concurrent_processes_publish_to_independent_roots` (timeout fijo de 30 s en subprocesos que importan `sqp.pipeline.daily`). Falló en el stop hook con varios subagentes ejecutando tests y scripts en paralelo; aislado pasa (2 passed, 36 s). No lo causaron los cambios del turno (solo documentación). Candidato a la misma corrección: timeout relativo o marca `slow`.
 - ID: KI-063
 - Severity: Media (P2)
 - Description: **OBS-001 de la verificación de KI-061. La histéresis se pierde mientras el registro de degradación siga ilegible.**
@@ -565,3 +566,17 @@ Format:
 - Affected files: DIARIO_COMPLETO.bat, scripts/backfill_starters.py, data/historical/starters_mlb.csv
 - Fix: refresco manual con `--days 120` (cobertura de junio a septiembre al 100%) y `backfill_starters.py --days 3` en el paso 0.5 de `DIARIO_COMPLETO.bat`, sin bloquear la cadena (`a1e9339`).
 - Status: CORREGIDO (2026-09-26). Vigilar en `logs/backfill_diario.log` que el paso diario escribe filas.
+
+- ID: KI-067
+- Severity: Media (P2)
+- Description: **La liquidación de respaldo desde el histórico y `roi_engine` no aplican los alias de equipo.** `settlement/runner.py::exact_history_scores_map` (l.319-337, usada en :565 y :832) y `backtesting/roi_engine.py::_match_result` (l.125, 166) usan `normalize_key` a secas, sin `team_aliases.yaml`. Con los 69 alias del 2026-09-26, los equipos afectados (Hawai'i, LA Clippers, Internazionale…) empiezan a servirse. Si el feed `/scores` no gradúa una fila en su ventana de 3 días, el respaldo por histórico no la encuentra y **caduca como `stale_void`**. No se liquida mal (`normalize_key` nunca fusiona equipos distintos), pero se pierde evidencia de forma sesgada, y los backtests de ROI no casan las cuotas de esos equipos. Encontrado por la revisión de Fable del barrido de alias.
+- Affected files: src/sqp/settlement/runner.py, src/sqp/backtesting/roi_engine.py
+- Fix: pendiente. Aplicar el normalizador con alias de la liga (`get_team_normalizer`) en ambos emparejadores, con tests de un equipo aliaseado. La liquidación entra en la clase 5, así que necesita revisión de Fable antes del commit.
+- Status: CORREGIDO (2026-09-26): `get_team_normalizer(league)` en `exact_history_scores_map`, `mlb_schedule_scores_map` y `roi_engine` (incluidas las guardas de ambigüedad); 9 tests de regresión (5 fallan contra HEAD); Fable: APTO.
+
+- ID: KI-068
+- Severity: Alta (P1)
+- Description: **69 equipos en 13 ligas nunca se servían por desajuste de nombre entre el feed de cuotas y el histórico.** Al normalizar no casaban, el adaptador veía al equipo sin partidos, `reliability_warning` saltaba y no se servía ninguna fila. Ejemplos: «Hawaii Rainbow Warriors» frente a «Hawai'i Rainbow Warriors» (NCAAF, 0 filas en toda la historia), «Los Angeles Clippers» frente a «LA Clippers», «Inter Milan» frente a «Internazionale». Rompía la regla de generar picks para TODOS los partidos. Detectado al revisar el partido Hawái @ Wyoming que envió el operador.
+- Affected files: configs/leagues/team_aliases.yaml, configs/venues.yaml, tests/test_team_alias_mismatches.py
+- Fix: barrido sistemático (Sonnet) de 35 ligas y 69 alias; revisión de Fable (APTO CON CAMBIOS) y de Codex. El tenis NO se aliasea: la identidad de persona es frágil (Martin Damm padre e hijo). 29 canónicos tienen menos de 10 partidos y aún no se desbloquean.
+- Status: CORREGIDO (2026-09-26), junto con KI-067 en el mismo commit. Pendiente menor: la clave de `venues.yaml` epl `brighton` no es el canónico `brighton hove albion` (anterior a hoy; el clima está apagado).

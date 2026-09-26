@@ -20,7 +20,7 @@ from sqp.storage.lock import locked
 from sqp.providers.odds_api import OddsAPIClient
 from sqp.settlement.settle import (STALE_VOID_DAYS, _parse_start, realized_roi_parts,
                                    settle_candidates, void_stale_candidates)
-from sqp.sports.team_names import normalize_key
+from sqp.sports.team_names import get_team_normalizer, normalize_key
 from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.settle")
@@ -308,6 +308,7 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
     # unico resultado en el historico NO identifica cual se jugo -- el otro pudo
     # aplazarse, y MLB Stats API descarta los aplazados. Se cuenta sobre
     # `pending` mas ``known_events`` (el resto de filas propias de la liga).
+    norm = get_team_normalizer(league)
     eventos: dict[tuple[str, str, str], set[str]] = {}
     for frame in (pending, known_events):
         if frame is None or frame.empty or not {"event_id", "home", "away",
@@ -316,12 +317,12 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
         for r in frame[["event_id", "home", "away", "start_time"]].itertuples(index=False):
             dia = expected_result_date(league, r.start_time)
             if dia:
-                eventos.setdefault((normalize_key(str(r.home)), normalize_key(str(r.away)),
+                eventos.setdefault((norm(str(r.home)), norm(str(r.away)),
                                     dia), set()).add(str(r.event_id))
     keyed: dict[tuple[str, str, str], list[tuple[int, int]]] = {}
     for m in results:
         try:
-            k = (normalize_key(str(m["home"])), normalize_key(str(m["away"])),
+            k = (norm(str(m["home"])), norm(str(m["away"])),
                  str(m.get("date", ""))[:10])
             keyed.setdefault(k, []).append((int(m["home_score"]), int(m["away_score"])))
         except (KeyError, TypeError, ValueError):
@@ -334,7 +335,7 @@ def exact_history_scores_map(pending: pd.DataFrame, results: list[dict],
             continue
         day = expected_result_date(league, start)
         home = str(r.home)
-        clave = (normalize_key(home), normalize_key(str(r.away)), str(day))
+        clave = (norm(home), norm(str(r.away)), str(day))
         if len(eventos.get(clave, ())) > 1:
             continue
         # Back-to-back del mismo par (FABLE-R3-003): The Odds API a veces
@@ -390,6 +391,7 @@ def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
     needed = {"game_id", "date", "start_time", "home", "away", "state"}
     if schedule is None or schedule.empty or not needed.issubset(schedule.columns):
         return {}
+    norm = get_team_normalizer("mlb")
     marcador: dict[str, tuple[str, int, int]] = {}
     for m in results:
         try:
@@ -410,13 +412,13 @@ def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
         if pd.isna(gd):
             continue
         tbd = str(getattr(g, "start_time_tbd", "False")).strip().lower() in ("true", "1")
-        por_par.setdefault((normalize_key(str(g.home)), normalize_key(str(g.away))), []).append(
+        por_par.setdefault((norm(str(g.home)), norm(str(g.away))), []).append(
             (gd, (str(g.game_id), str(g.date)), str(g.state),
              str(getattr(g, "abstract_state", "")), tbd,
              gd.tz_convert(_MLB_DATE_TZ).date()))
 
     def aparicion(home: str, away: str, st: pd.Timestamp) -> tuple | None:
-        juegos = por_par.get((normalize_key(home), normalize_key(away)), [])
+        juegos = por_par.get((norm(home), norm(away)), [])
         if not juegos:
             return None
         dia = st.tz_convert(_MLB_DATE_TZ).date()
@@ -458,7 +460,7 @@ def mlb_schedule_scores_map(pending: pd.DataFrame, schedule: pd.DataFrame,
         # -61 min se liquidaba con el marcador del juego 1. Solo se gradua si
         # CADA aparicion del par ese dia (aplazadas incluidas) la reclama
         # exactamente un evento conocido; si no, expira.
-        par = (normalize_key(home), normalize_key(str(r.away)))
+        par = (norm(home), norm(str(r.away)))
         del_dia = [j for j in por_par.get(par, []) if j[5] == ap[5]]
         if len(del_dia) > 1 and any(len(elegida.get(j[1], ())) != 1 for j in del_dia):
             continue
