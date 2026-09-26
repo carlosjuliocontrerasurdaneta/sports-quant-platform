@@ -304,3 +304,4 @@ Orden del operador: «Clima y Parque. Continúa». Reapertura del clima MLB con 
 3. **MLB: bullpen** (preparado para 2027).
 En paralelo: barrido de nombres de equipo (Hawái NCAAF) y orientación de estadios («Clima y Parque»). Sigue en cola: batería de los 10 ajustes.
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
+FABLE-REVIEW: 2026-09-26 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas; test en 2027) | rutas: docs/research/2026-09-26-preregistro-clima-parque-mlb.md
