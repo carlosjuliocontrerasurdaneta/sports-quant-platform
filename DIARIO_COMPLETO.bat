@@ -189,6 +189,12 @@ if %ERRORLEVEL% neq 0 call :log "[AVISO] el refresco del historico de tenis fall
 call :log "[1/3] Liquidando picks del dia anterior..."
 call "%~dp0SETTLE_ALL.bat"
 if %ERRORLEVEL% neq 0 goto :error_settle
+REM Porteros probables NHL (2026-09-26, pre-registro del portero NHL): captura
+REM con marca de hora DESPUES de liquidar y ANTES del run, para que la fila
+REM daily sea la informacion disponible a la hora del pick. Solo captura; no
+REM toca probabilidades ni picks. No bloqueante. Revision Fable: ubicacion aqui.
+"%SQP_PYTHON%" scripts\capture_goalie_probables_nhl.py --source-run daily >> logs\backfill_diario.log 2>&1
+if %ERRORLEVEL% neq 0 call :log "[AVISO] la captura de porteros probables NHL fallo (ver logs\backfill_diario.log); no bloqueante."
 
 call :log "[2/3] Ejecutando run diario multi-liga..."
 call "%~dp0RUN_DIARIO_ALL.bat"

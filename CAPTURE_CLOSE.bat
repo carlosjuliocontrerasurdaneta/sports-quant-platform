@@ -25,6 +25,12 @@ REM Captura correcta: limpia SOLO esta etapa (corre cada 30 min, asi que se
 REM auto-recupera en la siguiente pasada buena).
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage capture_close
 
+REM Porteros probables NHL (2026-09-26): DESPUES de la captura de cierre para
+REM no retrasarla; log propio; no bloqueante (nunca salta a :error).
+call scripts\rotate_log.cmd logs\goalie_probables.log
+"%SQP_PYTHON%" scripts\capture_goalie_probables_nhl.py --source-run capture >> logs\goalie_probables.log 2>&1
+if %ERRORLEVEL% neq 0 echo [AVISO] captura de porteros probables NHL fallo (no bloqueante) >> logs\goalie_probables.log
+
 endlocal
 goto :eof
 
