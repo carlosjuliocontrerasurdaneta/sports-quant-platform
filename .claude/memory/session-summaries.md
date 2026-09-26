@@ -882,3 +882,17 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Tempo @ Sun (24/09): ESPN 95–81. Over 168.5 (tier A) ganó con stake 0 (`market_paused;stale_edge_revoked`).
 - **Cambio:** `mlb.pitcher_bound 0.05` por orden del operador. Re-medición walk-forward y docs en [[Bitácora/2026-09-26]]; decisión en `project-decisions.md`.
 - **Pendiente (siguiente sesión):** vigilar el ECE MLB tras el cambio y anotar el corte de modelo del 26/09 al ejecutar el pre-registro «el modelo manda».
+
+## 2026-09-26 — Cierre: principio de modelos, candado Fable, clima rechazado, descanso NBA activado
+
+(Amplía la entrada parcial de esta misma sesión.)
+- **Abridor MLB:** `pitcher_bound 0.05` por orden del operador (`49a6181`). La revisión de Fable llegó después del commit: MANTENER CON CONDICIONES. Bloqueante corregido: KI-066, refresco diario de abridores (`a1e9339`). Addenda de régimen en el gate K=52 y en «el modelo manda».
+- **Clima MLB: RECHAZADO**, 0/5 criterios. Pre-registro, 13 enmiendas tras la revisión de Fable y ejecución única. Empeora el log loss (+0,0075); lo supera un intercepto constante (`ac36d91`).
+- **Descanso NBA: ACEPTADO** 5/5 y activado a 0,795 (`58330c7`). Criterio 1 por poco (−0,00224 frente a −0,002). Una primera ejecución abortó sin resultados (paridad de spreads con empates) y se re-ejecutó documentado.
+- **Política de modelos:** principio fundamental en `CLAUDE.md` y `MODEL_ROUTING.md`; candado `fable_gate` activo (`b111912`). Reparto aplicado: Haiku inventarios, Sonnet scripts y hook, Fable pre-registros, revisiones y veredictos, Opus orquestación.
+- **Pendiente (siguiente sesión):**
+  - antes de la NBA (finales de octubre): recalibrar en staging `nba_h2h`/`nba_spreads` (promoción con aprobación del operador) y re-medir `margin_sigma`;
+  - reentrenar en staging los calibradores MLB con bound 0,05 cuando haya muestra;
+  - batería de los 10 ajustes de la capa de features (aprobada; un pre-registro con Holm y descarte razonado de los redundantes);
+  - propuesta sin confirmar: medir la regresión del Elo entre temporadas;
+  - comprobar en `logs/backfill_diario.log` que el paso 0.5 escribe abridores.

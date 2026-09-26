@@ -212,3 +212,11 @@ liquidación no cambian.
 **Razón:** AUD-002 de la ronda `audit-2026-09-22-r2`; ver la decisión del 2026-09-23 en `project-decisions.md`.
 **Validación:** 16 pruebas nuevas que fallan contra `HEAD`; suite `not slow` 2075 passed; CI `35807528846` verde.
 **Riesgo:** fallo correlacionado al escribir el propio centinela. `append_degradation_log` sigue tratando un log con `ParserError` como vacío; ahora ese log sostiene el fallback (observación de Fable, no corregida).
+
+## 2026-09-26 — Candado pre-commit de revisión Fable (`fable_gate`)
+
+**Módulos afectados:** `.claude/hooks/fable_gate.py`, `.claude/automation/fable-gate.json`, `.claude/settings.json` (PreToolUse `Bash|PowerShell`), `tests/test_fable_gate.py`, `.claude/automation/MODEL_ROUTING.md`, `CLAUDE.md`.
+**Cambio:** un `git commit` lanzado por Claude Code con rutas de las cinco clases de escalado exige una línea `FABLE-REVIEW: <hoy> | veredicto: APTO... | rutas: ...` en `current-task.md` que las cubra; si falta, exit 2. Escape solo del operador: `SQP_FABLE_GATE=off` como variable de sesión. Si falla por error, deja pasar el commit. El principio de selección de modelo queda como fundamental (reparto Haiku/Sonnet/Opus/Fable, Fable antes del commit).
+**Razón:** el 2026-09-26 un cambio de parámetro de modelo se commiteó sin la revisión previa de Fable, y la revisión posterior encontró un bloqueante (KI-066). El hook de delegación solo actúa al delegar.
+**Validación:** 52 tests; dos rondas de revisión de Fable; verificado en vivo (bloqueó un commit de `configs/`).
+**Riesgo:** impide olvidarse de la revisión, pero no puede verificar que ocurrió. No cubre commits hechos fuera de Claude Code.

@@ -558,3 +558,10 @@ Format:
 - Affected files: src/sqp/providers/espn_tennis.py
 - Fix: `query_days` consulta también, siempre, el último día de la ventana (como mucho una petición más por circuito). Tests `test_una_ventana_corta_consulta_tambien_su_ultimo_dia` y `test_el_backfill_diario_ve_un_torneo_que_empieza_dentro_de_la_ventana`; fallan con el código anterior.
 - Status: CORREGIDO (2026-09-25). El hueco del 25/09 lo recoge el paso diario del 26/09, cuya ventana empieza el 22.
+
+- ID: KI-066
+- Severity: Media (P2)
+- Description: **`data/historical/starters_mlb.csv` congelado desde el 2026-06-12.** Ningún `.bat` llamaba a `scripts/backfill_starters.py`. La cobertura de abridores en `results_mlb` cayó a 152/395 en junio y a 1-3 partidos al mes desde julio. Era inocuo mientras `pitcher_bound` valía 0; con `pitcher_bound 0.05` (26/09) el factor en vivo habría usado ratings de junio. Lo encontró la revisión de Fable del commit `49a6181`. `starter_fip_mlb.csv` también está congelado (2026-06-15), pero no se usa con la señal `ra`.
+- Affected files: DIARIO_COMPLETO.bat, scripts/backfill_starters.py, data/historical/starters_mlb.csv
+- Fix: refresco manual con `--days 120` (cobertura de junio a septiembre al 100%) y `backfill_starters.py --days 3` en el paso 0.5 de `DIARIO_COMPLETO.bat`, sin bloquear la cadena (`a1e9339`).
+- Status: CORREGIDO (2026-09-26). Vigilar en `logs/backfill_diario.log` que el paso diario escribe filas.
