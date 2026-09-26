@@ -447,3 +447,9 @@ Format:
 - Reason: pre-registro con revisión Fable (0/5 criterios). Δ log loss en afectados +0,0075, IC95 [+0,0014; +0,0148]. El control de intercepto lo supera y los coeficientes de B tienen el signo de la lluvia invertido.
 - Alternatives: repetir con otro umbral u otra ventana (rechazado: sería buscar señal a medida); forma funcional nueva con dirección de viento o temperatura (posible, con pre-registro y datos nuevos).
 - Consequences: `docs/research/2026-09-26-resultado-clima-mlb.md`. NFL y NCAAF sin medir (faltan coordenadas de estadio).
+
+- Date: 2026-09-26
+- Decision: **Descanso/back-to-back NBA ACTIVADO**: `nba.rest_points_per_day: 0.795` en `configs/leagues/ratings.yaml`. Solo NBA; `rest_days_coef` sigue en 0.
+- Reason: pre-registro (redactado y revisado por Fable, ejecución única). ACEPTA 5/5: Δ log loss en afectados −0,00224, IC95 [−0,00371; −0,00076]; `c` estable (0,81/0,88/0,80); bate al control de intercepto (T−C −0,00197). Revierte el rechazo del 2026-06-22, que se basó en ROI con 22-25 eventos de la WNBA.
+- Alternatives: re-estimar con todo el histórico o usar el `c` conjunto con intercepto (≈0,6), ambos no pre-registrados; extender a WNBA/NCAAB/WNCAAB, sin potencia ni transferencia.
+- Consequences: addenda previos en el gate K=52 y en «el modelo manda». Pendiente antes de la temporada: recalibrar `nba_h2h/nba_spreads` en staging (promoción con aprobación humana) y re-medir `margin_sigma`. Vigilar 2025-26, que salió +0,0006. `docs/research/2026-09-26-resultado-descanso-basket.md`.

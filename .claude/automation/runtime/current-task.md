@@ -291,3 +291,4 @@ Orden del operador: «Sí, implementa el candado pre-commit». Cambio de políti
 
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO PARA CABLEAR (2.ª ronda; 1.ª APTO CON CAMBIOS, 10 cambios aplicados + huecos A y B) | rutas: .claude/hooks/fable_gate.py, .claude/automation/fable-gate.json, tests/test_fable_gate.py
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO CON CAMBIOS aplicados (script del descanso; enmiendas E1-E6) | rutas: scripts/research/measure_rest_basketball.py, docs/research/2026-09-26-preregistro-descanso-basket.md
+FABLE-REVIEW: 2026-09-26 | veredicto: APTO CON CONDICIONES (activar rest_points_per_day=0.795 solo nba, tras los addenda previos en gate K=52 y «el modelo manda»; rest_days_coef en 0; recalibrar nba_h2h/nba_spreads; re-medir margin_sigma; test de back-to-back) | rutas: configs/leagues/ratings.yaml, docs/research/2026-09-26-resultado-descanso-basket.md

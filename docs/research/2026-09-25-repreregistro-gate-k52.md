@@ -99,3 +99,7 @@ Implementado el mismo día:
 ## Addendum 2026-09-26 — cambio de régimen del modelo MLB (antes de ejecutar)
 
 Desde el run del 2026-09-26, MLB sirve con `pitcher_bound: 0.05` (commit `49a6181`, orden del operador); hasta el 25/09 era 0.0. Las filas MLB servidas desde el 26/09 salen de ese modelo. Se registra **antes** de mirar ningún resultado del test. **No altera ningún criterio de este documento** y queda prohibido usarlo después para recortar o re-segmentar la ventana: el test evalúa el sistema tal como operó. Revisión independiente (Fable, 2026-09-26): no invalida el test; en `mlb|totals`, como mucho ~13 de 300 filas vendrán del modelo nuevo.
+
+## Addendum 2026-09-26 (2) — descanso NBA activado (antes de ejecutar)
+
+Desde el commit que activa `nba.rest_points_per_day: 0.795` (2026-09-26), el modelo NBA suma 0,795 puntos por día de diferencia de descanso (tope de 4) al margen esperado. Hasta entonces era 0. Pre-registro y resultado: `docs/research/2026-09-26-preregistro-descanso-basket.md` y `docs/research/2026-09-26-resultado-descanso-basket.md` (ACEPTA, dictamen de Fable: APTO CON CONDICIONES). Las filas NBA servidas desde ese commit salen de este modelo; hoy el gate no tiene cortes NBA y la temporada empieza a finales de octubre. Se registra **antes** de mirar ningún resultado del test. **No altera ningún criterio**, y queda prohibido usarlo después para recortar o re-segmentar la ventana.

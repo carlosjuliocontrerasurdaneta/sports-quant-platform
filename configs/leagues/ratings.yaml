@@ -31,6 +31,13 @@ leagues:
   mls:
     elo_home_adv: 30.0
     elo_home_away_split: true
+  nba:
+    # Descanso/back-to-back ACTIVADO 2026-09-26 tras pre-registro con revision
+    # Fable (ACEPTA, 5/5 criterios; Δ log loss en afectados -0,00224, IC95
+    # [-0,00371; -0,00076]). Valor = c de la particion C (0,79500586), sin
+    # re-estimar. Solo NBA; rest_max_days sigue en 4 (default). Ver
+    # docs/research/2026-09-26-resultado-descanso-basket.md.
+    rest_points_per_day: 0.795
   ncaaf:
     elo_home_adv: 150.0
   nhl:
