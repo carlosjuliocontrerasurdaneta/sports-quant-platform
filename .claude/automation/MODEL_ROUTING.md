@@ -26,9 +26,27 @@ El enrutamiento tiene tres capas independientes:
 > nivel de razonamiento, y delegar las demás en función de su complejidad y de
 > las áreas en las que cada modelo ofrezca mejor rendimiento.**
 
-Orden de decisión del operador (2026-08-25). **Gobierna toda esta política**: si
+Orden de decisión del operador (2026-08-25), reiterada el 2026-09-01 y **el
+2026-09-26 como principio fundamental**. **Gobierna toda esta política**: si
 alguna regla concreta de abajo entra en conflicto con él, manda el principio y la
 regla se corrige, no al revés.
+
+**Reparto operativo por defecto** (fijado el 2026-09-26, tras un fallo real):
+
+| Pieza de la tarea | Modelo |
+|---|---|
+| Inventario, búsqueda y resumen acotados | Haiku |
+| Implementar scripts, tests y cambios bien especificados | Sonnet |
+| Orquestar, integrar, ejecutar, commitear y comunicar | Opus (conversación principal) |
+| Diseñar pre-registros, revisar e interpretar veredictos y cifras, y todo lo que caiga en las cinco clases de escalado | Fable |
+
+**Fable revisa ANTES del commit, no después.** El 2026-09-26 se commiteó
+`mlb.pitcher_bound 0.05` (parámetro de modelo y contradicción de una decisión
+registrada) decidido enteramente en Opus. La revisión de Fable llegó después y
+encontró un bloqueante (`starters_mlb.csv` congelado desde el 12/06). El
+principio ya estaba escrito: faltaba que se cumpliera. El candado pre-commit
+(`.claude/hooks/fable_gate.py`, en revisión) convierte esta regla en mecanismo
+para las rutas sensibles.
 
 **Relación con la tabla de rutas, dicha sin ambigüedad.** El principio y el
 `default: sonnet` de `model-routing.json` **no** se contradicen, y conviene que

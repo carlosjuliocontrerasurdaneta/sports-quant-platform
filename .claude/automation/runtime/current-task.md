@@ -270,3 +270,21 @@ Incidencia del verificador: hasta 7 llamadas reales a `codex review` sobre un re
 ## Registro de enrutamiento — activación del abridor MLB (2026-09-26)
 
 Orden del operador: «Activa el factor del abridor en MLB». Cae en DOS clases del disparador: (2) parámetro de modelo y (4) contradice decisiones registradas (2026-06-12, 2026-06-16). **Fallo de despacho:** la sesión principal (`claude-opus-5-5`) midió, decidió e implementó (`49a6181`) sin escalar ni registrar aquí. La revisión cruzada de Codex (stop hook) no sustituye al escalón Fable. Corrección a posteriori: revisión independiente del commit despachada con `model: "fable"` (subagente `independent-code-reviewer`), solo lectura.
+
+## Registro de enrutamiento — re-medición del descanso/back-to-back en basket (2026-09-26)
+
+Orden del operador: repartir por modelo según complejidad y fortaleza. Plan de despacho:
+1. **Haiku**: inventario acotado (implementación del descanso, evidencia del 2026-06-22, datos disponibles). Ruta `documentation`/lookup.
+2. **Fable** (regla 1: parámetro de modelo + contradice la decisión del 2026-06-22): redacta el pre-registro.
+3. **Sonnet** (regla 2, ingeniería normal): scripts de medición según el pre-registro.
+4. **Fable**: revisión del código antes de ejecutar e interpretación del veredicto (cifras publicables).
+5. **Opus** (principal): orquesta, ejecuta la corrida única, commitea y comunica.
+
+## Cola aprobada por el operador (2026-09-26)
+
+1. Descanso/back-to-back en basket (en curso: inventario Haiku).
+2. **Batería de los 10 ajustes de la capa de features** (aprobada: «Sí, añade la batería a la cola»). Un solo pre-registro con corrección de Holm; descarte razonado de los redundantes (1 rest, 5 streak, 6-7 off_def) escrito ANTES de medir; mismos criterios que el clima (walk-forward, margen 0,002, control de intercepto). Reparto: Haiku inventario, Fable pre-registro y veredicto, Sonnet scripts, Opus orquesta.
+
+## Registro de enrutamiento — candado pre-commit de revisión Fable (2026-09-26)
+
+Orden del operador: «Sí, implementa el candado pre-commit». Cambio de política de modelos aprobado explícitamente. Reparto: diseño en Opus (principal); implementación de hook, config y tests en **Sonnet**; revisión del código y del diseño en **Fable** ANTES de cablearlo en `settings.json` y commitear; cableado, documentación en `MODEL_ROUTING.md` y commit en Opus.
