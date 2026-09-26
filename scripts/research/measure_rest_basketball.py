@@ -13,7 +13,15 @@ deciden nada. Tres modos:
                     `sqp.backtesting.engine.walk_forward_backtest` a 1e-12
                     (probabilidades y resultados). Repite la comprobacion con
                     c=0,5 SOLO como prueba de paridad del mecanismo
-                    rest_points_per_day (seccion 5, aserciones 1 y 2). NO
+                    rest_points_per_day (seccion 5, aserciones 1 y 2), y
+                    ADEMAS comprueba la paridad de spreads (informe 6) con ese
+                    mismo c=0,5 y tres lineas FIJAS y arbitrarias
+                    (PARITY_SPREAD_LINES = -4.5, 1.5, 6.5, sin relacion con
+                    los cuantiles del modo completo), para poder detectar sin
+                    lanzar el modo completo cualquier desalineacion entre la
+                    reconstruccion del script y `markets['spreads@L']` del
+                    motor (p.ej. el motor no excluye empates en spreads como
+                    si lo hace en moneyline -- ver build_rest_frame). NO
                     estima ninguna `c`, no calcula ningun Delta y no evalua
                     ningun criterio de aceptacion.
   (sin flags)      medicion completa, UNA SOLA EJECUCION (seccion 12): ajusta
@@ -77,6 +85,12 @@ WARMUP = 60  # default de walk_forward_backtest (seccion 5 y 9)
 NM_OPTS = {"xatol": 1e-7, "fatol": 1e-10, "maxiter": 2000}  # seccion 6
 N_BOOT, SEED = 10_000, 42  # seccion 8
 PROBE_C = 0.5  # solo para la prueba de paridad de --parity-only (seccion 5)
+# Lineas fijas SOLO para la prueba de paridad de spreads de --parity-only: no
+# tienen relacion con `lineas_fijas` (derivadas de cuantiles de mu_base) que
+# usa el modo completo -- son arbitrarias (negativa, positiva y de magnitud
+# distinta) y sirven unicamente para ejercitar `assert_parity_spreads` sin
+# depender de datos ni de ninguna estimacion.
+PARITY_SPREAD_LINES = (-4.5, 1.5, 6.5)
 LEAGUES = ("nba", "wnba", "ncaab", "wncaab")
 
 # Cortes de particion (seccion 6). NBA decide; WNBA es secundaria, con sus
@@ -197,22 +211,48 @@ def mu_base_frame(results: list[dict], league: str, params: dict,
             mu = dist.elo_diff_to_margin(diff, adapter.params["points_per_elo"])
             hs, aws = r["home_score"], r["away_score"]
             y = 1.0 if hs > aws else (0.5 if hs == aws else 0.0)
-            rows.append({"idx": i, "mu_base": float(mu), "y": y})
+            # `margin` se lleva alineado POR POSICION (idx), no por game_id: el
+            # esquema legacy de ResultsStore permite `game_id == ""` en varias
+            # filas (results_store.py:39-41, "fila legacy... doubleheaders"), y
+            # un diccionario `{game_id: margin}` construido desde `results`
+            # colapsaria todas esas filas en una sola entrada, corrompiendo el
+            # marcador de cualquier partido legacy. Defecto real y separado del
+            # desalineamiento por empates corregido en build_rest_frame.
+            rows.append({"idx": i, "mu_base": float(mu), "y": y,
+                        "margin": float(hs - aws)})
         pending.append(r)
     return pd.DataFrame(rows), adapter.params["margin_sigma"]
 
 
 def build_rest_frame(results: list[dict], league: str, params: dict,
-                      warmup: int = WARMUP) -> tuple[pd.DataFrame, float]:
-    """Une mu_base y el calendario de descanso, en orden temporal, excluyendo
-    empates (0.5) igual que `engine.walk_forward_backtest` (mascara binaria)."""
+                      warmup: int = WARMUP) -> tuple[pd.DataFrame, float, pd.DataFrame]:
+    """Une mu_base y el calendario de descanso, en orden temporal.
+
+    Devuelve DOS vistas porque `engine.walk_forward_backtest` NO las filtra
+    igual (causa raiz de `PARIDAD ROTA (spreads probs)`, hallada comparando
+    longitudes: `binary_probs` tenia 34004 filas y `markets['spreads@L']`
+    34005 para NBA):
+
+    - `df` (2o valor... vease abajo): excluye empates (y==0.5), como la
+      mascara binaria que arma `binary_probs`/`binary_outcomes` (moneyline,
+      engine.py:116-119). Es la vista correcta para paridad de moneyline.
+    - `df_all` (3er valor): TODAS las filas con i>=warmup, incluidos los
+      empates. Es la vista correcta para paridad de spreads/totals: el motor
+      alimenta `market_probs`/`market_outcomes` (engine.py:105-114) DENTRO del
+      mismo `if i >= warmup:` que el moneyline, sin aplicarles esa mascara --
+      solo excluye los empujes (`push`), nunca los empates. Basket no suele
+      empatar, pero un unico marcador empatado en el historico (dato real, no
+      hipotetico) basta para desalinear todo lo posterior si se reconstruye
+      sobre la vista tie-excluded.
+    """
     mb, sigma = mu_base_frame(results, league, params, warmup)
     rc = rest_calendar(results, league, params, warmup)
-    df = mb.merge(rc, on="idx", how="inner", validate="one_to_one")
-    df = df.sort_values("idx", kind="stable").reset_index(drop=True)
-    df = df[df["y"].isin([0.0, 1.0])].reset_index(drop=True)  # mascara binaria del motor
-    df["afectado"] = df["known"] & (df["delta_r"].fillna(0.0) != 0.0)
-    return df, sigma
+    merged = mb.merge(rc, on="idx", how="inner", validate="one_to_one")
+    merged = merged.sort_values("idx", kind="stable").reset_index(drop=True)
+    merged["afectado"] = merged["known"] & (merged["delta_r"].fillna(0.0) != 0.0)
+    df_all = merged
+    df = merged[merged["y"].isin([0.0, 1.0])].reset_index(drop=True)  # mascara binaria del motor
+    return df, sigma, df_all
 
 
 # ------------------------------------------------------------------ brazos --
@@ -332,22 +372,35 @@ def assert_parity_treatment(results: list[dict], league: str, params: dict,
 
 
 def assert_parity_spreads(results: list[dict], league: str, params: dict,
-                          df: pd.DataFrame, sigma: float, c: float,
+                          df_all: pd.DataFrame, sigma: float, c: float,
                           lineas: list[float], warmup: int = WARMUP,
                           atol: float = 1e-12) -> None:
     """Informe secundario 6: el resumen por linea del motor
     (`walk_forward_backtest(..., spread_lines=lineas)` con `c` constante para
     TODO el historico) coincide, a 1e-12, con el calculo propio de
-    `home_cover_prob` sobre TODO `df` (no solo una particion). Aborta si no
+    `home_cover_prob` sobre TODO `df_all` (no solo una particion). Aborta si no
     coincide: la comprobacion de paridad de la seccion 5 exige tambien cubrir
-    los mercados de spread, no solo el moneyline."""
+    los mercados de spread, no solo el moneyline.
+
+    `df_all` DEBE ser la vista de `build_rest_frame` que INCLUYE empates (3er
+    valor de retorno), no la vista tie-excluded del moneyline: el motor
+    alimenta `market_probs`/`market_outcomes` de spreads dentro del mismo
+    `if i >= warmup:` que el moneyline pero SIN aplicarle la mascara binaria
+    (engine.py:105-119), asi que solo excluye empujes, nunca empates. Pasar la
+    vista tie-excluded desalinea todas las filas posteriores al primer
+    empate y rompe esta paridad con longitudes distintas (causa raiz real de
+    `PARIDAD ROTA (spreads probs)`, confirmada comparando longitudes: NBA
+    tenia 34004 filas en `binary_probs` y 34005 en `markets['spreads@L']`)."""
     ref = walk_forward_backtest(results, league, FAMILY,
                                 {**params, "rest_points_per_day": c},
                                 warmup=warmup, spread_lines=tuple(lineas))
-    marcador = {str(r.get("game_id")): (r["home_score"] - r["away_score"]) for r in results}
-    mu = df["mu_base"].to_numpy()
-    de = df["delta_eff"].to_numpy()
-    margin = df["game_id"].map(marcador).to_numpy(dtype=float)
+    mu = df_all["mu_base"].to_numpy()
+    de = df_all["delta_eff"].to_numpy()
+    # `margin` viene de la columna alineada por posicion (`mu_base_frame`), NO
+    # de un diccionario indexado por `game_id`: ese indice colapsa filas legacy
+    # con `game_id == ""` (ver comentario en mu_base_frame) y corrompia el
+    # marcador de esas filas, desalineando `push`/`covered` frente al motor.
+    margin = df_all["margin"].to_numpy(dtype=float)
     for line in lineas:
         key = f"spreads@{line}"
         mkt = ref["markets"].get(key)
@@ -475,7 +528,7 @@ def captured_lines(results: list[dict], league: str) -> dict:
 
 # ------------------------------------------------------------------ NBA -----
 def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFrame, float]:
-    df, sigma = build_rest_frame(results, "nba", params, WARMUP)
+    df, sigma, df_all = build_rest_frame(results, "nba", params, WARMUP)
     assert_parity_base(results, "nba", params, df, sigma)
     assert_parity_treatment(results, "nba", params, df, sigma, PROBE_C)
 
@@ -619,19 +672,21 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
     lineas_fijas = [float(math.floor(-v) + 0.5) for v in q]
     out["secundario_spreads_lineas_fijas"] = {"lineas": lineas_fijas, "por_particion": {}}
     for name, fold in FOLDS_NBA.items():
-        te = test_all[(test_all["date"] >= fold["test_start"])
-                      & (test_all["date"] <= fold["test_end"])]
+        # `df_all` (incluye empates), NO `test_all` (tie-excluded, mascara del
+        # moneyline): el motor no filtra empates al alimentar
+        # `market_probs`/`market_outcomes` de spreads (ver build_rest_frame).
+        te = df_all[(df_all["date"] >= fold["test_start"])
+                   & (df_all["date"] <= fold["test_end"])]
         mu_te = te["mu_base"].to_numpy()
         de_te = te["delta_eff"].to_numpy()
         por_linea = {}
         for line in lineas_fijas:
             p_b = home_cover_prob(mu_te, sigma, line)
             p_t = home_cover_prob(mu_te + c_by_fold[name] * de_te, sigma, line)
-            # outcome real (margin > -line) requiere el marcador; se toma de
-            # `results` via game_id, igual que hace el motor con spread_lines.
-            marcador = {str(r.get("game_id")): (r["home_score"] - r["away_score"])
-                       for r in results}
-            margin = te["game_id"].map(marcador).to_numpy(dtype=float)
+            # outcome real (margin > -line): columna `margin` alineada por
+            # posicion (ver mu_base_frame), no un dict por game_id (que
+            # colapsa filas legacy con game_id == "").
+            margin = te["margin"].to_numpy(dtype=float)
             covered = (margin > -line).astype(float)
             push = margin == -line
             ll_b = ll_per_game(p_b[~push], covered[~push])
@@ -641,14 +696,14 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
         out["secundario_spreads_lineas_fijas"]["por_particion"][name] = por_linea
 
     # Paridad de spreads (seccion 5): motor ejecutado con `c_C` constante para
-    # TODO el historico, comparado contra el calculo propio sobre TODO `df`
-    # (no una particion). Aborta si no coincide a 1e-12.
-    assert_parity_spreads(results, "nba", params, df, sigma, c_c, lineas_fijas)
+    # TODO el historico, comparado contra el calculo propio sobre TODO
+    # `df_all` (no una particion, y SIN excluir empates -- ver
+    # build_rest_frame). Aborta si no coincide a 1e-12.
+    assert_parity_spreads(results, "nba", params, df_all, sigma, c_c, lineas_fijas)
 
     cap = captured_lines(results, "nba")
     matched_ids = cap["game_ids_emparejados"]
     if matched_ids:
-        marcador = {str(r.get("game_id")): (r["home_score"] - r["away_score"]) for r in results}
         # `delta_ll_h2h` se mide SOLO sobre los partidos que `_match_result`
         # empareja con un evento de cuotas (matched_ids), no sobre todo el
         # test de la particion C: sin esta interseccion se mezclaban partidos
@@ -667,7 +722,8 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
         if len(m):
             mu_m, de_m = m["mu_base"].to_numpy(), m["delta_eff"].to_numpy()
             lines = m["mkt_line"].to_numpy(dtype=float)
-            margin = m["game_id"].map(marcador).to_numpy(dtype=float)
+            # `margin` por posicion (ver mu_base_frame), no por game_id.
+            margin = m["margin"].to_numpy(dtype=float)
             push = margin == -lines
             p_b = np.array([dist.normal_margin_probs(mu, sigma, ln)["home_cover"]
                             for mu, ln in zip(mu_m, lines)])
@@ -696,7 +752,7 @@ def _nba_season_label(date_str: str) -> str:
 
 # ---------------------------------------------------------------- WNBA -----
 def run_wnba(results: list[dict], params: dict, c_nba_c: float) -> dict:
-    df, sigma = build_rest_frame(results, "wnba", params, WARMUP)
+    df, sigma, _df_all = build_rest_frame(results, "wnba", params, WARMUP)
     assert_parity_base(results, "wnba", params, df, sigma)
 
     out: dict = {"n_total": int(len(df)), "folds": {}}
@@ -749,7 +805,7 @@ def run_wnba(results: list[dict], params: dict, c_nba_c: float) -> dict:
 def run_transfer_only(league: str, results: list[dict], params: dict, c_nba_c: float) -> dict:
     """Seccion 10.10: sin particiones ni ajuste propio. Se evalua toda la
     temporada tras el warmup con la `c` de la particion C de la NBA."""
-    df, sigma = build_rest_frame(results, league, params, WARMUP)
+    df, sigma, _df_all = build_rest_frame(results, league, params, WARMUP)
     assert_parity_base(results, league, params, df, sigma)
     mu, de, y = df["mu_base"].to_numpy(), df["delta_eff"].to_numpy(), df["y"].to_numpy()
     p_base = home_win_prob(mu, sigma)
@@ -814,10 +870,22 @@ def main() -> int:
             if not results:
                 resumen[league] = "SIN RESULTADOS HISTORICOS: paridad no evaluable."
                 continue
-            df, sigma = build_rest_frame(results, league, params, WARMUP)
+            df, sigma, df_all = build_rest_frame(results, league, params, WARMUP)
             assert_parity_base(results, league, params, df, sigma)
             assert_parity_treatment(results, league, params, df, sigma, PROBE_C)
-            resumen[league] = f"PARIDAD OK (n={len(df)}, sigma={sigma}, c_prueba={PROBE_C})"
+            # Paridad de spreads (seccion 5, informe 6) con `c` y lineas FIJAS
+            # y arbitrarias, ajenas al test: detecta sin lanzar el modo
+            # completo cualquier desalineacion entre la reconstruccion y
+            # `walk_forward_backtest(..., spread_lines=...)` -- p.ej. el
+            # desalineamiento por empates (motor no los excluye en spreads,
+            # solo en moneyline) o el `margin` indexado por `game_id`,
+            # corregidos en build_rest_frame/mu_base_frame. `df_all` incluye
+            # empates a proposito: es la vista que espera assert_parity_spreads.
+            assert_parity_spreads(results, league, params, df_all, sigma, PROBE_C,
+                                  list(PARITY_SPREAD_LINES))
+            resumen[league] = (f"PARIDAD OK (n={len(df)}, sigma={sigma}, "
+                              f"c_prueba={PROBE_C}, lineas_spread_prueba="
+                              f"{list(PARITY_SPREAD_LINES)})")
         out = {"modo": "parity-only", "resultado": resumen}
         print(json.dumps(out, indent=2, ensure_ascii=False))
         if args.out:

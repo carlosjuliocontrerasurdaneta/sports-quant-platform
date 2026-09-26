@@ -119,6 +119,60 @@ def test_check_pre_hash_skips_when_either_side_lacks_a_hash(mod):
     mod._check_pre_hash({"ligas": {"nba": {"sha256": "aaa"}}}, "nba", {})
 
 
+# ------------------------------------------- paridad de spreads / empates --
+def _synthetic_results_with_one_tie() -> list[dict]:
+    """Historico sintetico minimo (6 partidos, sin warmup) con UN empate en
+    medio (fila con indice 1, marcador 5-5): lo unico que hace falta para
+    ejercitar la asimetria real del motor entre moneyline y spreads.
+    `home`/`away` alternan entre dos equipos para que Elo tenga con que
+    trabajar; las fechas son estrictamente crecientes."""
+    scores = [(10, 0), (5, 5), (8, 2), (3, 7), (6, 4), (9, 1)]
+    results = []
+    for i, (hs, aws) in enumerate(scores):
+        home, away = ("A", "B") if i % 2 == 0 else ("B", "A")
+        results.append({
+            "game_id": f"g{i}", "date": f"2024-01-{i + 1:02d}",
+            "home": home, "away": away,
+            "home_score": hs, "away_score": aws,
+        })
+    return results
+
+
+def test_build_rest_frame_all_view_keeps_the_tie_the_binary_view_drops(mod):
+    """Defecto real corregido en `build_rest_frame`: `engine.walk_forward_backtest`
+    excluye empates SOLO de `binary_probs`/`binary_outcomes` (moneyline), no de
+    `market_probs`/`market_outcomes` (spreads/totals) -- ver engine.py:105-119.
+    `df` (vista tie-excluded) debe seguir sirviendo al moneyline; `df_all` (3er
+    valor de retorno) debe conservar el empate para poder reconstruir spreads."""
+    results = _synthetic_results_with_one_tie()
+    df, _sigma, df_all = mod.build_rest_frame(results, "nba", {}, warmup=0)
+    assert (df["y"] == 0.5).sum() == 0
+    assert (df_all["y"] == 0.5).sum() == 1
+    assert len(df_all) == len(df) + 1
+    assert len(df_all) == len(results)
+
+
+def test_assert_parity_spreads_needs_the_tie_inclusive_view(mod):
+    """Reproduce, con datos sinteticos, el fallo real de la ejecucion completa
+    (`PARIDAD ROTA (spreads probs) en nba linea 1.5: no se mide nada.`):
+    `assert_parity_spreads` llamado con la vista tie-excluded (`df`, la unica
+    que existia antes de esta correccion) SIEMPRE rompe la paridad de spreads
+    en cuanto hay un empate en el historico, porque el motor no lo excluye de
+    `markets['spreads@L']` y las longitudes dejan de coincidir. Llamado con
+    `df_all` (incluye el empate), la paridad se mantiene."""
+    results = _synthetic_results_with_one_tie()
+    params: dict = {}
+    df, sigma, df_all = mod.build_rest_frame(results, "nba", params, warmup=0)
+    c, lineas = 0.5, [-2.5, 1.5]
+
+    mod.assert_parity_spreads(results, "nba", params, df_all, sigma, c, lineas,
+                              warmup=0)  # no debe lanzar
+
+    with pytest.raises(SystemExit):
+        mod.assert_parity_spreads(results, "nba", params, df, sigma, c, lineas,
+                                  warmup=0)
+
+
 def test_full_mode_wires_pre_json_into_the_hash_check(mod, tmp_path, monkeypatch):
     """El modo completo debe leer --pre-json y abortar antes de correr nada
     caro si el hash de nba ya no coincide (sin ejecutar el modo completo real:

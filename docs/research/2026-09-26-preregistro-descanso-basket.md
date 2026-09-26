@@ -408,3 +408,10 @@ La revisión del script frente a este texto dio **APTO CON CAMBIOS**. La parte q
 | Descanso de 1 día | 16.838 | 16.812 | −26 |
 
 Explicación compatible con los números: el recuento de la sección 9 incluyó partidos del calentamiento (los primeros 60), que el script excluye (`evaluados_tras_warmup` = 34.005). No afecta a nada que decida: los criterios se evalúan en las particiones, que coinciden.
+
+**Re-ejecución por defecto de código (sección 12), 2026-09-26.** La primera ejecución del modo completo abortó en la aserción de paridad de los spreads (`PARIDAD ROTA (spreads probs) en nba linea 1.5`), **sin imprimir ni guardar ningún resultado**: el log tiene esa única línea y no hay JSON de salida. Causa, demostrable sin mirar resultados:
+- el motor excluye los empates del moneyline (`engine.py:116-119`) pero **no** de `spreads@L` (`engine.py:105-114`);
+- el script reconstruía los spreads con la vista sin empates;
+- el histórico de la NBA tiene un empate (fila 346 de 34.004), y eso desalineaba todo lo posterior.
+
+Corrección: vista `df_all` con empates solo para los spreads, marcador alineado por posición y no por `game_id` (las filas legacy tienen `game_id` vacío). `--parity-only` comprueba ahora también los spreads (c = 0,5; líneas −4,5 / 1,5 / 6,5 arbitrarias) y pasa en las 4 ligas. El moneyline, los brazos, los criterios 1-5 y el bootstrap no cambian. Diagnóstico hecho por Sonnet bajo una regla de ciego (solo longitudes e índices, ninguna métrica).
