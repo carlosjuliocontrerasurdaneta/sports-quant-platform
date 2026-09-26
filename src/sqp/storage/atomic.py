@@ -123,6 +123,25 @@ def atomic_write_json(payload: object, out: Path, *, indent: int | None = 2,
         tmp.unlink(missing_ok=True)  # no-op tras un replace exitoso
 
 
+def atomic_write_bytes(data: bytes, out: Path) -> None:
+    """Persiste bytes crudos (p.ej. JSON gzip de un proveedor) de forma atomica
+    y duradera, con el mismo criterio que `atomic_write_csv`/`atomic_write_json`:
+    temporal UNICO + fsync + `os.replace`. Existe para el backfill de porteros
+    NHL, que preserva el JSON bruto de cada boxscore comprimido (regla de
+    integridad de datos: preservar datos en bruto) sin poder reusar
+    `atomic_write_csv` (no es un DataFrame) ni `atomic_write_json` (no es texto
+    UTF-8: son bytes gzip)."""
+    tmp = _tmp_unico(out)
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        _replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)  # no-op tras un replace exitoso
+
+
 def read_json_retrying(path: Path, *, seconds: float = REPLACE_RETRY_SECONDS,
                        wait: float = 0.1) -> object:
     """``json.loads`` del fichero reintentando SOLO ``OSError`` durante

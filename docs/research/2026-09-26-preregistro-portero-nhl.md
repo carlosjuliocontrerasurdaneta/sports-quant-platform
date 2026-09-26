@@ -645,3 +645,15 @@ Relacionado: [[2026-09-26-preregistro-descanso-basket]],
 3. Guarda `goalie_changed`, si se activa: **marcar y poner el stake a 0**. El pick se conserva en la lista.
 4. Si M1 también rechaza: **mantener** la captura.
 Criterio 1 sobre los afectados (≈ universo) y activación con nota previa: como en los precedentes del 26/09.
+
+---
+
+## Enmienda 1 (2026-09-26, antes de ejecutar el backfill y `--pre`; texto propuesto por la revisión de Fable)
+
+(a) **Emparejamiento (§3.2).** En lugar de alias estáticos, se usa coincidencia exacta de `normalize_key`, o el nombre corto de la NHL como palabra final completa del nombre ESPN. Se exige que casen local y visitante y que haya un único candidato en la fecha UTC; los ambiguos quedan sin emparejar y se listan. Se corrige la afirmación «no hay dos partidos del mismo equipo el mismo día»: en fecha UTC hay 22 enfrentamientos duplicados desde 2005-09 (p. ej. playoffs 2016-04-15 NYI@FLA). El backfill no los desempata: quedan con `matched=False`, sin `espn_game_id`, y se listan como sin emparejar. `--pre` los desempatará por orden (`startTimeUTC` de la NHL frente al orden del `game_id` de ESPN), sin leer marcadores, y listará los que queden.
+
+(b) **Rutas (§3.3, §14, §15).** El backfill es `scripts/backfill_goalies_nhl.py` (módulo `sqp.pipeline.goalie_backfill`). La tabla es `data/historical/goalies_nhl.csv` y los brutos, `data/historical/nhl_goalies_raw/{gameId}.json.gz`. El SHA-256 de `--pre` se registra sobre esa tabla. La tabla incluye `goals_against`, que `--pre` no lee.
+
+(c) **Captura (§12).** Destino: `data/historical/goalie_probables_nhl.csv`, una fila por evento y lado. Los estados observados en ESPN son «Confirmed» y «Expected» (no «Probable») y se guardan tal cual. La fila `source_run=daily` se añade sin deduplicar para cada lado con probable, con el `captured_at` del momento en que se recibe la respuesta. Que se ejecute antes de la generación depende de conectarla al run diario, cosa aún no aplicada. La retirada de un probable se registra como fila sin portero (`status=none`). Las filas con `commence_time` que no se puede parsear se descartan.
+
+(d) **Titulares.** Solo se ingieren boxscores con `gameState` OFF o FINAL. Un partido sin terminar deja el día como incompleto, y el checkpoint no avanza más allá del primer día incompleto (fallo del `score`, fallo del boxscore o partido sin terminar). `--end` se recorta como mucho a ayer (UTC). El script sale con código distinto de 0 si se detiene por fallos consecutivos.
