@@ -874,3 +874,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - comprobar que el paso diario del 26/09 recoge el hueco ATP del 25/09 (KI-065);
   - vigilar el test único de `mlb|totals`.
 - **Addendum de cierre:** el operador ordenó borrar los 19 ficheros sueltos de `.codex-tmp` y se borraron. Quedan 40 directorios con ACL del sandbox, a borrar en consola elevada, y `sqp-agent/`.
+- **Addendum 2:** el operador intentó borrar los 40 directorios de `.codex-tmp` con ACL del sandbox, pero siguen intactos (mismas fechas; ilegibles). Causas probables: consola sin elevar, o ACE «deny» del sandbox que el `icacls /grant` no anula. Se le dio un comando con comprobación de administrador, `icacls /reset` e informe por directorio. **Pendiente:** que lo ejecute y comprobarlo.
