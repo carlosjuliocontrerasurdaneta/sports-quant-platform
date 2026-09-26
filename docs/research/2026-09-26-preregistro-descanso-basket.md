@@ -382,3 +382,16 @@ configuración, y no gasta ningún test de entrada del gate.
 
 Relacionado: [[2026-09-26-preregistro-clima-mlb]], [[2026-09-26-resultado-clima-mlb]],
 [[2026-08-26-preregistro-el-modelo-manda]], [[2026-09-25-repreregistro-gate-k52]].
+
+---
+
+## Enmiendas previas a la ejecución (2026-09-26, revisión independiente de Fable 5.1 del script)
+
+La revisión del script frente a este texto dio **APTO CON CAMBIOS**. La parte que decide (brazos, Δr, particiones, estimación, criterios 1-5 y bootstrap) es fiel y tiene paridad exacta. Las enmiendas corrigen frases que el código no puede cumplir tal como están escritas. Se redactan **antes** de ejecutar `--pre` y el modo completo.
+
+- **E1:** el script se llama `scripts/research/measure_rest_basketball.py`, el nombre de la sección 12. Se renombra.
+- **E2 (sección 10.6):** las líneas fijas de spreads **no** pueden fijarse en `--pre`: dependen de `μ_base`, que depende del Elo actualizado con marcadores, y `--pre` no los lee. Se calculan en el modo completo como −q25/−q50/−q75 de `μ_base` del test combinado (salida del modelo, sin Δr), redondeadas al medio punto (`floor(−v) + 0,5`) para que no haya empujes. Se imprimen en el JSON y **no deciden nada**. El sesgo por usar cuantiles del periodo de test es despreciable, porque no seleccionan sobre la relación entre Δr y el resultado.
+- **E3 (informe 10):** «WNBA 2025–26» es la unión de los tests A y B de la WNBA (sección 6): del 2025-01-01 al 2026-09-25.
+- **E4 (sección 4):** la sonda de Δr usa `RestModel(points_per_day=1.0)` con `margin_adjustment`. Es equivalente a la definición del texto: vale hr − ar si los dos descansos se conocen y 0 si no.
+- **E5:** la paridad de los spreads contra `spread_lines` del motor se implementa (con `c_C`, tolerancia 1e-12). No hace falta enmienda.
+- **E6 (sección 12):** el informe `.md` de resultado se redacta a partir del JSON; el script no lo genera.

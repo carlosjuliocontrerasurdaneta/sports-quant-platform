@@ -20,11 +20,14 @@ deciden nada. Tres modos:
                     `c` (brazo T) y `a` (brazo C) por particion sobre NBA,
                     evalua los 5 criterios de la seccion 7, el bootstrap de la
                     seccion 8 y los informes secundarios de la seccion 10, y
-                    escribe el JSON de salida.
+                    escribe el JSON de salida. Con `--pre-json <salida-de---pre>`
+                    aborta si el SHA-256 de algun fichero de resultados leido
+                    ahora difiere del alli registrado.
 
-  python scripts/research/measure_rest_nba.py --parity-only
-  python scripts/research/measure_rest_nba.py --pre --out <json>
-  python scripts/research/measure_rest_nba.py --out <json>
+  python scripts/research/measure_rest_basketball.py --parity-only
+  python scripts/research/measure_rest_basketball.py --pre --out <json>
+  python scripts/research/measure_rest_basketball.py --out <json>
+  python scripts/research/measure_rest_basketball.py --out <json> --pre-json <pre.json>
 
 Reutiliza codigo de produccion (RestModel, SportAdapter/get_adapter,
 distributions.elo_diff_to_margin, EloRatings.rating_diff, _league_meta) en
@@ -33,15 +36,17 @@ literalmente `adapter.elo.rating_diff` + `dist.elo_diff_to_margin`, las MISMAS
 dos lineas que ejecuta `NormalMarginAdapter.estimate` antes de sumar el
 ajuste de descanso (que con `rest_points_per_day=0.0` vale siempre 0 -- ver
 `src/sqp/sports/adapters.py:50-55`). El diferencial de descanso Delta_r se
-obtiene con una segunda instancia de `RestModel` (sondeada con
-`points_per_day=1.0`, igual que pide la seccion 4), nunca con el min/max
-reimplementado a mano.
+obtiene con una segunda instancia de `RestModel` sondeada con
+`points_per_day=1.0` y `margin_adjustment`, equivalente a la definicion de la
+seccion 4 (vale hr - ar si los dos descansos se conocen y 0 si no -- enmienda
+E4 de la revision independiente), nunca con el min/max reimplementado a mano.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -123,16 +128,22 @@ def resolved_params(league: str, league_params: dict) -> dict:
 
 # --------------------------------------------------------- calendario Delta_r --
 def rest_calendar(results: list[dict], league: str, params: dict,
-                   warmup: int = WARMUP) -> pd.DataFrame:
+                   warmup: int = WARMUP, probe: RestModel | None = None) -> pd.DataFrame:
     """Dias de descanso por partido, en el orden y warmup del motor
     (`engine.walk_forward_backtest`), SIN tocar marcadores: solo
-    date/home/away/game_id. Reutiliza `RestModel` (sondeado con
-    points_per_day=1.0, seccion 4) y el normalizador de equipos de produccion;
-    no reimplementa la regla `min(max(D-L,0), rest_max_days)`.
+    date/home/away/game_id. Reutiliza `RestModel` (sondeada con
+    points_per_day=1.0 y margin_adjustment, equivalente a la definicion de la
+    seccion 4 -- enmienda E4) y el normalizador de equipos de produccion; no
+    reimplementa la regla `min(max(D-L,0), rest_max_days)`.
+
+    `probe` es inyectable para reutilizar este mismo recorrido temporal con
+    otra instancia de `RestModel` (p.ej. sin tope, seccion 9 de `--pre`); por
+    defecto construye la sonda de produccion con el tope de la liga.
     """
     normalize = get_team_normalizer(league)
-    max_rest = int(params.get("rest_max_days", 4))
-    probe = RestModel(points_per_day=1.0, max_rest=max_rest, normalize=normalize)
+    if probe is None:
+        max_rest = int(params.get("rest_max_days", 4))
+        probe = RestModel(points_per_day=1.0, max_rest=max_rest, normalize=normalize)
     ordered = sorted(results, key=lambda row: str(row.get("date", "")))
     rows: list[dict] = []
     pending: list[dict] = []
@@ -320,7 +331,53 @@ def assert_parity_treatment(results: list[dict], league: str, params: dict,
             f"PARIDAD ROTA (tratamiento c={c}) en {league}: no se mide nada.")
 
 
+def assert_parity_spreads(results: list[dict], league: str, params: dict,
+                          df: pd.DataFrame, sigma: float, c: float,
+                          lineas: list[float], warmup: int = WARMUP,
+                          atol: float = 1e-12) -> None:
+    """Informe secundario 6: el resumen por linea del motor
+    (`walk_forward_backtest(..., spread_lines=lineas)` con `c` constante para
+    TODO el historico) coincide, a 1e-12, con el calculo propio de
+    `home_cover_prob` sobre TODO `df` (no solo una particion). Aborta si no
+    coincide: la comprobacion de paridad de la seccion 5 exige tambien cubrir
+    los mercados de spread, no solo el moneyline."""
+    ref = walk_forward_backtest(results, league, FAMILY,
+                                {**params, "rest_points_per_day": c},
+                                warmup=warmup, spread_lines=tuple(lineas))
+    marcador = {str(r.get("game_id")): (r["home_score"] - r["away_score"]) for r in results}
+    mu = df["mu_base"].to_numpy()
+    de = df["delta_eff"].to_numpy()
+    margin = df["game_id"].map(marcador).to_numpy(dtype=float)
+    for line in lineas:
+        key = f"spreads@{line}"
+        mkt = ref["markets"].get(key)
+        if mkt is None:
+            raise SystemExit(
+                f"PARIDAD ROTA (spreads) en {league}: el motor no devolvio '{key}'.")
+        push = margin == -line
+        covered = (margin > -line).astype(float)
+        mine_p = home_cover_prob(mu + c * de, sigma, line)
+        mine_p, mine_y = mine_p[~push], covered[~push]
+        theirs_p = np.asarray(mkt["probs"], dtype=float)
+        theirs_y = np.asarray(mkt["outcomes"], dtype=float)
+        if len(mine_p) != len(theirs_p) or not np.allclose(mine_p, theirs_p, rtol=0, atol=atol):
+            raise SystemExit(
+                f"PARIDAD ROTA (spreads probs) en {league} linea {line}: no se mide nada.")
+        if len(mine_y) != len(theirs_y) or not np.array_equal(mine_y, theirs_y):
+            raise SystemExit(
+                f"PARIDAD ROTA (spreads outcomes) en {league} linea {line}.")
+
+
 # ------------------------------------------------------------------- --pre --
+def _bucket_5_o_mas(series: pd.Series) -> dict[str, int]:
+    """Recuento 1/2/3/4/5+ de una serie de dias de descanso SIN tope (seccion
+    9: "5 o mas: 3.408")."""
+    counts = series.value_counts()
+    out = {str(k): int(counts.get(k, 0)) for k in (1, 2, 3, 4)}
+    out["5+"] = int(counts[counts.index >= 5].sum())
+    return out
+
+
 def informe_pre(league: str) -> dict:
     results, params, procedencia = load_league(league)
     if not results:
@@ -328,6 +385,16 @@ def informe_pre(league: str) -> dict:
     rc = rest_calendar(results, league, params, WARMUP)
     conocidos = rc[rc["known"]]
     afectados = conocidos[conocidos["delta_r"] != 0.0]
+
+    # Distribucion SIN tope (seccion 9): segunda instancia de `RestModel` con
+    # `max_rest=10**9`, alimentada igual dentro de `rest_calendar`, para poder
+    # distinguir "exactamente 4" de "5 o mas" (la version con tope de arriba
+    # los funde en un unico bucket "4").
+    normalize = get_team_normalizer(league)
+    probe_sin_tope = RestModel(points_per_day=0.0, max_rest=10**9, normalize=normalize)
+    rc_sin_tope = rest_calendar(results, league, params, WARMUP, probe=probe_sin_tope)
+    conocidos_sin_tope = rc_sin_tope[rc_sin_tope["known"]]
+
     out = {
         "liga": league, **procedencia,
         "partidos_totales": int(len(results)),
@@ -340,6 +407,8 @@ def informe_pre(league: str) -> dict:
         "dias_descanso_por_equipo_partido": {
             str(int(k)): int(v) for k, v in
             pd.concat([conocidos["hr"], conocidos["ar"]]).value_counts().sort_index().items()},
+        "dias_descanso_por_equipo_partido_sin_tope": _bucket_5_o_mas(
+            pd.concat([conocidos_sin_tope["hr"], conocidos_sin_tope["ar"]])),
     }
     if league == "nba":
         out["particiones"] = {
@@ -366,24 +435,42 @@ def _potencia_fold(rc: pd.DataFrame, fold: dict) -> dict:
 
 
 # -------------------------------------------------------------- captura odds --
-def captured_lines(results: list[dict], league: str) -> dict[str, float]:
-    """game_id -> linea principal de spread (home point) del ultimo snapshot
-    pregame (mismo mecanismo que `measure_weather_mlb.captured_lines`:
+def captured_lines(results: list[dict], league: str) -> dict:
+    """Lineas de spread capturadas y procedencia de las cuotas leidas (mismo
+    mecanismo que `measure_weather_mlb.captured_lines`:
     `_match_index`/`_match_result`/`_pick_main_lines` de produccion, sin
-    reimplementar el emparejamiento)."""
+    reimplementar el emparejamiento).
+
+    Devuelve:
+      - "spreads": game_id -> linea principal de spread (home point) del
+        ultimo snapshot pregame, solo para los partidos con esa linea.
+      - "game_ids_emparejados": TODOS los game_id que `_match_result` empareja
+        con un evento de cuotas, tengan o no linea de spread -- es el universo
+        correcto para el informe secundario 7 (h2h), que no debe filtrarse por
+        si el spread esta disponible.
+      - "ficheros_sha256": SHA-256 de cada fichero `odds_<liga>_*.csv` leido
+        (seccion 4: "cada fichero leido").
+    """
+    odds_dir = ROOT / "data" / "odds"
+    ficheros_sha256 = {f.name: sha256_of(f)
+                       for f in sorted(odds_dir.glob(f"odds_{league}_*.csv"))}
     odds = load_closing_odds(ROOT, league)
     if not odds:
-        return {}
-    idx, used, out = _match_index(odds), set(), {}
+        return {"spreads": {}, "game_ids_emparejados": set(),
+                "ficheros_sha256": ficheros_sha256}
+    idx, used, spreads = _match_index(odds), set(), {}
+    game_ids_emparejados: set[str] = set()
     for r in sorted(results, key=lambda x: str(x.get("date", ""))):
         eo = _match_result(r, idx, used)
         if eo is None:
             continue
         used.add(eo.event.event_id)
+        game_ids_emparejados.add(str(r.get("game_id")))
         spread, _total = _pick_main_lines(eo)
         if spread is not None:
-            out[str(r.get("game_id"))] = spread
-    return out
+            spreads[str(r.get("game_id"))] = spread
+    return {"spreads": spreads, "game_ids_emparejados": game_ids_emparejados,
+            "ficheros_sha256": ficheros_sha256}
 
 
 # ------------------------------------------------------------------ NBA -----
@@ -502,13 +589,18 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
     out["secundario_por_temporada"] = por_temporada
 
     # Informe secundario 8: sin exhibiciones (equipos con <=25 apariciones en
-    # TODO el fichero de la liga, no solo en test).
+    # TODO el fichero de la liga, no solo en test). Cuenta y filtra por nombre
+    # NORMALIZADO (`get_team_normalizer`): dos grafias del mismo equipo no
+    # deben contarse como "pocas apariciones" por separado.
+    normalize_nba = get_team_normalizer("nba")
     apariciones = Counter()
     for r in results:
-        apariciones[r["home"]] += 1
-        apariciones[r["away"]] += 1
+        apariciones[normalize_nba(r["home"])] += 1
+        apariciones[normalize_nba(r["away"])] += 1
     pocas = {t for t, n in apariciones.items() if n <= 25}
-    sin_exh = af_all[~af_all["home"].isin(pocas) & ~af_all["away"].isin(pocas)]
+    home_norm = af_all["home"].map(normalize_nba)
+    away_norm = af_all["away"].map(normalize_nba)
+    sin_exh = af_all[~home_norm.isin(pocas) & ~away_norm.isin(pocas)]
     out["secundario_sin_exhibiciones"] = {
         "equipos_excluidos": len(pocas), "n_afectados": int(len(sin_exh)),
         "delta_ll_afectados": float((sin_exh["ll_treat"] - sin_exh["ll_base"]).mean())
@@ -522,7 +614,9 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
     # de spread propia.
     c_c = c_by_fold["C"]
     q = test_all["mu_base"].quantile([0.25, 0.5, 0.75])
-    lineas_fijas = [float(np.round((-v) * 2) / 2) for v in q]
+    # Redondeo al medio punto (floor(-v) + 0.5): nunca cae en un entero, asi
+    # que la linea nunca empuja (enmienda E2 de la revision independiente).
+    lineas_fijas = [float(math.floor(-v) + 0.5) for v in q]
     out["secundario_spreads_lineas_fijas"] = {"lineas": lineas_fijas, "por_particion": {}}
     for name, fold in FOLDS_NBA.items():
         te = test_all[(test_all["date"] >= fold["test_start"])
@@ -546,17 +640,29 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
                                     "delta_ll": float((ll_t - ll_b).mean()) if (~push).any() else None}
         out["secundario_spreads_lineas_fijas"]["por_particion"][name] = por_linea
 
+    # Paridad de spreads (seccion 5): motor ejecutado con `c_C` constante para
+    # TODO el historico, comparado contra el calculo propio sobre TODO `df`
+    # (no una particion). Aborta si no coincide a 1e-12.
+    assert_parity_spreads(results, "nba", params, df, sigma, c_c, lineas_fijas)
+
     cap = captured_lines(results, "nba")
-    if cap:
+    matched_ids = cap["game_ids_emparejados"]
+    if matched_ids:
         marcador = {str(r.get("game_id")): (r["home_score"] - r["away_score"]) for r in results}
+        # `delta_ll_h2h` se mide SOLO sobre los partidos que `_match_result`
+        # empareja con un evento de cuotas (matched_ids), no sobre todo el
+        # test de la particion C: sin esta interseccion se mezclaban partidos
+        # sin cuota capturada con los que si la tienen.
         cte = test_all[(test_all["date"] >= FOLDS_NBA["C"]["test_start"])
-                       & (test_all["date"] <= FOLDS_NBA["C"]["test_end"])].copy()
-        cte["mkt_line"] = cte["game_id"].map(cap)
+                       & (test_all["date"] <= FOLDS_NBA["C"]["test_end"])
+                       & (test_all["game_id"].isin(matched_ids))].copy()
+        cte["mkt_line"] = cte["game_id"].map(cap["spreads"])
         m = cte[cte["mkt_line"].notna()]
         out["secundario_linea_capturada_h2h_y_spread"] = {
             "n_h2h": int(len(cte)),
             "delta_ll_h2h": float((cte["ll_treat"] - cte["ll_base"]).mean()) if len(cte) else None,
             "n_spread_con_linea": int(len(m)),
+            "ficheros_odds_sha256": cap["ficheros_sha256"],
         }
         if len(m):
             mu_m, de_m = m["mu_base"].to_numpy(), m["delta_eff"].to_numpy()
@@ -579,6 +685,11 @@ def run_nba(results: list[dict], params: dict) -> tuple[dict, float, pd.DataFram
 
 def _nba_season_label(date_str: str) -> str:
     y, m = int(date_str[:4]), int(date_str[5:7])
+    if y == 2020 and m == 10:
+        # Burbuja de Orlando: las Finales de la temporada 2019-20 se jugaron
+        # en octubre de 2020 (calendario desplazado por la pandemia), fuera
+        # del ciclo Oct-Jun normal que asumiria la regla general de abajo.
+        return "2019-20"
     start = y if m >= 10 else y - 1
     return f"{start}-{str((start + 1) % 100).zfill(2)}"
 
@@ -654,18 +765,44 @@ def run_transfer_only(league: str, results: list[dict], params: dict, c_nba_c: f
 
 
 # ------------------------------------------------------------------- main --
+def _check_pre_hash(pre_data: dict | None, league: str, procedencia: dict) -> None:
+    """Modo completo con `--pre-json`: aborta si el SHA-256 del fichero de
+    resultados de `league` leido ahora difiere del registrado por `--pre`. Sin
+    esto, un fichero de entrada distinto del medido en `--pre` (seccion 9) se
+    mediria en silencio en el modo completo."""
+    if pre_data is None:
+        return
+    previo = ((pre_data.get("ligas") or {}).get(league) or {})
+    hash_previo = previo.get("sha256")
+    hash_actual = procedencia.get("sha256")
+    if hash_previo is None or hash_actual is None:
+        return  # sin fichero que comparar en alguno de los dos lados
+    if hash_previo != hash_actual:
+        raise SystemExit(
+            f"HASH DE ENTRADA CAMBIO en {league}: --pre-json registra "
+            f"{hash_previo} y el fichero leido ahora es {hash_actual}. El modo "
+            "completo aborta (seccion 12): los datos ya no son los que midio "
+            "--pre.")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pre", action="store_true")
     ap.add_argument("--parity-only", action="store_true")
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--pre-json", type=Path, default=None,
+                    help="Salida de --pre; el modo completo aborta si el SHA-256 de "
+                         "algun fichero de resultados leido ahora difiere del alli "
+                         "registrado (seccion 12).")
     args = ap.parse_args()
 
     if args.pre and args.parity_only:
         ap.error("--pre y --parity-only son mutuamente excluyentes.")
     if not args.parity_only and args.out is None:
         ap.error("--out es obligatorio salvo en --parity-only.")
+    if args.pre_json and (args.pre or args.parity_only):
+        ap.error("--pre-json solo aplica al modo completo.")
 
     if args.parity_only:
         # Seccion 5: solo construye el brazo base (c=0) y verifica paridad con
@@ -694,18 +831,23 @@ def main() -> int:
         return 0
 
     # Modo completo. UNA SOLA EJECUCION (seccion 12).
+    pre_data = (json.loads(args.pre_json.read_text(encoding="utf-8"))
+               if args.pre_json else None)
     out: dict = {"ligas": {}}
     results_nba, params_nba, proc_nba = load_league("nba")
+    _check_pre_hash(pre_data, "nba", proc_nba)
     out["procedencia"] = {"nba": proc_nba}
     nba_out, c_nba_c, _df_nba, _sigma_nba = run_nba(results_nba, params_nba)
     out["ligas"]["nba"] = nba_out
 
     results_wnba, params_wnba, proc_wnba = load_league("wnba")
+    _check_pre_hash(pre_data, "wnba", proc_wnba)
     out["procedencia"]["wnba"] = proc_wnba
     out["ligas"]["wnba"] = run_wnba(results_wnba, params_wnba, c_nba_c)
 
     for league in ("ncaab", "wncaab"):
         results_l, params_l, proc_l = load_league(league)
+        _check_pre_hash(pre_data, league, proc_l)
         out["procedencia"][league] = proc_l
         out["ligas"][league] = run_transfer_only(league, results_l, params_l, c_nba_c)
 
