@@ -14,7 +14,12 @@ leagues:
     dc_rho: -0.2
     elo_home_adv: 15.0
   mlb:
-    pitcher_bound: 0.0
+    # Abridor ACTIVADO 2026-09-26 por orden del operador. Valor = minimo log loss
+    # del walk-forward sobre 9.629 juegos (RA, bound 0.05: -0.00087 vs bound 0,
+    # ECE 0.0077->0.0061). NO supera el margen de aceptacion 0.002: activacion
+    # por orden, no por evidencia concluyente. Decisiones previas (0.0): v1 RA
+    # rechazada 2026-06-12, v2 FIP empatada 2026-06-16.
+    pitcher_bound: 0.05
     pitcher_prior_starts: 5.0
     tilt_scale: 0.4
     # Ballpark run-environment factor on the total (sqp.models.park). ENABLED

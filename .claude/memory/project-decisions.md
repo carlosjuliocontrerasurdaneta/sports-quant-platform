@@ -427,3 +427,17 @@ Format:
   - A n = 300 hacen falta 178 victorias pareadas (59,3 %) en lugar de 177 (59,0 %): solo endurece.
   - El ERROR «RE-PRE-REGISTRAR» desaparece (52 = K).
   - Documento: `docs/research/2026-09-25-repreregistro-gate-k52.md`.
+
+- Date: 2026-09-26
+- Decision: **Factor del abridor MLB ACTIVADO**, `mlb.pitcher_bound: 0.0 -> 0.05` (señal `ra`), por orden directa del operador («Activa el factor del abridor en MLB»). Contradice las decisiones del 2026-06-12 (v1 RA rechazada) y 2026-06-16 (v2 FIP empatada).
+- Reason:
+  - Re-medido antes de fijar el valor: walk-forward de producción, 9.629 juegos. RA 0.05 da el mínimo log loss (−0,00087 frente a bound 0; ECE 0,0077 -> 0,0061). Bound ≥ 0,20 empeora; FIP no mejora a RA.
+  - **No alcanza el margen de aceptación 0,002.** Es una activación por orden, no por evidencia concluyente.
+- Alternatives:
+  - Default de código 0.35: empeora (+0,00174 log loss).
+  - FIP 0.05: mejora menos (−0,00019).
+  - RA 0.10: casi el mismo log loss y mejor ECE (0,0023), pero no es el mínimo del criterio canónico (log loss).
+- Consequences:
+  - Los calibradores MLB se entrenaron a bound 0.
+  - Las filas MLB graduadas desde el 26/09 salen de otro modelo: afecta al pre-registro «el modelo manda» y a la parte final del test único de `mlb|totals` del prediction gate.
+  - Documentado en `Obsidian/Bitácora/2026-09-26.md` y `docs/CONFIG-PRECEDENCE.md`.

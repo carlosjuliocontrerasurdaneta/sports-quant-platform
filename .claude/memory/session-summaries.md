@@ -875,3 +875,10 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - vigilar el test único de `mlb|totals`.
 - **Addendum de cierre:** el operador ordenó borrar los 19 ficheros sueltos de `.codex-tmp` y se borraron. Quedan 40 directorios con ACL del sandbox, a borrar en consola elevada, y `sqp-agent/`.
 - **Addendum 2:** el operador intentó borrar los 40 directorios de `.codex-tmp` con ACL del sandbox, pero siguen intactos (mismas fechas; ilegibles). Causas probables: consola sin elevar, o ACE «deny» del sandbox que el `icacls /grant` no anula. Se le dio un comando con comprobación de administrador, `icacls /reset` e informe por directorio. **Pendiente:** que lo ejecute y comprobarlo.
+
+## 2026-09-26 — Consultas de picks y activación del abridor MLB
+
+- Picks A del 25/09: reconstruidos (5 generados ese día; 7 en el tablero, 2 heredados del 24/09 por cambio de línea). Sin liquidar hasta el run de las 12:00.
+- Tempo @ Sun (24/09): ESPN 95–81. Over 168.5 (tier A) ganó con stake 0 (`market_paused;stale_edge_revoked`).
+- **Cambio:** `mlb.pitcher_bound 0.05` por orden del operador. Re-medición walk-forward y docs en [[Bitácora/2026-09-26]]; decisión en `project-decisions.md`.
+- **Pendiente (siguiente sesión):** vigilar el ECE MLB tras el cambio y anotar el corte de modelo del 26/09 al ejecutar el pre-registro «el modelo manda».

@@ -66,15 +66,17 @@ fútbol, `soccer.yaml`).
 
 | Parámetro | Capa que lo fija | Valor efectivo |
 |---|---|---|
-| `pitcher_bound` | `ratings.yaml` (`mlb:`) | **0.0** → ajuste por abridor **desactivado** (`factor()` ≡ 1.0) |
-| `park_bound` | `ratings.yaml` (`mlb:`) | **0.10** → único ajuste de λ activo (OOS-validado) |
+| `pitcher_bound` | `ratings.yaml` (`mlb:`) | **0.05** → ajuste por abridor **activo** desde 2026-09-26 (factor en [0,95; 1,05]) |
+| `park_bound` | `ratings.yaml` (`mlb:`) | **0.10** → ajuste de λ del total (OOS-validado) |
 | `tilt_scale` | `ratings.yaml` pisa familia (0.8 → **0.4**) | 0.4 |
 | `pitcher_prior_starts` | `ratings.yaml` | 5.0 |
-| `pitcher_signal` | ninguna capa lo fija → **default de código** | `"ra"` (inerte mientras `pitcher_bound=0.0`) |
+| `pitcher_signal` | ninguna capa lo fija → **default de código** | `"ra"` (carreras permitidas por apertura) |
 | `pitcher_min_starts` | ninguna capa → default de código | 3 |
 
-**Implicación:** `pitcher_bound` se mantiene en 0.0 a propósito (la señal de
-pitcher RA/FIP fue refutada OOS). **Nada lo reactiva sin editar el bloque `mlb:`
+**Implicación:** `pitcher_bound` estuvo en 0.0 hasta el 2026-09-26 (RA y FIP
+refutadas OOS en junio). Se activó a 0.05 por orden del operador, con una
+re-medición walk-forward que mejora el log loss por debajo del margen de
+aceptación (ver `Obsidian/Bitácora/2026-09-26.md`). **Nada lo cambia sin editar el bloque `mlb:`
 de `configs/leagues/ratings.yaml`** — ni `default.yaml`, ni `FAMILY_PARAMS`, ni
 `LEAGUE_OVERRIDES`, ni una variable de entorno. Para cambiar el comportamiento
 del pitcher hay un único punto de entrada: ese bloque YAML.
