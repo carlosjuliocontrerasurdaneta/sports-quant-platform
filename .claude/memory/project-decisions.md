@@ -441,3 +441,9 @@ Format:
   - Los calibradores MLB se entrenaron a bound 0.
   - Las filas MLB graduadas desde el 26/09 salen de otro modelo: afecta al pre-registro «el modelo manda» y a la parte final del test único de `mlb|totals` del prediction gate.
   - Documentado en `Obsidian/Bitácora/2026-09-26.md` y `docs/CONFIG-PRECEDENCE.md`.
+
+- Date: 2026-09-26
+- Decision: **Factor clima MLB RECHAZADO**: se queda apagado (`weather.enabled: false`, coeficientes 0).
+- Reason: pre-registro con revisión Fable (0/5 criterios). Δ log loss en afectados +0,0075, IC95 [+0,0014; +0,0148]. El control de intercepto lo supera y los coeficientes de B tienen el signo de la lluvia invertido.
+- Alternatives: repetir con otro umbral u otra ventana (rechazado: sería buscar señal a medida); forma funcional nueva con dirección de viento o temperatura (posible, con pre-registro y datos nuevos).
+- Consequences: `docs/research/2026-09-26-resultado-clima-mlb.md`. NFL y NCAAF sin medir (faltan coordenadas de estadio).

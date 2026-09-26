@@ -20,6 +20,7 @@ Regla de activación: una señal solo se enciende si **bate al baseline fuera de
 |---|---|---|
 | **Abridor MLB v1 (RA)** | Rechazada 2026-06-12 → **ACTIVADA 2026-09-26 por orden del operador** (`pitcher_bound: 0.05`) | En junio, cualquier peso empeoraba el log loss. Re-medida el 26/09 con 9.629 juegos: bound 0.05 −0,00087 log loss y ECE 0,0077→0,0061; bound ≥0,20 empeora. **No alcanza el margen 0,002**: activa por orden, no por evidencia concluyente. Ver [[Bitácora/2026-09-26]] |
 | **Abridor MLB v2 (FIP)** | Rechazada 2026-06-16 | solo empata al baseline (−0.0007 log loss < margen 0.002); ECE empeora. NO volver a perseguirlo (refutado dos veces) |
+| **Clima MLB (viento/lluvia → totals)** | Rechazada 2026-09-26 | Pre-registro con revisión Fable: 0/5 criterios. Δ log loss en afectados **+0,0075** (IC95 [+0,0014; +0,0148]): empeora. Un intercepto constante lo supera; el ajuste de 2024 absorbía sesgo de nivel. `docs/research/2026-09-26-resultado-clima-mlb.md` |
 | **Rest/B2B basketball** | Rechazada 2026-06-22 | fuerte en ventana completa pero NO generaliza en held-out (WNBA spreads −38%→−48% con el mejor parámetro); no-monótona; n minúsculo. `rest_points_per_day: 0.0` |
 
 ## Otros ajustes de modelo activos
