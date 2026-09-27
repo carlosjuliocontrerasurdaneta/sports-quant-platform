@@ -406,9 +406,25 @@ def test_reintento_de_fecha_failed_que_ahora_responde_200_sale_de_la_lista(tmp_p
 
 
 def test_n_fallos_generales_consecutivos_paran_sin_avanzar(tmp_path, monkeypatch):
-    """Timeouts (fallo GENERAL) SI paran el backfill entero, a diferencia de
-    un 500 de una fecha concreta -- y no se registran en 'failed' (no son un
-    problema de esa fecha, sino de la conexion)."""
+    """Timeouts (fallo GENERAL) SI paran el backfill entero al alcanzar el
+    umbral -- a diferencia de un 500 de una fecha concreta, que nunca para
+    nada.
+
+    Actualizado 2026-09-27 (limitacion (i) de la segunda revision
+    independiente de Fable, sobre el backfill real): un fallo GENERAL que NO
+    alcanza el umbral YA NO se pierde en silencio -- se registra en 'failed'
+    como 'transient_<categoria>' y el checkpoint avanza sobre el, exactamente
+    como ya hacia un fallo especifico de fecha. Antes de este cambio, CUALQUIER
+    fallo general (aunque no llegara al umbral) congelaba el checkpoint para
+    el resto de la ejecucion (bug real observado en produccion: un unico
+    ConnectionError aislado dejo `last_date_done` fijo mientras el backfill
+    seguia corriendo y guardando datos durante horas). Con umbral=2 y un
+    Timeout en TODAS las llamadas: el primer dia (2024-11-01, 1er fallo
+    consecutivo, por debajo del umbral) se registra en 'failed' y el
+    checkpoint SI avanza hasta el; el segundo dia (2024-11-02, 2o fallo
+    consecutivo) alcanza el umbral y detiene todo sin avanzar mas -- y ESE
+    dia concreto no se registra en 'failed' (el propio checkpoint, al no
+    avanzar sobre el, ya garantiza que se reintente sin duplicar el registro)."""
     def siempre_timeout(date_str, session):
         raise requests.Timeout("tiempo agotado simulado")
 
@@ -418,12 +434,17 @@ def test_n_fallos_generales_consecutivos_paran_sin_avanzar(tmp_path, monkeypatch
 
     assert counts.stopped_by_failures is True
     assert counts.days == 0
-    assert counts.failed_dates == []
+    assert len(counts.failed_dates) == 1
+    assert counts.failed_dates[0]["date"] == "2024-11-01"
+    assert counts.failed_dates[0]["kind"] == "transient_timeout"
 
     last_date_done, failed_map = goalie_backfill._load_checkpoint(
         tmp_path, date(2024, 11, 1), date(2024, 11, 10))
-    assert last_date_done is None
-    assert failed_map == {}
+    # El checkpoint avanzo hasta el 1er dia (registrado en 'failed'), pero no
+    # mas alla -- el 2o dia (el que alcanzo el umbral) queda fuera de ambos.
+    assert last_date_done == date(2024, 11, 1)
+    assert set(failed_map) == {"2024-11-01"}
+    assert failed_map["2024-11-01"]["kind"] == "transient_timeout"
 
 
 def test_migracion_checkpoint_formato_antiguo_sin_clave_failed(tmp_path, monkeypatch):
@@ -583,7 +604,15 @@ def test_s1_timeout_en_desbordamiento_es_fallo_general_no_se_registra_en_failed(
     peticion de desbordamiento que a la del dia propio. Un timeout (fallo
     GENERAL) al pedir el dia anterior detiene TODO el backfill y NO se
     registra en 'failed' -- a diferencia de un HTTP 500 (fallo especifico de
-    esa fecha), que si se registra y deja seguir."""
+    esa fecha), que si se registra y deja seguir.
+
+    Nota (2026-09-27): con `max_consecutive_failures=1` este UNICO timeout ya
+    alcanza el umbral en su primer intento, que es precisamente el caso que
+    nunca se registra en 'failed' (ver docstring de `_handle_score_failure`).
+    Un fallo GENERAL por DEBAJO del umbral si se registra ahora (como
+    'transient_<categoria>') -- ver
+    `test_fallo_general_aislado_no_congela_el_checkpoint_para_el_resto` mas
+    abajo, que cubre justo ese caso."""
     ckpt_dir = tmp_path / "data" / "historical"
     ckpt_dir.mkdir(parents=True)
     (ckpt_dir / goalie_backfill.CHECKPOINT_NAME).write_text(json.dumps({
@@ -607,3 +636,158 @@ def test_s1_timeout_en_desbordamiento_es_fallo_general_no_se_registra_en_failed(
         tmp_path, date(2024, 11, 1), date(2024, 11, 5))
     assert last_date_done == date(2024, 11, 3)  # no avanzo mas alla del ultimo dia sano
     assert failed_map == {}  # un fallo GENERAL no se registra en 'failed'
+
+
+# --- Segunda revision independiente de Fable (2026-09-27), sobre el backfill
+# REAL en marcha contra `data/historical/`: limitacion (i) (un fallo general
+# aislado congelaba el checkpoint para el RESTO de la ejecucion, aunque nunca
+# alcanzara el umbral), limitacion (ii) (el contador solo se reseteaba tras un
+# boxscore correcto, nunca tras un /v1/score correcto), y el requisito 1 del
+# pedido (no volver a pedir el boxscore de un partido ya completo). ---
+
+def test_fallo_general_aislado_no_congela_el_checkpoint_para_el_resto(tmp_path, monkeypatch):
+    """Reproduce el bug real observado en el backfill en curso: un
+    `ConnectionError` aislado (una sola vez, muy por debajo del umbral) NO
+    debe congelar `last_date_done` para el resto de la ejecucion. Se registra
+    en 'failed' como 'transient_connection' y el checkpoint SIGUE avanzando
+    por los dias posteriores -- a diferencia del comportamiento anterior
+    (limitacion (i)), donde el primer fallo general de toda la ejecucion
+    fijaba `first_incomplete` y ningun dia posterior volvia a guardar
+    checkpoint, aunque el backfill siguiera corriendo y guardando datos."""
+    ids = {"2024-11-01": 801, "2024-11-02": 802, "2024-11-03": 803, "2024-11-04": 804}
+    score_map = _make_score_map(ids)
+    calls_11_02 = {"n": 0}
+
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-02":
+            calls_11_02["n"] += 1
+            if calls_11_02["n"] == 1:
+                raise requests.ConnectionError("caida aislada simulada")
+        return score_map.get(date_str, {"games": []})
+
+    def fake_fetch_boxscore(game_id, session):
+        for d, gid in ids.items():
+            if gid == int(game_id):
+                return _make_boxscore(f"{d}T23:00:00Z")
+        raise AssertionError(f"game_id inesperado: {game_id}")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    counts = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 4), sleep_s=0.0, root=tmp_path)
+
+    assert counts.stopped_by_failures is False
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 4))
+    # El checkpoint avanzo hasta el ULTIMO dia del rango -- no se quedo
+    # atascado en el dia del fallo aislado (2024-11-02).
+    assert last_date_done == date(2024, 11, 4)
+    assert set(failed_map) == {"2024-11-02"}
+    assert failed_map["2024-11-02"]["kind"] == "transient_connection"
+
+    # Los dias 1, 3 y 4 quedaron completos en el store pese al fallo aislado
+    # del 2: el fallo no "congelo" el resto de la ejecucion.
+    df = GoalieAppearanceStore(tmp_path).load()
+    assert set(df["date"]) == {"2024-11-01", "2024-11-03", "2024-11-04"}
+
+
+def test_reanudar_no_vuelve_a_pedir_boxscore_de_partido_ya_completo(tmp_path, monkeypatch):
+    """Requisito 1 (2026-09-27): un partido con ambos titulares ya guardados
+    en el store y su JSON bruto presente en `nhl_goalies_raw/` NO vuelve a
+    pedir su boxscore al reanudar; un partido incompleto del mismo dia SI se
+    vuelve a pedir. `/v1/score` del dia se sigue pidiendo siempre (es la
+    unica forma de enumerar los partidos)."""
+    day = "2024-12-01"
+    score_payload = {"games": [
+        {"id": 901, "gameType": 2, "startTimeUTC": f"{day}T23:00:00Z",
+         "homeTeam": {"name": {"default": "Bruins"}},
+         "awayTeam": {"name": {"default": "Canadiens"}}},
+        {"id": 902, "gameType": 2, "startTimeUTC": f"{day}T23:30:00Z",
+         "homeTeam": {"name": {"default": "Rangers"}},
+         "awayTeam": {"name": {"default": "Islanders"}}},
+    ]}
+    boxscore_calls: list[str] = []
+    state = {"fail_902": True}
+
+    def fake_fetch_score(date_str, session):
+        return score_payload if date_str == day else {"games": []}
+
+    def fake_fetch_boxscore(game_id, session):
+        boxscore_calls.append(str(game_id))
+        if str(game_id) == "902" and state["fail_902"]:
+            raise requests.HTTPError(response=_FakeHttpResponse(500))
+        return _make_boxscore(f"{day}T23:00:00Z")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    goalie_backfill.run(date(2024, 12, 1), date(2024, 12, 1), sleep_s=0.0, root=tmp_path)
+    assert "901" in boxscore_calls and "902" in boxscore_calls
+    _, failed_map1 = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 12, 1), date(2024, 12, 1))
+    assert set(failed_map1) == {day}
+    assert failed_map1[day]["kind"] == "boxscore_http"
+
+    df1 = GoalieAppearanceStore(tmp_path).load()
+    assert set(df1["nhl_game_id"]) == {"901"}  # solo 901 quedo completo (2 titulares + bruto)
+
+    boxscore_calls.clear()
+    state["fail_902"] = False
+    counts2 = goalie_backfill.run(date(2024, 12, 1), date(2024, 12, 1), sleep_s=0.0, root=tmp_path)
+
+    # 901 ya estaba completo: NO se vuelve a pedir su boxscore.
+    assert "901" not in boxscore_calls
+    # 902 seguia incompleto: SI se vuelve a pedir, y esta vez tiene exito.
+    assert "902" in boxscore_calls
+    assert counts2.games_skipped_cached == 1
+
+    df2 = GoalieAppearanceStore(tmp_path).load()
+    assert set(df2["nhl_game_id"]) == {"901", "902"}
+    _, failed_map2 = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 12, 1), date(2024, 12, 1))
+    assert failed_map2 == {}
+
+
+def test_contador_de_fallos_se_resetea_con_un_score_correcto_en_dia_sin_partidos(
+        tmp_path, monkeypatch):
+    """Limitacion (ii) (2026-09-27): el contador de fallos consecutivos debe
+    resetearse tambien con un `/v1/score` correcto, no solo con un boxscore
+    correcto. Con umbral=2: el dia 1 tiene 1 fallo GENERAL de boxscore (1/2,
+    no para), el dia 2 no tiene partidos pero su `/v1/score` responde bien
+    (debe resetear el contador a 0), y el dia 3 tiene OTRO fallo GENERAL de
+    boxscore -- que, SIN el reset, seria el 2o consecutivo y pararia todo;
+    CON el reset, vuelve a ser solo 1/2 y el backfill no se detiene."""
+    score_map = {
+        "2024-12-31": {"games": []},
+        "2025-01-01": {"games": [{
+            "id": 951, "gameType": 2, "startTimeUTC": "2025-01-01T23:00:00Z",
+            "homeTeam": {"name": {"default": "Bruins"}},
+            "awayTeam": {"name": {"default": "Canadiens"}},
+        }]},
+        "2025-01-02": {"games": []},
+        "2025-01-03": {"games": [{
+            "id": 953, "gameType": 2, "startTimeUTC": "2025-01-03T23:00:00Z",
+            "homeTeam": {"name": {"default": "Bruins"}},
+            "awayTeam": {"name": {"default": "Canadiens"}},
+        }]},
+    }
+
+    def fake_fetch_score(date_str, session):
+        return score_map.get(date_str, {"games": []})
+
+    def fake_fetch_boxscore(game_id, session):
+        raise requests.ConnectionError("fallo general simulado")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    counts = goalie_backfill.run(date(2025, 1, 1), date(2025, 1, 3), sleep_s=0.0,
+                                  root=tmp_path, max_consecutive_failures=2)
+
+    assert counts.stopped_by_failures is False
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2025, 1, 1), date(2025, 1, 3))
+    assert last_date_done == date(2025, 1, 3)
+    assert set(failed_map) == {"2025-01-01", "2025-01-03"}
+    assert failed_map["2025-01-01"]["kind"] == "transient_connection"
+    assert failed_map["2025-01-03"]["kind"] == "transient_connection"

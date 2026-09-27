@@ -72,11 +72,11 @@ def main() -> int:
     match_rate = (100.0 * counts.games_matched / counts.games_total) if counts.games_total else 0.0
     log.info(
         "Backfill de porteros NHL [%s .. %s]: %d dia(s), %d partido(s) "
-        "(%d emparejados, %.1f%%), %d fila(s) de aparicion vistas / %d nuevas "
-        "guardadas, %d titulares.",
+        "(%d emparejados, %.1f%%, %d ya completos en el store sin re-pedir), "
+        "%d fila(s) de aparicion vistas / %d nuevas guardadas, %d titulares.",
         start, end, counts.days, counts.games_total, counts.games_matched,
-        match_rate, counts.appearance_rows_seen, counts.appearance_rows_added,
-        counts.starters_seen,
+        match_rate, counts.games_skipped_cached, counts.appearance_rows_seen,
+        counts.appearance_rows_added, counts.starters_seen,
     )
     if counts.unmatched:
         log.warning("%d partido(s) sin emparejar con el historico ESPN:", len(counts.unmatched))

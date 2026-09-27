@@ -69,6 +69,64 @@ pending -- no raw JSON, no appearance rows -- because
 LIVE/CRIT snapshot saved once would freeze partial stats forever. A pending
 game is recorded in `failed` (kind `not_final`) for retry; with `--end` no
 posterior a ayer (UTC) esto no deberia ocurrir en la practica.
+
+Segunda revision independiente de Fable (2026-09-27), sobre el backfill REAL
+en marcha (2005-09-01 .. 2026-09-25, contra `data/historical/` de verdad):
+anoto dos limitaciones nuevas de la alternativa de arriba, observadas en vivo.
+
+(i) Un UNICO fallo GENERAL aislado (un `ConnectionError` a las 23:16 pidiendo
+el boxscore de 2009020254) dejaba `last_date_done` congelado en 2009-11-12
+durante EL RESTO de la ejecucion -- aunque el backfill seguia corriendo y
+guardando datos en el store (94.969 filas, ya por 2017 cuando se detecto). La
+version anterior de este modulo solo dejaba avanzar el checkpoint mientras
+`first_incomplete` (fijado por el PRIMER fallo general de toda la ejecucion)
+siguiera en `None`; un solo fallo general, aunque no llegara nunca al umbral
+de fallos consecutivos, lo fijaba para siempre. Reanudar despues volveria a
+pedir TODO desde el dia siguiente al congelado (~6h de peticiones ya
+guardadas de sobra en el store).
+
+Correccion: un fallo GENERAL que NO alcanza el umbral de fallos consecutivos
+(`--max-consecutive-failures`) ya NO congela nada -- se registra en `failed`
+con un tipo propio `transient_<categoria>` (`transient_timeout`,
+`transient_connection`, `transient_http_429`, `transient_unknown`), EXACTAMENTE
+igual que un fallo especifico de fecha: se reintenta al reanudar (primero) y
+el checkpoint puede seguir avanzando por delante de esa fecha. Solo cuando los
+fallos generales SI alcanzan el umbral consecutivo se detiene TODO el
+backfill sin avanzar el checkpoint mas alla del ultimo dia ya guardado en el
+checkpoint -- ese dia concreto (el que dispara la parada) NO se registra en
+`failed`: como el checkpoint tampoco avanza sobre el, la propia reanudacion ya
+lo vuelve a intentar por el barrido normal (evita procesarlo dos veces, una
+via `failed` y otra via el barrido).
+
+(ii) El contador de fallos consecutivos solo se ponia a cero tras un
+BOXSCORE correcto, nunca tras un `/v1/score` correcto -- asi que una racha de
+`/v1/score` sanos entre dos boxscores fallidos aislados podia sumar hacia el
+umbral sin que ningun exito la interrumpiera. Correccion: un `/v1/score`
+correcto (el del dia propio o el del dia anterior por desbordamiento,
+incluido un dia sin partidos) tambien resetea el contador a cero.
+
+Tambien se extiende el criterio "D pierde su desbordamiento si nadie vuelve a
+pedir D-1 en su nombre" (escenario S1) a los fallos GENERALES de la peticion
+de desbordamiento, no solo a los especificos: si `/v1/score/<D-1>` falla de
+forma GENERAL (pero sin alcanzar el umbral) mientras se procesa D, se registra
+tambien D (tipo `score_prev_transient_<categoria>`) -- igual que ya se hacia
+para un HTTP 500 especifico de esa peticion.
+
+Tercera mejora (2026-09-27, requisito 1 del pedido, no un hallazgo de Fable):
+al reanudar sobre un rango con datos ya guardados -- por checkpoint atrasado,
+por el propio problema (i), o simplemente por una ejecucion anterior mas
+amplia -- NO hace falta volver a pedir el boxscore de un partido cuyas filas
+YA estan completas en `goalies_nhl.csv` (un titular por cada lado) y cuyo
+JSON bruto YA existe en `nhl_goalies_raw/`. `/v1/score/<dia>` SI se sigue
+pidiendo siempre (es la unica forma de enumerar los partidos de un dia), pero
+el boxscore de cada partido ya completo se salta -- ahorra la inmensa mayoria
+de las peticiones en una reanudacion tardia de un backfill de anios. Un
+partido con filas parciales (un solo lado, o sin titular marcado en ninguno)
+o sin JSON bruto NO cuenta como completo y se vuelve a pedir. Limitacion
+conocida: un partido cuyo boxscore nunca tuvo la clave `starter` en un lado
+(payload viejo/malformado, ver `nhl_api.parse_boxscore_goalies`) nunca
+alcanzara "ambos lados con titular" y se re-pedira en cada reanudacion que
+toque su fecha -- caso raro de temporadas muy antiguas, no resuelto aqui.
 """
 from __future__ import annotations
 
@@ -84,7 +142,7 @@ from sqp.logging_config import get_logger
 from sqp.providers import nhl_api
 from sqp.sports.nhl_goalie_matching import build_results_index, match_espn_game
 from sqp.storage.atomic import atomic_write_json, read_json_retrying
-from sqp.storage.goalies import GoalieAppearanceStore, save_raw_boxscore
+from sqp.storage.goalies import GoalieAppearanceStore, raw_boxscore_path, save_raw_boxscore
 from sqp.storage.results_store import ResultsStore
 
 log = get_logger("sqp.pipeline.goalie_backfill")
@@ -134,6 +192,9 @@ class Counts:
     # ya en el formato serializable del checkpoint -- para que el CLI pueda
     # informar y escribir el reporte sin releer el fichero.
     failed_dates: list[dict] = field(default_factory=list)
+    # Partidos cuyo boxscore NO se volvio a pedir porque ya estaban completos
+    # en el store (ver `_load_complete_game_ids`) -- puramente informativo.
+    games_skipped_cached: int = 0
 
 
 def _classify_exception(exc: Exception) -> tuple[str, int | None, bool]:
@@ -170,9 +231,14 @@ def _classify_exception(exc: Exception) -> tuple[str, int | None, bool]:
 def _record_failed(failed_map: dict[str, dict], day: date, kind: str,
                     http_status: int | None) -> None:
     """Registra (o actualiza) una fecha incompleta en el mapa `failed` del
-    checkpoint. Un fallo GENERAL nunca llega aqui (ver `_classify_exception`):
-    solo los de una fecha concreta, que es lo que hace seguro dejar que
-    `last_date_done` avance por delante de esta fecha."""
+    checkpoint -- tanto un fallo de fecha concreta (`kind` como `score_http`,
+    `boxscore_connection`, `not_final`...) como, desde 2026-09-27, un fallo
+    GENERAL que no alcanzo el umbral de fallos consecutivos (`kind` con
+    prefijo `transient_`, ver `_classify_exception` y el docstring del
+    modulo, limitacion (i) de la revision de Fable). En ambos casos es
+    seguro dejar que `last_date_done` avance por delante de esta fecha: solo
+    el fallo general que SI alcanza el umbral se mantiene fuera de `failed`
+    (ver `run`)."""
     key = day.isoformat()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     entry = failed_map.get(key)
@@ -186,6 +252,30 @@ def _record_failed(failed_map: dict[str, dict], day: date, kind: str,
         entry["http_status"] = http_status
         entry["attempts"] = int(entry.get("attempts", 0) or 0) + 1
         entry["last_seen_at"] = now
+
+
+def _load_complete_game_ids(root: Path) -> set[str]:
+    """`nhl_game_id` de los partidos que YA estan completos en el store: no
+    hace falta volver a pedir su boxscore al reanudar (requisito 1,
+    2026-09-27). Un partido cuenta como completo cuando `goalies_nhl.csv`
+    tiene, para ese `nhl_game_id`, una fila con `starter=True` en AMBOS lados
+    (`home` y `away`) Y su JSON bruto sigue presente en `nhl_goalies_raw/` --
+    si faltara el bruto (borrado a mano, disco corrupto...) se vuelve a pedir
+    en vez de fiarse solo del CSV. Un partido con filas parciales (un solo
+    lado, o ningun titular marcado -- incluido el caso raro de un payload sin
+    la clave `starter` en un lado, ver el docstring del modulo) o sin JSON
+    bruto NO cuenta como completo."""
+    df = GoalieAppearanceStore(root).load()
+    if df.empty:
+        return set()
+    is_starter = df["starter"].astype(str).str.strip().isin({"True", "true", "1", "1.0"})
+    starters = df[is_starter]
+    if starters.empty:
+        return set()
+    sides_by_game = starters.groupby("nhl_game_id")["team_side"].apply(
+        lambda s: set(s.astype(str)))
+    complete = {gid for gid, sides in sides_by_game.items() if {"home", "away"} <= sides}
+    return {gid for gid in complete if raw_boxscore_path(root, gid).exists()}
 
 
 def _load_checkpoint(root: Path, start: date, end: date) -> tuple[date | None, dict[str, dict]]:
@@ -310,6 +400,11 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
     limiter = _RateLimiter(sleep_s)
     store = GoalieAppearanceStore(root)
     results_index = build_results_index(ResultsStore(root).load("nhl"))
+    # Requisito 1 (2026-09-27): partidos ya completos en el store, calculados
+    # UNA VEZ al arrancar -- su boxscore no se vuelve a pedir (ver
+    # `_load_complete_game_ids`). `/v1/score/<dia>` SIEMPRE se pide, para
+    # poder enumerar los partidos del dia.
+    complete_game_ids = _load_complete_game_ids(root)
 
     resume_after, failed_map = _load_checkpoint(root, start, end)
     cursor = start if resume_after is None else resume_after + timedelta(days=1)
@@ -319,11 +414,13 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
     score_cache: dict[str, list[dict]] = {}
     consecutive_failures = 0
     # A diferencia de `failed_map` (fechas concretas, seguras de saltar), este
-    # contador y `first_incomplete` solo los tocan los fallos GENERALES
-    # (timeout/conexion/429 persistente): son los unicos que detienen todo el
-    # backfill, y por eso son tambien los unicos que congelan el avance del
-    # checkpoint mientras la ejecucion sigue viva sin llegar al umbral.
-    first_incomplete: date | None = None
+    # contador solo lo tocan los fallos GENERALES (timeout/conexion/429
+    # persistente): son los unicos que detienen todo el backfill al alcanzar
+    # `max_consecutive_failures`. Desde 2026-09-27 (limitacion (i) de la
+    # revision de Fable) un fallo general que NO alcanza el umbral ya NO
+    # congela el avance del checkpoint -- se registra en `failed` como
+    # cualquier otro (ver `_record_failed`) y se sigue. Se resetea tanto tras
+    # un boxscore correcto como tras un `/v1/score` correcto (limitacion (ii)).
     stop_requested = False
 
     def _fetch_score(local_date: date) -> list[dict]:
@@ -341,12 +438,12 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
 
     def _process_day(day: date) -> bool:
         """Procesa un dia completo: `/v1/score` del dia y del anterior (para
-        el desbordamiento horario), boxscore de cada partido encontrado.
-        Devuelve `True` si el dia tuvo AL MENOS un problema (de cualquier
-        tipo) en esta llamada, `False` si quedo limpio. Muta `counts`,
-        `failed_map` y, solo para fallos generales, `consecutive_failures` /
-        `first_incomplete` / `stop_requested` (todas `nonlocal`)."""
-        nonlocal consecutive_failures, first_incomplete, stop_requested
+        el desbordamiento horario), boxscore de cada partido encontrado (salvo
+        los ya completos en el store, ver `complete_game_ids`). Devuelve
+        `True` si el dia tuvo AL MENOS un problema (de cualquier tipo) en esta
+        llamada, `False` si quedo limpio. Muta `counts`, `failed_map` y
+        `consecutive_failures` / `stop_requested` (todas `nonlocal`)."""
+        nonlocal consecutive_failures, stop_requested
         had_issue = False
 
         def _handle_score_failure(exc: Exception, attributed_day: date, prefix: str) -> bool:
@@ -354,21 +451,33 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
             corresponde (fecha atribuida, no necesariamente `day` -- el
             desbordamiento del dia anterior atribuye a `attributed_day`, esa
             fecha, no a `day`), y devuelve si es GENERAL (el llamador decide
-            si eso obliga a abortar el resto del dia)."""
-            nonlocal consecutive_failures, first_incomplete, stop_requested
+            si eso obliga a abortar el resto del dia).
+
+            Un fallo GENERAL que alcanza el umbral de fallos consecutivos NO
+            se registra en `failed`: el checkpoint tampoco avanza sobre `day`
+            (ver `run`), asi que la reanudacion normal ya lo vuelve a
+            intentar por el barrido -- registrarlo tambien duplicaria el
+            reintento (una vez via `failed`, otra via el barrido)."""
+            nonlocal consecutive_failures, stop_requested
             category, http_status, is_general = _classify_exception(exc)
             if is_general:
                 consecutive_failures += 1
-                if first_incomplete is None:
-                    first_incomplete = day
-                log.warning("Fallo consultando /v1/score para %s (%s): %s",
-                            attributed_day.isoformat(), exc.__class__.__name__, exc)
                 if consecutive_failures >= max_consecutive_failures:
                     log.error("%d fallos GENERALES consecutivos (%s); se detiene "
-                              "el backfill en %s sin avanzar el checkpoint.",
+                              "el backfill en %s sin avanzar el checkpoint mas alla "
+                              "del ultimo dia ya guardado.",
                               consecutive_failures, category, day.isoformat())
                     counts.stopped_by_failures = True
                     stop_requested = True
+                else:
+                    kind = f"transient_{category}"
+                    _record_failed(failed_map, attributed_day, kind, http_status)
+                    log.warning("Fallo GENERAL (transitorio, %d/%d) consultando "
+                                "/v1/score para %s (%s): %s; se registra en 'failed' "
+                                "como %s y el backfill sigue.",
+                                consecutive_failures, max_consecutive_failures,
+                                attributed_day.isoformat(), exc.__class__.__name__,
+                                exc, kind)
             else:
                 kind = f"{prefix}_http" if category == "http" else f"{prefix}_{category}"
                 _record_failed(failed_map, attributed_day, kind, http_status)
@@ -380,7 +489,9 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
         # Peticion del dia PROPIO: si falla, no hay lista de partidos de HOY
         # en absoluto -- se aborta el resto del dia (no hay nada que procesar).
         try:
-            games_today = [g for g in _fetch_score(day) if g["date_utc"] == day.isoformat()]
+            day_games = _fetch_score(day)
+            consecutive_failures = 0  # limitacion (ii): un /v1/score sano tambien resetea.
+            games_today = [g for g in day_games if g["date_utc"] == day.isoformat()]
         except (requests.RequestException, ValueError) as exc:
             had_issue = True
             _handle_score_failure(exc, day, "score")
@@ -391,29 +502,37 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
         # en su propia iteracion) -- no a `day` -- y solo se pierde el posible
         # desbordamiento, no las peticiones ya confirmadas de `day`.
         try:
-            games_yesterday = [g for g in _fetch_score(day - timedelta(days=1))
-                               if g["date_utc"] == day.isoformat()]
+            prev_games = _fetch_score(day - timedelta(days=1))
+            consecutive_failures = 0  # limitacion (ii): idem para el /score del dia anterior.
+            games_yesterday = [g for g in prev_games if g["date_utc"] == day.isoformat()]
         except (requests.RequestException, ValueError) as exc:
             had_issue = True
             is_general = _handle_score_failure(exc, day - timedelta(days=1), "score")
             games_yesterday = []
-            if not is_general:
-                # Revision independiente de Fable (2026-09-27, escenario S1):
-                # un partido nocturno de la costa oeste con `startTimeUTC` en
+            if not stop_requested:
+                # Revision independiente de Fable (2026-09-27, escenario S1,
+                # extendida a fallos GENERALES por debajo del umbral): un
+                # partido nocturno de la costa oeste con `startTimeUTC` en
                 # `day` solo aparece en `/v1/score/<day-1>` (desbordamiento
                 # horario). El registro de `day - 1` de arriba no basta: si
                 # `day - 1` se recupera y sale de `failed` por su cuenta,
                 # nadie vuelve a pedir su desbordamiento para `day`, y ese
                 # partido se pierde en silencio (nunca llega al store ni
                 # queda en `failed`). Se registra TAMBIEN `day`, con un tipo
-                # propio (`score_prev_*`, nunca confundible con un fallo del
-                # propio `/v1/score/day`) para que reintentar `day` vuelva a
-                # pedir `day - 1` y, si ya esta sano, recoja el desbordamiento.
+                # propio (`score_prev_*`/`score_prev_transient_*`, nunca
+                # confundible con un fallo del propio `/v1/score/day`) para
+                # que reintentar `day` vuelva a pedir `day - 1` y, si ya esta
+                # sano, recoja el desbordamiento. Si el fallo alcanzo el
+                # umbral (`stop_requested`), `day` tampoco se registra, por la
+                # misma razon que `attributed_day` no lo hace en ese caso.
                 category, http_status, _ = _classify_exception(exc)
-                kind = "score_prev_http" if category == "http" else f"score_prev_{category}"
+                if is_general:
+                    kind = f"score_prev_transient_{category}"
+                else:
+                    kind = "score_prev_http" if category == "http" else f"score_prev_{category}"
                 _record_failed(failed_map, day, kind, http_status)
-                log.warning("Fallo especifico en /v1/score de %s (desbordamiento "
-                            "horario de %s); se registra tambien %s en 'failed'.",
+                log.warning("Fallo en /v1/score de %s (desbordamiento horario de "
+                            "%s); se registra tambien %s en 'failed'.",
                             (day - timedelta(days=1)).isoformat(), day.isoformat(),
                             day.isoformat())
             if stop_requested:
@@ -429,6 +548,12 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
             else:
                 counts.unmatched.append(f"{g['date_utc']} {g['away_name']} @ {g['home_name']}")
 
+            if g["nhl_game_id"] in complete_game_ids:
+                # Requisito 1: ya tiene ambos titulares en el store y su JSON
+                # bruto -- no hace falta volver a pedir su boxscore.
+                counts.games_skipped_cached += 1
+                continue
+
             try:
                 limiter.wait()
                 box = nhl_api.fetch_boxscore(g["nhl_game_id"], session)
@@ -437,19 +562,24 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
                 had_issue = True
                 if is_general:
                     consecutive_failures += 1
-                    if first_incomplete is None:
-                        first_incomplete = day
-                    log.warning("Fallo consultando boxscore %s (%s): %s",
-                                g["nhl_game_id"], exc.__class__.__name__, exc)
                     if consecutive_failures >= max_consecutive_failures:
                         log.error("%d fallos GENERALES consecutivos (%s); se "
-                                  "detiene el backfill sin avanzar el checkpoint.",
+                                  "detiene el backfill sin avanzar el checkpoint "
+                                  "mas alla del ultimo dia ya guardado.",
                                   consecutive_failures, category)
                         counts.stopped_by_failures = True
                         stop_requested = True
                         if appearance_rows:
                             counts.appearance_rows_added += store.save(appearance_rows)
                         return had_issue
+                    kind = f"transient_{category}"
+                    _record_failed(failed_map, day, kind, http_status)
+                    log.warning("Fallo GENERAL (transitorio, %d/%d) consultando "
+                                "boxscore %s (%s): %s; se registra en 'failed' "
+                                "como %s (fecha %s) y se sigue.",
+                                consecutive_failures, max_consecutive_failures,
+                                g["nhl_game_id"], exc.__class__.__name__, exc, kind,
+                                day.isoformat())
                     continue
                 kind = "boxscore_http" if category == "http" else f"boxscore_{category}"
                 _record_failed(failed_map, day, kind, http_status)
@@ -516,10 +646,15 @@ def run(start: date, end: date, sleep_s: float = 1.0, root: Path = ROOT,
             _save_checkpoint(root, start, end, resume_after, failed_map)
 
     # 2) Marcha hacia delante desde el checkpoint, si el reintento no paro.
+    #    Desde 2026-09-27 (limitacion (i)) el checkpoint avanza aqui aunque el
+    #    dia haya tenido fallos -- concretos o generales por debajo del
+    #    umbral -- porque ambos quedan registrados en `failed_map` y se
+    #    reintentan al reanudar; solo `stop_requested` (umbral alcanzado)
+    #    detiene el avance.
     day = cursor
     while not stop_requested and day <= end:
         _process_day(day)
-        if not stop_requested and first_incomplete is None:
+        if not stop_requested:
             _save_checkpoint(root, start, end, day, failed_map)
         day += timedelta(days=1)
 
