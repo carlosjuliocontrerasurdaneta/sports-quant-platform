@@ -310,3 +310,4 @@ FABLE-REVIEW: 2026-09-26 | veredicto: APTO CON CONDICIONES (código apto; (a) y 
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO | rutas: docs/research/2026-09-25-repreregistro-gate-k52.md, docs/research/2026-08-26-preregistro-el-modelo-manda.md
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO | rutas: src/sqp/pipeline/goalie_backfill.py, scripts/backfill_goalies_nhl.py
 FABLE-REVIEW: 2026-09-26 | veredicto: APTO (limitaciones: Start-Process y git -c alias, evasión deliberada; bloqueo de más con '| git commit' citado) | rutas: .claude/hooks/fable_gate.py, tests/test_fable_gate.py
+FABLE-REVIEW: 2026-09-27 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-27-preregistro-bateria-ajustes.md
