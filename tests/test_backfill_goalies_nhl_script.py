@@ -66,8 +66,9 @@ def test_end_no_anterior_a_hoy_utc_se_recorta_y_avisa(tmp_path, monkeypatch):
     cli = _load_cli()
     calls: dict = {}
 
-    def fake_run(start, end, sleep_s, root):
+    def fake_run(start, end, sleep_s, root, max_consecutive_failures=3):
         calls["start"], calls["end"], calls["root"] = start, end, root
+        calls["max_consecutive_failures"] = max_consecutive_failures
         return Counts()
 
     monkeypatch.setattr(cli, "run", fake_run)
@@ -86,7 +87,7 @@ def test_root_se_pasa_a_run_para_no_tocar_data_real(tmp_path, monkeypatch):
     cli = _load_cli()
     calls: dict = {}
 
-    def fake_run(start, end, sleep_s, root):
+    def fake_run(start, end, sleep_s, root, max_consecutive_failures=3):
         calls["root"] = root
         return Counts()
 
@@ -98,3 +99,24 @@ def test_root_se_pasa_a_run_para_no_tocar_data_real(tmp_path, monkeypatch):
     ])
     assert cli.main() == 0
     assert calls["root"] == tmp_path
+
+
+def test_max_consecutive_failures_se_pasa_a_run_y_es_configurable(tmp_path, monkeypatch):
+    """Requisito 3 (revision independiente de Fable, alternativa a B1): el
+    umbral de fallos GENERALES consecutivos que detiene todo el backfill debe
+    ser configurable por CLI, no solo un valor fijo en el modulo."""
+    cli = _load_cli()
+    calls: dict = {}
+
+    def fake_run(start, end, sleep_s, root, max_consecutive_failures=3):
+        calls["max_consecutive_failures"] = max_consecutive_failures
+        return Counts()
+
+    monkeypatch.setattr(cli, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", [
+        "backfill_goalies_nhl.py",
+        "--start", "2024-10-10", "--end", "2024-10-11",
+        "--root", str(tmp_path), "--max-consecutive-failures", "7",
+    ])
+    assert cli.main() == 0
+    assert calls["max_consecutive_failures"] == 7

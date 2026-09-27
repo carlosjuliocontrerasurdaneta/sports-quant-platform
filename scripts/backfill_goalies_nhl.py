@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sqp.config import ROOT
 from sqp.logging_config import get_logger
-from sqp.pipeline.goalie_backfill import run
+from sqp.pipeline.goalie_backfill import MAX_CONSECUTIVE_FAILURES, failed_report_path, run
 from sqp.providers.date_window import utc_today
 
 log = get_logger("sqp.backfill_goalies_nhl")
@@ -34,6 +34,13 @@ def main() -> int:
     ap.add_argument("--end", required=True, help="Fecha UTC final YYYY-MM-DD (incluida)")
     ap.add_argument("--sleep", type=float, default=1.0,
                      help="Segundos minimos entre peticiones (por defecto 1.0)")
+    ap.add_argument("--max-consecutive-failures", type=int, default=MAX_CONSECUTIVE_FAILURES,
+                     help="Fallos GENERALES consecutivos (timeout, error de conexion, o "
+                          "HTTP 429 persistente) que detienen todo el backfill sin avanzar "
+                          "el checkpoint (por defecto %(default)s). Un HTTP 500/502/503/504 "
+                          "de UNA fecha concreta no cuenta para este limite: se registra en "
+                          "'failed' dentro del checkpoint y el backfill sigue con el dia "
+                          "siguiente (ver el docstring de sqp.pipeline.goalie_backfill).")
     ap.add_argument("--root", default=str(ROOT),
                      help="Raiz del arbol de datos (por defecto la raiz del "
                           "repositorio); usar un directorio temporal para "
@@ -59,7 +66,8 @@ def main() -> int:
                      "elige un rango ya finalizado.")
 
     root = Path(args.root)
-    counts = run(start, end, args.sleep, root=root)
+    counts = run(start, end, args.sleep, root=root,
+                 max_consecutive_failures=args.max_consecutive_failures)
 
     match_rate = (100.0 * counts.games_matched / counts.games_total) if counts.games_total else 0.0
     log.info(
@@ -79,8 +87,17 @@ def main() -> int:
                     len(counts.pending_games))
         for name in counts.pending_games:
             log.warning("  pendiente: %s", name)
+    if counts.failed_dates:
+        log.warning("%d fecha(s) quedan registradas en 'failed' (detalle en %s):",
+                    len(counts.failed_dates), failed_report_path(root))
+        for entry in counts.failed_dates:
+            log.warning("  %s kind=%s http_status=%s intentos=%d",
+                        entry["date"], entry["kind"], entry.get("http_status"),
+                        entry["attempts"])
     if counts.stopped_by_failures:
-        log.error("El backfill se detuvo por fallos consecutivos; revisar antes de reanudar.")
+        log.error("El backfill se detuvo por fallos GENERALES consecutivos "
+                   "(timeout/conexion/429); revisar la conectividad antes de reanudar. "
+                   "El checkpoint NO avanzo mas alla del ultimo dia completo.")
         return 1
     return 0
 

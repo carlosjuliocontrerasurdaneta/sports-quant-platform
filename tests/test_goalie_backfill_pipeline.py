@@ -1,5 +1,6 @@
 """`sqp.pipeline.goalie_backfill.run`: matching, deduplication and resumable
 checkpointing, with the NHL API fully mocked (no network, no `data/`)."""
+import json
 from datetime import date
 
 import pytest
@@ -8,6 +9,41 @@ import requests
 from sqp.pipeline import goalie_backfill
 from sqp.storage.goalies import GoalieAppearanceStore
 from sqp.storage.results_store import ResultsStore
+
+
+class _FakeHttpResponse:
+    """Respuesta minima para construir un `requests.HTTPError(response=...)`
+    sin una peticion real -- solo el atributo que `_classify_exception` mira."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+
+
+def _make_score_map(days_ids: dict[str, int]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for d, gid in days_ids.items():
+        out[d] = {"games": [{
+            "id": gid, "gameType": 2, "startTimeUTC": f"{d}T23:00:00Z",
+            "homeTeam": {"name": {"default": "Bruins"}},
+            "awayTeam": {"name": {"default": "Canadiens"}},
+        }]}
+    return out
+
+
+def _make_boxscore(start_iso: str) -> dict:
+    return {
+        "gameType": 2, "startTimeUTC": start_iso, "gameState": "OFF",
+        "playerByGameStats": {
+            "awayTeam": {"goalies": [
+                {"playerId": 1, "name": {"default": "A"}, "starter": True,
+                 "toi": "60:00", "shotsAgainst": 30, "saves": 26, "goalsAgainst": 4},
+            ]},
+            "homeTeam": {"goalies": [
+                {"playerId": 3, "name": {"default": "C"}, "starter": True,
+                 "toi": "60:00", "shotsAgainst": 24, "saves": 20, "goalsAgainst": 4},
+            ]},
+        },
+    }
 
 
 def _seed_results(root):
@@ -277,3 +313,297 @@ def test_run_no_ingiere_partido_no_finalizado_ni_congela_stats_parciales(tmp_pat
     assert len(df) == 2  # titular visitante + titular local, ya FINAL
     fila_visitante = df[df["goalie_player_id"] == "1"].iloc[0]
     assert int(fila_visitante["saves"]) == 27  # las stats FINALES, no las 9 parciales
+
+
+# --- Alternativa a B1 (revision independiente de Fable, 2026-09-27): registrar
+# fechas fallidas en el checkpoint en vez de congelar `last_date_done` en la
+# primera. Caso real: `/v1/score/2009-09-15` y `/2009-09-20` devuelven HTTP 500
+# de forma estable mientras dias vecinos responden 200. ---
+
+def test_500_persistente_de_una_fecha_no_bloquea_y_queda_en_failed(tmp_path, monkeypatch):
+    ids = {"2024-11-01": 501, "2024-11-02": 502, "2024-11-03": 503}
+    score_map = _make_score_map(ids)
+
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-02":
+            raise requests.HTTPError(response=_FakeHttpResponse(500))
+        return score_map.get(date_str, {"games": []})
+
+    def fake_fetch_boxscore(game_id, session):
+        for d, gid in ids.items():
+            if gid == int(game_id):
+                return _make_boxscore(f"{d}T23:00:00Z")
+        raise AssertionError(f"game_id inesperado: {game_id}")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    counts = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 3), sleep_s=0.0, root=tmp_path)
+
+    # Un 500 de UNA fecha no cuenta como fallo general: el backfill no se para.
+    assert counts.stopped_by_failures is False
+    # 2024-11-02 (fallo propio) Y 2024-11-03 (revision independiente de Fable,
+    # escenario S1, 2026-09-27: su peticion de desbordamiento pide DE NUEVO
+    # /v1/score/2024-11-02, que tambien falla -- no se puede descartar que
+    # 2024-11-03 tuviera un partido de desbordamiento listado ahi, asi que
+    # tambien queda marcado para reintentar, aunque sus propios partidos ya
+    # se hayan capturado).
+    by_date = {f["date"]: f for f in counts.failed_dates}
+    assert set(by_date) == {"2024-11-02", "2024-11-03"}
+    assert by_date["2024-11-02"]["kind"] == "score_http"
+    assert by_date["2024-11-02"]["http_status"] == 500
+    assert by_date["2024-11-03"]["kind"] == "score_prev_http"
+    assert by_date["2024-11-03"]["http_status"] == 500
+
+    # El checkpoint SI avanzo hasta el ultimo dia, pasando por las fechas
+    # fallidas -- porque quedaron registradas en 'failed'.
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 3))
+    assert last_date_done == date(2024, 11, 3)
+    assert "2024-11-02" in failed_map
+    assert failed_map["2024-11-02"]["kind"] == "score_http"
+
+    df = GoalieAppearanceStore(tmp_path).load()
+    assert set(df["date"]) == {"2024-11-01", "2024-11-03"}
+
+
+def test_reintento_de_fecha_failed_que_ahora_responde_200_sale_de_la_lista(tmp_path, monkeypatch):
+    ids = {"2024-11-01": 601, "2024-11-02": 602}
+    score_map = _make_score_map(ids)
+    state = {"fail_11_02": True}
+
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-02" and state["fail_11_02"]:
+            raise requests.HTTPError(response=_FakeHttpResponse(500))
+        return score_map.get(date_str, {"games": []})
+
+    def fake_fetch_boxscore(game_id, session):
+        for d, gid in ids.items():
+            if gid == int(game_id):
+                return _make_boxscore(f"{d}T23:00:00Z")
+        raise AssertionError(f"game_id inesperado: {game_id}")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    counts1 = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 2), sleep_s=0.0, root=tmp_path)
+    assert len(counts1.failed_dates) == 1
+    assert counts1.failed_dates[0]["date"] == "2024-11-02"
+    assert set(GoalieAppearanceStore(tmp_path).load()["date"]) == {"2024-11-01"}
+
+    # La fecha ahora responde bien: al reanudar, se reintenta PRIMERO y sale
+    # de 'failed'.
+    state["fail_11_02"] = False
+    counts2 = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 2), sleep_s=0.0, root=tmp_path)
+    assert counts2.failed_dates == []
+
+    df = GoalieAppearanceStore(tmp_path).load()
+    assert set(df["date"]) == {"2024-11-01", "2024-11-02"}
+
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 2))
+    assert failed_map == {}
+
+
+def test_n_fallos_generales_consecutivos_paran_sin_avanzar(tmp_path, monkeypatch):
+    """Timeouts (fallo GENERAL) SI paran el backfill entero, a diferencia de
+    un 500 de una fecha concreta -- y no se registran en 'failed' (no son un
+    problema de esa fecha, sino de la conexion)."""
+    def siempre_timeout(date_str, session):
+        raise requests.Timeout("tiempo agotado simulado")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", siempre_timeout)
+    counts = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 10), sleep_s=0.0,
+                                  root=tmp_path, max_consecutive_failures=2)
+
+    assert counts.stopped_by_failures is True
+    assert counts.days == 0
+    assert counts.failed_dates == []
+
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 10))
+    assert last_date_done is None
+    assert failed_map == {}
+
+
+def test_migracion_checkpoint_formato_antiguo_sin_clave_failed(tmp_path, monkeypatch):
+    """El checkpoint anterior al 2026-09-27 no tiene la clave 'failed'; debe
+    poder reanudarse sin volver a empezar, y quedar migrado al guardar."""
+    ckpt_dir = tmp_path / "data" / "historical"
+    ckpt_dir.mkdir(parents=True)
+    old_checkpoint = {
+        "start": "2024-11-01", "end": "2024-11-03",
+        "last_date_done": "2024-11-01",
+        "updated_at": "2024-11-01T00:00:00+00:00",
+    }
+    (ckpt_dir / goalie_backfill.CHECKPOINT_NAME).write_text(
+        json.dumps(old_checkpoint), encoding="utf-8")
+
+    ids = {"2024-11-02": 701, "2024-11-03": 702}
+    score_map = _make_score_map(ids)
+
+    def fake_fetch_score(date_str, session):
+        return score_map.get(date_str, {"games": []})
+
+    def fake_fetch_boxscore(game_id, session):
+        for d, gid in ids.items():
+            if gid == int(game_id):
+                return _make_boxscore(f"{d}T23:00:00Z")
+        raise AssertionError(f"game_id inesperado: {game_id}")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    counts = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 3), sleep_s=0.0, root=tmp_path)
+    # Reanuda tras el checkpoint antiguo (11-01 ya cubierto): solo procesa 2 dias.
+    assert counts.days == 2
+
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 3))
+    assert last_date_done == date(2024, 11, 3)
+    assert failed_map == {}
+
+    raw = json.loads((ckpt_dir / goalie_backfill.CHECKPOINT_NAME).read_text(encoding="utf-8"))
+    assert "failed" in raw  # el fichero migro al formato nuevo al guardar de nuevo
+
+
+# --- Hallazgo de Fable (NO APTO), escenario S1, 2026-09-27: un partido
+# nocturno de la costa oeste con `startTimeUTC` en el dia D solo aparece en
+# `/v1/score/<D-1>` (desbordamiento horario, `games_yesterday`). Si esa
+# peticion de D-1 falla mientras se procesa D, el `except` original solo
+# registraba D-1 en `failed`; cuando D-1 se recuperaba y salia de `failed` por
+# su cuenta, D ya habia quedado por detras del checkpoint, y su partido de
+# desbordamiento se perdia en silencio -- ni en el store, ni en `failed`. La
+# correccion registra TAMBIEN D (tipo `score_prev_*`) para que reintentarlo
+# vuelva a pedir D-1 y recoja el desbordamiento. ---
+
+def test_s1_partido_de_desbordamiento_no_se_pierde_tras_fallo_transitorio_del_dia_anterior(
+        tmp_path, monkeypatch):
+    """Reproduce exactamente el escenario S1 de Fable: `/v1/score/2024-11-10`
+    falla (HTTP 500) las primeras dos veces que se pide -- una vez como 'hoy'
+    al procesar el propio 2024-11-10, otra vez como desbordamiento al procesar
+    2024-11-11 -- y al tercer intento (durante el reintento de la segunda
+    ejecucion) responde bien con el partido 900, listado con
+    `startTimeUTC=2024-11-11T01:00:00Z` (fecha UTC 2024-11-11)."""
+    calls = {"2024-11-10": 0}
+
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-10":
+            calls["2024-11-10"] += 1
+            if calls["2024-11-10"] <= 2:
+                raise requests.HTTPError(response=_FakeHttpResponse(500))
+            return {"games": [{
+                "id": 900, "gameType": 2, "startTimeUTC": "2024-11-11T01:00:00Z",
+                "homeTeam": {"name": {"default": "Bruins"}},
+                "awayTeam": {"name": {"default": "Canadiens"}},
+            }]}
+        return {"games": []}
+
+    def fake_fetch_boxscore(game_id, session):
+        assert str(game_id) == "900"
+        return _make_boxscore("2024-11-11T01:00:00Z")
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_boxscore", fake_fetch_boxscore)
+
+    goalie_backfill.run(date(2024, 11, 10), date(2024, 11, 12), sleep_s=0.0, root=tmp_path)
+    goalie_backfill.run(date(2024, 11, 10), date(2024, 11, 12), sleep_s=0.0, root=tmp_path)
+
+    df = GoalieAppearanceStore(tmp_path).load()
+    game_en_store = (not df.empty) and "900" in set(df["nhl_game_id"].astype(str))
+    _, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 10), date(2024, 11, 12))
+    dia_sigue_en_failed = "2024-11-11" in failed_map
+
+    # Nunca las dos cosas a la vez ausentes: o se recogio el partido, o el dia
+    # sigue marcado para reintentar -- pero jamas se pierde en silencio.
+    assert game_en_store or dia_sigue_en_failed
+
+    # Con la peticion de 2024-11-10 ya sana al reintentar, el resultado
+    # concreto de estas dos ejecuciones es que el partido SI se recoge y el
+    # dia SALE de 'failed' (no solo la disyuncion minima de arriba).
+    assert game_en_store is True
+    assert dia_sigue_en_failed is False
+    assert set(df["date"]) == {"2024-11-11"}
+
+
+def test_s1_dia_sigue_en_failed_si_el_dia_anterior_sigue_fallando(tmp_path, monkeypatch):
+    """Caso (b): si `/v1/score/<D-1>` sigue fallando de forma persistente
+    (nunca se recupera), D debe permanecer en `failed` -- nunca se pierde el
+    hueco silenciosamente ni se inventa un exito."""
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-10":
+            raise requests.HTTPError(response=_FakeHttpResponse(500))
+        return {"games": []}
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+
+    goalie_backfill.run(date(2024, 11, 10), date(2024, 11, 12), sleep_s=0.0, root=tmp_path)
+    _, failed_map_1 = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 10), date(2024, 11, 12))
+    assert "2024-11-11" in failed_map_1
+    assert failed_map_1["2024-11-11"]["kind"] == "score_prev_http"
+
+    # Segunda ejecucion: 2024-11-10 sigue fallando -> 2024-11-11 sigue en 'failed'.
+    goalie_backfill.run(date(2024, 11, 10), date(2024, 11, 12), sleep_s=0.0, root=tmp_path)
+    _, failed_map_2 = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 10), date(2024, 11, 12))
+    assert "2024-11-11" in failed_map_2
+    assert GoalieAppearanceStore(tmp_path).load().empty
+
+
+def test_s1_no_duplica_registro_espurio_del_dia_anterior_ya_marcado(tmp_path, monkeypatch):
+    """Caso (d): 2024-11-10 falla en su propia iteracion (queda en 'failed',
+    1 intento) y vuelve a fallar como desbordamiento al procesar 2024-11-11
+    (2 intentos reales sobre esa misma peticion en esta ejecucion) -- pero eso
+    actualiza la MISMA entrada de 2024-11-10 (nunca crea una segunda), y
+    2024-11-11 se registra aparte, con su propio tipo `score_prev_http`."""
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-10":
+            raise requests.HTTPError(response=_FakeHttpResponse(500))
+        return {"games": []}
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+
+    goalie_backfill.run(date(2024, 11, 10), date(2024, 11, 11), sleep_s=0.0, root=tmp_path)
+
+    _, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 10), date(2024, 11, 11))
+    # Exactamente dos fechas registradas -- ninguna entrada duplicada.
+    assert set(failed_map) == {"2024-11-10", "2024-11-11"}
+    assert failed_map["2024-11-10"]["kind"] == "score_http"
+    assert failed_map["2024-11-10"]["attempts"] == 2  # su propia peticion + la del desbordamiento
+    assert failed_map["2024-11-11"]["kind"] == "score_prev_http"
+    assert failed_map["2024-11-11"]["attempts"] == 1
+
+
+def test_s1_timeout_en_desbordamiento_es_fallo_general_no_se_registra_en_failed(
+        tmp_path, monkeypatch):
+    """Caso (c): la clasificacion general/especifica se aplica IGUAL a la
+    peticion de desbordamiento que a la del dia propio. Un timeout (fallo
+    GENERAL) al pedir el dia anterior detiene TODO el backfill y NO se
+    registra en 'failed' -- a diferencia de un HTTP 500 (fallo especifico de
+    esa fecha), que si se registra y deja seguir."""
+    ckpt_dir = tmp_path / "data" / "historical"
+    ckpt_dir.mkdir(parents=True)
+    (ckpt_dir / goalie_backfill.CHECKPOINT_NAME).write_text(json.dumps({
+        "start": "2024-11-01", "end": "2024-11-05",
+        "last_date_done": "2024-11-03", "failed": [],
+        "updated_at": "2024-11-03T00:00:00+00:00",
+    }), encoding="utf-8")
+
+    def fake_fetch_score(date_str, session):
+        if date_str == "2024-11-03":
+            raise requests.Timeout("tiempo agotado simulado")
+        return {"games": []}
+
+    monkeypatch.setattr(goalie_backfill.nhl_api, "fetch_score", fake_fetch_score)
+
+    counts = goalie_backfill.run(date(2024, 11, 1), date(2024, 11, 5), sleep_s=0.0,
+                                  root=tmp_path, max_consecutive_failures=1)
+
+    assert counts.stopped_by_failures is True
+    last_date_done, failed_map = goalie_backfill._load_checkpoint(
+        tmp_path, date(2024, 11, 1), date(2024, 11, 5))
+    assert last_date_done == date(2024, 11, 3)  # no avanzo mas alla del ultimo dia sano
+    assert failed_map == {}  # un fallo GENERAL no se registra en 'failed'
