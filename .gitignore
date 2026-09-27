@@ -85,3 +85,5 @@ graphify-out/
 .codex-tmp/
 .venv/
 outputs/
+# Log de observabilidad de fable_gate.py (fail-open); no es fuente, es runtime.
+.claude/automation/runtime/fable_gate.log
