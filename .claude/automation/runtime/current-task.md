@@ -315,3 +315,4 @@ FABLE-REVIEW: 2026-09-27 | veredicto: APTO (fusionar; reanudar solo con el proce
 FABLE-REVIEW: 2026-09-27 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-27-preregistro-descanso-nhl.md
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (fusión; modo completo condicionado a enmienda de recuentos/hash y --pre regenerado) | rutas: src/sqp/models/rest.py, src/sqp/sports/adapters.py, scripts/research/measure_rest_nhl.py, tests/test_rest.py, tests/test_rest_poisson_adapter.py, tests/test_measure_rest_nhl.py
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (enmienda de recuentos prescrita por Fable antes del modo completo) | rutas: docs/research/2026-09-27-preregistro-descanso-nhl.md
+FABLE-REVIEW: 2026-09-29 | veredicto: APTO (RECHAZA verificado; efecto real bajo el margen, concentrado en back-to-back; rest_elo_per_day sigue en 0) | rutas: docs/research/2026-09-29-resultado-descanso-nhl.md

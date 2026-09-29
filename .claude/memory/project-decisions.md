@@ -453,3 +453,9 @@ Format:
 - Reason: pre-registro (redactado y revisado por Fable, ejecución única). ACEPTA 5/5: Δ log loss en afectados −0,00224, IC95 [−0,00371; −0,00076]; `c` estable (0,81/0,88/0,80); bate al control de intercepto (T−C −0,00197). Revierte el rechazo del 2026-06-22, que se basó en ROI con 22-25 eventos de la WNBA.
 - Alternatives: re-estimar con todo el histórico o usar el `c` conjunto con intercepto (≈0,6), ambos no pre-registrados; extender a WNBA/NCAAB/WNCAAB, sin potencia ni transferencia.
 - Consequences: addenda previos en el gate K=52 y en «el modelo manda». Pendiente antes de la temporada: recalibrar `nba_h2h/nba_spreads` en staging (promoción con aprobación humana) y re-medir `margin_sigma`. Vigilar 2025-26, que salió +0,0006. `docs/research/2026-09-26-resultado-descanso-basket.md`.
+
+- Date: 2026-09-29
+- Decision: **Descanso NHL RECHAZADO**: `rest_elo_per_day` sigue en 0.
+- Reason: pre-registro (Fable), ejecución única. Falla C1 (Δ afectados −0,00130 frente a −0,002; probabilidad de superar el margen 0,10) y C3 (ECE +0,00012). Cumple C2 y C4-C7: c ≈ 6,4-7,2 Elo/día y c_conj casi igual, así que el efecto es real pero está bajo el margen y concentrado en el back-to-back.
+- Alternatives: un indicador de back-to-back como forma nueva pre-registrada, solo después del portero y anidado sobre él.
+- Consequences: el portero se mide sobre la configuración actual, con la exposición de los informes 5 y 11 declarada en su enmienda. Defecto secundario del informe `linea_capturada` (arrays de forma (1,)) pendiente de corregir antes de reutilizar el script para MLB. El moneyline NHL sin calibrar tiene log loss 0,69393 > ln 2: merece su propio diagnóstico.
