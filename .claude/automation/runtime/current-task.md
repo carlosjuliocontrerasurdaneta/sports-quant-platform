@@ -313,3 +313,4 @@ FABLE-REVIEW: 2026-09-26 | veredicto: APTO (limitaciones: Start-Process y git -c
 FABLE-REVIEW: 2026-09-27 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-27-preregistro-bateria-ajustes.md
 FABLE-REVIEW: 2026-09-27 | veredicto: APTO (fusionar; reanudar solo con el proceso actual terminado y el mismo rango) | rutas: src/sqp/pipeline/goalie_backfill.py, scripts/backfill_goalies_nhl.py
 FABLE-REVIEW: 2026-09-27 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-27-preregistro-descanso-nhl.md
+FABLE-REVIEW: 2026-09-29 | veredicto: APTO (fusión; modo completo condicionado a enmienda de recuentos/hash y --pre regenerado) | rutas: src/sqp/models/rest.py, src/sqp/sports/adapters.py, scripts/research/measure_rest_nhl.py, tests/test_rest.py, tests/test_rest_poisson_adapter.py, tests/test_measure_rest_nhl.py
