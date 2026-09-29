@@ -657,3 +657,106 @@ Criterio 1 sobre los afectados (≈ universo) y activación con nota previa: com
 (c) **Captura (§12).** Destino: `data/historical/goalie_probables_nhl.csv`, una fila por evento y lado. Los estados observados en ESPN son «Confirmed» y «Expected» (no «Probable») y se guardan tal cual. La fila `source_run=daily` se añade sin deduplicar para cada lado con probable, con el `captured_at` del momento en que se recibe la respuesta. Que se ejecute antes de la generación depende de conectarla al run diario, cosa aún no aplicada. La retirada de un probable se registra como fila sin portero (`status=none`). Las filas con `commence_time` que no se puede parsear se descartan.
 
 (d) **Titulares.** Solo se ingieren boxscores con `gameState` OFF o FINAL. Un partido sin terminar deja el día como incompleto, y el checkpoint no avanza más allá del primer día incompleto (fallo del `score`, fallo del boxscore o partido sin terminar). `--end` se recorta como mucho a ayer (UTC). El script sale con código distinto de 0 si se detiene por fallos consecutivos.
+
+---
+
+## Enmienda 2 (2026-09-29, antes de implementar la medición; redactada por la revisión de Fable)
+
+Se escribe después del resultado del descanso NHL (`2026-09-29-resultado-descanso-nhl.md`, RECHAZA) y con el backfill de porteros ya terminado (`data/historical/goalies_nhl.csv`, checkpoint al 2026-09-25, 99,1 % emparejados, 19 fechas en `failed`). No se ha calculado ninguna relación entre porteros y resultados. **No cambia ninguno de los criterios de la sección 8**, ni las particiones, la métrica, el tope, el proxy, el optimizador ni el bootstrap. Manda sobre el texto anterior en lo que fija.
+
+### (a) Exposición declarada
+
+El resultado del descanso NHL ha dado a quien diseña y ejecuta esta medición dos datos que no tenía el 2026-09-26:
+
+1. **Informe 5 del descanso:** la ganancia del descanso diferencial está en el back-to-back. Δ log loss en el universo: −0,0027 con back-to-back solo del local, −0,0033 solo del visitante, +0,00012 sin back-to-back.
+2. **Informe 11 del descanso** (solo identidades, sin resultados): con r = 1, el titular cambia respecto al del partido anterior del equipo en el 60,8 % de los casos, frente al 38,0 % con r ≥ 2. Está calculado sobre todo el histórico, incluidas las tres particiones de test.
+
+**Por qué no invalida el test:**
+
+- **El diseño es anterior a la exposición.** Todo lo que decide (brazos, proxy sin parámetros, métrica q, forma de f, tope 0,35, un solo β, control C, particiones y los seis criterios) quedó fijado el 2026-09-26, tres días antes del resultado del descanso. La exposición no deja ningún grado de libertad que ajustar: esta enmienda solo fija la base y el tratamiento de datos que faltan, con reglas que no dependen de ningún resultado.
+- **El test mide la calidad del portero, no el back-to-back.** El tratamiento T solo mueve las lambdas mediante q_home y q_away. No contiene ningún término de descanso, y el control C es un desplazamiento constante que tampoco lo tiene. Si T gana en los back-to-backs, es porque el portero que juega allí tiene otra calidad, y eso es exactamente lo que el test pregunta.
+- **Que M2 se equivoque más en los back-to-backs es parte de lo medido.** El proxy «titular del partido anterior» es la información que tendría producción a las 12:00. Si en los back-to-backs cae en el suplente (o deja de caer en él) más a menudo, ese error de identidad forma parte del rendimiento real del proxy y **no se corrige**. La sección 1 ya lo anticipaba («el proxy falla justo en los back-to-backs, así que es conservador»). El informe 11 solo cuantifica ese hecho: con r = 1 el proxy acertará, como mucho, en torno al 39 % de los lados. Se espera, por tanto, una atenuación de M2 en esos partidos.
+- **Lo que la exposición sí condiciona es la lectura de M1, y eso ya estaba previsto.** La base no tiene descanso (`rest_elo_per_day = 0`, punto b), así que la fatiga del back-to-back, que el descanso midió como real pero por debajo del margen, no está en el modelo. M1 elige al suplente justo en esos partidos y puede absorber a través de q parte de esa fatiga de los jugadores de campo. El informe 4 de la sección 11 (Δ según back-to-back), pre-registrado antes de la exposición, es el que separa las dos cosas. Se declara ahora la lectura: **si la ganancia de M1 (o de M2) se concentra en los partidos con back-to-back, el informe del resultado dirá que una parte no identificable puede ser fatiga, y no la atribuirá entera al portero.** Esta lectura no es un criterio y no cambia el veredicto.
+
+### (b) Base
+
+- La base es la **configuración de producción NHL del commit vigente al ejecutar**, no `3648b17` (sección 6): `_league_meta("nhl").get("league_params")` + `get_adapter("nhl", "hockey", params)` en ese commit.
+- **`rest_elo_per_day = 0`** (el descanso NHL se rechazó, así que el anidamiento no añade nada), y **`rest_points_per_day` no tiene efecto en la NHL**: es la clave del `NormalMarginAdapter` y el `PoissonAdapter` no la lee (`src/sqp/sports/adapters.py:95-97`). KI-070 (`RestModel` con la fecha estrictamente anterior) está fusionado y es inerte en el motor mientras `rest_elo_per_day = 0`.
+- `--pre` registra en su JSON el `git rev-parse HEAD` y los parámetros NHL resueltos, y **aserta** que coinciden con los de la sección 6 (`avg_total 6.1`, `tilt_scale 0.9`, `max_score 15`, `home_scoring_bonus 0.10`, `elo_k 10`, `elo_home_adv 15`) y que `rest_elo_per_day` vale 0 o no existe. Si algo difiere, se documenta en una enmienda **antes** del modo completo.
+- El modo completo aborta si el HEAD difiere del registrado en `--pre-json` o si hay cambios sin commitear en `src/`, `configs/` o `scripts/research/`.
+
+### (c) Las 19 fechas fallidas del backfill
+
+**Qué pasa si no se tratan.** En una fecha fallida, las filas del histórico no tienen porteros. El adaptador (sección 5) usaría entonces, sin avisar, el último titular observado, y habría dos efectos:
+
+- **M1** mezclaría en esos partidos el titular real con el proxy;
+- **M2** tendría un proxy desfasado en el **partido siguiente** de cada equipo afectado, que sería el titular de dos partidos atrás. Es el caso que la sección 13.3 identifica como capaz de invertir el sentido del ajuste en un back-to-back.
+
+La sección 3.3 prohíbe incluirlos en silencio.
+
+**Decisión: se excluyen de la evaluación, en los dos brazos, en M1 y en M2 por igual.** El conjunto excluido E es:
+
+1. **E₁:** toda fila del histórico cuya `date` (día UTC) esté en la lista `failed` del fichero `data/historical/.goalies_nhl_backfill_failed_dates.json`;
+2. **E₂:** para cada equipo con un partido en E₁, su **siguiente** partido en el histórico (fecha estrictamente posterior, en el orden del motor), si su partido inmediatamente anterior es el de E₁.
+
+Reglas de la exclusión:
+
+- **Se excluye de la pérdida, no del estado.** Las filas de E siguen pasando por el motor y actualizan el Elo y las tasas con sus marcadores, igual que hoy, para que la base siga siendo bit a bit la del motor y las paridades de la sección 6 no cambien. Solo se retiran de:
+  - el log loss de entrenamiento con el que se estiman β y a;
+  - los seis criterios;
+  - el ECE;
+  - la definición de «afectado»;
+  - el bootstrap;
+  - todos los informes de la sección 11.
+- **Mismo conjunto en entrenamiento y test.** La estimación de k (sección 4) usa las apariciones que existan: las de las fechas fallidas no existen y no se inventan.
+- **Limitación declarada.** Las calificaciones q posteriores no incluyen las apariciones de esas fechas. Casi todas son de pretemporada, así que el efecto sobre q es marginal. Además afecta igual a M1 y a M2, y no afecta a la base.
+
+**Por qué se decide así, sin mirar resultados:**
+
+- E se define **solo** por fallos técnicos de la API durante la descarga. La lista de fechas es fija y queda con su hash en `--pre` antes de medir. No depende de marcadores, porteros ni probabilidades.
+- **Incluir esas filas con f = 1** diluiría T hacia la base en unas filas escogidas por un fallo técnico. **Incluirlas con el proxy de respaldo** es la mezcla silenciosa que se prohíbe. Excluirlas es la única opción que no da a ninguno de los dos brazos una identidad distinta de la pre-registrada.
+- El tamaño es pequeño: 19 fechas, 18 de pretemporada. La dilución de potencia es despreciable frente a los ~16.950 partidos de test (sección 10).
+
+**Efecto en las particiones.** `--pre` lista **las 19 fechas por nombre**, con estos datos de cada una:
+
+- `kind`, `http_status` y `season_phase` del fichero;
+- la partición a la que caen (entrenamiento previo a A, test A, test B, test C o fuera de todas);
+- las filas de E₁ y E₂ por partición, por `gameType` y por lado.
+
+Las ubicaciones conocidas al redactar esta enmienda:
+
+| Fecha | Fase según el backfill | Partición |
+|---|---|---|
+| 2017-09-19 y 2017-09-20 | pretemporada | **test A** (2014-10-01 – 2018-09-30); entrenamiento de B y C |
+| 2022-09-28 | pretemporada | **test B** (2018-10-01 – 2022-09-30); entrenamiento de C |
+| 2024-10-07 | temporada regular | **test C** (2022-10-01 – 2026-06-30) |
+
+Una fecha anterior al 2014-10-01 solo afecta a entrenamientos. Una posterior al 2026-06-30 no afecta a ningún test. En los dos casos se excluye igual de la pérdida de entrenamiento correspondiente. `--pre` recalcula los recuentos de la sección 10 **con y sin E**. Los recuentos sin E deben reproducir los de la sección 10 (o documentar la diferencia, como en la Enmienda 1 del descanso). Con E, son los que valen para el modo completo.
+
+**La fecha de temporada regular (2024-10-07) choca con la sección 3.3,** que exige que todo partido NHL contra NHL de temporada regular o playoffs de test quede emparejado y que los que falten se corrijan **antes** del modo completo. Se resuelve así:
+
+1. `season_phase` es una estimación por fecha del backfill (`_guess_season_phase`), no el `gameType`. `--pre` confirma con el `gameType` de la API, o lo declara desconocido, si hay filas NHL contra NHL de tipo 2 o 3 en esa fecha.
+2. **Antes del `--pre` definitivo** se reintentan las 19 fechas con el mecanismo de reintento del backfill (`sqp.pipeline.goalie_backfill`), dentro de la autorización del backfill ya dada. Una fecha que se recupere sale de E, y el hash se toma después del reintento.
+3. Si 2024-10-07 sigue fallando y contiene partidos de tipo 2 o 3, excluirlos en lugar de corregirlos relaja la sección 3.3. Queda como **decisión del operador**. La propuesta por defecto es excluirlos (con la regla E, listados por nombre), porque no hay otra fuente con marca de titular (ESPN no la tiene, sección 3.2) y deducirlo por TOI está descartado.
+
+Las filas sin emparejar **por otras causas** (el 0,9 % restante: exhibiciones contra clubes que no son de la NHL, enfrentamientos duplicados en fecha UTC de la Enmienda 1(a)) no entran en E. Siguen las reglas de la sección 3.3 y de la Enmienda 1(a) y se listan en `--pre`. Si alguna es NHL contra NHL de tipo 2 o 3 en una partición de test, es un defecto de datos según la sección 3.3 y se trata antes del modo completo, con el mismo criterio del punto 3.
+
+### (d) `--pre` con `--pre-json` y nada en medio
+
+Lección del descanso NHL: `results_nhl.csv` pasó de 32.888 a 32.902 filas entre el pre-registro y la ejecución por la ingesta diaria de pretemporada, y hubo que documentarlo en una enmienda (Enmienda 1 de `2026-09-27-preregistro-descanso-nhl.md`). Aquí hay más ficheros vivos, así que se fija:
+
+- `--pre` registra en `--pre-json` el SHA-256 de:
+  - `results_nhl.csv`;
+  - `data/historical/goalies_nhl.csv`;
+  - `.goalies_nhl_backfill_failed_dates.json`;
+  - `.goalies_nhl_backfill_checkpoint.json`;
+
+  y además el HEAD (punto b) y la lista E.
+- El modo completo exige `--pre-json` y **aborta** si cualquiera de esos hashes, el HEAD o la lista E difieren. Es la causa «ficheros distintos de los del hash de `--pre`» de la regla E10.
+- **El modo completo se ejecuta seguido del `--pre`, sin ninguna liquidación en medio** (`SETTLE_ALL`, el run diario de las 12:00, las tareas `SQP_*` en S4U), sin reintento del backfill y sin captura de porteros que escriba en esos ficheros. Se elige una ventana lejos de las 12:00 de Uruguay.
+- Si el modo completo aborta por un hash, no se ha medido nada: se repite `--pre` (que no lee marcadores), se documenta cualquier diferencia de recuentos en una enmienda si cambia algo dentro de las particiones, y se ejecuta el modo completo inmediatamente después.
+
+### (e) Decisiones del operador
+
+1. **Solo si 2024-10-07 sigue fallando tras el reintento y contiene partidos NHL contra NHL de tipo 2 o 3:** aceptar excluirlos con la regla E en lugar de corregirlos, lo que relaja la sección 3.3. Por defecto se propone excluirlos. Lo mismo vale para cualquier otra fila de tipo 2 o 3 de test que quede sin emparejar.
+2. Todo lo demás de esta enmienda se decide aquí, por las razones dadas, sin mirar resultados: la exposición, la base, la regla E para las fechas de pretemporada y la regla de `--pre-json`.
