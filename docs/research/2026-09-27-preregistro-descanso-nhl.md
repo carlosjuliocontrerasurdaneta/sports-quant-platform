@@ -605,3 +605,19 @@ Relacionado: [[2026-09-26-preregistro-descanso-basket]],
 3. **Activación, si se acepta:** con nota previa si llega antes del inicio de la temporada (~7 oct). Si llega con la temporada empezada, se espera a una ventana limpia.
 4. **Partidos del mismo día UTC en producción:** la misma regla que el motor, para que lo servido coincida con lo medido.
 Criterio 1 solo sobre los afectados, como en los precedentes.
+
+---
+
+## Enmienda 1 (2026-09-29, antes del modo completo): recuentos y hash actualizados
+
+Revisión de Fable de la implementación: APTO para fusionar (`d349be7`), con el modo completo condicionado a documentar esta diferencia **antes** de medir. `results_nhl.csv` ha crecido por la ingesta diaria de pretemporada del 2026-09-26/27. El fichero pasa de 32.888 a **32.902 filas** y el SHA-256 queda en `6163a66faed02c6edbd51399ea2d2d9223822d458f4005c062577525302f7a81`.
+
+| Recuento | Antes | Ahora |
+|---|---:|---:|
+| Evaluados tras el warmup | 32.828 | **32.842** |
+| Afectados | 15.982 | **15.988** (f = 0,4875) |
+| Pares equipo-fecha dobles | 740 | **744** |
+
+Las filas idénticas extra siguen en 22. Las particiones A/B/C coinciden **exactamente** con la sección 9: tests de 5.780 / 5.192 / 5.978 partidos, afectados 2.824 / 2.376 / 2.900 y entrenamientos 15.827 / 21.607 / 26.799. Las filas nuevas son de septiembre de 2026, fuera de todos los entrenamientos y tests. El modo completo se ejecuta seguido de este `--pre`, con `--pre-json`, sin ninguna liquidación en medio.
+
+KI-070 (`RestModel` con la fecha estrictamente anterior) se fusionó en el mismo commit y es inerte en el motor bit a bit, así que no altera nada de esta medición.
