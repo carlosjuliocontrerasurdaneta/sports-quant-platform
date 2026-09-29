@@ -760,3 +760,7 @@ Lección del descanso NHL: `results_nhl.csv` pasó de 32.888 a 32.902 filas entr
 
 1. **Solo si 2024-10-07 sigue fallando tras el reintento y contiene partidos NHL contra NHL de tipo 2 o 3:** aceptar excluirlos con la regla E en lugar de corregirlos, lo que relaja la sección 3.3. Por defecto se propone excluirlos. Lo mismo vale para cualquier otra fila de tipo 2 o 3 de test que quede sin emparejar.
 2. Todo lo demás de esta enmienda se decide aquí, por las razones dadas, sin mirar resultados: la exposición, la base, la regla E para las fechas de pretemporada y la regla de `--pre-json`.
+
+**Decisiones del operador (2026-09-29):**
+- (e) de la Enmienda 2: si 2024-10-07 sigue fallando tras el reintento y tiene partidos de temporada regular, **se excluyen** de los dos brazos y se listan (opción propuesta por Fable), sin mirar resultados.
+- **Orden:** antes del portero se mide y se ajusta `tilt_scale` de la NHL, con pre-registro propio, porque el modelo base es sobreconfiado (log loss 0,6928 frente a ≈ 0,6887 de un modelo constante). **El portero se medirá sobre la base que resulte de ese test.** Si se acepta un `tilt_scale` nuevo, este pre-registro necesitará una enmienda de base antes de su `--pre`.

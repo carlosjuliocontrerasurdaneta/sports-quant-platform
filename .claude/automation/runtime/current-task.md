@@ -317,3 +317,4 @@ FABLE-REVIEW: 2026-09-29 | veredicto: APTO (fusión; modo completo condicionado 
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (enmienda de recuentos prescrita por Fable antes del modo completo) | rutas: docs/research/2026-09-27-preregistro-descanso-nhl.md
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (RECHAZA verificado; efecto real bajo el margen, concentrado en back-to-back; rest_elo_per_day sigue en 0) | rutas: docs/research/2026-09-29-resultado-descanso-nhl.md
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (enmienda 2 redactada por Fable antes de implementar la medición) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
+FABLE-REVIEW: 2026-09-29 | veredicto: APTO (decisiones del operador sobre opciones propuestas por Fable en la enmienda 2) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
