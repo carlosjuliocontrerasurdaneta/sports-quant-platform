@@ -319,3 +319,4 @@ FABLE-REVIEW: 2026-09-29 | veredicto: APTO (RECHAZA verificado; efecto real bajo
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (enmienda 2 redactada por Fable antes de implementar la medición) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
 FABLE-REVIEW: 2026-09-29 | veredicto: APTO (decisiones del operador sobre opciones propuestas por Fable en la enmienda 2) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
 FABLE-REVIEW: 2026-09-30 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-09-29-preregistro-tilt-nhl.md
+FABLE-REVIEW: 2026-09-30 | veredicto: APTO CON CAMBIOS aplicados (SystemExit de la paridad del informe 4 capturado con test; explicación del EE §9.2 corregida) | rutas: scripts/research/measure_tilt_nhl.py, tests/test_measure_tilt_nhl.py
