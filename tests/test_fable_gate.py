@@ -70,7 +70,9 @@ def _run_raw(root: Path, stdin_text: str, env_extra: dict | None = None
         env.update(env_extra)
     return subprocess.run(
         [sys.executable, str(HOOK)], cwd=root, input=stdin_text, text=True,
-        capture_output=True, env=env, timeout=30,
+        # Guarda contra cuelgues, no rendimiento (KI-062): 30 s era poco con
+        # la maquina cargada.
+        capture_output=True, env=env, timeout=120,
     )
 
 

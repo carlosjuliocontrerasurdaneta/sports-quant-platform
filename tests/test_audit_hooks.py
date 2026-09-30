@@ -22,7 +22,9 @@ def _run(root, script, payload=None):
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(root)}
     return subprocess.run([_bash(), str(root / script)], cwd=root,
                           input=json.dumps(payload or {}), text=True,
-                          capture_output=True, env=env, timeout=30)
+                          # Guarda contra cuelgues, no rendimiento: con 30 s fallaba
+                          # de forma intermitente con la maquina cargada (KI-062).
+                          capture_output=True, env=env, timeout=120)
 
 
 @pytest.mark.parametrize("assignment", [
