@@ -671,3 +671,13 @@ Relacionado: [[2026-09-27-preregistro-descanso-nhl]],
 1. **Criterio 3:** solo el signo, ll(T) < ll(constante) en el combinado y en cada partición. El margen de 0,002 se exige frente a la base (criterio 1).
 2. **Criterio 7:** cuenta como criterio de aceptación (t2 < 0,9 con el nivel controlado).
 3. **Activación, si se acepta:** antes del ~7 de octubre, con nota previa (addenda en el gate K=52 y en «el modelo manda»). Si llega con la temporada empezada, se espera a una ventana limpia.
+
+---
+
+## Enmienda 1 (2026-09-30, antes del modo completo): recuentos y procedencia
+
+Script `scripts/research/measure_tilt_nhl.py` commiteado en `8297295`, tras dos rondas de revisión de Fable (APTO CON CAMBIOS, aplicados).
+- `results_nhl.csv` ha crecido por la ingesta diaria de pretemporada: 32.902 → **32.907 filas**; evaluados tras el warmup, 32.847. El SHA-256 del `--pre` de hoy es `6fe0acafb5448e1ff6a620f612b8e7907eb2789f60b918aa719cf51978e8550a`.
+- Las particiones A/B/C coinciden **exactamente** con la sección 6: tests de 5.780 / 5.192 / 5.978 partidos y entrenamientos de 15.827 / 21.607 / 26.799. Las filas nuevas son de septiembre de 2026, fuera de todo entrenamiento y test.
+- El EE de la tabla §9.2 que calcula el script (`sqrt(mean Var(D_i)/n)`) difiere hasta un ~7-8 % del documento, que sumaba también la varianza entre partidos de la ganancia. Es informativo y no decide.
+- El modo completo se ejecuta justo después de un `--pre` regenerado con el HEAD que incluye esta enmienda, con `--pre-json`, con el árbol limpio y sin ninguna tarea programada en medio.
