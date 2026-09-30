@@ -20,6 +20,12 @@ Regla de activación: una señal solo se enciende si **bate al baseline fuera de
 - Pre-registro con revisión Fable, ejecución única: **ACEPTA 5/5**. Δ log loss en afectados −0,00224 (IC95 [−0,00371; −0,00076]); `c` estable 0,81 / 0,88 / 0,80 en las tres particiones.
 - Advertencias de Fable: el criterio 1 pasa por poco; parte del efecto es sesgo de ventaja de campo (estimado junto al intercepto, `c` ≈ 0,5-0,6); 2025-26 salió ligeramente positiva. Pendiente: recalibrar `nba_h2h/nba_spreads` en staging y re-medir `margin_sigma`. `docs/research/2026-09-26-resultado-descanso-basket.md`
 
+## ✅ ACTIVA: tilt_scale NHL 0,439 (2026-09-30)
+
+- El modelo NHL base era sobreconfiado (log loss peor que un modelo constante; pendiente de calibración 0,45). `nhl.tilt_scale: 0.439` (antes, 0,9 de la familia).
+- Pre-registro con revisión Fable, ejecución única: **ACEPTA 7/7**. Δ log loss −0,0197 (IC95 [−0,0228; −0,0166]), unas 10 veces el margen; bate a la constante; ECE 0,072 → 0,010; las 12 temporadas mejoran; captura el 99,7 % de Platt.
+- Vigilar: sesgo de ≈ −1 pp contra el local y puck line con línea de mercado (+0,0037, n = 258). `docs/research/2026-09-30-resultado-tilt-nhl.md`
+
 ## ❌ RECHAZADAS (infra queda dormida, no-op)
 
 | Señal | Veredicto | Evidencia |

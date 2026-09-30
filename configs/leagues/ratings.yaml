@@ -42,6 +42,12 @@ leagues:
     elo_home_adv: 150.0
   nhl:
     elo_home_adv: 15.0
+    # tilt ACTIVADO 2026-09-30 tras pre-registro con revision Fable (ACEPTA 7/7;
+    # log loss -0,0197 frente a 0,9, IC95 [-0,0228; -0,0166]; bate al modelo
+    # constante; pendiente de calibracion 0,45 -> 0,97). Valor = t de la
+    # particion C redondeado (0,438655 -> 0,439). Antes: 0,9 de la familia
+    # hockey. Ver docs/research/2026-09-30-resultado-tilt-nhl.md.
+    tilt_scale: 0.439
   seriea:
     dc_rho: -0.2
     elo_home_adv: 15.0

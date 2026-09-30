@@ -459,3 +459,9 @@ Format:
 - Reason: pre-registro (Fable), ejecución única. Falla C1 (Δ afectados −0,00130 frente a −0,002; probabilidad de superar el margen 0,10) y C3 (ECE +0,00012). Cumple C2 y C4-C7: c ≈ 6,4-7,2 Elo/día y c_conj casi igual, así que el efecto es real pero está bajo el margen y concentrado en el back-to-back.
 - Alternatives: un indicador de back-to-back como forma nueva pre-registrada, solo después del portero y anidado sobre él.
 - Consequences: el portero se mide sobre la configuración actual, con la exposición de los informes 5 y 11 declarada en su enmienda. Defecto secundario del informe `linea_capturada` (arrays de forma (1,)) pendiente de corregir antes de reutilizar el script para MLB. El moneyline NHL sin calibrar tiene log loss 0,69393 > ln 2: merece su propio diagnóstico.
+
+- Date: 2026-09-30
+- Decision: **tilt_scale NHL ACTIVADO a 0,439** (antes 0,9 de la familia hockey).
+- Reason: pre-registro (Fable) y ejecución única: ACEPTA 7/7. Δ log loss −0,0197 frente a la base (IC95 [−0,0228; −0,0166]); bate al modelo constante (la base era peor que la constante); ECE 0,072 → 0,010; pendiente 0,45 → 0,97; t estable (0,437/0,428/0,439); la mejora es de dispersión, no de nivel (T2 ≈ T).
+- Alternatives: seguir con 0,9 (sobreconfiado); Platt (T ya captura el 99,7 %).
+- Consequences: addenda previos en el gate K=52 y en «el modelo manda». Sin recalibración (no hay calibradores NHL). El portero necesita la Enmienda 3 de base (0,439) antes de su `--pre`, y la batería repetir su base NHL. Vigilar el sesgo de −1 pp contra el local y la puck line frente a la línea de mercado.
