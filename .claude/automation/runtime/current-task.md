@@ -323,3 +323,4 @@ FABLE-REVIEW: 2026-09-30 | veredicto: APTO CON CAMBIOS aplicados (SystemExit de 
 FABLE-REVIEW: 2026-09-30 | veredicto: APTO (enmienda de recuentos y procedencia prescrita por Fable antes del modo completo) | rutas: docs/research/2026-09-29-preregistro-tilt-nhl.md
 FABLE-REVIEW: 2026-09-30 | veredicto: APTO CON CONDICIONES (activar tilt_scale=0.439 solo nhl tras addenda previos; sin recalibración; enmiendas de base del portero y la batería; test de activación) | rutas: configs/leagues/ratings.yaml, docs/research/2026-09-30-resultado-tilt-nhl.md
 FABLE-REVIEW: 2026-09-30 | veredicto: APTO (addenda de régimen prescritos por Fable en el dictamen de activación del tilt NHL) | rutas: docs/research/2026-09-25-repreregistro-gate-k52.md, docs/research/2026-08-26-preregistro-el-modelo-manda.md
+FABLE-REVIEW: 2026-09-30 | veredicto: APTO (enmienda 3 redactada por Fable tras activar tilt 0,439) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md

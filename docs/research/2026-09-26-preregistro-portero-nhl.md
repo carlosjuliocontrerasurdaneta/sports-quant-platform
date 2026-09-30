@@ -764,3 +764,185 @@ Lección del descanso NHL: `results_nhl.csv` pasó de 32.888 a 32.902 filas entr
 **Decisiones del operador (2026-09-29):**
 - (e) de la Enmienda 2: si 2024-10-07 sigue fallando tras el reintento y tiene partidos de temporada regular, **se excluyen** de los dos brazos y se listan (opción propuesta por Fable), sin mirar resultados.
 - **Orden:** antes del portero se mide y se ajusta `tilt_scale` de la NHL, con pre-registro propio, porque el modelo base es sobreconfiado (log loss 0,6928 frente a ≈ 0,6887 de un modelo constante). **El portero se medirá sobre la base que resulte de ese test.** Si se acepta un `tilt_scale` nuevo, este pre-registro necesitará una enmienda de base antes de su `--pre`.
+
+---
+
+## Enmienda 3 (2026-09-30, antes de implementar la medición y de su `--pre`; redactada por Fable tras activar `tilt_scale` 0,439)
+
+Se escribe después del resultado del tilt NHL (`2026-09-30-resultado-tilt-nhl.md`, ACEPTA 7/7) y de su activación (commit `c390c2f`: `tilt_scale: 0.439` en la entrada `nhl:` de `configs/leagues/ratings.yaml`; antes valía 0,9, el de la familia hockey). Cumple la decisión del operador del 2026-09-29 que cierra la Enmienda 2: el portero se mide sobre la base que resulte del test del tilt.
+
+**Qué no se ha hecho.** No se ha calculado ninguna relación entre porteros y resultados. Tampoco se ha leído `goalies_nhl.csv`. Lo único calculado para esta enmienda es la distribución de las probabilidades de la base y su sensibilidad a la lambda, sin leer `y` (punto d).
+
+**Qué no cambia:**
+
+- los criterios de la sección 8;
+- las particiones, la métrica q, el tope 0,35, el proxy, el optimizador y el bootstrap;
+- la regla E y el `--pre-json` de la Enmienda 2;
+- la Enmienda 1.
+
+**Dónde manda.** Sobre la sección 6, la sección 10 y la Enmienda 2(b), en lo que fija.
+
+### (a) Exposición declarada
+
+El resultado del tilt ha dado a quien diseña esta medición datos que no tenía el 2026-09-26:
+
+- la AUC de la base es 0,6006, y el tilt no la cambia;
+- con 0,439 la pendiente de calibración pasa a 0,97;
+- la base nueva infraestima al local en ≈ 1 pp (sesgo −0,0101 en el combinado);
+- en la puck line, con la línea del mercado, Δ = +0,0037 (n = 258).
+
+Ninguno de esos datos contiene porteros. **No invalidan el test**, por tres razones:
+
+- el diseño (brazos, proxy, q, f, tope, control y criterios) es del 2026-09-26;
+- el cambio de base lo impuso una orden del operador anterior a cualquier medición del portero;
+- el valor 0,439 sale del pre-registro propio del tilt (`t` de la partición C, redondeado) y no se eligió para el portero.
+
+El sesgo de nivel sí importa para leer el criterio 5; se trata en el punto (e).
+
+### (b) La base nueva
+
+- **Base:** la configuración de producción NHL del commit vigente al ejecutar, que desde `c390c2f` incluye el tilt nuevo. Se obtiene con `_league_meta("nhl").get("league_params")` + `get_adapter("nhl", "hockey", params)`, igual que en la Enmienda 2(b).
+- **Aserción, que sustituye a la de la Enmienda 2(b).** `--pre` y el modo completo registran los parámetros resueltos y **abortan** si no coinciden exactamente con:
+  - `avg_total 6.1`, **`tilt_scale 0.439`**, `max_score 15`, `home_scoring_bonus 0.10`, `elo_k 10` y `elo_home_adv 15.0`;
+  - `rest_elo_per_day` igual a 0 o ausente;
+  - `goalie_beta` igual a 0 o ausente en la configuración (el script pasa su propio β al motor en la paridad, sección 6).
+
+  **Un `tilt_scale` de 0,9 aborta.** Eso pasaría, por ejemplo, con un checkout anterior a `c390c2f` o con un adaptador construido sin `league_params`. Cualquier otro valor distinto de 0,439 también aborta. Comprobado hoy en `c390c2f`: los parámetros resueltos son exactamente esos, con `rest_elo_per_day` y `goalie_beta` ausentes.
+- **Trampas que el script debe evitar:**
+  - `FAMILY_PARAMS["hockey"]` sigue en 0,9, así que `get_adapter("nhl", "hockey")` sin `league_params` devuelve la base **vieja**;
+  - `measure_tilt_nhl.load_league` aborta por diseño (su invariante es 0,9) y no se reutiliza;
+  - las funciones vectorizadas de `measure_rest_nhl` (`_lambda_split`, `home_win_vec`, `cover_vec`, `over_vec`) reciben el tilt como argumento. Se les pasa el valor **resuelto**, nunca un literal.
+- **Qué cambia con el tilt y qué no.** El tilt no altera `diff` ni `avg` del walk-forward (el script del tilt lo asertó con `assert_diff_avg_tilt_invariant`), ni el calendario, ni las apariciones de los porteros, ni, por tanto, `k` ni `q`. Solo cambia el reparto de las lambdas base sobre el que actúa f. Los recuentos de la sección 10 y la regla E no cambian. Se mantiene la nota de recuentos del tilt: `n_train` del modo completo es 419 filas menor que la del `--pre` por los empates anteriores a 2005.
+- **Paridad (sección 6).** Las dos aserciones se ejecutan contra el motor con los parámetros resueltos (0,439):
+  1. base contra `binary_probs` y `markets`;
+  2. brazo T, con M1 y con M2, contra el motor con `goalie_beta = β_C` y `goalie_prior_shots = k_C`.
+
+  Una reconstrucción con 0,9 rompería ya la paridad 1, así que no hace falta ninguna guarda adicional.
+- **Brazos.** T y C se construyen sobre las lambdas base con 0,439. β, a y k se estiman por primera vez en esta base, porque no se habían estimado nunca. El valor de activación de la sección 13.2 (`β` de la partición C de M2) se refiere a esta base.
+
+### (c) Qué se ha calculado, y cómo
+
+Se usó un script de sesión, no versionado, sobre `results_nhl.csv` (32.907 filas). Toma `diff`/`avg` de `measure_tilt_nhl.diff_avg_for_pre`, que no devuelve `y`: la única lectura de marcadores es la de `adapter.observe`, como en producción. Sobre esos valores aplica el tilt de forma analítica con las funciones validadas de `measure_rest_nhl`. Se comprobó una igualdad a 1e-12 frente a `home_win_vec`. No se calcula ninguna pérdida.
+
+**Lo que `--pre` debe reproducir:**
+
+- la tabla de dispersión y las sensibilidades del punto (d), que son deterministas;
+- los escenarios, que dependen del sorteo (semilla 42): se repiten con la misma receta y la tolerancia es de redondeo.
+
+### (d) Potencia de la sección 10, recalculada sobre la base nueva (sin resultados)
+
+**Dispersión de p (moneyline, test de cada partición):**
+
+| tilt | A: media / d.t. | B: media / d.t. | C: media / d.t. | Combinado: media / d.t. | Combinado p5–p95 |
+|---:|---|---|---|---|---|
+| 0,9 (base anterior) | 0,547 / 0,158 | 0,545 / 0,174 | 0,545 / 0,191 | 0,546 / 0,175 | 0,246–0,823 |
+| **0,439 (base nueva)** | 0,532 / 0,081 | 0,532 / 0,090 | 0,532 / 0,101 | 0,532 / 0,091 | 0,378–0,679 |
+
+La fila de 0,9 reproduce la tabla 9.1 del pre-registro del tilt, lo que sirve de control.
+
+**Sensibilidad al factor del portero.** El factor multiplica la lambda **del rival** después del reparto del tilt, igual que el abridor MLB. Se mide con la derivada de P(local) respecto al logaritmo de cada lambda, media del test combinado:
+
+| | tilt 0,9 | tilt 0,439 |
+|---|---:|---:|
+| λ_local / λ_visitante medias | 3,03 / 2,72 | 2,97 / 2,77 |
+| ∂P/∂(−log λ_visitante), es decir, el portero local | 0,405 | **0,445** |
+| ∂P/∂(log λ_local), es decir, el portero visitante | 0,425 | **0,461** |
+| −5 % en λ_visitante → Δ P(local) | +2,05 pp | **+2,25 pp** |
+
+**Corrección al resultado del tilt.** Su punto 6 del dictamen anticipaba que «con un tilt más bajo, la misma variación de λ mueve menos `p`». **Para el factor del portero es al revés: la mueve un ≈ 9 % más.**
+
+- El tilt solo reduce cuánto se traduce la diferencia de Elo en reparto de goles.
+- No amortigua un factor que multiplica directamente una lambda.
+- Con lambdas más equilibradas y p más cerca de 0,5, la derivada de Poisson es mayor.
+
+Las cifras de la sección 10 (±2,4 pp por ±5 %) usaban unas λ típicas de 3,15 / 3,05. La media sobre la distribución real es algo menor, y queda en la tabla.
+
+**Efecto necesario para el criterio 1.** La ganancia por partido de corregir un error δ es ≈ δ²/(2p(1−p)). Con la distribución real de p y de las sensibilidades, llegar a 0,002 exige una diferencia RMS de log-lambda de:
+
+- ≈ 0,0685 con 0,439;
+- ≈ 0,0710 con 0,9.
+
+Con β = 1 y 1 − L ≈ 0,0925 (el punto medio del 0,09–0,095 de la sección 10), eso es una diferencia RMS de **información nueva** en q_home − q_away de **≈ 0,0063** (antes, ≈ 0,0066). **La cifra de ≈ 0,006 de la sección 10 se mantiene.**
+
+**Escenarios exactos.** Supuestos:
+
+- q_home y q_away de información nueva, independientes, N(0, σ) e independientes de p;
+- β = 1, tope 0,35 y 1 − L = 0,0925;
+- la verdad es la base con el factor aplicado;
+- n = 16.950 del test combinado, semilla 42.
+
+La ganancia es E[KL(p_verdad ‖ p_base)]. El EE es por partido, sin agrupar; en los precedentes, el bootstrap por días lo multiplicó por ≈ 1,05–1,1.
+
+| σ de q (por portero) | RMS de Δq | 0,9: δ_RMS / ganancia / EE | **0,439: δ_RMS / ganancia / EE** |
+|---:|---:|---|---|
+| 0,002 | 0,0028 | 1,29 pp / 0,00038 / 0,00021 | 1,38 pp / 0,00040 / 0,00022 |
+| 0,003 | 0,0042 | 1,93 pp / 0,00084 / 0,00031 | 2,07 pp / 0,00089 / 0,00032 |
+| 0,004 | 0,0057 | 2,58 pp / 0,00151 / 0,00042 | 2,78 pp / 0,00160 / 0,00043 |
+| 0,005 | 0,0071 | 3,25 pp / 0,00238 / 0,00053 | 3,47 pp / 0,00250 / 0,00054 |
+| 0,006 | 0,0085 | 3,88 pp / 0,00341 / 0,00063 | 4,11 pp / 0,00351 / 0,00064 |
+
+**Lectura:**
+
+- **Criterio 1.** Con la base nueva, la ganancia esperada llega a 0,002 con σ ≈ 0,0044 (RMS de Δq ≈ 0,0063, δ_RMS ≈ 3,1 pp). En ese punto el EE es ≈ 0,0005: el margen queda a ≈ 4 EE. **La potencia es la misma que con 0,9, y ligeramente mejor.** El tilt no ha quitado potencia al portero.
+- **Criterio 2 (Δ < 0 en cada partición).** Con σ = 0,004, la ganancia esperada por partición es 0,0016 / 0,0016 / 0,0017, con EE 0,0007 / 0,0008 / 0,0007, es decir, ≈ 2,1 EE. Con σ = 0,005 es 0,0025 frente a 0,0009–0,0010 (≈ 2,6 EE). Cerca del umbral del criterio 1, cada partición puede salir con Δ ≥ 0 con una probabilidad del orden del 1–2 % (aproximación normal, sin agrupar). Es la misma fragilidad que con 0,9.
+- **Totales (criterio 6a).** El tilt no mueve los totales (máx. |Δ P(over)| ≤ 2,4·10⁻⁵, informe 9 del tilt). El canal de totales del factor (q_home + q_away) tiene, por tanto, la misma potencia que con 0,9.
+- **Puck line (criterio 6b).** No se recalcula aquí. `--pre` informa su sensibilidad con la misma receta, sin resultados.
+- Son escenarios bajo un modelo supuesto, no predicciones. Suponen que se conoce q exactamente, con el β correcto. El error de estimación de β y el ruido de identidad del proxy (Enmienda 2(a): con r = 1 el proxy acierta como mucho ≈ 39 %) reducen la ganancia alcanzable, sobre todo en M2.
+
+**Lo que exige resultados, o datos de porteros, y no se calcula aquí:**
+
+- **La σ real de «información nueva» (la parte de q que el Elo no captura ya) no se puede obtener sin resultados.** Es justo lo que mide el test.
+- `--pre` informa sin resultados el RMS de (q_home − q_away)/(1 − L̄) por partición, para M1 y M2 (sección 10). Ese RMS es una **cota superior** de la información nueva, porque incluye la parte que el Elo ya tiene. Comparado con ≈ 0,068 (log-lambda) o ≈ 0,0063 (q con β = 1), dice antes de medir qué β haría falta.
+- **Añadido a `--pre`, sin resultados:** la correlación entre (q_home − q_away)/(1 − L̄) y `diff` Elo en el test de cada partición, para M1 y M2. Una correlación alta indica que buena parte de ese RMS ya está en el Elo. 1 − L̄ se calcula por temporada con SV/SA de las apariciones; no se lee `goals_against`.
+
+### (e) Implicaciones: el portero tiene que aportar discriminación
+
+La base nueva ya está calibrada en forma: pendiente 0,97, y el tilt captura el 99,7 % de la ganancia de una recalibración de Platt. Eso cambia qué puede ganar T:
+
+1. **Se cierra el canal de recalibración.** Con la base de 0,9, un β podía ganar log loss sin información nueva. Bastaba con que q_home − q_away estuviera correlacionado con `diff` (buenos equipos con buenos porteros): el factor actuaba como un aplanamiento o una exageración parcial del Elo. Con 0,439 no hay pendiente que corregir. El criterio 4 (β > 0) ya excluía el signo del aplanamiento. Ahora, además, la base no deja ganancia de pendiente que capturar.
+2. **Queda un canal de nivel, y el criterio 5 es su guarda.** La base nueva infraestima al local en ≈ 1 pp. Como q_home − q_away tiene media positiva (los back-to-backs de la sección 6), un β > 0 puede recoger parte de ese nivel. Corregir 1 pp vale ≈ 0,0002 de log loss, una décima parte del margen, así que no puede sostener por sí solo el criterio 1. Sí puede estrechar el margen de T frente a C (criterio 5). No se cambia ningún criterio: C ya es la comparación que separa portero de nivel.
+3. **En consecuencia, un ACEPTA sobre esta base tiene que venir de discriminación**: información de ordenación que el Elo no tiene. Se añaden **informes secundarios informativos, que no deciden**:
+   - **11.11** AUC del moneyline de la base, de T y de C, con M1 y con M2, en el combinado y por partición. Se incluye el IC95 de la diferencia AUC(T) − AUC(base) con el mismo bootstrap por días de la sección 9. Referencia: la base tiene 0,6006 en el combinado (0,583 / 0,611 / 0,608 por partición). C no cambia la ordenación por construcción.
+   - **11.12** Sesgo (media de p − tasa observada del local) y pendiente de calibración de T y de C, por partición y en el combinado, con la receta del informe 5 del tilt. Amplía el informe 1, que solo pedía la base.
+   - **11.13** (en `--pre`, sin resultados) La correlación del punto (d).
+
+   **Lectura declarada ahora:** si T acepta con AUC(T) ≈ AUC(base) y la ganancia se explica por nivel o calibración, el informe del resultado lo dirá y no la atribuirá a información del portero. No es un criterio y no cambia el veredicto.
+
+### (f) Recordatorio de ejecución (concreta la Enmienda 2(d))
+
+- **Antes del modo completo se commitean:**
+  - la implementación con el valor por defecto sin efecto (sección 5: `goalie_beta = 0` da salida idéntica);
+  - sus tests;
+  - el script de medición.
+
+  Los tests del script usan `monkeypatch` de `_league_meta`, como los del tilt.
+- **`--pre` y el modo completo, seguidos**, con `--pre-json`. En el JSON de `--pre` se registran:
+  - el `git rev-parse HEAD`;
+  - el `git status --porcelain` de todo el repositorio, que tiene que salir **vacío** (árbol limpio, no solo `src/`, `configs/` y `scripts/research/`);
+  - los parámetros resueltos del punto (b);
+  - la lista E;
+  - el SHA-256 de:
+    - `results_nhl.csv`;
+    - `data/historical/goalies_nhl.csv`;
+    - `.goalies_nhl_backfill_failed_dates.json`;
+    - `.goalies_nhl_backfill_checkpoint.json`;
+    - `configs/leagues/ratings.yaml` (redundante con el HEAD, por trazabilidad);
+    - **los ficheros de cuotas de cierre NHL que lee el informe 9** (los que resuelva `roi_engine.load_closing_odds`).
+
+  El modo completo recalcula todo eso y **aborta** si algo difiere. Es la causa «ficheros distintos» de E10.
+- **Sin tareas programadas en medio.** Las tareas `SQP_*` escriben en ficheros de entrada:
+  - `SQP_Backfill_Cdev` ejecuta `backfill_results.py --days 14` con `nhl`, que escribe `results_nhl.csv`;
+  - `SQP_Capture_Close_Cdev` corre cada 30 min, escribe cuotas de cierre y ejecuta `capture_goalie_probables_nhl.py`;
+  - `SQP_Diario_Completo_Cdev` liquida y genera a las 12:00;
+  - también `SQP_Validate_OOS_Cdev`.
+
+  El modo completo del tilt tardó 2.392 s con un solo brazo. Este tiene M1 y M2 y probablemente tardará más, así que no cabe entre dos pases de `CAPTURE_CLOSE`. Para que ninguna tarea corra en medio hay que **suspenderlas durante la ventana** (decisión del operador, punto g). Se registran `LastRunTime` y `NextRunTime` de todas las `SQP_*` justo antes del `--pre` y justo después del modo completo, y se copian en el informe del resultado como evidencia.
+- **Si una tarea corre pese a todo:**
+  - si algún hash difiere, el modo completo aborta y no se ha medido nada: se repite `--pre` y se ejecuta el modo completo inmediatamente después (Enmienda 2(d));
+  - si los hashes coinciden, se documenta en el informe y no es motivo de re-ejecución.
+- Ventana lejos de las 12:00 de Uruguay. No se reintenta el backfill ni se ejecuta ninguna captura manual entre los dos modos.
+
+### (g) Decisiones del operador
+
+1. **Suspender las tareas `SQP_*` durante la ventana `--pre` → modo completo y reactivarlas al terminar.** Hace falta un proceso elevado (tareas S4U). Propuesta por defecto: suspender `SQP_Capture_Close_Cdev`, `SQP_Backfill_Cdev`, `SQP_Diario_Completo_Cdev` y `SQP_Validate_OOS_Cdev` en una ventana nocturna de Uruguay, con la reactivación verificada después. La alternativa es dejar correr `CAPTURE_CLOSE` y fiarse de los hashes. Es más frágil: basta con que una cuota de cierre NHL nueva cambie un fichero hasheado para que el modo completo aborte.
+2. Todo lo demás de esta enmienda se decide aquí, por las razones dadas y sin mirar resultados: la base y su aserción, la paridad, la potencia, las implicaciones, los informes 11.11 a 11.13 y el protocolo de ejecución.
