@@ -36,7 +36,11 @@ daily._finalize('nba', [{'event_id': sys.argv[2]}], [], mode='demo')
                                   env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                  for name in ("first", "second")]
     for proc in processes:
-        _, stderr = proc.communicate(timeout=30)
+        # Guarda contra cuelgues, no medida de rendimiento: el test comprueba
+        # que cada proceso publica en su propia raiz. Con 30 s fallaba de forma
+        # intermitente cuando la maquina estaba cargada, porque importar
+        # sqp.pipeline.daily en frio supera ese margen (KI-062, 2026-09-30).
+        _, stderr = proc.communicate(timeout=180)
         assert proc.returncode == 0, stderr.decode(errors="replace")
     for name in ("first", "second"):
         text = (tmp_path / name / "data/predictions/demo/predictions_nba.csv").read_text()

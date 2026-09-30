@@ -505,6 +505,7 @@ Format:
 - Status: CORREGIDO (2026-09-25).
 
 - Addendum (2026-09-26): mismo modo de fallo en `tests/test_audit_pipeline_isolation.py::test_concurrent_processes_publish_to_independent_roots` (timeout fijo de 30 s en subprocesos que importan `sqp.pipeline.daily`). Falló en el stop hook con varios subagentes ejecutando tests y scripts en paralelo; aislado pasa (2 passed, 36 s). No lo causaron los cambios del turno (solo documentación). Candidato a la misma corrección: timeout relativo o marca `slow`.
+- Addendum (2026-09-30): `test_concurrent_processes_publish_to_independent_roots` corregido: el timeout de 30 s (guarda contra cuelgues, no medida de rendimiento) pasa a 180 s. Había fallado en el stop hook en cada turno con subagentes en paralelo.
 - ID: KI-063
 - Severity: Media (P2)
 - Description: **OBS-001 de la verificación de KI-061. La histéresis se pierde mientras el registro de degradación siga ilegible.**
