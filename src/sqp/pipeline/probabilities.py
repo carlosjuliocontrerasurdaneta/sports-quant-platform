@@ -9,21 +9,18 @@ de decisión; ``daily`` los re-importa, así que los consumidores existentes
 from __future__ import annotations
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import median
 from typing import TYPE_CHECKING, Callable, Iterable
 from sqp.calibration.calibrator import calibrate_probability
 from sqp.domain.models import EventOdds
-from sqp.features.rest_form import (h2h_p_adjustment, home_away_form_p_adjustment,
+from sqp.features.rest_form import (StaleTeamIndexError, TeamHistoryIndex,
+                                    compute_pregame_features,
+                                    h2h_p_adjustment, home_away_form_p_adjustment,
                                     margin_p_adjustment, off_def_p_adjustment,
-                                    over_under_rate_p_adjustment,
+                                    over_rate_from_index, over_under_rate_p_adjustment,
                                     rest_form_p_adjustment, streak_p_adjustment,
-                                    team_avg_conceded, team_avg_margin,
-                                    team_avg_scored, team_avg_total,
-                                    team_h2h_form, team_over_rate,
-                                    team_recent_form, team_recent_form_away,
-                                    team_recent_form_home, team_rest_days,
-                                    team_streak, totals_tendency_p_adjustment)
+                                    totals_tendency_p_adjustment)
 from sqp.features.weather import weather_p_adjustment
 from sqp.logging_config import get_logger
 from sqp.markets.odds import is_usable_price
@@ -266,12 +263,31 @@ class AdjustmentContext:
     # Fecha del evento (YYYY-MM-DD). `None` conserva el comportamiento anterior
     # -- sin recorte-- para cualquier constructor que no la aporte.
     ref_date: str | None = None
+    # Indice por equipo de `results` (2026-09-30, optimizacion de coste: ver
+    # el comentario de `TeamHistoryIndex` en `features/rest_form.py`).
+    # `adjust_model_probability` lo reutiliza para el termino over/under-rate
+    # en vez de volver a filtrar `results` desde cero por cada seleccion de
+    # totals del mismo evento. Campo AL FINAL y con default `None`: ningun
+    # constructor posicional existente (no hay ninguno fuera de este modulo,
+    # ver `test_backtest_parity.py`) puede romperse, y un `ctx` construido a
+    # mano sin este campo (p.ej. en un test) sigue siendo valido -- se
+    # construye un indice transitorio bajo demanda, con el MISMO resultado.
+    #
+    # `compare=False, repr=False` (revision de Fable, 2026-09-30): es una
+    # optimizacion de coste, no un dato del dominio del evento. Sin esto, dos
+    # contextos con las 16 features IDENTICAS podian salir "!=" solo porque
+    # cada uno cargaba un `TeamHistoryIndex` distinto (dataclass sin `__eq__`
+    # de contenido para sus `_DateGroup`, que comparan por identidad) -- una
+    # trampa para cualquier test o cache que compare `AdjustmentContext` por
+    # igualdad. Con `compare=False` la igualdad depende solo de las features.
+    team_index: TeamHistoryIndex | None = field(default=None, compare=False, repr=False)
 
 
 def build_adjustment_context(home: str, away: str, ref_date: str,
                              results: list[dict], risk: RiskConfig,
                              normalize: Callable[[str], str] | None = None,
-                             weather: dict | None = None) -> AdjustmentContext:
+                             weather: dict | None = None,
+                             team_index: TeamHistoryIndex | None = None) -> AdjustmentContext:
     """Computa las features de la capa de ajustes (2026-08-23) para un evento.
 
     Punto unico de verdad para el run diario y para el backtest de ROI, por la
@@ -280,35 +296,49 @@ def build_adjustment_context(home: str, away: str, ref_date: str,
     distinta de la desplegada, en silencio (AUD-MED-006). ``weather`` es la
     observacion prepartido de ``get_event_weather``; el backtest pasa None
     porque no hay pronosticos historicos capturados (termino 0, documentado en
-    ``roi_engine``)."""
-    # `ref_date` va a TODAS, no solo a `team_rest_days`. Era la unica que lo
-    # recibia, y las otras diez se fiaban de que el llamador hubiera recortado
-    # (AUD-LOW-005).
+    ``roi_engine``).
+
+    Coste (2026-09-30, autorizado por el operador): hasta hoy este helper
+    llamaba a ~15 funciones de ``rest_form``, cada una filtrando ``results``
+    desde cero -- O(n) por llamada, O(n^2) en un recorrido walk-forward
+    (medido en la bateria de ajustes: ~24 ms/partido en NFL en la fila 250,
+    ~116 ms en la 1.750). ``compute_pregame_features`` agrupa ``results`` por
+    equipo en UNA sola pasada (``TeamHistoryIndex``, ``rest_form.py``) y
+    resuelve el corte temporal con ``bisect`` en vez de un filtro lineal;
+    misma seleccion de filas, mismo orden de suma, mismos redondeos --
+    equivalencia verificada en ``tests/test_rest_form_index_equivalence.py``.
+    ``team_index``: opcional, para un llamador que ya tenga uno construido
+    sobre este mismo ``results`` y quiera evitar reconstruirlo; por defecto
+    se construye aqui, con el mismo resultado en ambos casos.
+
+    Contrato duro sobre ``team_index`` (revision de Fable, 2026-09-30): si se
+    pasa, DEBE haberse construido con este MISMO ``results`` (la misma lista,
+    no una copia con el mismo contenido) y el mismo ``normalize`` -- un
+    indice de otro evento, otra liga o un ``results`` recortado de otra forma
+    devuelve silenciosamente features de OTRO historial. Se verifica aqui con
+    ``TeamHistoryIndex.matches_source`` (comprobacion barata: longitud +
+    identidad de objeto, no un hash de contenido) y se lanza
+    ``StaleTeamIndexError`` -- nunca un resultado silencioso -- si no
+    coincide."""
+    if team_index is not None and not team_index.matches_source(results, normalize):
+        raise StaleTeamIndexError(
+            "team_index pasado a build_adjustment_context no coincide con "
+            f"`results`/`normalize`: el indice tiene source_len="
+            f"{team_index.source_len}, source_id={team_index.source_id}, "
+            f"normalize_id={team_index.normalize_id}; se esperaba len="
+            f"{len(results)}, id={id(results)}, normalize_id="
+            f"{id(normalize) if normalize is not None else None}. "
+            "Reconstruyelo con TeamHistoryIndex.build(results, normalize) "
+            "para este evento, o no lo pases.")
+    idx = team_index if team_index is not None else TeamHistoryIndex.build(results, normalize)
+    feats = compute_pregame_features(
+        home, away, ref_date, results,
+        risk.recent_form_n, risk.h2h_n, risk.totals_tendency_n, risk.off_def_n,
+        risk.home_away_form_n, risk.margin_n, normalize, idx)
     return AdjustmentContext(
-        rest_home=team_rest_days(home, results, ref_date, normalize),
-        rest_away=team_rest_days(away, results, ref_date, normalize),
-        form_home=team_recent_form(home, results, risk.recent_form_n, normalize, ref_date),
-        form_away=team_recent_form(away, results, risk.recent_form_n, normalize, ref_date),
-        h2h_home=team_h2h_form(home, away, results, risk.h2h_n, normalize, ref_date),
-        avg_total_home=team_avg_total(home, results, risk.totals_tendency_n,
-                                      normalize, ref_date),
-        avg_total_away=team_avg_total(away, results, risk.totals_tendency_n,
-                                      normalize, ref_date),
-        streak_home=team_streak(home, results, normalize, ref_date),
-        streak_away=team_streak(away, results, normalize, ref_date),
-        avg_scored_home=team_avg_scored(home, results, risk.off_def_n, normalize, ref_date),
-        avg_conceded_home=team_avg_conceded(home, results, risk.off_def_n,
-                                            normalize, ref_date),
-        avg_scored_away=team_avg_scored(away, results, risk.off_def_n, normalize, ref_date),
-        avg_conceded_away=team_avg_conceded(away, results, risk.off_def_n,
-                                            normalize, ref_date),
-        form_home_at_home=team_recent_form_home(home, results, risk.home_away_form_n,
-                                                normalize, ref_date),
-        form_away_at_away=team_recent_form_away(away, results, risk.home_away_form_n,
-                                                normalize, ref_date),
-        margin_home=team_avg_margin(home, results, risk.margin_n, normalize, ref_date),
-        margin_away=team_avg_margin(away, results, risk.margin_n, normalize, ref_date),
-        weather=weather, results=results, normalize=normalize, ref_date=ref_date)
+        **feats,
+        weather=weather, results=results, normalize=normalize, ref_date=ref_date,
+        team_index=idx)
 
 
 def adjust_model_probability(p_model: float, market: str, selection: str,
@@ -324,12 +354,19 @@ def adjust_model_probability(p_model: float, market: str, selection: str,
     ``weather_cfg=None`` (backtest) equivale a ``ctx.weather=None``: el
     termino meteorologico es exactamente 0.0 en ambos casos."""
     if market == "totals" and point is not None:
-        over_rate_home = team_over_rate(home, ctx.results, point,
-                                        risk.over_under_rate_n, ctx.normalize,
-                                        ctx.ref_date)
-        over_rate_away = team_over_rate(away, ctx.results, point,
-                                        risk.over_under_rate_n, ctx.normalize,
-                                        ctx.ref_date)
+        # `ctx.team_index` viaja con el contexto (ver `AdjustmentContext`,
+        # 2026-09-30): sin el, un evento con dos selecciones de totals
+        # (Over/Under) filtraba `ctx.results` desde cero dos veces por la
+        # misma ventana. Un `ctx` sin indice (construido a mano) recae en uno
+        # transitorio, con el mismo resultado que `team_over_rate`.
+        idx = ctx.team_index if ctx.team_index is not None else \
+            TeamHistoryIndex.build(ctx.results, ctx.normalize)
+        over_rate_home = over_rate_from_index(idx, home, point,
+                                              risk.over_under_rate_n, ctx.normalize,
+                                              ctx.ref_date)
+        over_rate_away = over_rate_from_index(idx, away, point,
+                                              risk.over_under_rate_n, ctx.normalize,
+                                              ctx.ref_date)
     else:
         over_rate_home = over_rate_away = None
     weather_term = (weather_p_adjustment(market, selection, ctx.weather, weather_cfg)
