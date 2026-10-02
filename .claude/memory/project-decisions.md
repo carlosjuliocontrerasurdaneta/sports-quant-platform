@@ -465,3 +465,15 @@ Format:
 - Reason: pre-registro (Fable) y ejecución única: ACEPTA 7/7. Δ log loss −0,0197 frente a la base (IC95 [−0,0228; −0,0166]); bate al modelo constante (la base era peor que la constante); ECE 0,072 → 0,010; pendiente 0,45 → 0,97; t estable (0,437/0,428/0,439); la mejora es de dispersión, no de nivel (T2 ≈ T).
 - Alternatives: seguir con 0,9 (sobreconfiado); Platt (T ya captura el 99,7 %).
 - Consequences: addenda previos en el gate K=52 y en «el modelo manda». Sin recalibración (no hay calibradores NHL). El portero necesita la Enmienda 3 de base (0,439) antes de su `--pre`, y la batería repetir su base NHL. Vigilar el sesgo de −1 pp contra el local y la puck line frente a la línea de mercado.
+
+- Date: 2026-10-02
+- Decision: **Pre-registro de la brecha del tier A APROBADO** (`docs/research/2026-10-02-preregistro-brecha-tier-a.md`). H₁: el tier A acierta menos de lo que promete (`E[y − p] < 0`).
+  - Universo primario: el stream graduado; el ledger es secundario.
+  - Muestra: solo picks servidos por primera vez después del commit, con el clasificador congelado en ese commit.
+  - Test: unilateral, α = 0,05, error estándar por clúster de día. N = 2.100 picks A win/loss (δ = 0,03 = `TIER_A.edge_pp`, potencia 0,80), ≈ julio de 2027. Disparo por recuento, una sola ejecución.
+- Reason: el Historial mostró una brecha del tier A de −9,1 pp en el ledger y de −5,6 pp en el graduado. Es un corte elegido a posteriori: sirve para generar la hipótesis, no para contrastarla. Lo aprobó el operador («Sí, házlo»). El δ y la N los decidió el coordinador siguiendo a Fable, porque el operador delega estas decisiones.
+- Alternatives: anclar δ en la brecha ya vista (0,056, N ≈ 600, finales de 2026). Rechazado por sesgo de maldición del ganador.
+- Consequences:
+  - el resultado afecta como mucho a la etiqueta A y a su descripción; no toca stake, gate ni calibradores, y ningún umbral cambia sin el operador;
+  - cada cambio de régimen exige un addendum antes de medir;
+  - pendiente el script `scripts/research/measure_tier_a_gap.py` (contrato en la §7).

@@ -595,3 +595,10 @@ Format:
 - Affected files: src/sqp/models/rest.py (y los tests que fijan r = 0)
 - Fix: pendiente. `RestModel` debe guardar las dos últimas fechas distintas y usar la más reciente ESTRICTAMENTE anterior a `game_date`. Es inerte en el motor y da paridad exacta en producción (decisión 4 del operador en el pre-registro del descanso NHL). Corregir antes del inicio de la NBA (~21/10) y antes de cualquier activación en la NHL. Clase 2 (modelo): necesita revisión de Fable.
 - Status: CORREGIDO (2026-09-29). `RestModel` guarda las dos últimas fechas distintas y usa la más reciente estrictamente anterior a `game_date`. Inerte en el motor, bit a bit (hashes NBA/NHL/MLB idénticos frente a fdfbec3). En producción, la NBA pasa de r=0 a r=2 en los casos del mismo día UTC: **cambia los picks NBA en vivo en esos casos**, que es la corrección buscada. Fable: APTO.
+
+- ID: KI-071
+- Severity: Baja (P3)
+- Description: **Un mismo pick liquidado con dos resultados distintos.** NCAAF `2be7c621…`, Rice Owls spreads 44.5, partido del 2026-09-12. La fila servida el 12/09 quedó `loss` (liquidada el 13/09). La fila servida el 09/09 quedó `void` (liquidada el 14/09, flags `market_paused;superseded`, sin `stale_void`). Las dos tienen stake 0, así que no hay PnL afectado, pero el ledger se contradice. Ocurrió en la ventana de restauración de producción (13–14/09; véanse AUD-003 y FABLE-001). Encontrado al colapsar los picks repetidos del Historial (2026-10-02): hay 14 picks repetidos en el ledger y este es el único con resultados distintos.
+- Affected files: src/sqp/settlement/runner.py (`superseded_candidates`, `_con_superseded`)
+- Fix: pendiente de diagnóstico (skill `bugfix`). Averiguar por qué la fila desplazada se liquidó un día después como void. El Historial conserva la fila del momento de decidir (la `void`), así que este pick no cuenta en el acierto.
+- Status: ABIERTO.

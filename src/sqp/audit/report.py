@@ -386,6 +386,58 @@ def _estado(df: pd.DataFrame, *, is_closed: bool) -> pd.Series:
                       for s, f in zip(stake, flags)], index=df.index, dtype=str)
 
 
+def _unique_settled_picks(closed: pd.DataFrame) -> pd.DataFrame:
+    """Una fila por pick en el historial de cerradas, sin perder apuestas reales.
+
+    El ledger liquidado lleva `generated_at` en su clave, asi que un pick
+    servido en dos runs aparece dos veces y las tarjetas del Historial (picks,
+    acierto, prob. prometida) lo contaban doble: 393 filas para 388 picks en el
+    tier A (revision Fable, 2026-10-02).
+
+    - Se conserva la fila del MOMENTO DE DECIDIR (la primera servida), que es la
+      que vale para medir lo prometido frente a lo observado.
+    - NUNCA se descarta una fila con stake > 0: es una apuesta liquidada con su
+      PnL, y borrarla falsearia el realizado. Si un pick lleva varias con stake,
+      se quedan todas; solo se colapsan las de stake 0.
+    - Sin la identidad completa (`event_id`, `market`, `selection`) no se toca
+      nada: ni si faltan las columnas ni en la fila con una celda vacia.
+      Colapsar con una clave parcial fusionaria partidos distintos.
+    """
+    if closed.empty or not {"event_id", "market", "selection"}.issubset(closed.columns):
+        return closed
+    # `+ 0.0` normaliza -0.0 a 0.0: si no, un pick'em con `-0.0` y otro con
+    # `0.0` darian claves distintas (revision Fable, 2026-10-02).
+    linea = (pd.to_numeric(closed["line"], errors="coerce").round(4) + 0.0
+             if "line" in closed.columns else pd.Series(float("nan"), index=closed.index))
+
+    # Texto EXPLICITO por celda. Con pandas 3, `astype(str)` deja el NaN como
+    # NaN y la concatenacion entera sale NaN: todos los h2h (linea vacia) se
+    # fusionaban en un solo pick. Medido al escribir el test, 2026-10-02.
+    def _txt(s: pd.Series) -> pd.Series:
+        return s.map(lambda v: "" if pd.isna(v) else str(v))
+
+    clave = (_txt(closed["event_id"]) + "|" + _txt(closed["market"]) + "|"
+             + _txt(closed["selection"]) + "|" + _txt(linea))
+    stake = pd.to_numeric(closed.get("stake"), errors="coerce")
+    if not isinstance(stake, pd.Series):
+        stake = pd.Series(float("nan"), index=closed.index)
+    con_stake = stake.fillna(0.0) > 0
+    orden = (pd.to_datetime(closed["generated_at"], errors="coerce", utc=True,
+                            format="ISO8601")
+             if "generated_at" in closed.columns
+             else pd.Series(pd.NaT, index=closed.index))
+    # Orden estable por instante parseado; un sello ilegible va al final, nunca
+    # elegido como el del momento de decidir.
+    pos = orden.sort_values(kind="stable", na_position="last").index
+    primera = ~clave.loc[pos].duplicated(keep="first")
+    incompleta = closed[["event_id", "market", "selection"]].isna().any(axis=1)
+    keep = con_stake | incompleta | primera.reindex(closed.index)
+    # Si un pick ya conserva una fila con stake, su fila a stake 0 sobra.
+    claves_con_stake = set(clave[con_stake & ~incompleta])
+    keep &= con_stake | incompleta | ~clave.isin(claves_con_stake)
+    return closed[keep]
+
+
 def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool,
                        max_plausible_ev: float | None) -> pd.DataFrame:
     """Project a settled/candidate frame onto the common history columns.
@@ -428,7 +480,7 @@ def load_history(predictions_dir: Path, bets_dir: Path, *,
     riesgo aplica ese mismo numero al EDGE (`p-novig`), no al EV.
     """
     frames = []
-    closed = load_all_settled(bets_dir)
+    closed = _unique_settled_picks(load_all_settled(bets_dir))
     if not closed.empty:
         gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
         gd = game_date_local(closed)

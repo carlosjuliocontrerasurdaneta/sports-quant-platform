@@ -123,3 +123,62 @@ def test_history_survives_tier_failure(tmp_path, monkeypatch):
                            "home": "NYY", "away": "BOS", "game_date": "2026-06-24"}])
     h = load_history(preds, bets)
     assert len(h) == 1 and h.iloc[0]["tier"] == "" and h.iloc[0]["result"] == "win"
+
+
+def test_history_collapses_repeated_pick_but_keeps_staked_bets(tmp_path):
+    """Un pick servido en dos runs cuenta UNA vez (la fila del momento de
+    decidir); una fila con stake > 0 nunca se descarta."""
+    bets = tmp_path / "bets"; bets.mkdir()
+    preds = tmp_path / "pred"; preds.mkdir()
+    base = {"market": "h2h", "line": None, "home": "NYY", "away": "BOS",
+            "game_date": "2026-06-24", "result": "win", "pnl": 0.0,
+            "estimated_probability": 0.6, "books_count": 25}
+    _write_settled(bets, [
+        # Repetido a stake 0: se queda el primero servido (cuota 1.80)
+        {**base, "event_id": "r", "selection": "NYY", "price_decimal": 1.85,
+         "stake": 0.0, "generated_at": "2026-06-23T15:00:00+00:00"},
+        {**base, "event_id": "r", "selection": "NYY", "price_decimal": 1.80,
+         "stake": 0.0, "generated_at": "2026-06-22T15:00:00+00:00"},
+        # Dos apuestas reales del mismo pick: se quedan las dos
+        {**base, "event_id": "s", "selection": "NYY", "price_decimal": 1.9,
+         "stake": 10.0, "pnl": 9.0, "generated_at": "2026-06-22T15:00:00+00:00"},
+        {**base, "event_id": "s", "selection": "NYY", "price_decimal": 1.9,
+         "stake": 5.0, "pnl": 4.5, "generated_at": "2026-06-23T15:00:00+00:00"},
+        # Stake 0 de un pick que ya tiene apuesta real: sobra
+        {**base, "event_id": "s", "selection": "NYY", "price_decimal": 1.9,
+         "stake": 0.0, "generated_at": "2026-06-21T15:00:00+00:00"},
+        # Otro lado del mismo evento: pick distinto, se queda
+        {**base, "event_id": "r", "selection": "BOS", "price_decimal": 2.1,
+         "stake": 0.0, "result": "loss", "generated_at": "2026-06-22T15:00:00+00:00"},
+    ])
+    h = load_history(preds, bets, max_plausible_ev=0.075)
+    assert len(h) == 4
+    r = h[(h["selection"] == "NYY") & (h["stake"] == 0.0)]
+    assert len(r) == 1 and r.iloc[0]["price_decimal"] == 1.80
+    assert sorted(h.loc[h["stake"] > 0, "stake"]) == [5.0, 10.0]
+    assert h["pnl"].sum() == 13.5
+
+
+def test_unique_settled_picks_edge_cases():
+    """Casos limite de la revision Fable (2026-10-02): identidad incompleta no
+    se colapsa, -0.0 y 0.0 son la misma linea, y un sello ilegible nunca se
+    elige como el momento de decidir."""
+    from sqp.audit.report import _unique_settled_picks
+    base = {"market": "spreads", "selection": "A", "stake": 0.0}
+    sin_id = pd.DataFrame([{**base, "event_id": None, "line": 1.5,
+                            "generated_at": "2026-06-22T15:00:00+00:00"},
+                           {**base, "event_id": None, "line": 1.5,
+                            "generated_at": "2026-06-23T15:00:00+00:00"}])
+    assert len(_unique_settled_picks(sin_id)) == 2
+    cero = pd.DataFrame([{**base, "event_id": "e", "line": -0.0,
+                          "generated_at": "2026-06-22T15:00:00+00:00"},
+                         {**base, "event_id": "e", "line": 0.0,
+                          "generated_at": "2026-06-23T15:00:00+00:00"}])
+    assert len(_unique_settled_picks(cero)) == 1
+    sello = pd.DataFrame([{**base, "event_id": "e", "line": 1.5,
+                           "generated_at": "ilegible", "price_decimal": 9.0},
+                          {**base, "event_id": "e", "line": 1.5,
+                           "generated_at": "2026-06-23T15:00:00+00:00",
+                           "price_decimal": 1.9}])
+    out = _unique_settled_picks(sello)
+    assert len(out) == 1 and out.iloc[0]["price_decimal"] == 1.9

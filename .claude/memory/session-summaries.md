@@ -903,4 +903,13 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **Cambio:** la pestaña Historial del dashboard tiene un filtro Tier (A/B/C/NO BET), una columna Tier y una tarjeta «Prob. prometida %» junto a «Acierto %». `load_history` (`src/sqp/audit/report.py`) añade `tier` (con `tipster_table`, alineada por índice) y `prob` (`decision_prob`). Tests nuevos en `tests/audit/test_history_loader.py` y `tests/test_html_report.py`: 34 aprobados; ruff y mypy limpios. Detalle en [[Bitácora/2026-10-02]].
 - **Hallazgo:** el tier A del ledger, reconstruido con los umbrales vigentes (388 picks únicos, del 22/06 al 01/10), acierta un 47,7 % frente a un 56,8 % prometido. Son ≈3,6 errores estándar bajo independencia, una cifra optimista porque los picks del mismo evento están correlacionados. Es descriptivo, no un test pre-registrado.
 - **Revisión Fable antes del commit:** APTO CON CAMBIOS. Aplicados: tier *best-effort* con su test, precisión EV/edge en el docstring y redacción matizada. Commit selectivo hecho por orden del operador.
-- **Pendiente:** deduplicar en `load_history` los picks repetidos del ledger; valorar si la brecha del tier A merece un pre-registro.
+- **Segunda parte (orden «Sí, házlo»):**
+  - `_unique_settled_picks` colapsa en el Historial los picks repetidos del ledger: se queda la fila del momento de decidir y nunca se descarta una con stake > 0. Stake y PnL totales idénticos al ledger.
+  - Lección de pandas 3: `astype(str)` deja los NaN como NaN y una clave concatenada fusiona todos los h2h.
+  - Abierto KI-071: un pick liquidado como void y como loss.
+  - Pre-registro `docs/research/2026-10-02-preregistro-brecha-tier-a.md` (Fable) aprobado. N = 2.100 picks A win/loss, ≈ julio de 2027, disparo por recuento con `--contar`.
+- **Pendiente:**
+  - escribir `scripts/research/measure_tier_a_gap.py` según el contrato de la §7, con sus tests;
+  - ejecutar `--contar` una vez al mes;
+  - addenda de régimen antes de medir;
+  - diagnosticar KI-071.
