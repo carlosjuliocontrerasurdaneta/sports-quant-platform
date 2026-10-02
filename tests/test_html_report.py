@@ -254,6 +254,20 @@ def test_dashboard_history_has_filters_and_tables_are_sortable(tmp_path):
     assert "makeSortable(" in text and "initSortable()" in text
 
 
+def test_dashboard_history_filters_by_tipster_tier(tmp_path):
+    """Filtro Tier en Historial: selector, data-tier por fila y la tarjeta de
+    probabilidad prometida junto al acierto observado."""
+    pred, bets = _write_inputs(tmp_path)
+    text = open(html_dashboard(pred, bets), encoding="utf-8").read()
+    assert 'id="hTier"' in text and '<option value="A">A (alta confianza)</option>' in text
+    assert 'id="hProm"' in text
+    assert "(!ti || d.tier === ti)" in text
+    rows = re.findall(r'<tr data-fecha="[^"]*"[^>]*>', text)
+    assert rows and all("data-tier=" in r and "data-prob=" in r for r in rows)
+    # settled e1 (nba spreads, prob 0,58) lleva su probabilidad prometida
+    assert 'data-prob="0.580000"' in text
+
+
 def test_dashboard_history_team_lists_cascade_by_sport(tmp_path):
     pred, bets = _write_inputs(tmp_path)
     text = open(html_dashboard(pred, bets), encoding="utf-8").read()

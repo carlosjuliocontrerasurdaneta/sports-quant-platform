@@ -5,9 +5,12 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
 from sqp.config import ROOT
+from sqp.logging_config import get_logger
 from sqp.evaluation.labels import (decision_prob, game_date_local, local_today,
                                    picks_vigentes)
 from sqp.settlement.settle import realized_roi_parts, staked_mask
+
+log = get_logger("sqp.audit.report")
 
 DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado "
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
@@ -340,7 +343,34 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
 
 _HISTORY_COLS = ["fecha", "league", "market", "line", "home", "away",
                  "selection", "price_decimal", "stake", "estado", "result",
-                 "pnl", "is_closed"]
+                 "pnl", "is_closed", "tier", "prob"]
+
+
+def _history_tier(df: pd.DataFrame, max_plausible_ev: float | None) -> pd.Series:
+    """Tier del Tipster (A/B/C/NO BET) por fila, con la cuota y la probabilidad
+    del MOMENTO DE DECIDIR que lleva la propia fila. Misma funcion que la
+    pestana "Todos los Picks" y `tipster_report.py`: un segundo clasificador
+    divergeria. Se alinea por INDICE (ver `tipster_table`); una fila que no se
+    puede clasificar (sin probabilidad o sin cuota) queda con tier vacio.
+
+    BEST-EFFORT, como en "Todos los Picks": si la clasificacion o la carga de
+    `Settings` fallan, el historial sale igual con el tier vacio. Antes de esta
+    columna el Historial no dependia de nada de esto, y no puede pasar a tumbar
+    el dashboard entero por ella."""
+    vacio = pd.Series("", index=df.index, dtype=str)
+    try:
+        from sqp.evaluation.tipster import tipster_table
+        if max_plausible_ev is None:
+            from sqp.config import Settings
+            max_plausible_ev = Settings.load().risk.max_plausible_edge
+        tt = tipster_table(df, max_plausible_ev=max_plausible_ev)
+    except Exception:
+        log.warning("Historial: no se pudo clasificar el tier; la columna "
+                    "queda vacia y el resto del historial sigue.", exc_info=True)
+        return vacio
+    if tt.empty:
+        return vacio
+    return tt["tier"].reindex(df.index).fillna("").astype(str)
 
 
 def _estado(df: pd.DataFrame, *, is_closed: bool) -> pd.Series:
@@ -356,8 +386,12 @@ def _estado(df: pd.DataFrame, *, is_closed: bool) -> pd.Series:
                       for s, f in zip(stake, flags)], index=df.index, dtype=str)
 
 
-def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool) -> pd.DataFrame:
-    """Project a settled/candidate frame onto the common history columns."""
+def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool,
+                       max_plausible_ev: float | None) -> pd.DataFrame:
+    """Project a settled/candidate frame onto the common history columns.
+
+    `prob` es la probabilidad de decision (`decision_prob`): la que el sistema
+    PROMETIO, para comparar con el acierto observado del filtro activo."""
     out = pd.DataFrame(index=df.index)
     out["fecha"] = fecha.astype(str).str[:10]
     for col in ("league", "market", "home", "away", "selection", "result"):
@@ -366,10 +400,13 @@ def _normalize_history(df: pd.DataFrame, *, fecha: pd.Series, is_closed: bool) -
         out[col] = pd.to_numeric(df[col], errors="coerce") if col in df.columns else float("nan")
     out["estado"] = _estado(df, is_closed=is_closed)
     out["is_closed"] = is_closed
+    out["tier"] = _history_tier(df, max_plausible_ev)
+    out["prob"] = pd.to_numeric(decision_prob(df), errors="coerce")
     return out[_HISTORY_COLS]
 
 
-def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
+def load_history(predictions_dir: Path, bets_dir: Path, *,
+                 max_plausible_ev: float | None = None) -> pd.DataFrame:
     """Union of closed (settled) bets and open candidates, projected onto a
     common column set. Closed rows carry result/pnl; open rows do not.
 
@@ -383,6 +420,12 @@ def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
     dinero. La columna `estado` dice por que cada fila esta a stake 0.
 
     `fecha` es la fecha del partido en hora LOCAL (`game_date_local`).
+
+    `tier` es el del Tipster, RECONSTRUIDO con los umbrales vigentes (el tier
+    no se persiste, asi que no es necesariamente el que se mostro ese dia). Su
+    frontera de NO BET compara el EV (`p*cuota-1`) con
+    `Settings.risk.max_plausible_edge` salvo que se pase otro valor; el motor de
+    riesgo aplica ese mismo numero al EDGE (`p-novig`), no al EV.
     """
     frames = []
     closed = load_all_settled(bets_dir)
@@ -390,11 +433,13 @@ def load_history(predictions_dir: Path, bets_dir: Path) -> pd.DataFrame:
         gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
         gd = game_date_local(closed)
         fecha = gd.where(gd.astype(str).str.len() >= 10, gen)
-        frames.append(_normalize_history(closed, fecha=fecha, is_closed=True))
+        frames.append(_normalize_history(closed, fecha=fecha, is_closed=True,
+                                         max_plausible_ev=max_plausible_ev))
     open_df = load_all_candidates(predictions_dir)
     if not open_df.empty:
         frames.append(_normalize_history(open_df, fecha=game_date_local(open_df),
-                                         is_closed=False))
+                                         is_closed=False,
+                                         max_plausible_ev=max_plausible_ev))
     if not frames:
         return pd.DataFrame(columns=_HISTORY_COLS)
     return pd.concat(frames, ignore_index=True)

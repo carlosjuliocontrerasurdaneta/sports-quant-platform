@@ -896,3 +896,11 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - batería de los 10 ajustes de la capa de features (aprobada; un pre-registro con Holm y descarte razonado de los redundantes);
   - propuesta sin confirmar: medir la regresión del Elo entre temporadas;
   - comprobar en `logs/backfill_diario.log` que el paso 0.5 escribe abridores.
+
+## 2026-10-02 — Tier A de ayer y filtro por tier en el Historial
+
+- **Consulta (01/10):** de los tier A generados el 30/09 (55 contando los 7 días de horizonte), había 4 liquidados: 2 win y 2 loss. El tipster del día (`--dia hoy`) tuvo 1 solo A: Colorado h2h, que ganó. El tier no se persiste en ningún sitio y hubo que reconstruirlo. Lección: el primer cruce por clave concatenada dio resultados falsos; usar un merge con claves explícitas y `validate="one_to_one"`.
+- **Cambio:** la pestaña Historial del dashboard tiene un filtro Tier (A/B/C/NO BET), una columna Tier y una tarjeta «Prob. prometida %» junto a «Acierto %». `load_history` (`src/sqp/audit/report.py`) añade `tier` (con `tipster_table`, alineada por índice) y `prob` (`decision_prob`). Tests nuevos en `tests/audit/test_history_loader.py` y `tests/test_html_report.py`: 34 aprobados; ruff y mypy limpios. Detalle en [[Bitácora/2026-10-02]].
+- **Hallazgo:** el tier A del ledger, reconstruido con los umbrales vigentes (388 picks únicos, del 22/06 al 01/10), acierta un 47,7 % frente a un 56,8 % prometido. Son ≈3,6 errores estándar bajo independencia, una cifra optimista porque los picks del mismo evento están correlacionados. Es descriptivo, no un test pre-registrado.
+- **Revisión Fable antes del commit:** APTO CON CAMBIOS. Aplicados: tier *best-effort* con su test, precisión EV/edge en el docstring y redacción matizada. Commit selectivo hecho por orden del operador.
+- **Pendiente:** deduplicar en `load_history` los picks repetidos del ledger; valorar si la brecha del tier A merece un pre-registro.

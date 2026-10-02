@@ -497,6 +497,7 @@ _HISTORY_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("selection", "Seleccion", True), ("price_decimal", "Cuota", False),
     ("stake", "Stake", False), ("estado", "Estado", True),
     ("result", "Resultado", True), ("pnl", "PnL", False),
+    ("tier", "Tier", True),
 )
 
 
@@ -516,6 +517,15 @@ def _team_condition(selection: object, home: object, away: object) -> str:
         if key and (sel == key or sel.startswith(key + " ")):
             return cond
     return ""
+
+
+def _prob_attr(v: object) -> str:
+    """Probabilidad para un atributo data-*: vacia si no es un numero en [0, 1]."""
+    try:
+        f = float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return ""
+    return f"{f:.6f}" if 0.0 <= f <= 1.0 else ""
 
 
 def _history_section(predictions_dir: Path, bets_dir: Path,
@@ -541,11 +551,20 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
         '<div class="card"><span class="label">Wins</span><span class="value pos" id="hWins">0</span></div>'
         '<div class="card"><span class="label">Losses</span><span class="value neg" id="hLosses">0</span></div>'
         '<div class="card"><span class="label">Acierto %</span><span class="value" id="hHit">-</span></div>'
+        # Lo PROMETIDO al lado de lo observado (reglas de salida): sin esto, un
+        # "Acierto 70%" no dice si el tier cumple; solo si acierta favoritos.
+        '<div class="card"><span class="label">Prob. prometida %</span>'
+        '<span class="value" id="hProm">-</span>'
+        '<span class="sub">media sobre los mismos win/loss</span></div>'
         '</div>')
     controls = (
         '<div class="filters" id="historyFilters">'
         '<label>Deporte<select id="hSport"><option value="">(todos)</option></select></label>'
         '<label>Mercado<select id="hMarket"><option value="">(todos)</option></select></label>'
+        '<label>Tier<select id="hTier"><option value="">(todos)</option>'
+        '<option value="A">A (alta confianza)</option>'
+        '<option value="B">B</option><option value="C">C</option>'
+        '<option value="NO BET">NO BET</option></select></label>'
         '<label>Condicion<select id="hCond"><option value="">(todas)</option>'
         '<option value="home">Home (local)</option>'
         '<option value="away">Away (visitante)</option></select></label>'
@@ -570,6 +589,8 @@ def _history_section(predictions_dir: Path, bets_dir: Path,
             f'data-home="{html.escape(str(row.get("home", "")))}" '
             f'data-away="{html.escape(str(row.get("away", "")))}" '
             f'data-cond="{_team_condition(row.get("selection"), row.get("home"), row.get("away"))}" '
+            f'data-tier="{html.escape(str(row.get("tier", "") or ""))}" '
+            f'data-prob="{_prob_attr(row.get("prob"))}" '
             f'data-result="{html.escape(str(row.get("result", "")))}">{cells}</tr>')
     table = (f'<table class="grid" id="historyTable"><thead><tr>{head}</tr></thead>'
              f'<tbody>{"".join(body)}</tbody></table>')
@@ -1384,19 +1405,21 @@ function initHistory() {{
   fillTeams();
   // registered before filterHistory so the team lists are rebuilt first
   document.getElementById("hSport").addEventListener("input", fillTeams);
-  ["hSport", "hMarket", "hCond", "hTeam", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
+  ["hSport", "hMarket", "hTier", "hCond", "hTeam", "hHome", "hAway", "hFrom", "hTo"].forEach(id =>
     document.getElementById(id).addEventListener("input", filterHistory));
   filterHistory();
 }}
 function filterHistory() {{
   const table = document.getElementById("historyTable");
   const g = id => document.getElementById(id).value;
-  const lg = g("hSport"), mk = g("hMarket"), cn = g("hCond"), tm = g("hTeam"),
-        ho = g("hHome"), aw = g("hAway"), from = g("hFrom"), to = g("hTo");
-  let picks = 0, closed = 0, wins = 0, losses = 0;
+  const lg = g("hSport"), mk = g("hMarket"), ti = g("hTier"), cn = g("hCond"),
+        tm = g("hTeam"), ho = g("hHome"), aw = g("hAway"), from = g("hFrom"),
+        to = g("hTo");
+  let picks = 0, closed = 0, wins = 0, losses = 0, probSum = 0, probN = 0;
   table.querySelectorAll("tbody tr").forEach(r => {{
     const d = r.dataset;
     const ok = (!lg || d.league === lg) && (!mk || d.market === mk) &&
+               (!ti || d.tier === ti) &&
                (!cn || d.cond === cn) &&
                (!tm || d.home === tm || d.away === tm) &&
                (!ho || d.home === ho) && (!aw || d.away === aw) &&
@@ -1407,11 +1430,17 @@ function filterHistory() {{
     if (d.result) closed++;
     if (d.result === "win") wins++;
     if (d.result === "loss") losses++;
+    // Prometida sobre el MISMO conjunto que el acierto (win/loss), no sobre
+    // todas las filas: si no, se compararian dos poblaciones distintas.
+    if ((d.result === "win" || d.result === "loss") && d.prob !== "") {{
+      probSum += Number(d.prob); probN++;
+    }}
   }});
   const set = (id, v) => {{ const e = document.getElementById(id); if (e) e.textContent = v; }};
   set("hPicks", picks); set("hClosed", closed); set("hWins", wins); set("hLosses", losses);
   const graded = wins + losses;
   set("hHit", graded ? (100 * wins / graded).toFixed(1) + "%" : "-");
+  set("hProm", probN ? (100 * probSum / probN).toFixed(1) + "%" : "-");
   set("hCount", picks + " filas");
 }}
 
