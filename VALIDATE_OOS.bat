@@ -30,6 +30,32 @@ echo --- Marcador modelo vs mercado --- >> logs\validate_oos.log
 "%SQP_PYTHON%" scripts\model_vs_market_report.py >> logs\validate_oos.log 2>&1
 if %ERRORLEVEL% neq 0 echo *** AVISO: el marcador modelo-vs-mercado fallo (no bloqueante) *** >> logs\validate_oos.log
 
+REM Recuento mensual del pre-registro de la brecha del tier A (2026-10-02,
+REM docs\research\2026-10-02-preregistro-brecha-tier-a.md, seccion 4.3).
+REM `--contar` NUNCA emite resultados (ni acierto, ni p, ni brecha): solo anade
+REM una linea al registro versionado .contar.jsonl, que la seccion 4.3 exige
+REM commitear tras cada ejecucion. Se commitea SOLO ese fichero (pathspec: lo
+REM que el operador tenga en el indice no entra) y SOLO en main; en otra rama la
+REM linea queda escrita y entra en el commit del mes siguiente. BEST-EFFORT: no
+REM tumba la validacion. El registro vive en docs\, fuera de las rutas de la
+REM guarda KI-036 de DIARIO_COMPLETO.bat, asi que un commit fallido no bloquea el
+REM run diario.
+echo --- Pre-registro tier A: recuento mensual (--contar) --- >> logs\validate_oos.log
+"%SQP_PYTHON%" scripts\research\measure_tier_a_gap.py --contar >> logs\validate_oos.log 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo *** AVISO: el recuento del pre-registro tier A fallo; no hay linea nueva en el registro ^(no bloqueante^) *** >> logs\validate_oos.log
+    goto :fin_tier_a
+)
+set "SQP_BRANCH="
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set "SQP_BRANCH=%%b"
+if /i not "%SQP_BRANCH%"=="main" (
+    echo *** AVISO: rama "%SQP_BRANCH%" distinta de main; el registro tier A queda SIN commitear hasta el proximo mes *** >> logs\validate_oos.log
+    goto :fin_tier_a
+)
+git commit -q -m "chore(research): recuento mensual del pre-registro tier A (--contar)" -- docs\research\2026-10-02-preregistro-brecha-tier-a.contar.jsonl >> logs\validate_oos.log 2>&1
+if %ERRORLEVEL% neq 0 echo *** AVISO: no se pudo commitear el registro tier A; queda escrito y entra en el commit del mes siguiente *** >> logs\validate_oos.log
+:fin_tier_a
+
 REM Validacion correcta: limpia SOLO esta etapa. Un fallo del run diario o de la
 REM liquidacion sigue avisando hasta que su propio BAT termine bien.
 "%SQP_PYTHON%" scripts\run_status.py --clear --only-stage validate_oos
