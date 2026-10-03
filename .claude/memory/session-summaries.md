@@ -920,3 +920,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Primer `--contar` oficial el 2026-10-03T12:50Z: n = 0, como se esperaba. El registro está en `docs/research/2026-10-02-preregistro-brecha-tier-a.contar.jsonl`.
 - **Rutina:** `python scripts/research/measure_tier_a_gap.py --contar` una vez al mes, y commitear el `.contar.jsonl`. NUNCA ejecutar `--medir` antes del addendum de T1 (n ≥ 2.100, ≈ julio de 2027). `--no-log` solo sirve de diagnóstico.
 - Lección: el candado `fable_gate` se evalúa ANTES de ejecutar el comando, así que la línea `FABLE-REVIEW` tiene que escribirse en una llamada anterior al `git commit`.
+- **Cierre (2026-10-03):** todo commiteado (`49abb16`, `027827c`, `dfb76e8` y el commit de cierre con `current-task.md`), con el tag local `prereg-tier-a-t0`. Sin push. Queda fuera `audit/model_vs_market_20261001.md`, que no es de esta sesión. Abiertos: KI-071 y la rutina mensual de `--contar`.
