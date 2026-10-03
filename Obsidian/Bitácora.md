@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-10-02
+actualizada: 2026-10-03
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-10-03]] — script de medición del pre-registro del tier A (`--contar` / `--medir`, 82 tests, tres rondas de Fable); primer `--contar` oficial con n = 0.
 - [[Bitácora/2026-10-02]] — filtro por tier del Tipster (A/B/C/NO BET) y tarjeta de probabilidad prometida en la pestaña Historial; primera lectura: tier A acierta 47,7 % frente a 56,8 % prometido (386 picks); picks repetidos del ledger colapsados en el Historial; KI-071 abierto.
 - [[Bitácora/2026-09-25]] — verificación de `audit-2026-09-22-r2`: APTO CON PENDIENTES; KI-061 corregido (la degradación con el registro ilegible no pausaba mercados); KI-062 (test de contención medido en intentos, no en reloj); el gate evalúa 52 cortes, por encima del límite de 50.
 - [[Bitácora/2026-09-24]] — verificación de `audit-2026-09-23`: NO APTO por AUD-003; identidad exacta de eventos aplicada (ESPN resuelto, MLB fuera del fallback hasta KI-059) tras tres rondas de revisión Fable.

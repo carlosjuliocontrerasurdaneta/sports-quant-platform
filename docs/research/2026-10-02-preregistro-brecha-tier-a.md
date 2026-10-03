@@ -286,6 +286,25 @@ S2 y S3 matizan la **redacción** de la propuesta al operador, por ejemplo «el 
 
 Ninguno todavía. Aquí se añaden, por commits posteriores a H y sin editar nada de lo anterior: los addenda de régimen (§8 A2) y el addendum que fija T1 (§4.3).
 
+### Addendum 1 (2026-10-03): implementación del script. No altera ningún criterio.
+
+`scripts/research/measure_tier_a_gap.py` y `tests/research/test_measure_tier_a_gap.py` (82 tests sintéticos):
+- implementación de Sonnet;
+- revisión de Fable en tres rondas: APTO CON CAMBIOS (6 hallazgos medios y 5 bajos, todos aplicados), APTO (3 bajos, aplicados) y APTO CON CAMBIOS sobre el texto de este addendum (aplicados).
+
+Estas son decisiones de implementación que el contrato de la §7 no fijaba. Ninguna cambia la hipótesis, la población, el test, δ, N ni las reglas de decisión.
+1. **`--no-log`.** Bandera de diagnóstico, fuera del contrato. Permite comprobar `--contar` sin añadir línea al registro, que sigue la letra de §4.3 («cada ejecución añade»). Ninguna ejecución con `--no-log` cuenta para fijar T1, y no emite ningún resultado.
+2. **`start_time` del ledger (solo S1).** `settled_*.csv` no tiene esa columna, así que se toma de la primera servida por clave. Si la clave no está en `served_*.csv`, la fila se trata como ilegible: se excluye y se cuenta.
+3. **Formato del addendum de T1.** Lleva dos líneas literales: `T1 fijado = <ISO-8601>` y `commit del registro = <sha>`. `--medir --t1` lee el addendum y el registro con `git show HEAD:`. Verifica que el commit citado contiene la primera línea con n ≥ 2.100 y el mismo T1, compara instantes y no texto, y aborta si algo no cuadra.
+4. **Lectura de CSV sin efectos secundarios.** Se usa un lector propio con la misma semántica que `load_all_graded` (concatena y filtra `real`), pero sin la cuarentena de `ServedStore._load`, que renombra ficheros: medir no puede mutar `data/`.
+   - `--medir` aborta si una liga listada falta o no se puede leer. Una liga que solo trae cabecera se informa como vacía y no aborta.
+5. **Clasificador congelado.** Si el blob de `tipster.py` o `labels.py` en disco (`git hash-object`) o en HEAD difiere del de H, se carga siempre la versión de H, aislada. `default.yaml` solo se registra: no clasifica nada, porque el tope es el literal 0,075 (§2.5).
+6. **Zona del clúster.** El primario usa siempre `America/New_York`. Otro `--tz-cluster` solo produce una sensibilidad aparte y marcada. Una zona inválida se rechaza antes de calcular nada.
+7. **`--seed` y `--n-boot`.** Si difieren de los congelados (20261002 y 10.000), se marcan en `procedencia.seed_n_boot` sin abortar. El bootstrap solo informa de la fragilidad (§5 S5), no decide.
+8. **Exclusiones de §2.4.** Se cuentan de forma mutuamente excluyente, en el orden pregame → p → cuota → novig.
+
+**Primera ejecución oficial de `--contar` (2026-10-03T12:50Z):** n = 0, G = 0. El T1 candidato (2026-09-19) es anterior a T0, así que la ventana está vacía, como prevé §4.3.
+
 ---
 
 ## Historial de revisión

@@ -913,3 +913,10 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - ejecutar `--contar` una vez al mes;
   - addenda de régimen antes de medir;
   - diagnosticar KI-071.
+
+## 2026-10-03 — Script de medición de la brecha del tier A
+
+- `scripts/research/measure_tier_a_gap.py` y `tests/research/test_measure_tier_a_gap.py` (82 tests). Los escribió Sonnet; Fable lo revisó en tres rondas hasta APTO (11 hallazgos más 3 bajos, todos aplicados). Addendum 1 en el pre-registro con 8 decisiones de implementación, sin cambiar ningún criterio.
+- Primer `--contar` oficial el 2026-10-03T12:50Z: n = 0, como se esperaba. El registro está en `docs/research/2026-10-02-preregistro-brecha-tier-a.contar.jsonl`.
+- **Rutina:** `python scripts/research/measure_tier_a_gap.py --contar` una vez al mes, y commitear el `.contar.jsonl`. NUNCA ejecutar `--medir` antes del addendum de T1 (n ≥ 2.100, ≈ julio de 2027). `--no-log` solo sirve de diagnóstico.
+- Lección: el candado `fable_gate` se evalúa ANTES de ejecutar el comando, así que la línea `FABLE-REVIEW` tiene que escribirse en una llamada anterior al `git commit`.
