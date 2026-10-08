@@ -922,3 +922,11 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Lección: el candado `fable_gate` se evalúa ANTES de ejecutar el comando, así que la línea `FABLE-REVIEW` tiene que escribirse en una llamada anterior al `git commit`.
 - **Cierre (2026-10-03):** todo commiteado (`49abb16`, `027827c`, `dfb76e8` y el commit de cierre con `current-task.md`), con el tag local `prereg-tier-a-t0`. Sin push. Queda fuera `audit/model_vs_market_20261001.md`, que no es de esta sesión. Abiertos: KI-071 y la rutina mensual de `--contar`.
 - **Recuento programado (2026-10-03, orden «prográmalo»):** paso nuevo en `VALIDATE_OOS.bat` (tarea `SQP_Validate_OOS_Cdev`, el día 1 de cada mes a las 12:00, S4U). Ejecuta `--contar` y commitea solo el `.contar.jsonl` con pathspec, solo en `main`. Es best-effort. Primer disparo: 2026-11-01.
+
+## 2026-10-08 — Script de la batería de ajustes (sin medir)
+
+- Consultas: objetivo y qué falta (no hay ventaja medida; ROI con edge>0 −10,5 %) y auditoría de solo lectura de las features pregame. Error corregido: la captura del portero NHL SÍ está conectada desde `e885dae`.
+- `scripts/research/measure_adjustment_battery.py` + `tests/research/test_measure_adjustment_battery.py` (63 tests) y Enmiendas 1 y 2 del pre-registro de la batería. Sonnet implementó, Fable APTO tras dos rondas y correcciones, Opus commiteó `8117d9c`. Sin push. Detalle en [[Bitácora/2026-10-08]].
+- `--parity-only` real: desviación 0,0 en las cuatro ligas. `--pre` y el modo completo NO ejecutados.
+- Lección: una indicación del revisor también se verifica contra el código canónico (el «orden por fecha estable» de Fable contradecía `roi_engine.backtest_league` l. 289-294).
+- **Pendiente:** decidir sobre `audit/model_vs_market_20261001.md` (bloquea `--pre`); instantánea fuera del repo y de `data/`; `--pre`; Enmienda 3 (filas MLB +13, NHL +14); modo completo una sola vez sin commits intermedios; informe y dictamen de Fable.
