@@ -715,3 +715,235 @@ Relacionado: [[2026-09-26-preregistro-clima-mlb]], [[2026-09-26-resultado-clima-
 1. **Holm sobre las 24 celdas con α de familia 0,05**, el mismo ya aprobado para el prediction gate, exigido **junto** al margen 0,002.
 2. **Medir ya y activar después:** la medición no toca producción. Si se acepta alguna celda, la activación (que además exige un mecanismo de coeficientes por liga, con revisión) espera a que se ejecute «el modelo manda» o lleva un addendum previo.
 3. **El descanso en NHL y MLB** se mide aparte con el `RestModel` acotado, como en NBA; NHL primero. Pasa a la cola.
+
+---
+
+## Enmienda 1 (2026-10-08, antes de implementar el script y antes de `--pre`; redactada por Fable)
+
+Cumple la condición de la revisión de Fable del 2026-09-30 que dictaminó la activación del tilt NHL («enmiendas de base del portero y la batería»; la del portero es la Enmienda 3 de `2026-09-26-preregistro-portero-nhl.md`). También cumple la sección 16, que ya preveía enmendar la referencia de código si la base NHL cambiaba antes de ejecutar.
+
+**Qué no se ha hecho.** El script `scripts/research/measure_adjustment_battery.py` no existe todavía. No se ha ejecutado `--pre` ni ninguna medición. No se ha emparejado ninguna feature con ningún desenlace. Para esta enmienda solo se ha leído código, configuración y documentos, y se han resuelto los parámetros de las cuatro ligas que deciden (sin leer ningún marcador).
+
+**Qué no cambia:**
+
+- los criterios de la sección 10, Holm (sección 11) y el bootstrap (sección 12);
+- el descarte de la sección 2, los seis ajustes, las ventanas `n`, las ligas y K = 24;
+- las particiones de la sección 9, el warmup, el optimizador y la pérdida;
+- las líneas de evaluación de la sección 7.3 (su definición; el punto c dice qué valores cambian);
+- los informes secundarios de la sección 14 y la sección 15.
+
+**Dónde manda.** Sobre la línea «Código de referencia» del encabezado, el punto 1 de la sección 7.2, la sección 16 y el último punto de la sección 17, en lo que fija.
+
+### (a) Commits posteriores a `f9658ce` que tocan la base o el motor
+
+`git log --oneline f9658ce..HEAD -- configs/ src/sqp/` (HEAD al redactar: `df84789`):
+
+| Commit | Qué cambia | Efecto en la base de la batería |
+|---|---|---|
+| `d349be7` | KI-070: `RestModel` usa la fecha más reciente **estrictamente anterior** a `game_date`. `PoissonAdapter` gana `rest_elo_per_day` (por defecto 0) | **Ninguno en el motor.** El walk-forward nunca observa un partido del día antes de estimar ese día, así que KI-070 es inerte bit a bit (hashes NBA/NHL/MLB idénticos, declarados en el commit). `rest_elo_per_day` vale 0 o no existe en NHL y MLB, así que sumar 0,0 a `diff` es la identidad. La paridad 1 lo comprueba igualmente |
+| `c390c2f` | `nhl.tilt_scale: 0.439` en `configs/leagues/ratings.yaml` (antes 0,9, el de `FAMILY_PARAMS["hockey"]`) | **Cambia la base NHL.** Ver los puntos b a e |
+| `ea5e651` | Índice por equipo (`TeamHistoryIndex`) en `rest_form.py`; `build_adjustment_context` acepta un `team_index` opcional | **Ninguno en las features.** Salida bit a bit idéntica (`tests/test_rest_form_index_equivalence.py`). La paridad 2 lo comprueba igualmente |
+| `1932e68` | Reanudación del backfill de porteros | Ninguno: no toca el motor ni la capa |
+
+NBA, NFL y MLB tienen, por tanto, la misma base que en `f9658ce`. Solo cambia la NHL.
+
+### (b) La base nueva
+
+- **Base:** la configuración de producción del **commit vigente al ejecutar `--pre`**, no `f9658ce`. Por liga: `_league_meta(liga)["league_params"]` (`src/sqp/pipeline/daily.py:75`) + `get_adapter(liga, familia, league_params)` (`src/sqp/sports/registry.py:107`), en ese commit.
+- **El portero NHL no forma parte de la base.** No está implementado en el adaptador (no existe `goalie_beta` en `src/sqp/sports/` ni en `configs/`). La captura diaria de probables no toca ninguna probabilidad. Si se activara antes del modo completo, haría falta otra enmienda y repetir `--pre`, como ya dice la sección 16.
+- **Aserción (sustituye a la referencia a `f9658ce`).** `--pre` y el modo completo registran en el JSON los parámetros resueltos de las cuatro ligas que deciden y **abortan** si no coinciden **exactamente** con estos dos niveles:
+  1. `_league_meta(liga).get("league_params")`:
+     - NBA: `{"rest_points_per_day": 0.795}`;
+     - NHL: `{"elo_home_adv": 15.0, "tilt_scale": 0.439}`;
+     - NFL: `None` (sin entrada en `ratings.yaml` ni en `SPORT_KEYS`);
+     - MLB: `{"park_bound": 0.1, "pitcher_bound": 0.05, "pitcher_prior_starts": 5.0, "tilt_scale": 0.4}`.
+  2. `adapter.params` efectivo (familia + `LEAGUE_OVERRIDES` + liga):
+     - NBA (`BasketballAdapter`): `avg_total 224.0`, `elo_home_adv 70`, `elo_k 20`, `elo_mov True`, `margin_sigma 13.0`, `points_per_elo 0.028`, `rest_points_per_day 0.795`, `scoring_half_life_days 180.0`, `total_sigma 22.0`, y ninguna otra clave;
+     - NHL (`HockeyAdapter`): `avg_total 6.1`, `elo_home_adv 15.0`, `elo_k 10`, `home_scoring_bonus 0.1`, `max_score 15`, **`tilt_scale 0.439`**, y ninguna otra clave (en particular, sin `rest_elo_per_day` ni `goalie_beta`);
+     - NFL (`FootballAdapter`): `avg_total 44.0`, `elo_home_adv 55`, `elo_k 24`, `elo_mov True`, `margin_sigma 13.5`, `points_per_elo 0.025`, `total_sigma 13.5`, y ninguna otra clave;
+     - MLB (`BaseballAdapter`): `avg_total 8.7`, `dispersion_k 3.8`, `elo_home_adv 25`, `elo_k 6`, `home_scoring_bonus 0.1`, `max_score 25`, `park_bound 0.1`, `pitcher_bound 0.05`, `pitcher_prior_starts 5.0`, `tilt_scale 0.4`, y ninguna otra clave (sin `pitcher_signal`, así que la señal es `"ra"`; sin `rest_elo_per_day`).
+
+  Comprobado hoy en `df84789` resolviendo solo la configuración. **Un `tilt_scale` NHL de 0,9 aborta**, igual que cualquier otro valor distinto de 0,439.
+- **HEAD y árbol limpio** (mecanismo de la Enmienda 2(b) y 3(f) del portero). El JSON de `--pre` registra `git rev-parse HEAD` y `git status --porcelain` de todo el repositorio, que tiene que salir vacío. El modo completo **aborta** si el HEAD difiere del de `--pre-json` o si hay cualquier cambio sin commitear en `src/`, `configs/` o `scripts/research/`.
+- **Trampas que el script debe evitar** (las mismas que en el portero):
+  - `FAMILY_PARAMS["hockey"]` sigue en 0,9: `get_adapter("nhl", "hockey")` sin `league_params` devuelve la base **vieja**. Lo mismo para MLB (0,8 de familia frente a 0,4);
+  - `measure_tilt_nhl.load_league` aborta por diseño (su invariante es 0,9) y no se reutiliza;
+  - ningún literal de tilt en funciones auxiliares: se pasa siempre el valor **resuelto**.
+- **Sin base alternativa.** El script no calcula la batería con `tilt_scale` 0,9 en ningún modo, ni como informe secundario. Una segunda base sería un grado de libertad (elegir después la base con la que se lee el resultado).
+
+### (c) Qué cambia en la NHL con el tilt nuevo, y qué no
+
+El tilt solo reparte el total esperado entre los dos equipos (`PoissonAdapter._rates`, `src/sqp/sports/adapters.py:120-123`):
+
+    tilt   = clip((p_home − 0,5)·tilt_scale, −0,30, 0,30)
+    λ_home = avg·(0,5 + tilt) + home_scoring_bonus
+    λ_away = avg·(0,5 − tilt)
+
+1. **μ y L_i de los totales NHL no cambian.** μ_i = λ_home + λ_away = avg_i + `home_scoring_bonus` no depende de `tilt_scale` (el suelo `max(0,1, ·)` exigiría avg < 0,5 goles y no se alcanza). Por tanto **L_i = ⌊μ_i⌋ + 0,5 (sección 7.3) es idéntica con 0,9 y con 0,439**, y los afectados de los ajustes 4 y 10, que dependen de L_i, también. La P(Over) de la base en L_i solo cambia por el truncamiento en `max_score 15`: el resultado del tilt midió máx. |Δ P(over)| ≤ 2,3·10⁻⁵ (su informe 9). **Las celdas NHL de los ajustes 4 y 10 tienen, a efectos prácticos, la misma base que en `f9658ce`.** `--pre` lo aserta: en cada partido NHL, |λ_home + λ_away − (μ_scoring,i + 0,10)| ≤ 1e-12, donde μ_scoring,i es `scoring.expected_total` en ese partido.
+2. **Lo que sí cambia:**
+   - p_base del moneyline NHL, y con ella las celdas NHL de los ajustes 2, 3, 8 y 9 (la dispersión pasa de d.t. 0,175 a 0,091 en el test combinado, tabla de la Enmienda 3(d) del portero);
+   - p_base de la puck line ±1,5, que entra en el criterio 6 de los ajustes 2, 8 y 9 en la NHL. Las líneas ±1,5 son fijas y no cambian.
+3. **Las features no cambian.** Salen de los marcadores anteriores y no dependen del modelo. Los recuentos, las distribuciones de x y las correlaciones NHL de la sección 13 siguen valiendo, y c* también, porque depende de RMS(x). `--pre` debe reproducirlos en la NHL con la regla de la sección 13, sin excepción por el tilt.
+4. **Paridad.** La aserción 1 de la sección 7.2 se hace contra `walk_forward_backtest(results, liga, familia, params)` con los `params` **resueltos** del punto b (0,439 en la NHL), en h2h y en `spreads@±1.5` / `totals@5.5` NHL. Una reconstrucción con 0,9 rompería la paridad 1, que actúa así de guarda adicional. La aserción 2 (capa contra `adjust_model_probability`) no depende del tilt, salvo por el p_base de entrada, que es el nuevo. Se mantiene la nota del tilt: en la NHL, los empates anteriores a 2005 quedan fuera de `binary_probs` y solo afectan a entrenamiento.
+
+### (d) Exposición previa (completa la sección 4)
+
+Desde el 2026-09-27, quien redacta y quien ejecuta conocen del histórico NHL, por el resultado del tilt (`2026-09-30-resultado-tilt-nhl.md`) y la Enmienda 3 del portero, datos de la **base**, no de las features:
+
+- log loss de la base por partición, con 0,9 y con 0,439; AUC 0,6006, que el tilt no cambia;
+- pendiente de calibración 0,97 con 0,439;
+- sesgo de la base nueva: infraestima al local en ≈ 1 pp en el combinado;
+- en la puck line con línea de mercado, Δ = +0,0037 (n = 258).
+
+Ninguno empareja x₂, x₃, x₄, x₈, x₉ ni x₁₀ con un desenlace. Se evalúa honestamente si el cambio de base abre un grado de libertad o un sesgo en las 6 celdas NHL:
+
+1. **No hay elección de base.** La base es la de producción al ejecutar, por una regla escrita en la sección 16 antes de que existiera el tilt. 0,439 sale del pre-registro propio del tilt (`t` de la partición C, redondeado) y no se eligió mirando la batería. Al prohibir la base alternativa (punto b), no queda ninguna bifurcación.
+2. **La base NHL no es estrictamente fuera de muestra en los tests A y B.** El tilt usó las **mismas** particiones NHL (tests 5.780 / 5.192 / 5.978), y `t_C` se estimó con entrenamiento hasta el 2022-09-30, que contiene los tests A y B de la batería. **No es una propiedad nueva:** la base de `f9658ce` ya la tenía en la NBA (`rest_points_per_day 0,795` es la c de la partición C, entrenada hasta el 2022-09-30) y en la MLB (`pitcher_bound 0,05` es el mínimo del walk-forward sobre todo el histórico MLB). Su efecto es despreciable: es un solo escalar, estimado con más de 10.000 partidos, estable entre particiones (0,437 / 0,428 / 0,439), y lo comparten la base, T y C. No da a T ninguna ventaja sobre la base ni sobre C, y no cambia la pregunta, que es el valor **incremental** de c·x sobre la base de producción.
+3. **El cambio corrige un sesgo contra las celdas NHL de calidad, no introduce uno a favor.** Con 0,9 la base era sobreconfiada (pendiente 0,45). x₂ y x₉ están correlacionadas con la diferencia de Elo (sección 13), así que el log loss de entrenamiento habría empujado c hacia valores negativos solo para aplanar el Elo: el criterio 4 (c > 0) habría rechazado por una razón ajena a la feature. Con 0,439 (pendiente 0,97) ese canal de recalibración queda cerrado, como en la Enmienda 3(e) del portero. Un ACEPTA NHL de calidad tiene que venir de discriminación o de nivel.
+4. **Queda un canal de nivel, y su guarda ya existe.** La base nueva infraestima al local en ≈ 1 pp. La media de x₈ en la NHL es +0,09 a +0,13 (sección 13), así que un c > 0 en el ajuste 8 puede recoger parte de ese nivel. Corregir 1 pp vale ≈ 0,0002 de log loss, una décima parte del margen, así que no sostiene por sí solo el criterio 1. El criterio 5 (T frente a C) es exactamente la guarda que separa forma por rol de nivel, y no se cambia. x₂, x₃ y x₉ tienen media ≈ 0 por simetría y no tienen ese canal. **Lectura declarada ahora, que no es criterio:** si la celda NHL del ajuste 8 acepta con T − C estrecho y el informe secundario 1 muestra que el sesgo de la base explica la ganancia, el informe del resultado lo dirá.
+5. **Puck line.** El dato de Δ = +0,0037 con línea de mercado es de la base, sobre 258 partidos, y no sobre las líneas ±1,5 del criterio 6 en todo el test. No se usa para nada.
+
+Conclusión: el cambio de base no abre ningún grado de libertad y no sesga las celdas NHL a favor de T. Se mantiene la valoración de la sección 4: un ACEPTA sobre esta muestra es una evidencia algo más débil que sobre una muestra virgen, por la exposición ya declarada allí.
+
+### (e) Criterio 6 con dos líneas (aclaración imprescindible, sin cambiar el criterio)
+
+La sección 7.3 dice para NHL y MLB que «se evalúan las dos» líneas ±1,5, pero el criterio 6 habla de un único «Δ log loss medio en spreads». Para que no quede una lectura por elegir después de ver el resultado, se fija la del precedente (criterio 6 del descanso NHL, tomado del 6b del portero): en NHL y MLB, el Δ del criterio 6 es la **media de `spreads@-1.5` y `spreads@+1.5`** (línea del local), con el mismo peso por partido, y debe ser ≤ 0 en todo el test combinado. En NBA y NFL hay una sola línea por partido, s_i. El script informa además el Δ de cada línea por separado, sin valor de decisión.
+
+### (f) Corte de datos
+
+**Se mantiene `date ≤ 2026-09-26`.** Las razones:
+
+- los recuentos de las secciones 5 y 13 y la partición B de la MLB (que termina el 2026-09-26) están fijados con ese corte;
+- ampliarlo solo añadiría partidos al test B de la MLB, que no lo necesita por diseño, y abriría un cambio de partición sin ninguna ganancia;
+- no se ha medido nada, así que mantenerlo no protege ningún resultado: simplemente no hay motivo para cambiarlo.
+
+El corte es sobre `date`, no sobre la fecha de ingesta. Las filas con `date ≤ 2026-09-26` que la ingesta diaria haya añadido después del 2026-09-27 (precedente: `results_nhl.csv` pasó de 32.888 a 32.902 filas) entran en la muestra. `--pre` informa, por liga y por partición, la diferencia de filas con la tabla de la sección 5 y con los tests de la sección 13. Si alguna cae dentro de una partición de test, se documenta en una enmienda **antes** del modo completo, como en la Enmienda 1 del descanso NHL. No se corrige ni se excluye nada por esa diferencia.
+
+### (g) Ejecución (concreta la sección 16)
+
+- **Instantánea de entradas.** Se aplica el mismo mecanismo que el operador aprobó el 2026-10-01 para el portero: antes del `--pre` se copian a una carpeta fija fuera de `data/` todos los ficheros que lee el script, y `--pre` y el modo completo se ejecutan con `--data-root` apuntando a ella. Los ficheros son:
+  - `results_*.csv` de las cuatro ligas que deciden y de las secundarias de la sección 14 (WNBA, NCAAB, WNCAAB, NCAAF y las 11 de fútbol);
+  - los almacenes de abridores y de FIP de la MLB que usan `StartersStore.attach` y `StarterFIPStore.attach` (sección 6);
+  - los ficheros de cuotas de cierre que resuelva `roi_engine.load_closing_odds` para el informe secundario 7.
+
+  `ratings.yaml`, `default.yaml` y el código se leen del árbol del commit vigente, con el árbol limpio.
+- **JSON de `--pre`:** HEAD, `git status --porcelain` (vacío), la ruta de la instantánea, el SHA-256 y las filas de cada fichero, el SHA-256 de `configs/leagues/ratings.yaml` y de `configs/default.yaml` (redundante con el HEAD, por trazabilidad), los parámetros resueltos del punto b para las cuatro ligas y, sin aserción, los de las ligas secundarias.
+- El modo completo recalcula todo lo anterior y **aborta** si algo difiere. Es la causa «hashes distintos de los de `--pre`» de E10. Si aborta, no se ha medido nada: se repite `--pre` y se ejecuta el modo completo inmediatamente después.
+- Se mantiene lo demás de la sección 16: script commiteado antes del modo completo, una sola ejecución y la regla E10.
+
+### (h) Decisiones del operador
+
+Ninguna nueva. Todo lo de esta enmienda se decide aquí, sin mirar resultados: la base y su aserción, la prohibición de una base alternativa, la invariancia de L_i en la NHL, la exposición, la lectura del criterio 6 con dos líneas, el corte de datos y la instantánea (que extiende a esta medición un mecanismo ya aprobado).
+
+---
+
+## Enmienda 2 (2026-10-08, antes de `--pre`; redactada por Fable)
+
+Sale de la revisión de Fable del script `scripts/research/measure_adjustment_battery.py`, que dictaminó APTO CON CAMBIOS. Deja por escrito, antes de medir, las lecturas que el texto dejaba abiertas y lo que el script hace en los informes secundarios, para que ninguna se pueda elegir después de ver un resultado.
+
+**Qué se ha hecho hasta ahora.** Solo `--parity-only` sobre los datos reales: PARIDAD OK en las cuatro ligas, con desviación máxima 0,0. Ese modo no estima nada, no calcula ninguna pérdida y no empareja ninguna feature con su desenlace. No se ha ejecutado `--pre` ni el modo completo. Ninguna decisión de esta enmienda sale de un resultado.
+
+**Qué no cambia:**
+
+- los criterios de la sección 10, Holm con K = 24 y α = 0,05 (sección 11) y el bootstrap (sección 12, que aquí solo se concreta);
+- los seis ajustes, las ventanas `n`, las cuatro ligas que deciden, las particiones y la línea de cada mercado (secciones 6, 7.3 y 9);
+- la base y sus aserciones, la instantánea y el corte de datos (Enmienda 1).
+
+**Dónde manda.** Sobre la sección 14 (informes 5, 7, 8, 9 y 10), sobre la sección 16 y sobre la Enmienda 1(g), en lo que fija.
+
+### (a) El fútbol agrupado sale del informe 9
+
+Se retira el fútbol agrupado del informe secundario 9: particiones propias, log loss a tres vías en h2h y Over en L_i. **No se implementa ni se ejecuta.** Lo decidió el orquestador el 2026-10-08, siguiendo la recomendación de la revisión. Las razones:
+
+- es un informe secundario: no puede dar un ACEPTA y no entra en Holm, así que retirarlo no cambia K ni ninguna celda;
+- la sección 5 ya declara que lo que mide no es lo que mueve la capa: la capa suma al local y resta al visitante sin tocar el empate, y el motor evalúa P(local | no empate). Las ligas son heterogéneas, y la MLS ya tiene Elo local/visitante;
+- implementarlo exigiría código nuevo sin paridad contra el motor: log loss a tres vías y estimación agrupada de 11 ligas. Si fallara, obligaría a re-ejecutar por E10 después de haber visto las 24 celdas.
+
+El informe 9 queda como transferencia sin reajustar: NBA → WNBA, NCAAB y WNCAAB, y NFL → NCAAF (punto e). Los `results_*.csv` de fútbol pueden seguir en la instantánea y en el manifiesto de la Enmienda 1(g), solo por trazabilidad: no se usan para medir nada. Medir la capa en el fútbol exige un pre-registro propio.
+
+### (b) Lecturas fijadas
+
+Estas son las lecturas que aplica el script, por número de ambigüedad de la revisión:
+
+3. **Recuentos de `--pre`.** Se cuentan sobre todos los partidos de test de cada partición, empates incluidos, porque `--pre` no mira marcadores. En el modo completo, el mercado h2h deja fuera los empates, como `binary_probs`. Por eso, en la NFL, los afectados de los ajustes 2, 3, 8 y 9 en el modo completo pueden ser unos pocos menos que en `--pre`. Esa diferencia no es un defecto. En totales no hay empujes, porque L_i es semientera.
+5. **A qué partidos se aplica cada criterio.**
+   - Criterios 1 y 2: solo los afectados del test combinado y de cada partición.
+   - Criterios 3 y 5: todos los partidos válidos del test combinado en el mercado de decisión.
+6. **Criterio 6.**
+   - Se calcula sobre todos los partidos de test con spread válido.
+   - Donde x no está disponible, Δ = 0, porque el término vale 0 en producción.
+   - En NHL y MLB es la media con igual peso de `spreads@-1.5` y `spreads@+1.5` (Enmienda 1(e)). Un partido entra solo si es válido en las dos líneas.
+7. **Bootstrap.**
+   - Se remuestrean todos los días UTC del test combinado de la liga, también los que no tienen ningún afectado.
+   - En cada réplica, el estadístico es Σnum/Σden. Para el criterio 1 es la media de Δ sobre los afectados remuestreados.
+   - Las 10.000 réplicas salen de un único generador con semilla 42 por liga, en bloques de 250, compartido por todas las celdas y estadísticos de esa liga. Equivale a usar la semilla 42 por celda, porque todas las celdas de una liga remuestrean los mismos días.
+   - Las réplicas con denominador 0 se descartan, y se informa `n_replicas`.
+   - Si el EE no es utilizable (ausente, no finito o ≤ 0), p = 1 y la celda no se rechaza.
+8. **Holm.** Los empates de p se ordenan por el nombre de la celda (`adj{k}_{liga}`). El p ajustado es el máximo acumulado de min(1, (K − k + 1)·p₍ₖ₎).
+11. **Paridades 2 y 3 en el modo completo.** El contexto se reconstruye con el historial final, filtrado a `d < rd` por `roi_engine._prior_games`. Es idéntico al prior del recorrido incremental: los mismos partidos y en el mismo orden. Se comprueban **todos** los partidos de test.
+12. **Informe 7.**
+    - El emparejamiento usa `_match_index` y `_match_result` de `roi_engine`, recorriendo los resultados con la misma clave de orden que `roi_engine.backtest_league` (`src/sqp/backtesting/roi_engine.py:289-294`): (date, home, away, game_id, home_score, away_score).
+    - Ante una doble jornada ambigua, no se empareja.
+    - El spread principal del consenso (`_pick_main_lines`) cambia de signo cuando el local del feed no es el local del resultado.
+    - Se usa el c de la última partición.
+13. **Informe 8.** Solo se calcula en las ligas que deciden y tienen `scoring_half_life_days` > 0, es decir, solo en la NBA. En las demás se informa «no aplica».
+14. **Informe 5.**
+    - Las marcas de la burbuja 2019-20 y del calendario 2020-21 solo se ponen en NBA y NHL.
+    - NBA, NHL y NFL se etiquetan por el año de inicio de la temporada (cambio en agosto); la MLB, por año natural.
+15. **Informe 9.** Se usa el c de la última partición (C) de la NBA y de la NFL.
+
+### (c) `--parity-stride N`
+
+Solo existe en `--parity-only`, que no decide nada: argparse lo rechaza en `--pre` y en el modo completo. Con N > 1, las features y la paridad de la capa se comprueban en uno de cada N partidos de test. La paridad 1 (motor) sigue siendo completa, y el JSON registra `stride_features`. Las ejecuciones previas de `--parity-only` con stride 20 en NBA y NHL no sustituyen a ninguna aserción del modo completo: este comprueba las paridades 1, 2 y 3 en todos los partidos.
+
+### (d) Errores en los informes secundarios
+
+- **Ninguna de las 24 celdas pasa por `_safe_informe`.** Si falla algo en el camino de una celda, el script aborta: estimación, criterios, bootstrap, Holm y paridades. `_safe_informe` solo envuelve los informes 1 a 10 y la carga de cuotas capturadas del informe 7. Esa carga no alimenta ninguna celda.
+- Un informe secundario que falla deja en el JSON, en su propia entrada, el tipo de la excepción, el mensaje y el traceback. Si falla la carga de cuotas, el error queda en el informe 7, que no puede salir como `n_emparejados: 0`. Un informe parcial lo dice explícitamente: por ejemplo, una no convergencia de la estimación conjunta (informe 2) se anota por ajuste y partición.
+- **Re-ejecución para completar un informe secundario.** Es un defecto de código en el sentido de E10, demostrable sin mirar los resultados, porque basta con la excepción. Solo se permite con tres condiciones:
+  1. la corrección no toca código del camino de las celdas;
+  2. la segunda ejecución usa la misma instantánea, con los mismos hashes, y se asierta que las 24 celdas, el bloque de Holm y los bloques de paridad salen **idénticos bit a bit** a los de la primera;
+  3. se commitean las dos salidas con el defecto documentado.
+
+  Si las celdas no salen idénticas, eso es en sí un defecto que se diagnostica a ciegas, como dice la sección 16.
+
+### (e) Informe 9: alcance de la WNBA
+
+En la WNBA solo se evalúan los partidos con `date ≥ 2025-01-01`: las temporadas 2025 y 2026, que es la «WNBA 2025-26» de la sección 14.9. El estado del modelo y las features se siguen construyendo con todo el histórico, con el mismo warmup. NCAAB y WNCAAB, que solo tienen la temporada 2025-26, y NCAAF se evalúan en todo su histórico tras el warmup.
+
+### (f) Informe 8: nueva definición (sustituye a la de la sección 14.8)
+
+La comparación en una línea fija de totales sobre 2002-2026 mediría sobre todo el nivel del total, que se movió entre unos 185 y 235 puntos, y no la recencia. Por eso se sustituye por esta:
+
+- se construye un segundo recorrido de la base NBA, idéntico al de producción salvo `scoring_half_life_days = 0`. Es un informe secundario y no vale como base alternativa para ninguna celda (Enmienda 1(b));
+- en cada partido, la P(Over) sin decaimiento se evalúa en la L_i **de la base de producción**, no en la del segundo recorrido: `normal_total_probs(μ_sin, total_sigma, L_i)["over"]`. Así las dos bases se comparan en la misma línea;
+- sobre el test combinado de la NBA se informa Δ = log loss(base de producción) − log loss(base sin decaimiento), en todos los partidos válidos y en los afectados del ajuste 4, junto al Δ del término 4 en esos mismos afectados. Es descriptivo y no condiciona nada.
+
+### (g) Informe 10: los partidos de exhibición no están disponibles
+
+`ResultsStore` no guarda el tipo de partido (sus columnas son `date`, `home`, `away`, `game_id`, `home_score`, `away_score`, `neutral` e `ingested_at`). El informe 10 declara «exhibición: no disponible en `ResultsStore`». Los partidos en campo neutral se informan aparte, con su propio nombre, y no se presentan como exhibiciones.
+
+### (h) `--data-root` obligatorio
+
+En `--pre` y en el modo completo, `--data-root` es obligatorio y tiene que apuntar a la instantánea de la Enmienda 1(g). Si resuelve a la raíz del repositorio (`sqp.config.ROOT`), es decir, a los datos vivos, el script aborta. La instantánea va fuera del repositorio o en una ruta ignorada por git, porque `--pre` exige `git status --porcelain` vacío en todo el repositorio (Enmienda 1(b)). Eso incluye ficheros sin seguimiento ajenos a esta medición, y la lectura literal se mantiene. El modo completo, además, registra en su JSON:
+
+- los parámetros resueltos;
+- el manifiesto de hashes;
+- los SHA-256 de la configuración;
+- el `git status --porcelain` de `src/`, `configs/` y `scripts/research/`;
+- el SHA-256 del fichero de `--pre-json`.
+
+Entre `--pre` y el modo completo no se commitea nada, porque el HEAD tiene que coincidir.
+
+### (i) Qué añade `--pre` para la Enmienda 1(f)
+
+Por liga y por partición, `--pre` informa:
+
+- las filas con `ingested_at` posterior al 2026-09-27;
+- los duplicados por `(date, home, away)` y por `game_id`.
+
+Así se atribuyen las diferencias con las secciones 5 y 13. Lo ya visto en `--parity-only`, 4.850 partidos de test MLB frente a 4.837, queda pendiente de esa atribución. Las filas de ingesta tardía no se corrigen ni se excluyen (Enmienda 1(f)). Un duplicado sería un defecto de datos: se documenta y se resuelve en la Enmienda 3, sin mirar resultados. **La Enmienda 3 se redacta después de `--pre` y antes del modo completo**, con las diferencias por partición, su atribución y cualquier recuento o correlación que no coincida con la sección 13.
+
+### (j) Decisiones del operador
+
+La retirada del fútbol agrupado (punto a) la decidió el orquestador siguiendo la recomendación de la revisión. Si el operador prefiere implementarlo, tiene que decirlo **antes** de `--pre`, y entonces esta enmienda se sustituye por otra que lo comprometa con código, tests y revisión. Lo demás de esta enmienda son lecturas técnicas fijadas sin mirar resultados, y no abre ninguna decisión nueva.
