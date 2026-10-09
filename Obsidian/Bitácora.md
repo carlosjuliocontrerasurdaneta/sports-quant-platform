@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-10-08
+actualizada: 2026-10-09
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-10-09]] — batería de ajustes ejecutada: Enmienda 3 (dedupe de 15 gamePk MLB), 4/24 ACEPTA (totales NBA/NFL, ajustes 4 y 10); Fable: válido pero no activable (empeora contra la línea del mercado); propuesta de recencia en el adaptador de totales.
 - [[Bitácora/2026-10-08]] — script de la batería de ajustes (6 ajustes × 4 ligas, Holm K=24) con `--pre`, `--parity-only` y modo completo; Enmiendas 1 y 2 del pre-registro; Fable APTO; nada medido todavía.
 - [[Bitácora/2026-10-03]] — script de medición del pre-registro del tier A (`--contar` / `--medir`, 82 tests, tres rondas de Fable); primer `--contar` oficial con n = 0.
 - [[Bitácora/2026-10-02]] — filtro por tier del Tipster (A/B/C/NO BET) y tarjeta de probabilidad prometida en la pestaña Historial; primera lectura: tier A acierta 47,7 % frente a 56,8 % prometido (386 picks); picks repetidos del ledger colapsados en el Historial; KI-071 abierto.

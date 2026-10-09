@@ -930,3 +930,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - `--parity-only` real: desviación 0,0 en las cuatro ligas. `--pre` y el modo completo NO ejecutados.
 - Lección: una indicación del revisor también se verifica contra el código canónico (el «orden por fecha estable» de Fable contradecía `roi_engine.backtest_league` l. 289-294).
 - **Pendiente:** decidir sobre `audit/model_vs_market_20261001.md` (bloquea `--pre`); instantánea fuera del repo y de `data/`; `--pre`; Enmienda 3 (filas MLB +13, NHL +14); modo completo una sola vez sin commits intermedios; informe y dictamen de Fable.
+
+## 2026-10-09 — Batería de ajustes ejecutada
+
+- `4d9efca` (informe audit commiteado), instantánea `C:\dev\3\snapshots\bateria-ajustes-20261008`, Enmienda 3 + dedupe de 15 `gamePk` MLB (`ee0ab19`, Fable APTO), `--pre` regenerado y modo completo único (rc 0). Detalle en [[Bitácora/2026-10-09]].
+- Resultado: 4/24 ACEPTA, todas en totales (NBA y NFL, ajustes 4 y 10). Dictamen Fable: APTO CON CONDICIONES — válido y sin fuga, pero NO activable: contra la línea del mercado empeora en las 4 ligas; el efecto revela que la μ de `TeamScoringRates` tiene demasiada memoria (NFL/NHL sin decaimiento).
+- **Pendiente (decisión del operador):** pre-registro de recencia del adaptador de totales (`scoring_half_life_days`), evaluado contra la línea del mercado y el no-vig.
