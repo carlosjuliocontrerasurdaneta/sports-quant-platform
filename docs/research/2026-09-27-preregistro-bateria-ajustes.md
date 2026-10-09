@@ -947,3 +947,127 @@ Así se atribuyen las diferencias con las secciones 5 y 13. Lo ya visto en `--pa
 ### (j) Decisiones del operador
 
 La retirada del fútbol agrupado (punto a) la decidió el orquestador siguiendo la recomendación de la revisión. Si el operador prefiere implementarlo, tiene que decirlo **antes** de `--pre`, y entonces esta enmienda se sustituye por otra que lo comprometa con código, tests y revisión. Lo demás de esta enmienda son lecturas técnicas fijadas sin mirar resultados, y no abre ninguna decisión nueva.
+
+---
+
+## Enmienda 3 (2026-10-09, después de `--pre` y antes del modo completo; redactada por Fable)
+
+Es la enmienda que anuncian la Enmienda 1(f) y la Enmienda 2(i). Atribuye las diferencias de filas frente a la sección 5 y resuelve los duplicados que `--pre` ha detectado.
+
+**Qué se ha hecho hasta ahora.**
+
+- El 2026-10-08 se creó la instantánea de entradas `C:\dev\3\snapshots\bateria-ajustes-20261008`: 43 ficheros, con los hashes verificados contra el origen.
+- Se ejecutó `--pre` con HEAD `4d9efca` y el árbol limpio. Salida: `pre.json` en esa carpeta (SHA-256 `cd3ba152…aaaee`). Las aserciones de base pasaron en las cuatro ligas, con identidad λ NHL de 1,8·10⁻¹⁵.
+- No se ha ejecutado el modo completo. No se ha emparejado ninguna feature con su desenlace ni se ha calculado ninguna pérdida.
+- Para redactar esta enmienda solo se han hecho recuentos sobre la instantánea: filas por `date` y por `ingested_at`, duplicados y particiones. La columna de marcador se ha leído en un único caso, para comprobar dentro de cada grupo duplicado si los marcadores coinciden (sí/no). Nunca se ha relacionado con ninguna feature. `--pre` no se ha vuelto a ejecutar.
+
+**Qué no cambia:**
+
+- los criterios de la sección 10, Holm con K = 24 y α = 0,05, el margen 0,002 y el bootstrap;
+- los seis ajustes, las ventanas `n`, las ligas, las particiones, las líneas, el warmup, el optimizador y la pérdida;
+- la base y sus aserciones (Enmienda 1(b)), el corte `date ≤ 2026-09-26` y la regla de no excluir filas por ingesta tardía (Enmienda 1(f)).
+
+**Dónde manda.** Sobre la sección 6 («todas las filas con `date ≤ 2026-09-26`»), solo en lo que fija el punto c.
+
+### (a) MLB: +13 filas, atribuidas por completo
+
+`--pre`: 9.719 filas hasta el corte, frente a 9.706 en la sección 5. La partición B tiene 2.416 partidos y 183 días, frente a 2.403 y 182; la A coincide (2.434 / 184).
+
+Comprobación en la instantánea (`results_mlb.csv`, agregado por `date` e `ingested_at`): las 13 filas de la partición B con ingesta del 2026-09-27 tienen **todas** `date = 2026-09-26` y el mismo `ingested_at = 2026-09-27T15:00:19+00:00`. Ese día no tenía ninguna otra fila, así que la partición B gana 13 partidos y 1 día. El pre-registro se commiteó en `386f316` el 2026-09-27 a las 08:22:06 −03:00 (11:22:06Z), **antes** de esa ingesta. Los recuentos de la sección 5 son los del fichero en ese momento. 9.706 + 13 = 9.719, y no queda nada sin explicar.
+
+Son 13 partidos de temporada regular del último día del test B. Por la Enmienda 1(f), entran en la muestra.
+
+Los afectados de los ajustes 2, 3, 8 y 9 en el test combinado superan a la sección 13 en 10, 11, 8 y 12, siempre ≤ 13, lo que encaja con esas filas.
+
+- En los ajustes 4 y 10 (+10 y +18) y en la correlación x4~x10 (0,835 frente a 0,823) se suma además la diferencia ya declarada en la sección 13: allí L_i no incluía el abridor ni el parque, y `--pre` sí los incluye (`esperado_distinto_por_abridor_y_parque`).
+- x8~x9 da 0,53550 frente a 0,535: una diferencia de 5·10⁻⁴ en el redondeo a tres decimales. Es compatible con las 13 filas nuevas, pero no se ha comprobado aislándolas. Es descriptiva y ningún criterio depende de ella.
+
+### (b) NHL: +12 filas, atribuidas por completo, fuera de todos los tests
+
+`--pre`: 32.900 filas hasta el corte, frente a 32.888 en la sección 5. Las tres particiones coinciden **exactamente** con las secciones 9 y 13: partidos 5.780 / 5.192 / 5.978, días 957 / 872 / 952, los afectados de las seis celdas en el test combinado (diferencia 0) y las cinco correlaciones. Por eso los contadores de ingesta por partición salen a 0: el informe de ingesta de `--pre` (`ingestion_report`) solo cuenta filas **dentro** de las particiones de test, y las 12 filas nuevas no están en ninguna.
+
+Comprobación en la instantánea (`results_nhl.csv`, filas con `date ≤ 2026-09-26`, agregadas por día de `ingested_at`):
+
+| Día de ingesta | 2026-06-13 | 2026-06-14 | 2026-06-15 | 2026-09-25 | 2026-09-26 | 2026-09-27 |
+|---|---:|---:|---:|---:|---:|---:|
+| Filas | 1.500 | 3.020 | 28.317 | 47 | 4 | **12** |
+
+- Las 12 filas del 2026-09-27 tienen **todas** `date = 2026-09-26` y `ingested_at = 2026-09-27T15:01:09+00:00`. Son partidos de pretemporada 2026-27, entre ellos BUF–PIT, NSH–CAR, LAK–ANA y MTL–OTT.
+- Esa ingesta es posterior al commit del pre-registro (11:22:06Z). Las 32.888 filas de la sección 5 son exactamente las que había antes: 1.500 + 3.020 + 28.317 + 47 + 4. 32.888 + 12 = 32.900.
+- La misma ingesta añadió 2 filas con `date = 2026-09-27`. De ahí el «32.888 → 32.902» (+14) de la Enmienda 1 de `2026-09-27-preregistro-descanso-nhl.md`, citado en la Enmienda 1(f). Con el corte en la fecha, la diferencia es +12: el «+14» que circuló era el fichero entero, no la muestra.
+- No hay re-ingestas, cambios de alias ni filas de otra procedencia. Todas las filas anteriores al 2026-09-25 se ingirieron entre el 13 y el 15 de junio, y el backfill de porteros (`1932e68`) escribe en `goalies_nhl.csv`, no en `results_nhl.csv`.
+
+**Efecto en la medición: ninguno en las celdas.** El test C termina el 2026-06-30, y ningún entrenamiento llega a septiembre de 2026. Las features de un partido solo usan días estrictamente anteriores, así que estas filas no entran en ninguna feature, ni en el estado del modelo base ni en ninguna pérdida de test o de entrenamiento. El walk-forward las recorre al final (por eso hay 32.840 evaluados = 32.900 − 60), sin efecto en nada anterior. Es el mismo caso que la Enmienda 1 del descanso NHL («fuera de todos los entrenamientos y tests»).
+
+### (c) Duplicados
+
+**NHL, por (date, home, away): 4 / 11 / 3 en A / B / C, y 0 por `game_id`.** Son 22 parejas en todo el histórico hasta el corte, todas con `game_id` de ESPN distintos. Ya estaban en las referencias de las secciones 5 y 13, que coinciden exactamente. Son los «22 enfrentamientos duplicados en fecha UTC» de la Enmienda (a) del portero (`2026-09-26-preregistro-portero-nhl.md`, p. ej. los playoffs del 2016-04-15 NYI@FLA), y la Enmienda 1 del descanso NHL los recuenta («siguen en 22»).
+
+- Son partidos distintos: *split squads* de pretemporada (FLA–NSH casi cada septiembre), las series consecutivas de 2021 en las que el partido de tarde y el de noche del día anterior caen en la misma fecha UTC, y playoffs.
+- En 19 de las 22 parejas los marcadores difieren. Las 3 con marcador igual (2014-09-22 NYI–OTT, de entrenamiento; 2021-01-31 DET–FLA y 2021-03-14 NJD–NYI, en el test B) tienen `game_id` distintos, que es lo que distingue un evento en el store.
+- Como comparten fecha, ninguna fila de la pareja entra en las features de la otra (`d < rd`), así que no hay fuga de información.
+
+**Se mantienen todas.** No son un defecto.
+
+**NBA:** 1 en la partición C (2026-02-01 MIA–CHI, `game_id` 401810547 y 401810560, marcadores distintos). Ya estaba en la referencia y se mantiene por la misma razón.
+
+**MLB, por (date, home, away): 31 / 26.** Son *doubleheaders*: 130 parejas con `gamePk` distinto, 128 de ellas con marcador distinto (las 2 iguales, 2023-08-19 LAD–MIA y 2026-09-23 BAL–TOR, tienen `gamePk` distintos). Se mantienen.
+
+**MLB, por `game_id`: 4 / 1. Esto sí es un defecto, y se resuelve aquí.** Hasta el corte hay 15 `gamePk` que aparecen **dos veces, en fechas distintas y con el marcador idéntico en las 15**: es el mismo partido, suspendido o aplazado y terminado otro día, que la API de MLB lista también en su fecha original. La copia de la fecha original lleva un resultado que en ese día aún no se conocía.
+
+| Copia anterior → posterior | `gamePk` | Dónde cae la copia posterior |
+|---|---|---|
+| 2023-05-13 → 05-14; 07-14 → 07-15; 07-17 → 07-18; 07-21 → 07-22; 08-23 → 08-24; 09-27 → 09-28; 09-28 → 10-02 | 718203, 717407, 717375, 717324, 716875, 716414, 716404 | entrenamiento (A y B) |
+| 2024-05-21 → 05-22; 06-26 → 08-26; 08-27 → 08-28 | 745180, 746942, 746755 | entrenamiento (A y B) |
+| 2025-05-19 → 05-21; 06-06 → 06-07; 07-01 → 07-02; 08-02 → 08-03 | 777861, 777623, 777294, 776907 | **test A** (entrenamiento de B) |
+| 2026-06-16 → 06-17 | 824912 | **test B** |
+
+**Por qué es un defecto, demostrable sin mirar ningún resultado.**
+
+1. Al llegar a la copia posterior, el `prior` (`d < rd`) ya contiene la anterior, que es el **mismo** partido con su marcador final. Las features de esa fila incluyen su propio desenlace: el cara a cara del 3 de forma directa, y la forma, el margen y los totales de los ajustes 2, 4, 8, 9 y 10.
+2. El Elo base también lo ha observado.
+3. Además, el partido cuenta dos veces en el estado y en la evaluación.
+
+Es una fuga del objetivo en el brazo T: favorece a la aceptación. En producción no ocurre, porque las dos copias se escriben cuando el partido ya ha terminado. Hay 5 filas de test con fuga y hasta 14 filas de entrenamiento de c contaminadas (10 en A; 14 en B). El sesgo es pequeño frente a unos 3.700–4.800 afectados por celda, pero conocido, y E10 no permitiría repetir la medición por un defecto ya identificado antes de medir. Hay que resolverlo ahora.
+
+**Regla (fijada sin mirar resultados; es el cambio sustantivo de esta enmienda: cambia la definición de filas de la sección 6, no ningún criterio).**
+
+- En `load_league`, justo después del filtro `date ≤ CUTOFF` y **antes** de `StartersStore.attach` y `StarterFIPStore.attach`, se descartan, para cada `game_id` no vacío que aparezca más de una vez, todas sus filas menos la de **`date` más tardía**. Si hubiera un empate de fecha, se queda la primera en el orden estable del store.
+- Se conserva la copia posterior porque es la fecha en que el resultado se conoció. La anterior es la que adelanta información. Conservar la anterior no arreglaría nada: su marcador seguiría disponible antes de tiempo para los partidos intermedios, entre ellos el otro partido del *doubleheader* de reanudación.
+- La lista filtrada es la **única** que usan el walk-forward base, las features, la evaluación, las paridades 1–3 (`walk_forward_backtest` recibe la misma lista, así que la paridad no se ve afectada) y los informes secundarios.
+- La regla se aplica a todas las ligas que lee el script. **Aserción:** se descartan exactamente 0 filas en NBA, NHL y NFL, y en MLB exactamente las 15 copias anteriores de los `gamePk` de la tabla. Si no, el script aborta. En las ligas secundarias no hay aserción, pero se informa el recuento.
+- El JSON registra, por liga, `filas_antes_dedupe_game_id`, `filas_leidas` (después del filtro) y la lista `(game_id, date)` descartada.
+- `ingestion_report` sigue leyendo el fichero en bruto, así que seguirá informando 4 / 1 duplicados por `game_id`. Es lo esperado.
+- La instantánea **no se modifica**: el filtro es de código, así que sus hashes no cambian.
+
+Es la opción conservadora: elimina una fuga que solo puede favorecer al brazo T. Tiene el precedente de E3 del clima (`2026-09-26-preregistro-clima-mlb.md`), que también sacó de su universo los partidos suspendidos y reanudados otro día. La regla y su aserción se fijan antes de conocer ninguna pérdida.
+
+**Recuentos MLB esperados tras el filtro** (calculados ahora sobre la instantánea, sin features):
+
+| | Filas hasta el corte | Test A | Test B | Evaluados |
+|---|---:|---:|---:|---:|
+| `--pre` de `4d9efca` | 9.719 | 2.434 / 184 días | 2.416 / 183 días | 9.659 |
+| Tras el filtro | **9.704** | **2.430 / 184 días** | **2.415 / 183 días** | **9.644** |
+
+Frente a la sección 5: 9.706 + 13 (punto a) − 15 (este punto) = 9.704. Los afectados por celda y las correlaciones MLB cambiarán ligeramente. Se informan sin aserción numérica: el filtro desplaza las ventanas de otros partidos y no tiene un signo fijo. Ni NBA, ni NHL, ni NFL pueden cambiar en nada.
+
+### (d) Consecuencias para el modo completo
+
+1. **Implementar el punto c antes de medir.** El filtro va en `scripts/research/measure_adjustment_battery.py` con la aserción de 0 / 0 / 0 / 15, un test unitario (que descarta la copia anterior, conserva los *doubleheaders* con `gamePk` distintos y no toca las filas sin `game_id`) y una revisión de Fable de ese cambio **antes** del commit. No se toca nada más del camino de las celdas.
+2. **Commitear la enmienda y el código.** El commit cambia el HEAD, y el modo completo exige que el HEAD coincida con el de `--pre` (Enmienda 1(b)). Por eso **`--pre` se regenera sobre la MISMA instantánea** (`--data-root C:\dev\3\snapshots\bateria-ajustes-20261008`), con el árbol limpio. Antes de pasar al modo completo se comprueba:
+   - el manifiesto de los 43 ficheros y los SHA-256 de la configuración, idénticos al `pre.json` de `4d9efca`;
+   - NBA, NHL y NFL idénticas a ese `pre.json` en filas, particiones, afectados, x, correlaciones, identidades y líneas L;
+   - MLB con 9.704 filas, A 2.430 / 184, B 2.415 / 183, 9.644 evaluados y la lista de 15 descartes.
+
+   Si algo no cuadra, no se mide: se diagnostica a ciegas.
+3. Después, el modo completo **inmediatamente**, con `--pre-json` apuntando al `--pre` regenerado y sin ningún commit en medio (Enmienda 2(h)). El `pre.json` de `4d9efca` se conserva como registro y no se usa como `--pre-json`.
+4. Las 13 filas MLB del 2026-09-26 entran en el test B (Enmienda 1(f)). Las 12 filas NHL del 2026-09-26 no entran en ninguna celda. Los duplicados por (date, home, away) de NHL, NBA y MLB se mantienen.
+5. **Residual declarado:** la copia posterior de un partido suspendido se evalúa con las features del día en que terminó, no del día en que empezó (1–2 días en las 5 filas de test). Puede incluir resultados de otros partidos jugados entre las dos fechas, pero nunca el propio. No se corrige.
+
+### (e) Cambios de criterio
+
+**Ninguno.** No cambian los criterios, los umbrales, el margen, α, K, el bootstrap ni la base. El único cambio sustantivo es el de la definición de filas del punto c: se descartan las 15 copias anteriores de un `gamePk` MLB repetido. Lo exige la Enmienda 2(i), y se fija sin mirar resultados.
+
+### (f) Decisiones del operador
+
+Ninguna nueva. La regla del punto c resuelve un defecto de datos, como la Enmienda 2(i) ya había ordenado. Si el operador prefiere medir sin el filtro, tiene que decirlo **antes** de regenerar `--pre`. En ese caso, el informe del resultado declararía la fuga de las 5 filas de test MLB como un sesgo a favor de T.

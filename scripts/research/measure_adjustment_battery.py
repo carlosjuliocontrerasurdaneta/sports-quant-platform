@@ -303,6 +303,57 @@ def assert_resolved_params(league: str, league_params: dict | None, adapter_para
 
 
 # ------------------------------------------------------------------ datos --
+# Enmienda 3(c): copias anteriores de un gamePk MLB repetido (game_id, fecha descartada).
+EXPECTED_DEDUPE_DROPS: dict[str, list[tuple[str, str]]] = {
+    "nba": [], "nhl": [], "nfl": [],
+    "mlb": [("718203", "2023-05-13"), ("717407", "2023-07-14"), ("717375", "2023-07-17"),
+            ("717324", "2023-07-21"), ("716875", "2023-08-23"), ("716414", "2023-09-27"),
+            ("716404", "2023-09-28"), ("745180", "2024-05-21"), ("746942", "2024-06-26"),
+            ("746755", "2024-08-27"), ("777861", "2025-05-19"), ("777623", "2025-06-06"),
+            ("777294", "2025-07-01"), ("776907", "2025-08-02"), ("824912", "2026-06-16")],
+}
+
+
+def _game_id_text(value: object) -> str:
+    """`game_id` como texto celda a celda; None/NaN/vacio -> ''. (pandas 3: `astype(str)` deja NaN.)"""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ""
+    s = str(value).strip()
+    return "" if s.lower() in ("nan", "none") else s
+
+
+def dedupe_by_game_id(results: list[dict]) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Enmienda 3(c): por cada `game_id` no vacio repetido, conserva SOLO la fila de `date` mas tardia
+    (empate de fecha: la primera en el orden del store). Las filas sin `game_id` no se tocan.
+    Devuelve (lista filtrada en el orden original, [(game_id, date) descartados])."""
+    keep: dict[str, int] = {}
+    for i, r in enumerate(results):
+        gid = _game_id_text(r.get("game_id"))
+        if not gid:
+            continue
+        j = keep.get(gid)
+        if j is None or str(r.get("date", ""))[:10] > str(results[j].get("date", ""))[:10]:
+            keep[gid] = i
+    kept = set(keep.values())
+    out: list[dict] = []
+    dropped: list[tuple[str, str]] = []
+    for i, r in enumerate(results):
+        gid = _game_id_text(r.get("game_id"))
+        if gid and i not in kept:
+            dropped.append((gid, str(r.get("date", ""))[:10]))
+        else:
+            out.append(r)
+    return out, dropped
+
+
+def assert_dedupe_drops(league: str, dropped: list[tuple[str, str]]) -> None:
+    """Enmienda 3(c): 0 descartes en NBA/NHL/NFL y exactamente los 15 en MLB; si no, aborta."""
+    exp = EXPECTED_DEDUPE_DROPS[league]
+    if sorted(dropped) != sorted(exp):
+        raise SystemExit(f"{league}: descartes por game_id duplicado {sorted(dropped)} != esperados "
+                         f"{sorted(exp)} (Enmienda 3(c)). Se aborta: no se mide con otro universo de filas.")
+
+
 def load_league(league: str, data_root: Path, *, assert_params: bool = True
                 ) -> tuple[list[dict], dict | None, dict]:
     """Resultados con `date <= CUTOFF`, `league_params` resueltos y procedencia.
@@ -310,11 +361,16 @@ def load_league(league: str, data_root: Path, *, assert_params: bool = True
     `measure_tilt_nhl.load_league` (su invariante es tilt 0,9)."""
     store = ResultsStore(data_root)
     results = [r for r in store.load(league) if str(r.get("date", ""))[:10] <= CUTOFF]
+    n_before = len(results)
+    results, dropped = dedupe_by_game_id(results)     # Enmienda 3(c): antes de adjuntar abridores/FIP
+    if assert_params and league in EXPECTED_DEDUPE_DROPS:
+        assert_dedupe_drops(league, dropped)
     meta_params = _league_meta(league).get("league_params")
     adapter_params = resolved_adapter_params(league, meta_params)
     if assert_params:
         assert_resolved_params(league, meta_params, adapter_params)
-    proc: dict = {"fichero": str(store.path(league)), "filas_leidas": len(results)}
+    proc: dict = {"fichero": str(store.path(league)), "filas_antes_dedupe_game_id": n_before,
+                  "filas_leidas": len(results), "descartadas_dedupe_game_id": [list(d) for d in dropped]}
     if store.path(league).exists():
         proc["sha256"] = sha256_of(store.path(league))
     if league == "mlb":
@@ -1146,7 +1202,9 @@ def _transfer_report(source_cells: dict[int, dict], target: str, data_root: Path
     eval_from = TRANSFER_EVAL_FROM.get(target, "0000-00-00")
     folds = {"todo": {"train_end": "0000-00-00", "test_start": eval_from, "test_end": "9999-99-99"}}
     Lt = LeagueData(fr.df, target, folds)
-    out: dict = {"filas": proc["filas_leidas"], "evaluados": int(Lt.in_test.sum()), "evaluar_desde": eval_from}
+    out: dict = {"filas": proc["filas_leidas"], "evaluados": int(Lt.in_test.sum()), "evaluar_desde": eval_from,
+                 "filas_antes_dedupe_game_id": proc["filas_antes_dedupe_game_id"],
+                 "descartadas_dedupe_game_id": proc["descartadas_dedupe_game_id"]}
     for adj in ADJ_IDS:
         c = source_cells[adj]["c"][-1]
         p, y, valid = Lt.decision(adj)

@@ -128,6 +128,70 @@ def test_load_league_aborts_when_meta_changes_and_applies_cutoff(mod, monkeypatc
         mod.load_league("nfl", tmp_path)
 
 
+# ------------------------------------------- Enmienda 3(c): dedupe por game_id --
+def _row(gid, date, home="A", away="B"):
+    return {"date": date, "home": home, "away": away, "game_id": gid, "home_score": 1, "away_score": 0}
+
+
+def test_dedupe_drops_earlier_copy_and_keeps_later(mod):
+    rows = [_row("1", "2023-05-13"), _row("2", "2023-05-13", "C", "D"), _row("1", "2023-05-14")]
+    out, dropped = mod.dedupe_by_game_id(rows)
+    assert dropped == [("1", "2023-05-13")]
+    assert out == [rows[1], rows[2]]                      # orden original, copia posterior conservada
+    out2, dropped2 = mod.dedupe_by_game_id([rows[2], rows[0]])     # el orden del store no decide
+    assert dropped2 == [("1", "2023-05-13")] and out2 == [rows[2]]
+
+
+def test_dedupe_keeps_doubleheaders_with_distinct_game_ids(mod):
+    rows = [_row("10", "2024-06-01"), _row("11", "2024-06-01")]
+    out, dropped = mod.dedupe_by_game_id(rows)
+    assert dropped == [] and out == rows
+
+
+def test_dedupe_does_not_touch_rows_without_game_id(mod):
+    rows = [_row(None, "2024-06-01"), _row("", "2024-06-01"), _row(float("nan"), "2024-06-01"),
+            _row(None, "2024-06-02"), _row("nan", "2024-06-02")]
+    out, dropped = mod.dedupe_by_game_id(rows)
+    assert dropped == [] and out == rows
+
+
+def test_dedupe_date_tie_keeps_first_in_store_order(mod):
+    first, second = _row("7", "2024-06-01", "A", "B"), _row("7", "2024-06-01", "C", "D")
+    out, dropped = mod.dedupe_by_game_id([first, _row("8", "2024-06-01"), second])
+    assert dropped == [("7", "2024-06-01")]
+    assert first in out and second not in out
+
+
+def test_dedupe_assertion_mlb_requires_exactly_the_15(mod):
+    exp = list(mod.EXPECTED_DEDUPE_DROPS["mlb"])
+    assert len(exp) == 15
+    mod.assert_dedupe_drops("mlb", list(reversed(exp)))                      # no aborta
+    with pytest.raises(SystemExit, match="Enmienda 3"):
+        mod.assert_dedupe_drops("mlb", exp[:-1])
+    with pytest.raises(SystemExit, match="Enmienda 3"):
+        mod.assert_dedupe_drops("mlb", [*exp, ("1", "2024-01-01")])
+    with pytest.raises(SystemExit, match="Enmienda 3"):
+        mod.assert_dedupe_drops("mlb", [*exp[:-1], ("824912", "2026-06-15")])
+
+
+def test_load_league_main_league_aborts_on_any_drop_and_records_counts(mod, monkeypatch, tmp_path):
+    hist = tmp_path / "data" / "historical"
+    hist.mkdir(parents=True)
+    rows = _games("nfl", n_days=3, start="2024-09-01")
+    pd.DataFrame(rows).assign(ingested_at="x").to_csv(hist / "results_nfl.csv", index=False)
+    monkeypatch.setattr(mod, "_league_meta", lambda lg: {"family": "football"})
+    _, _, proc = mod.load_league("nfl", tmp_path)
+    assert proc["filas_antes_dedupe_game_id"] == proc["filas_leidas"] == 9
+    assert proc["descartadas_dedupe_game_id"] == []
+    dup = dict(rows[0], date="2024-09-02")                  # mismo game_id "0", fecha posterior
+    pd.DataFrame([*rows, dup]).assign(ingested_at="x").to_csv(hist / "results_nfl.csv", index=False)
+    with pytest.raises(SystemExit, match="Enmienda 3"):
+        mod.load_league("nfl", tmp_path)
+    _, _, proc2 = mod.load_league("nfl", tmp_path, assert_params=False)   # secundaria: solo recuento
+    assert proc2["filas_antes_dedupe_game_id"] == 10 and proc2["filas_leidas"] == 9
+    assert proc2["descartadas_dedupe_game_id"] == [["0", "2024-09-01"]]
+
+
 # ------------------------------------------------ frame / L_i / identidades --
 @pytest.mark.parametrize("league", ["nba", "nhl", "nfl", "mlb"])
 def test_lines_are_floor_mu_plus_half(mod, league):
@@ -597,6 +661,7 @@ def _synthetic_root(mod, tmp_path, monkeypatch):
             hist / f"results_{lg}.csv", index=False)
     fam = dict(mod.FAMILY, wnba="basketball", ncaab="basketball", wncaab="basketball", ncaaf="football")
     monkeypatch.setattr(mod, "TRANSFER_EVAL_FROM", {"wnba": "2014-12-01"})
+    monkeypatch.setattr(mod, "EXPECTED_DEDUPE_DROPS", {**mod.EXPECTED_DEDUPE_DROPS, "mlb": []})  # sintetico
     monkeypatch.setattr(mod, "_league_meta", lambda lg: {
         "family": fam.get(lg, "basketball"),
         "league_params": (dict(mod.EXPECTED_LEAGUE_PARAMS[lg]) if mod.EXPECTED_LEAGUE_PARAMS.get(lg) else None)})
