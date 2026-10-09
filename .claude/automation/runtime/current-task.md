@@ -337,3 +337,8 @@ FABLE-REVIEW: 2026-10-08 | veredicto: APTO (ronda 2 + correcciones de orden de c
 - Cierre (2026-10-08): commit `8117d9c`, sin push. `--pre` y modo completo NO ejecutados; pendiente la decisión del operador sobre `audit/model_vs_market_20261001.md` (bloquea `--pre`).
 FABLE-REVIEW: 2026-10-09 | veredicto: APTO (Enmienda 3 redactada por Fable: NHL +12 y MLB +13 atribuidas, dedupe de 15 gamePk MLB; codigo del filtro: APTO, 3 hallazgos no bloqueantes; ncaab -31 y wncaab -95 descartes del mismo dia en el informe 9 a declarar en el resultado) | rutas: scripts/research/measure_adjustment_battery.py, tests/research/test_measure_adjustment_battery.py, docs/research/2026-09-27-preregistro-bateria-ajustes.md
 FABLE-REVIEW: 2026-10-09 | veredicto: APTO CON CONDICIONES (resultado valido, sin fuga ni defecto E10; 4 ACEPTA en totales nba/nfl adj4 y adj10 no activables: el informe 7 empeora el log loss con la linea del mercado; via propuesta: pre-registro de recencia del adaptador de totales, decision del operador) | rutas: docs/research/2026-10-09-resultado-bateria-ajustes.md
+
+## Registro de enrutamiento — pre-registro de recencia del adaptador de totales (2026-10-09)
+
+Orden del operador: «Sí, que Fable redacte el pre-registro de recencia». Fable redacta (clase: pre-registro, reabre la decisión NHL del 2026-08-18); el operador aprobó las 6 recomendaciones de la §17 («Aprobar todas (Recommended)»). Siguiente: script `measure_totals_recency.py` (Sonnet) con revisión Fable antes del commit, pendiente de orden.
+FABLE-REVIEW: 2026-10-09 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-10-09-preregistro-recencia-totales.md
