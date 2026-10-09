@@ -663,3 +663,164 @@ Relacionado: [[2026-10-09-resultado-bateria-ajustes]],
 [[2026-09-30-resultado-tilt-nhl]], [[2026-09-26-preregistro-descanso-basket]],
 [[2026-09-25-repreregistro-gate-k52]], [[2026-08-26-preregistro-el-modelo-manda]],
 [[Bitácora/2026-08-18]].
+
+---
+
+## Enmienda 1 (2026-10-09, antes del commit del script y antes de `--pre`; redactada por Fable)
+
+Revisión del script `scripts/research/measure_totals_recency.py` y de sus pruebas
+`tests/research/test_measure_totals_recency.py`, ambos sin commitear al redactar,
+sobre `027c019`. **Nada de esta enmienda sale de un resultado**: no se ha ejecutado
+`--pre`, `--fase H` ni `--fase M`, y no se ha emparejado ninguna μ candidata con un
+total realizado ni con una línea. Lo único ejecutado: las pruebas sintéticas, `ruff`,
+`--parity-only` (asertos 1-3, que leen marcadores solo para excluir empujes y empates,
+como el motor, y no calculan ninguna pérdida) y un diagnóstico de Sonnet **solo con
+μ** (tabla 9.1 y aserto 5, sin desenlaces). Resuelve las 14 marcas `# DECISION:` del
+script y los hallazgos de la revisión que exigen texto. **No cambia** criterios,
+márgenes, α, K, rejilla, particiones, métrica, brazos, líneas, ligas, fechas ni
+mínimos.
+
+### (a) Tabla 9.1: tolerancia de la comparación con el documento (DECISION 1)
+
+La tabla de la sección 9.1 está impresa a dos decimales. El `--pre` la recalcula y
+aborta si una celda difiere de la impresa en más de **0,01** (una unidad del último
+decimal impreso; en el código, 0,0101 por margen de coma flotante), no 0,005: el
+diagnóstico sin desenlaces dio en la NBA, h = 90, una media de 0,7145 frente al 0,72
+impreso (redondeo de una cifra intermedia al redactar). Es una comprobación de que el
+`--pre` ve los mismos datos que vio quien redactó, no un criterio. La comparación
+`--fase H` frente a `--pre` sigue en 1e-12.
+
+### (b) Partidos con T_i fuera de la rejilla NHL (DECISION 2)
+
+«Se excluyen de todos los brazos» (sección 7.3) se lee como: se excluyen de **todas
+las métricas que puntúan el total** —H1, Δ por partición, T − C, H4 y los informes
+2-4—. H5 (h2h y puck line) no puntúa el total y usa todos los partidos del test (h2h
+sin los empates de marcador). La validez depende solo de T_i, así que la muestra es la
+misma para todos los brazos. Se esperan 0 casos; `n_fuera_de_rejilla` se informa.
+
+### (c) Lectura de H5 (DECISION 3)
+
+«Δ medio de `spreads@-1.5` y `spreads@+1.5` ≤ 0» = media, sobre los partidos del test
+combinado, de (Δ@−1,5 + Δ@+1,5)/2 por partido; con las dos líneas sobre los mismos
+partidos es idéntico a la media de los dos Δ. H5 exige **además**, por separado,
+Δ log loss de h2h ≤ 0 (partidos con margen ≠ 0). Las dos condiciones a la vez.
+
+### (d) Ajuste de a_P en el control C (DECISION 4)
+
+NBA y NFL: a_P = media del residuo T_i − μ_i en el entrenamiento de P, que es el
+mínimo **exacto** de la pérdida normal con σ fijo (no hace falta optimizador). NHL:
+Nelder-Mead con las opciones de la batería (sección 9 de aquel documento), punto de
+partida 0, abortando si no converge; λ con el mismo suelo de 0,1 que
+`PoissonAdapter._rates`.
+
+### (e) SHA-256 de `H.json` (DECISION 5)
+
+`H.json` vive en la instantánea, fuera del repositorio; lo que se commitea es su hash.
+El informe `AAAA-MM-DD-resultado-recencia-totales-H.md` **debe imprimir** el SHA-256
+de `H.json`, y ese es el valor que se pasa a `--fase M --pre` con `--h-sha256`. El
+script aborta si el fichero no lo reproduce. Además (corrección de código F4), `pre_H`,
+`H.json`, `pre_M` y `M.json` registran el SHA-256 de `measure_totals_recency.py` y de
+`measure_adjustment_battery.py`; si en la fase M difieren de los de `H.json`, el
+`--fase M --pre` aborta y solo puede continuar tras una enmienda, redactada antes de
+mirar nada de la fase M, que justifique el cambio de código (p. ej., un defecto
+demostrado sin desenlaces, E10).
+
+### (f) Prórroga, ventana y una sola ejecución en la fase M (DECISIONES 6 y 7)
+
+1. La fecha de corte se pasa con `--m-cutoff ∈ {2027-01-31, 2027-04-20}`. La ventana
+   de «los 7 días siguientes» es disciplina operativa: el informe M registra la fecha
+   de creación de la instantánea y la de ejecución.
+2. **Ninguna liga se mide dos veces.** En D' = 2027-04-20 solo se miden las ligas que
+   el `--fase M --pre` de D marcó como `prorroga`; las medidas en D no se vuelven a
+   medir (corrección de código F1: el `--pre` de D' recibe el `pre_M` de D y deja
+   fuera las demás).
+3. **Ligas con H RECHAZA (sección 16.1):** la fase M se mide en D si la liga alcanza el
+   mínimo, con `valor: descriptivo`; **no tienen prórroga** (no deciden nada, y una
+   segunda fecha sería una mirada más sin uso). Si no alcanzan el mínimo en D, quedan
+   «no medidas (descriptivo)».
+4. Entre `--fase M --pre` y `--fase M` no hay commits (el script exige el mismo HEAD),
+   igual que entre `--pre` y `--fase H`.
+5. Si entre la fase H y D cambia cualquier parámetro resuelto de NBA, NFL o NHL (por
+   ejemplo, una recalibración del descanso NBA), el `--fase M --pre` aborta, como ya
+   hace. La fase M no se ejecuta hasta que una enmienda, escrita **antes** de medir,
+   fije la base de la fase M (la de producción en D, con el mismo h_C). Abortar ahí no
+   es una ejecución.
+
+### (g) n de M1 y empujes (DECISION 8)
+
+n = emparejados con línea principal de totales y no-vig completo, **antes** de excluir
+empujes (como dice la sección 8.2). En Δ_M y M3 los empujes (T = L) y, en h2h, los
+empates tienen peso 0; el bootstrap remuestrea todos los días de la muestra. El modo
+completo de M aserta que su n y su conteo por mes son **idénticos** a los del
+`--fase M --pre` sobre la misma instantánea (corrección de código F3).
+
+### (h) Emparejamientos ambiguos (DECISION 9)
+
+`n_ambiguos_omitidos` cuenta los avisos «AMBIGUO» que `roi_engine._match_result` emite
+al omitir una doble jornada. Es descriptivo; no entra en ningún criterio. El orden de
+recorrido es la clave de `realized_roi_backtest` (fecha, equipos, `game_id` y, como
+último desempate, los marcadores como texto): el `--fase M --pre` lee esas columnas
+solo como clave de orden del emparejamiento, nunca las empareja con una μ. Se acepta
+como el «salvo para emparejar» de la sección 8.2.
+
+### (i) Líneas de cuarto en la fase M (DECISION 10)
+
+Si la línea principal es de cuarto (x,25 / x,75), P(Over) es la de producción
+(`build_model_map`, probabilidad de decisión sobre las dos líneas adyacentes) y no hay
+comparación de paridad 4 para ese partido; el JSON informa cuántos hay. La etiqueta es
+1{T > L}: en totales de cuarto no hay desenlaces mitad ganados y mitad perdidos, así
+que coincide con el signo de la liquidación, y no hay empuje.
+
+### (j) Informe 6 (DECISION 11)
+
+- **Temporada regular frente a playoffs:** se retira del informe 6. `ResultsStore` no
+  guarda la fase de la temporada y cortar por fechas sería inventar un umbral.
+- **Submuestra `CLOSE_MAX_AGE_MIN` = 90:** emparejados cuyo evento está en
+  `load_closing_odds(max_age_min=90)`, sin reemparejar. No decide.
+
+### (k) Paridad en `--fase H` (DECISION 12)
+
+`--fase H` ejecuta las paridades 1-3 completas (los 11 h; ≈ 45 min) y aborta si falla
+alguna. Las paridades de **las tres ligas** se ejecutan antes de calcular la primera
+pérdida (corrección de código F5). Un aborto de paridad no escribe salida y no es una
+ejecución a efectos de la sección 15; tras corregir el defecto se repite según E10.
+
+### (l) Parámetros del aserto 1 (DECISION 13)
+
+`params_h` = los parámetros resueltos de la sección 5 con `scoring_half_life_days = h`,
+con la comprobación adicional de que resuelven al mismo adaptador que
+`league_params ∪ {scoring_half_life_days: h}`. Aceptado.
+
+### (m) `--data-root` (DECISION 14)
+
+Obligatorio en todos los modos. `--parity-only` admite el árbol vivo, porque no mide
+nada; los modos que miden lo rechazan, igual que cualquier ruta dentro de `data/`.
+
+### (n) Salidas no sobrescribibles (E10)
+
+`--pre`, `--fase H` y `--fase M` **abortan si el `--out` ya existe** (corrección de
+código F2). Una repetición por E10 escribe en un fichero nuevo, y se commitean las dos
+salidas, como exige la sección 15.
+
+### (o) Verificaciones de esta revisión (sin desenlaces)
+
+- `--parity-only` de Sonnet, rejilla completa: asertos 1-3 con desviación máxima
+  ≤ 2,3e-15 en NBA (34.005 evaluados), NFL (7.986) y NHL (32.840).
+- Repetido por Fable: `--parity-only --leagues nfl,nhl --h-subset 0,90`, PARIDAD OK;
+  desviación máxima NFL 0,0 (asertos 1 y 2) y NHL 2,1e-15 / 1,9e-15 / 2,2e-15
+  (asertos 1, 2 y 3).
+- Diagnóstico solo con μ: aserto 5 frente a `pre_ee0ab19.json` y tabla 9.1 dentro de
+  (a).
+
+### (p) Decisiones del operador
+
+Ninguna. Todo lo anterior son lecturas técnicas del contrato, revisables en la
+revisión del script (sección 17, último párrafo).
+
+### (q) Addendum a la Enmienda 1(e) (2026-10-09, antes del commit del script)
+
+Los SHA-256 de código de (e) (`codigo_sha256`) se calculan sobre el contenido de
+`measure_totals_recency.py` y `measure_adjustment_battery.py` con los finales de línea
+normalizados a LF (CRLF → LF), no sobre los bytes de la copia de trabajo: el repositorio
+fija `eol=lf` y una copia CRLF reescrita por git no es un cambio de código. Cualquier otra
+diferencia sigue abortando como dice (e).
