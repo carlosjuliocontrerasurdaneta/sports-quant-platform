@@ -85,7 +85,7 @@ LEAGUE_OVERRIDES: dict[str, dict] = {
     # 0,3567, PEOR que predecir 0,50 constante. Con 180 dias: sesgo +1,18 pp,
     # Brier 0,2383, y spreads/moneyline IDENTICOS (en la familia Normal el margen
     # sale de Elo). 180 se elige por el precedente de wnba, no por minimizar el
-    # Brier de la rejilla (90 daba 0,2367; la diferencia es 0,004 y elegir el
+    # Brier de la rejilla (90 daba 0,2367; la diferencia es 0,0016 y elegir el
     # argmin sobre los datos de la medicion seria sobreajuste).
     # NHL comparte el mecanismo y NO se cambio: alli la ganancia en totals se
     # compensa con spreads y moneyline. Ver Bitacora/2026-08-18.
