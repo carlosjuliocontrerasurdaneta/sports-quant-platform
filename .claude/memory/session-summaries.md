@@ -942,3 +942,8 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Pre-registro (`027c019`, Fable; el operador aprobó las 6 decisiones) y script `measure_totals_recency.py` (`f315f4c`, Sonnet; Fable en dos rondas; 73 tests; Enmienda 1 (a)–(q)). Detalle en [[Bitácora/2026-10-10]].
 - Fase H ejecutada una sola vez sobre la instantánea de la batería (HEAD `f315f4c`; `H_f315f4c.json` sha256 `32a0e9e3…`): NBA ACEPTA (h_C 45 frente a 180 vigente), NFL ACEPTA (h_C 180 frente a 0), NHL RECHAZA por H5 (h2h +7·10⁻⁶, regla sin margen). Informe `e3f5469`, Fable APTO. Nada activado.
 - **Pendiente:** fase M en D = 2027-01-31 (`--fase M --pre` y después `--fase M`, con `--h-sha256`). Un cambio de parámetros resueltos antes de esa fecha exige enmienda.
+- Pendiente del 2026-09-26 «recalibrar NBA y re-medir `margin_sigma`», cerrado:
+  - **Calibradores:** no existen calibradores NBA ni muestra servida; no hay nada que recalibrar. En temporada se revisarán los candidatos `nba_*` del staging.
+  - **`margin_sigma`:** medido. 12,86 en todo el histórico, así que sigue en 13,0. Las últimas temporadas rondan 14,4–14,8: la hipótesis de sigma por época queda para un pre-registro posterior a «el modelo manda».
+  - Detalle en [[Bitácora/2026-10-10]].
+  - `registry.py`: corregido el comentario 0,004 → 0,0016 (`1bb5cd5`).
