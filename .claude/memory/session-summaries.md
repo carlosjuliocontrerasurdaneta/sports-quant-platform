@@ -947,3 +947,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - **`margin_sigma`:** medido. 12,86 en todo el histórico, así que sigue en 13,0. Las últimas temporadas rondan 14,4–14,8: la hipótesis de sigma por época queda para un pre-registro posterior a «el modelo manda».
   - Detalle en [[Bitácora/2026-10-10]].
   - `registry.py`: corregido el comentario 0,004 → 0,0016 (`1bb5cd5`).
+  - Pretemporada NBA: el histórico la incluye todos los años, igual que los 25 partidos del 03-10/10/2026. Es coherente; si mete ruido es otra hipótesis, sin medir.
