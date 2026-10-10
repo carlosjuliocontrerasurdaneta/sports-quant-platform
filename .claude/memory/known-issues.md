@@ -567,6 +567,7 @@ Format:
 - Affected files: DIARIO_COMPLETO.bat, scripts/backfill_starters.py, data/historical/starters_mlb.csv
 - Fix: refresco manual con `--days 120` (cobertura de junio a septiembre al 100%) y `backfill_starters.py --days 3` en el paso 0.5 de `DIARIO_COMPLETO.bat`, sin bloquear la cadena (`a1e9339`).
 - Status: CORREGIDO (2026-09-26). Vigilar en `logs/backfill_diario.log` que el paso diario escribe filas.
+- Verificación 2026-10-10 (sobre los datos, sin leer el log): `starters_mlb.csv` recibió filas nuevas a diario del 27/09 al 01/10 (12–17 por día, una por partido del día anterior). Se detiene porque la temporada regular terminó el 27/09: el proveedor pide solo `gameType: "R"` (`src/sqp/providers/mlb_statsapi.py:58,95,129,153`), igual que el histórico (sin postemporada en 2023–2025). El paso funciona.
 
 - ID: KI-067
 - Severity: Media (P2)
