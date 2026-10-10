@@ -343,3 +343,8 @@ FABLE-REVIEW: 2026-10-09 | veredicto: APTO CON CONDICIONES (resultado valido, si
 Orden del operador: «Sí, que Fable redacte el pre-registro de recencia». Fable redacta (clase: pre-registro, reabre la decisión NHL del 2026-08-18); el operador aprobó las 6 recomendaciones de la §17 («Aprobar todas (Recommended)»). Siguiente: script `measure_totals_recency.py` (Sonnet) con revisión Fable antes del commit, pendiente de orden.
 FABLE-REVIEW: 2026-10-09 | veredicto: APTO (pre-registro redactado por Fable; decisiones del operador resueltas) | rutas: docs/research/2026-10-09-preregistro-recencia-totales.md
 FABLE-REVIEW: 2026-10-09 | veredicto: APTO CON CAMBIOS aplicados (ronda 1: F1-F6 aplicados por Sonnet; ronda 2: F1-F6 conformes, G1-G3 aplicados por Opus tal como los prescribio Fable, 73 tests; Enmienda 1 (a)-(p) y addendum (q) redactados por Fable, solo anaden) | rutas: scripts/research/measure_totals_recency.py, tests/research/test_measure_totals_recency.py, docs/research/2026-10-09-preregistro-recencia-totales.md
+
+## Registro de enrutamiento — fase H de recencia (2026-10-10)
+
+Orden del operador: «Continúa» (tras «el siguiente paso, cuando lo ordenes: --pre y fase H»). Opus ejecutó --pre (pre_H_f315f4c.json) y la fase H única (H_f315f4c.json, sha256 32a0e9e3f3a216c9dfff41fc7f0d33be8df38954ea3e23f063d1cf205348b1ac) sobre C:\dev\3\snapshots\bateria-ajustes-20261008, HEAD f315f4c, sin commits entre ambos. Fable redacta y verifica el informe (clase: veredicto, cifras publicables).
+FABLE-REVIEW: 2026-10-10 | veredicto: APTO (ejecucion valida; NBA y NFL ACEPTA, NHL RECHAZA por H5; procedencia y Holm recalculados; nada se activa hasta la fase M) | rutas: docs/research/2026-10-10-resultado-recencia-totales-H.md
