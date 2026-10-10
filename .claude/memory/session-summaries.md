@@ -935,4 +935,10 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 
 - `4d9efca` (informe audit commiteado), instantánea `C:\dev\3\snapshots\bateria-ajustes-20261008`, Enmienda 3 + dedupe de 15 `gamePk` MLB (`ee0ab19`, Fable APTO), `--pre` regenerado y modo completo único (rc 0). Detalle en [[Bitácora/2026-10-09]].
 - Resultado: 4/24 ACEPTA, todas en totales (NBA y NFL, ajustes 4 y 10). Dictamen Fable: APTO CON CONDICIONES — válido y sin fuga, pero NO activable: contra la línea del mercado empeora en las 4 ligas; el efecto revela que la μ de `TeamScoringRates` tiene demasiada memoria (NFL/NHL sin decaimiento).
-- **Pendiente (decisión del operador):** pre-registro de recencia del adaptador de totales (`scoring_half_life_days`), evaluado contra la línea del mercado y el no-vig.
+- **Pendiente (decisión del operador):** pre-registro de recencia del adaptador de totales (`scoring_half_life_days`), evaluado contra la línea del mercado y el no-vig. → Hecho: ver la entrada del 2026-10-10.
+
+## 2026-10-10 — Recencia de totales: pre-registro, script y fase H
+
+- Pre-registro (`027c019`, Fable; el operador aprobó las 6 decisiones) y script `measure_totals_recency.py` (`f315f4c`, Sonnet; Fable en dos rondas; 73 tests; Enmienda 1 (a)–(q)). Detalle en [[Bitácora/2026-10-10]].
+- Fase H ejecutada una sola vez sobre la instantánea de la batería (HEAD `f315f4c`; `H_f315f4c.json` sha256 `32a0e9e3…`): NBA ACEPTA (h_C 45 frente a 180 vigente), NFL ACEPTA (h_C 180 frente a 0), NHL RECHAZA por H5 (h2h +7·10⁻⁶, regla sin margen). Informe `e3f5469`, Fable APTO. Nada activado.
+- **Pendiente:** fase M en D = 2027-01-31 (`--fase M --pre` y después `--fase M`, con `--h-sha256`). Un cambio de parámetros resueltos antes de esa fecha exige enmienda.
