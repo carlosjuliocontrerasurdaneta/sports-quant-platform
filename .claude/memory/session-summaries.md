@@ -948,3 +948,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
   - Detalle en [[Bitácora/2026-10-10]].
   - `registry.py`: corregido el comentario 0,004 → 0,0016 (`1bb5cd5`).
   - Pretemporada NBA: el histórico la incluye todos los años, igual que los 25 partidos del 03-10/10/2026. Es coherente; si mete ruido es otra hipótesis, sin medir.
+
+## 2026-10-11 — KI-071 corregido, verificaciones de incidencias
+
+- **KI-071** (`ed81aaa`): picks desplazados liquidados dos veces y `void` fabricado por falta de home/away (ventana de restauración 13–14/09). Sonnet implementa, Fable APTO CON CAMBIOS (documentales). 4 tests; pytest completo 3088 passed. Alcance: 9 identidades y 18 filas (epl/mls/ncaaf). **Pendiente con autorización:** reparar esas filas del ledger.
+- **KI-066** verificado sobre los datos; **KI-072** abierto (postemporada MLB servida con ratings congelados; la liquidación no está afectada); estados de **KI-057/058/059** al día (`843fbbb`).
+- Detalle en [[Bitácora/2026-10-11]].
