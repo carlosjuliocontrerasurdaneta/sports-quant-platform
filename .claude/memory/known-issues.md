@@ -603,3 +603,10 @@ Format:
 - Affected files: src/sqp/settlement/runner.py (`superseded_candidates`, `_con_superseded`)
 - Fix: pendiente de diagnóstico (skill `bugfix`). Averiguar por qué la fila desplazada se liquidó un día después como void. El Historial conserva la fila del momento de decidir (la `void`), así que este pick no cuenta en el acierto.
 - Status: ABIERTO.
+
+- ID: KI-072
+- Severity: Baja (P3)
+- Description: **Postemporada MLB servida con Elo y abridores congelados al fin de la temporada regular.** `MLBStatsProvider` pide solo `gameType: "R"` (`src/sqp/providers/mlb_statsapi.py:58,95,129,153`), así que ni los resultados ni los abridores de postemporada entran en `ResultsStore` ni en `starters_mlb.csv` (último dato: 2026-09-27). El pipeline sí sirve partidos de postemporada (2 en `predictions_mlb.csv` el 10/10, 1 candidato en spreads), con ratings que no ven los partidos de la serie en curso. La liquidación NO está afectada: usa el feed de marcadores de The Odds API (`runner.py:952`), y `settled_mlb.csv` tiene picks con `game_date` del 04 al 07/10 liquidados. El histórico tampoco tiene postemporada (2023–2025), así que entrenamiento y servicio son coherentes entre sí; el modelo simplemente no se ha evaluado nunca en postemporada.
+- Affected files: src/sqp/providers/mlb_statsapi.py, data/historical/results_mlb.csv, data/historical/starters_mlb.csv
+- Fix: sin decidir. Opciones: (a) no tocar (≈40 partidos al año, deriva de Elo de semanas); (b) ingerir postemporada (`gameType` R,F,D,L,W) en histórico y vivo. La (b) cambia el histórico de entrenamiento: exige pre-registro y medición (y addenda de régimen en K=52 y en «el modelo manda»), con revisión de Fable y decisión del operador. Encontrado el 2026-10-11 al verificar KI-066.
+- Status: ABIERTO (observación; no bloquea).
