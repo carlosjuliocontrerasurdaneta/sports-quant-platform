@@ -348,3 +348,8 @@ FABLE-REVIEW: 2026-10-09 | veredicto: APTO CON CAMBIOS aplicados (ronda 1: F1-F6
 
 Orden del operador: «Continúa» (tras «el siguiente paso, cuando lo ordenes: --pre y fase H»). Opus ejecutó --pre (pre_H_f315f4c.json) y la fase H única (H_f315f4c.json, sha256 32a0e9e3f3a216c9dfff41fc7f0d33be8df38954ea3e23f063d1cf205348b1ac) sobre C:\dev\3\snapshots\bateria-ajustes-20261008, HEAD f315f4c, sin commits entre ambos. Fable redacta y verifica el informe (clase: veredicto, cifras publicables).
 FABLE-REVIEW: 2026-10-10 | veredicto: APTO (ejecucion valida; NBA y NFL ACEPTA, NHL RECHAZA por H5; procedencia y Holm recalculados; nada se activa hasta la fase M) | rutas: docs/research/2026-10-10-resultado-recencia-totales-H.md
+
+## Registro de enrutamiento — KI-071 (2026-10-11)
+
+Diagnóstico de Opus (solo lectura). Implementación de Sonnet en src/sqp/settlement/runner.py, con 4 tests nuevos: pytest completo 3088 passed, ruff y mypy limpios. Revisión de Fable antes del commit: APTO CON CAMBIOS; los cambios eran documentales (alcance real de 9 identidades y 18 filas en KI-071; riesgos residuales de tenis y del lookback) y ya están aplicados en known-issues.md. La reparación del ledger queda pendiente de autorización del operador.
+FABLE-REVIEW: 2026-10-11 | veredicto: APTO CON CAMBIOS aplicados (documentales en KI-071) | rutas: src/sqp/settlement/runner.py, tests/settlement/test_superseded_picks.py

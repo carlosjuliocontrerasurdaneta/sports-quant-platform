@@ -662,6 +662,27 @@ def _persist_settled(league: str, settled: pd.DataFrame) -> pd.DataFrame:
             have = {tuple(map(str, r)) for r in prior[DEDUP_KEY].values.tolist()}
             keep = [tuple(map(str, r)) not in have for r in settled[DEDUP_KEY].values.tolist()]
             settled = settled[keep]
+        # KI-071: una identidad de pick liquidada UNA vez no se vuelve a liquidar
+        # como `superseded` bajo otra generacion. `DEDUP_KEY` lleva generated_at,
+        # y si la generacion mas reciente desaparece del archivo entre dos dias,
+        # `superseded_candidates` devuelve otra generacion mas antigua que no
+        # colisiona: el mismo pick quedaba liquidado dos veces (y con resultados
+        # distintos). Solo afecta a filas `superseded`; las demas siguen por
+        # `DEDUP_KEY` exactamente como antes.
+        if (not settled.empty and prior is not None
+                and set(_PICK_IDENTITY).issubset(prior.columns)
+                and set(_PICK_IDENTITY).issubset(settled.columns)
+                and "flags" in settled.columns):
+            es_sup = settled["flags"].fillna("").astype(str).map(
+                lambda f: SUPERSEDED_FLAG in f.split(";"))
+            if es_sup.any():
+                ya = set(_pick_identity(prior))
+                repetida = es_sup & _pick_identity(settled).isin(ya)
+                if repetida.any():
+                    log.info("[%s] %d fila(s) superseded descartada(s): su identidad "
+                             "de pick ya esta liquidada en el ledger (KI-071).",
+                             league, int(repetida.sum()))
+                    settled = settled[~repetida]
         if settled.empty:
             return settled
         if prior is not None:
@@ -812,6 +833,43 @@ def _candidate_metadata(league: str, cands: pd.DataFrame) -> pd.DataFrame:
     if preds.empty:
         return pd.DataFrame(columns=["event_id", "home", "away", "start_time"])
     return preds[["event_id", "home", "away", "start_time"]].reset_index(drop=True)
+
+
+def _fill_home_away(league: str, cands: pd.DataFrame,
+                    preds: pd.DataFrame) -> pd.DataFrame:
+    """Rellena home/away ausentes de ``cands`` desde ``preds`` (por event_id), sin
+    pisar valores presentes, ANTES de liquidar (KI-071).
+
+    Los archivos de candidatos anteriores al 2026-09-10 no tienen columnas
+    home/away. `_grade` solo detecta que la seleccion de h2h/spreads no es
+    ninguno de los dos equipos si conoce `away`; sin el, un visitante que
+    pierde por 45 con +44.5 salia `void`, y `void` es FINAL (`DEDUP_KEY` no
+    lleva `result`). Si tras rellenar una fila de h2h/spreads sigue sin home ni
+    away, se EXCLUYE de esta pasada (queda pendiente) en vez de fabricar un void."""
+    if cands.empty:
+        return cands
+    cands = cands.copy()
+    for col in ("home", "away"):
+        if col not in cands.columns:
+            cands[col] = pd.NA
+        if not preds.empty and col in preds.columns:
+            mapa = (preds.dropna(subset=[col]).assign(_k=lambda d: d["event_id"].astype(str))
+                    .drop_duplicates("_k", keep="last").set_index("_k")[col])
+            falta = cands[col].isna() | (cands[col].astype(str).str.strip() == "")
+            cands[col] = cands[col].astype(object)
+            cands.loc[falta, col] = cands.loc[falta, "event_id"].astype(str).map(mapa)
+
+    def _vacio(s: pd.Series) -> pd.Series:
+        return s.isna() | (s.astype(str).str.strip().isin(["", "nan", "None"]))
+
+    sin_lados = (cands["market"].isin(["h2h", "spreads"])
+                 & _vacio(cands["home"]) & _vacio(cands["away"]))
+    if sin_lados.any():
+        log.warning("[%s] %d candidato(s) h2h/spreads sin home/away ni metadatos: "
+                    "se dejan sin liquidar esta pasada (void es final, KI-071).",
+                    league, int(sin_lados.sum()))
+        cands = cands[~sin_lados]
+    return cands
 
 
 def _candidate_history_scores(league: str, pending: pd.DataFrame
@@ -1001,6 +1059,7 @@ def fetch_and_settle(league: str, settings: Settings, days_from: int = 2,
     pending_meta = preds.assign(start_time=preds["event_id"].astype(str).map(
         lambda e: start_times.get(e, "")))
     cand_scores = {**_candidate_history_scores(league, pending_meta), **scores}
+    cands = _fill_home_away(league, cands, preds)
     settled = settle_candidates(cands, cand_scores, three_way)
     if scores_trusted:
         settled = _with_stale_voids(league, cands, settled, cand_scores,

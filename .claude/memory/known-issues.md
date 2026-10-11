@@ -601,8 +601,17 @@ Format:
 - Severity: Baja (P3)
 - Description: **Un mismo pick liquidado con dos resultados distintos.** NCAAF `2be7c621…`, Rice Owls spreads 44.5, partido del 2026-09-12. La fila servida el 12/09 quedó `loss` (liquidada el 13/09). La fila servida el 09/09 quedó `void` (liquidada el 14/09, flags `market_paused;superseded`, sin `stale_void`). Las dos tienen stake 0, así que no hay PnL afectado, pero el ledger se contradice. Ocurrió en la ventana de restauración de producción (13–14/09; véanse AUD-003 y FABLE-001). Encontrado al colapsar los picks repetidos del Historial (2026-10-02): hay 14 picks repetidos en el ledger y este es el único con resultados distintos.
 - Affected files: src/sqp/settlement/runner.py (`superseded_candidates`, `_con_superseded`)
-- Fix: pendiente de diagnóstico (skill `bugfix`). Averiguar por qué la fila desplazada se liquidó un día después como void. El Historial conserva la fila del momento de decidir (la `void`), así que este pick no cuenta en el acierto.
-- Status: ABIERTO.
+- Diagnóstico (2026-10-11): dos fallos coincidieron en la ventana de restauración de producción.
+  - (A) `superseded_candidates` deja una fila por identidad (`_pick_identity`) del escaneo del día, pero `_persist_settled` deduplicaba por `DEDUP_KEY`, que incluye `generated_at`. Cuando la generación del 12/09 desapareció del archivo, el escaneo del 14/09 tomó la del 09/09 y volvió a liquidar la misma identidad.
+  - (B) Los archivos anteriores al 2026-09-10 no tienen home/away. Al concatenarlos con el vigente, `away` queda NaN y `settle.py:44-47` devuelve `void` (final) en vez del resultado real.
+- Alcance real (medido por Fable con `_pick_identity`): **9 identidades duplicadas, 18 filas** (epl 5, mls 1, ncaaf 3), todas liquidadas el 13/09 y de nuevo el 14/09. Solo las 2 de NCAAF (Rice Owls 44.5 y Memphis Tigers 8.5) tienen resultados distintos (`loss` y `void`). Las otras 7 coinciden, pero cuentan doble en n y en el acierto observado si se calculan sobre `settled_*`. El pnl no cambia porque el stake es 0.
+- Fix (código, preventivo): `_persist_settled` descarta las filas `superseded` cuya identidad ya está en el ledger (A), y `_fill_home_away` rellena home/away desde las predicciones antes de liquidar; si siguen faltando, la fila h2h/spreads queda pendiente en vez de `void` (B). Hay 4 tests nuevos en `tests/settlement/test_superseded_picks.py`. Revisión de Fable: APTO CON CAMBIOS (documentales).
+- Riesgos residuales:
+  - `_settle_tennis` no pasa por `_fill_home_away`. Hoy no hay archivos sin columnas en la ventana.
+  - Una fila excluida por (B) sale del escaneo a los 14 días (`SUPERSEDED_LOOKBACK_DAYS`) sin veredicto, avisada solo con un warning.
+  - Opcional: basar la exclusión solo en `away`, el único campo que lee `_grade`.
+- **Pendiente con autorización del operador:** reparar las 18 filas ya duplicadas del ledger (acción sobre datos).
+- Status: CORREGIDO en código (2026-10-11); reparación del ledger PENDIENTE.
 
 - ID: KI-072
 - Severity: Baja (P3)

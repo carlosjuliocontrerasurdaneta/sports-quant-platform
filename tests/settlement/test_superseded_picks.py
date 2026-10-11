@@ -117,3 +117,71 @@ def test_sin_fichero_vigente_los_desplazados_se_liquidan_igual(tmp_path, monkeyp
                                client=FakeClient(_scores()))
     assert settled["event_id"].tolist() == ["e2"]
     assert settled.iloc[0]["result"] == "win"
+
+
+# --- KI-071: la misma identidad no se liquida dos veces; home/away antes de graduar ---
+
+def _persistir(tmp_path, monkeypatch, settled_rows):
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    return runner._persist_settled(LEAGUE, pd.DataFrame(settled_rows))
+
+
+def _liquidada(event_id, generated, *, flags="", result="loss"):
+    return {**_row(event_id, "B", generated, market="spreads", line=44.5),
+            "flags": flags, "result": result, "pnl": 0.0}
+
+
+def test_superseded_con_identidad_ya_liquidada_no_se_repite(tmp_path, monkeypatch):
+    """Reproduce KI-071(A): G2 ya en el ledger; la misma identidad vuelve como
+    superseded con otra generacion (G1) y NO debe anadirse."""
+    g2, g1 = D1, D0
+    _persistir(tmp_path, monkeypatch, [_liquidada("e2", g2, flags="superseded")])
+    nuevas = _persistir(tmp_path, monkeypatch,
+                        [_liquidada("e2", g1, flags="market_paused;superseded",
+                                    result="void")])
+    assert nuevas.empty
+    ledger = pd.read_csv(tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv")
+    assert len(ledger) == 1 and ledger.iloc[0]["result"] == "loss"
+
+
+def test_no_superseded_con_otra_generacion_se_sigue_persistiendo(tmp_path, monkeypatch):
+    """Contrato intacto: sin flag superseded manda solo DEDUP_KEY."""
+    _persistir(tmp_path, monkeypatch, [_liquidada("e2", D1)])
+    nuevas = _persistir(tmp_path, monkeypatch, [_liquidada("e2", D0)])
+    assert len(nuevas) == 1
+    ledger = pd.read_csv(tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv")
+    assert len(ledger) == 2
+
+
+def _archivo_sin_lados(tmp_path):
+    """Candidato archivado SIN columnas home/away (formato anterior al 2026-09-10)."""
+    row = _row("e2", "B", D0, market="spreads", line=0.5)
+    pred_dir = _write(tmp_path, current=[], archive={D0.strftime("%Y-%m-%d"): [row]})
+    # Fichero vigente CON home/away (formato nuevo) para otro evento: al unirlo con
+    # el archivo viejo, home/away quedan NaN en el pick desplazado -- el caso real.
+    pd.DataFrame([{**_row("e1", "A", D1), "home": "A", "away": "B"}]).to_csv(
+        pred_dir / f"candidates_{LEAGUE}.csv", index=False)
+    return pred_dir
+
+
+def test_superseded_sin_home_away_se_gradua_con_los_metadatos(tmp_path, monkeypatch):
+    """Reproduce KI-071(B): B pierde 1-3 con +0.5 -> loss, no void."""
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    _archivo_sin_lados(tmp_path)
+    settled = fetch_and_settle(LEAGUE, Settings(), days_from=2,
+                               client=FakeClient(_scores()))
+    por_id = settled.set_index("event_id")
+    assert por_id.loc["e2", "result"] == "loss"
+    assert SUPERSEDED_FLAG in str(por_id.loc["e2", "flags"])
+
+
+def test_sin_home_away_ni_metadatos_queda_pendiente_sin_void(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    pred_dir = _archivo_sin_lados(tmp_path)
+    pd.DataFrame([{"event_id": "e2", "start_time": "2026-01-01T00:00:00Z"}]).to_csv(
+        pred_dir / f"predictions_{LEAGUE}.csv", index=False)  # sin home/away
+    settled = fetch_and_settle(LEAGUE, Settings(), days_from=2,
+                               client=FakeClient(_scores()))
+    assert "e2" not in settled["event_id"].tolist()   # pendiente, no void fabricado
+    ledger = pd.read_csv(tmp_path / "data" / "bets" / f"settled_{LEAGUE}.csv")
+    assert "e2" not in ledger["event_id"].tolist()
