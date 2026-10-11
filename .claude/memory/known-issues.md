@@ -425,7 +425,7 @@ Format:
   - Es el problema abierto de identidad entre proveedores (AUD-002 de la remediación 2026-09-14).
 - Affected files: src/sqp/settlement/runner.py (`fetch_and_settle`), src/sqp/domain/models.py (`BetCandidate`)
 - Proposed fix: decisión del operador sobre la identidad del evento. Opciones: persistir un id del vendor en el candidato, o fecha local exacta con zona horaria por liga. Después, tests de serie, aplazado y doubleheader. Los tests de `tests/settlement/test_candidate_history_fallback.py` fijan hoy el estado seguro.
-- Status: ABIERTO (2026-09-23). Con el gate en default-deny (0/49) el stake es 0.
+- Status: CORREGIDO (2026-09-24) para las ligas ESPN mediante identidad exacta (`exact_history_scores_map`; ver la actualización bajo KI-058). MLB por KI-059. Estado corregido el 2026-10-11: la línea decía ABIERTO aunque la actualización ya lo resolvía.
 
 - ID: KI-058
 - Severity: Media
@@ -435,7 +435,7 @@ Format:
   - Ese stream alimenta el prediction gate y los calibradores. Impacto INFERRED, porque la frecuencia no se midió.
 - Affected files: src/sqp/settlement/runner.py (`_grade_served_from_history`, `history_scores_map`)
 - Proposed fix: la misma decisión de identidad de eventos que KI-057; aplicarla a los dos caminos a la vez.
-- Status: ABIERTO (2026-09-24). Preexistente, no es regresión de `33ba978`; para la próxima ronda (MEDIUM/P2 propuesto).
+- Status: CORREGIDO (2026-09-24) para las ligas ESPN (ver la actualización de abajo). MLB por KI-059. Estado corregido el 2026-10-11.
 
 - Actualización 2026-09-24 (KI-057 y KI-058): identidad EXACTA de eventos implementada (`runner.exact_history_scores_map`). Condiciones:
   - fecha del vendor: UTC en ESPN, `America/New_York` en MLB;
@@ -454,7 +454,7 @@ Format:
   - Las series en Asia rompen la regla de fecha ET (FABLE-R2-002).
 - Affected files: src/sqp/providers/mlb_statsapi.py (`fetch_results`), src/sqp/storage/results_store.py, src/sqp/settlement/runner.py
 - Proposed fix: persistir la identidad de calendario (`gameDate` UTC, `gameNumber`, `doubleHeader`) en el ingest y en `ResultsStore`, con enriquecimiento de las filas existentes. Después, emparejar por la hora de inicio, midiendo antes la diferencia entre The Odds API y `gameDate`.
-- Status: ABIERTO (2026-09-24).
+- Status: CORREGIDO (2026-09-25) y ACTIVO desde el 2026-10-05: el backfill semanal creó `data/historical/schedule_mlb.csv` (237 filas, del 10/09 al 27/09; verificado el 2026-10-11). Residual vigente: el backfill es semanal y el feed solo cubre 3 días. Además, la postemporada no entra en el calendario (`gameType: "R"`, KI-072); la liquidan las cuotas de The Odds API.
 
 - Actualización 2026-09-25 (KI-059): **implementado.** El calendario MLB (`fetch_schedule` → `ScheduleStore`, una fila por aparición `(game_id, date)`) identifica el partido de un pick así:
   - el más cercano en hora, único y en la misma fecha ET;
