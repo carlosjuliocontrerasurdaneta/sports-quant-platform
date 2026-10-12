@@ -477,3 +477,9 @@ Format:
   - el resultado afecta como mucho a la etiqueta A y a su descripción; no toca stake, gate ni calibradores, y ningún umbral cambia sin el operador;
   - cada cambio de régimen exige un addendum antes de medir;
   - pendiente el script `scripts/research/measure_tier_a_gap.py` (contrato en la §7).
+
+- Date: 2026-10-12
+- Decision: **Cierre de jornada con sincronización a GitHub** como procedimiento permanente en `CLAUDE.md` (frase de activación «guarda los cambios y cierra sesión»).
+- Reason: orden del operador; asegurar que cada sesión termine commiteada y subida, con verificación real del push.
+- Alternatives: ninguna planteada.
+- Consequences: el cierre complementa (no sustituye) `/memoria-guardar` y la regla Obsidian; nunca `push --force`; conflictos, tests rojos o fallos de autenticación se informan y detienen el cierre.

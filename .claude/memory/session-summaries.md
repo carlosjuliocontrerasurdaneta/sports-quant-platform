@@ -954,3 +954,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - **KI-071** (`ed81aaa`): picks desplazados liquidados dos veces y `void` fabricado por falta de home/away (ventana de restauración 13–14/09). Sonnet implementa, Fable APTO CON CAMBIOS (documentales). 4 tests; pytest completo 3088 passed. Alcance: 9 identidades y 18 filas (epl/mls/ncaaf). **Pendiente con autorización:** reparar esas filas del ledger.
 - **KI-066** verificado sobre los datos; **KI-072** abierto (postemporada MLB servida con ratings congelados; la liquidación no está afectada); estados de **KI-057/058/059** al día (`843fbbb`).
 - Detalle en [[Bitácora/2026-10-11]].
+
+## 2026-10-12 — Procedimiento permanente de cierre de jornada
+
+- `CLAUDE.md` raíz: nueva sección «Cierre de jornada y sincronización con GitHub» (`f128483`, ya en `origin/main`). Activación: «guarda los cambios y cierra sesión». 13 pasos (status, revisión de secretos, tests, commit selectivo, integración segura del remoto, push, verificación, informe) y reglas de seguridad (sin `--force`, sin descartar cambios, sin commits vacíos). Se añadió un párrafo de encaje: `/memoria-guardar` y Obsidian, cuando apliquen, van antes del paso 7.
+- Tests `test_claude_system_contract.py` + `test_claude_model_routing.py`: 64 passed.
+- Sin cambios de código, datos ni parámetros.
