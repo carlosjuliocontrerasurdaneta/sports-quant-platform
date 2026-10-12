@@ -15,6 +15,35 @@
 - Keep command output small: targeted tests/diffs and at most 100 log lines unless additional evidence is necessary.
 - During a `full-audit`, the skill's stricter read-only and authorization rules override the general validation guidance in this file for phases 0–3.
 
+# Cierre de jornada y sincronización con GitHub
+
+Orden permanente del operador (2026-10-12). **Comando de activación:** cuando el operador escriba «guarda los cambios y cierra sesión», ejecuta este procedimiento completo:
+
+1. Guarda todos los archivos y cambios pendientes que estén bajo tu control.
+2. Comprueba el estado del repositorio mediante `git status`.
+3. Identifica la rama activa y su repositorio remoto.
+4. Revisa los cambios realizados durante la sesión.
+5. Comprueba que no se incluyan contraseñas, tokens, claves API, archivos `.env` ni otros datos sensibles.
+6. Ejecuta las pruebas pertinentes cuando estén disponibles.
+7. Prepara exclusivamente los archivos que correspondan al trabajo realizado.
+8. Crea un commit con un mensaje descriptivo si existen cambios pendientes.
+9. Comprueba si hay cambios remotos nuevos. Si es necesario integrarlos, hazlo de forma segura, sin sobrescribir trabajo ni resolver conflictos arbitrariamente.
+10. Ejecuta `git push` hacia la rama remota correspondiente.
+11. Verifica que el push se haya completado correctamente y comprueba nuevamente `git status`.
+12. Entrega un informe final con la rama, el identificador del commit, el resultado de las pruebas y el estado de sincronización con GitHub.
+13. Finaliza la interacción de la sesión.
+
+Reglas de seguridad:
+- Nunca utilices `git push --force`.
+- Nunca descartes cambios sin autorización.
+- Nunca publiques credenciales ni archivos sensibles.
+- Nunca crees commits vacíos innecesarios.
+- Si existen conflictos, errores de pruebas o fallos de autenticación, informa del problema y solicita intervención cuando sea necesaria.
+- Nunca declares que GitHub está actualizado sin verificar el resultado de la sincronización.
+- No omitas las comprobaciones anteriores aunque la instrucción de cierre sea breve.
+
+Encaje con las reglas existentes: este cierre no sustituye a `/memoria-guardar` (obligatorio al cerrar una sesión que cambió código, configuración, datos operativos o decisiones; ver `.claude/CLAUDE.md`) ni a la regla de notas Obsidian de arriba; cuando apliquen, se hacen antes del paso 7 para que entren en el mismo commit.
+
 # Compact instructions
 
 Preserve:
