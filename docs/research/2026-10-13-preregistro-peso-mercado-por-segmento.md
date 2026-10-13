@@ -362,3 +362,16 @@ Resuelta el 2026-10-13 (orden del operador: «Sí, házlo», sobre la recomendac
 ## Addenda
 
 Ninguno todavía. Aquí se añaden, por commits posteriores a H y sin editar lo anterior: la tabla de régimen de `s` y los cambios de régimen (§10), T0 si lo fija el operador (§3.7), el `.sk.json` (§5.4) y T1 (§7.4).
+
+### Addendum 2026-10-13 (1) — formato de la tabla de régimen de `s` y columna `market_shrink` (antes de T0)
+
+No cambia ningún criterio; fija el formato que §10 y §11 dejaban abierto (hallazgo de la revisión de Fable del script).
+
+- **Fuente de `s_t` por fila, en este orden:** (1) la columna `market_shrink` de la fila, si existe y es finita (el stream la guarda desde el commit que la añade a `ServedStore.COLUMNS`; vale 0,0 cuando la fila no tuvo no-vig y no se mezcló); (2) si no, la tabla de régimen de abajo; (3) si ninguna aplica, `s_t` desconocido: la fila se excluye y se cuenta (§4.4).
+- **Formato literal de cada entrada de la tabla**, una por línea, al inicio de línea, dentro de la sección «Addenda»:
+
+      s servido = <valor en [0,1] | desconocido> | desde = <ISO-8601 con zona> | alcance = <global | liga|mercado>
+
+  Entrada implícita: `s servido = 0.5 | desde = 2026-06-21T00:00:00+00:00 | alcance = global`. Gana la entrada aplicable con `desde` más reciente, comparada con el `generated_at` de la fila; a igual `desde`, la de alcance `liga|mercado` sobre la global.
+- Cualquier línea de la sección «Addenda» que empiece por `s servido` y no cumpla este formato hace **abortar** `--ajustar` y `--medir`. Nunca se ignora en silencio.
+- Si la columna y la tabla discrepan en una fila, manda la columna y la discrepancia se cuenta y se informa.
