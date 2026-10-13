@@ -375,3 +375,12 @@ No cambia ningún criterio; fija el formato que §10 y §11 dejaban abierto (hal
   Entrada implícita: `s servido = 0.5 | desde = 2026-06-21T00:00:00+00:00 | alcance = global`. Gana la entrada aplicable con `desde` más reciente, comparada con el `generated_at` de la fila; a igual `desde`, la de alcance `liga|mercado` sobre la global.
 - Cualquier línea de la sección «Addenda» que empiece por `s servido` y no cumpla este formato hace **abortar** `--ajustar` y `--medir`. Nunca se ignora en silencio.
 - Si la columna y la tabla discrepan en una fila, manda la columna y la discrepancia se cuenta y se informa.
+
+### Addendum 2026-10-13 (2) — precisiones a la tabla de régimen de `s` (antes de T0)
+
+Redactado por Fable en la verificación del script. No cambia ningún criterio; precisa el Addendum 2026-10-13 (1).
+
+- La discrepancia entre la columna `market_shrink` y la tabla se cuenta **después** de los filtros de §4.1 y del colapso de §4.2: solo sobre las filas que llegan a la reconstrucción de §4.4.
+- Una columna `market_shrink` finita fuera de [0,1] no se sustituye por la tabla: la fila se excluye y se cuenta en un recuento propio.
+- El `alcance` de una entrada `liga|mercado` es el **segmento** de §4.3. Para tenis es el circuito (`tennis_atp|<mercado>` o `tennis_wta|<mercado>`), nunca un torneo ni `atp`/`wta`. Una entrada con alcance de torneo, o con un `desde` sin zona horaria, no cumple el formato y hace abortar `--ajustar` y `--medir`.
+- Si la tabla no puede leerse del pre-registro en HEAD, `--ajustar` y `--medir` abortan; `--contar` lo informa.
