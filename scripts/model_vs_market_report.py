@@ -90,10 +90,11 @@ def build_report(df: pd.DataFrame, *, price_floor: float, n_boot: int,
         "**Unidades.** El stream guarda una fila por dia de horizonte, asi que "
         "el mismo pick aparece varias veces (2,19x el 2026-08-27). Las secciones "
         "de ROI (3, 4 y 5) miden POLITICA y colapsan a **una fila por apuesta** "
-        "-- una apuesta se hace una vez. La seccion 1 (Brier) se queda sobre "
-        "todas las servidas a proposito: cada servida es una prediccion distinta "
-        "a un precio distinto, la comparacion es pareada contra el mercado en la "
-        "misma fila y el IC ya agrupa por evento.",
+        "-- una apuesta se hace una vez. Las secciones 1 y 2 (Brier) tambien "
+        "colapsan a **una fila por pick** (la primera servida) antes de puntuar "
+        "y antes del bootstrap (`score_model_vs_market`, KI-026(b), desde el "
+        "2026-09-04): sobre el stream inflado el estimador puntual salia "
+        "sesgado. El IC agrupa por evento.",
         "",
         "ROI REALIZADO sobre muestra historica. NO es una promesa de ganancia.",
         "",
