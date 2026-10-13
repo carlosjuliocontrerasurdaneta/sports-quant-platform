@@ -284,3 +284,103 @@ Transparencia: el informe periódico (`model_vs_market_report.py`, sección 1, `
 Mismo día, y sin efecto sobre el test: el párrafo «Unidades» de `scripts/model_vs_market_report.py` decía que la sección 1 puntuaba todas las servidas. Era obsoleto desde `f4e00f1` y se corrige. Las cifras de la sección 1 del informe del 2026-10-01 ya se calcularon por pick.
 
 Coordinación: `2026-10-13-preregistro-peso-mercado-por-segmento.md` toma como T0 la fecha del commit que añade el resultado de este test y evalúa solo eventos posteriores. No altera ningún criterio de este documento. Queda prohibido usar este addendum para recortar o re-segmentar la ventana.
+
+## Addendum 2026-10-13 (2) — especificación de ejecución (antes de ejecutar)
+
+Diseño: Fable (rol de pre-registro). Escrito **antes** de mirar ningún resultado del test. Sobre los datos solo se ha contado (2026-10-13, lector propio sin mutación, sin calcular nada que dependa de `result` salvo el filtro win/loss): 47.341 filas graduadas, **todas** con `data_label == "real"`; 17.250 picks y **2.796 eventos** tras filtrar win/loss y probabilidades presentes y colapsar a la primera servida; 0 picks cuya primera servida tenga `generated_at ≥ start_time`; `event_id` no colisiona entre ligas (2.796 eventos por `event_id` y por `(league, event_id)`).
+
+**No cambia ningún criterio ya fijado:** δ = 0,0025; N = 3.402 eventos; PASA/FALLA del primario por IC bootstrap; seed 42 y `n_boot = 10.000`; unidad por pick (addendum anterior); secundarios con ≥ 800 eventos y Holm; puerta de ROI necesaria. Este addendum solo fija lo que el texto dejaba abierto. Queda prohibido usarlo para recortar o re-segmentar la ventana.
+
+### E1. Vehículo: script dedicado, no el informe periódico
+
+- **Sustituye el vehículo** de «Compromiso de ejecución» y del punto «Ejecución» del addendum de unidad, no ningún criterio. `scripts/model_vs_market_report.py` es un informe periódico: si llevara `p_cal`, cada ejecución rutinaria mostraría el estadístico de este test antes de N, y eso es una mirada intermedia prohibida. **Ese informe no se toca y nunca reconstruye `p_cal`.**
+- **Script:** `scripts/research/measure_el_modelo_manda.py`. Tests: `tests/research/test_measure_el_modelo_manda.py`. Lo implementa Sonnet según esta especificación; lo revisa Fable antes de la primera ejecución oficial de `--contar`. La revisión se registra en un addendum de implementación, como el Addendum 1 de tier A.
+- Reutiliza, importándolos y sin copiarlos, `one_row_per_pick` y `PICK_KEY` (`src/sqp/evaluation/edge_information.py`), `score_model_vs_market` (`src/sqp/evaluation/model_vs_market.py`) y `cluster_bootstrap_ci` (`src/sqp/evaluation/bootstrap.py`). Registra el hash de blob de esos tres ficheros en HEAD y en disco.
+
+### E2. Lectura sin efectos secundarios
+
+- **Prohibido** llamar a `ServedStore.load_all_graded` o a `ServedStore._load`: ante un `ParserError`, `_load` renombra el fichero (cuarentena, `src/sqp/storage/served_store.py`, `_quarantine` y `_load`). Medir no puede mutar `data/`.
+- **Lector propio con la misma semántica** que `load_all_graded`: recorre `data/calibration/graded_*.csv` en orden alfabético (no `demo/`), lee cada uno con `pd.read_csv` y **asigna `league` desde el nombre del fichero** (`graded_<liga>.csv`), sobrescribiendo la columna del CSV, igual que `load_all_graded`. Así los torneos de tenis son ligas distintas, como en la tabla de potencia. Concatena.
+- **`data_label`:** se conservan solo las filas con `data_label == "real"` si la columna existe. `load_all_graded` **no** filtra (lo hace cada consumidor; el lector de tier A y los consumidores del gate sí filtran). Hoy el filtro es inerte: 47.341 de 47.341 filas son reales. Se cuentan las excluidas. Si alguna vez hay más de 0, se informa además el primario sin el filtro, como sensibilidad sin poder de decisión.
+- Un fichero ilegible, vacío o corrupto **no se toca**: se omite y se informa. `--medir` **aborta** si una liga listada no se puede leer. Una liga que solo trae cabecera se informa como vacía y no aborta (como tier A, Addendum 1 §4).
+- El mismo lector, con `served_*.csv`, se usa solo para el recuento informativo de picks sin graduar (E4).
+
+### E3. Qué es un pick válido y qué es un evento
+
+Orden único y vinculante, el del addendum de unidad, sobre el frame del lector:
+
+1. `result ∈ {win, loss}`. Fuera `push`, `void`, `half_win` y `half_loss`, y cualquier otro valor. Todos se cuentan por valor.
+2. `calibrated_probability` e `implied_probability_novig` presentes y finitas. Las ausentes se cuentan.
+3. Colapso con `one_row_per_pick` (primera servida por `PICK_KEY`).
+4. `p_cal = 2·calibrated_probability − implied_probability_novig` sobre la fila resultante. Si `p_cal ∉ [0,1]`, se excluye el pick entero (todas sus filas, por `PICK_KEY`), se cuenta y no se recorta ni se sustituye por otra servida. La comprobación no depende de `result`.
+5. **Corte temporal (E4):** el pick entra solo si el `generated_at` de **esa** primera servida es ≤ T1.
+6. Lo que queda es la **población medida**. **Evento** = `event_id` distinto con al menos un pick en ella. **n** = número de eventos. El clúster del bootstrap y del SE es `event_id`, el mismo que usa `score_model_vs_market`.
+
+No hay más exclusiones. La lista del texto original es cerrada (resultado binario y las dos probabilidades), así que **no** se añade filtro pregame ni de liga. Las primeras servidas con `generated_at ≥ start_time` o `start_time` ilegible se **cuentan e informan**, sin excluirlas (hoy, 0).
+
+Nota: si una liga o mercado no tiene calibrador, `calibrated_probability` es la mezcla sin calibrar y `p_cal` resulta ser `p_adj`. Es exactamente lo que se serviría con `market_shrink: 0` (`_decision_probability`, `src/sqp/pipeline/probabilities.py`), así que no se excluye.
+
+### E4. Disparo por recuento, margen de liquidación y T1
+
+- El texto original no fijaba margen. Se fija uno de **14 días**, igual que en tier A (2 × p90 de latencia generación → liquidación del graduado, 7,0 días, medido el 2026-10-02). Sin margen, la cola reciente de la muestra estaría sesgada hacia lo que liquida rápido (un partido de MLB frente a un torneo de tenis). El margen solo retrasa el disparo, **no rebaja N**: los 3.402 eventos se exigen dentro de la ventana con margen. Coste: unas dos semanas. Se acepta.
+- **`--contar`** (modo por defecto, repetible): instante de ejecución E (UTC), T1 candidato = E − 14 días, aplica E3 con ese T1 y añade **una** línea JSON a `docs/research/2026-08-26-preregistro-el-modelo-manda.contar.jsonl` (append-only; nunca se reescribe ni se borra una línea; se commitea tras cada ejecución). Campos: E, HEAD, H_MM (commit que añadió este documento: `git log --diff-filter=A --format="%H %cI" -- docs/research/2026-08-26-preregistro-el-modelo-manda.md`), T1 candidato, `n` eventos, picks, `n` eventos sin corte (informativo), eventos por segmento `league|market` y lista de segmentos con ≥ 800 eventos, recuentos de cada exclusión de E3, picks servidos con primera servida ≤ T1 y `start_time` ≤ T1 que no aparecen en el graduado («sin graduar»), el chequeo de `s` (E7) y SHA-256 y filas de cada CSV leído. **Nunca** imprime ni escribe Brier, `diff`, aciertos, `p` medias, ROI, z ni p-valores. Admite `--no-log` (diagnóstico, no cuenta para fijar T1).
+- Frecuencia recomendada: semanal mientras `n < 3.000`, y cada 2–3 días a partir de ahí.
+- **Fijación de T1:** la **primera** línea del registro con `n ≥ 3.402` fija **T1 = E − 14 días** de esa línea. Se escribe en un addendum commiteado a este documento con dos líneas literales: `T1 fijado = <ISO-8601>` y `commit del registro = <sha>`. Ejecuciones posteriores de `--contar` siguen anotándose y no mueven T1.
+- **`--medir --t1 <ISO>`**, una sola vez: lee el addendum y el registro con `git show HEAD:`, comprueba que el T1 pasado coincide (como instante) con el del addendum y con la primera línea del registro que cruzó 3.402, que el commit citado contiene esa línea, y que `n(T1) ≥ 3.402` con los datos del momento. Comprueba también E7. Si algo falla, **aborta sin calcular nada** de lo que depende de `result`. Re-ejecutar solo se permite por un fallo técnico que impida producir el informe.
+
+### E5. Primario y secundarios (Holm)
+
+**Primario** (sin cambios, solo su mecánica): se añade al frame de E3 la columna `p_cal` y una constante `_global`, y se llama a `score_model_vs_market(d, by=["_global"], model_col="p_cal", market_col="implied_probability_novig", n_boot=10000, seed=42)`. Como `d` ya está colapsado, el colapso interno es idempotente. **PASA** si `brier_diff_hi < 0`. **FALLA** en otro caso. Si `brier_diff_lo > 0`, se registra además como «modelo PEOR» (párrafo correspondiente del texto original).
+
+**Secundarios.** El texto original fija Holm, pero no cómo se obtienen los p-valores. Se fija:
+
+- **Segmento** = `league|market`, con `league` del nombre del fichero (E2). Es la segmentación de la tabla de potencia y el `by` por defecto de `score_model_vs_market`.
+- **Elegible** si tiene **≥ 800 eventos** en la población medida (E3, con T1). m = número de elegibles, decidido por el recuento en `--medir`. Si m = 0, no hay secundarios y se dice.
+- **p-valor:** z bilateral con error estándar robusto por clúster de **evento**, CR1, como en tier A §3.1 (que agrupa por día; aquí se agrupa por evento porque es la unidad de remuestreo fijada en este documento). Con `d_i = (p_cal,i − y_i)² − (fair_i − y_i)²` sobre los n picks del segmento y G eventos:
+
+      D̂ = (1/n)·Σ d_i      SE² = G/(G−1) · Σ_g (Σ_{i∈g} (d_i − D̂))² / n²      z = D̂/SE      p = 2·Φ(−|z|)
+
+- **Holm** a α = 0,05 de familia sobre los m elegibles: se ordenan los p ascendentes y se rechaza el j-ésimo (j = 1…m) mientras `p_(j) ≤ 0,05/(m − j + 1)`; al primer no-rechazo se para. Un segmento **pasa la primera puerta** si se rechaza **y** `D̂ < 0`. Si se rechaza con `D̂ > 0`, se registra como «modelo PEOR en el segmento».
+- **Independencia del primario:** los secundarios se calculan y se deciden **siempre**, pase o no el primario. Es lo que dice el texto («candidato aunque el global falle»). El primario no entra en la familia de Holm: así lo diseñó el texto original y no se cambia.
+- Descriptivo, sin poder de decisión: por cada segmento elegible, también el IC bootstrap de `score_model_vs_market` (seed 42, 10.000). Si su clase (IC < 0, contiene 0, > 0) no coincide con el veredicto de Holm, se marca como frágil en el informe.
+
+### E6. Segunda puerta: ROI
+
+Se aplica **solo** a las unidades que pasaron la primera puerta: la global si pasa el primario, y cada segmento que pase Holm con `D̂ < 0`. Sobre la **misma población** de picks de esa unidad (E3). Si ninguna pasa, no se calcula.
+
+- **Dos políticas sobre los mismos picks:** `p_0,5 = calibrated_probability` (lo servido) y `p_0 = p_cal`. Cuota: `price_decimal` (mediana del consenso guardada en la fila). `execution_price` no decide; si existe, se informa aparte.
+- **Regla de apuesta, la del modo `edge` del pipeline** (`src/sqp/pipeline/daily.py`: `adjusted_edge` → `kelly_fraction_stake` → tope de plausibilidad), con **literales congelados aquí** e iguales a `configs/default.yaml` en este commit. El script no los lee de ninguna configuración:
+  - `e = p·cuota − 1` (EV bruto);
+  - `gap = |p − implied_probability_novig|`; `pen = 0,35·gap + (0,02 si gap > 0,06) + (0,015 si books_count < 2)`; `e_adj = e − max(0, pen)`; `p_eff = (e_adj + 1)/cuota`;
+  - **apuesta** si `0 < p_eff < 1`, `cuota > 1`, `e_adj ≥ 0,02` (`min_edge`) **y** `e ≤ 0,075` (`max_plausible_edge`).
+  - Las penalizaciones por movimiento de línea, velocidad y dispersión de casas valen 0 en la configuración vigente, así que la regla se reproduce con las columnas guardadas. Si el valor efectivo de alguna difiere de 0 al medir, se informa como dato y no cambia la regla.
+- **Stake plano de 1 unidad**, no Kelly: el Kelly depende de la banca y pondera el resultado por el tamaño de la apuesta. PnL por pick apostado: `cuota − 1` si gana, `−1` si pierde. `ROI_s = Σ PnL / nº de picks apostados` con la política `s`.
+- **Estadístico:** `Δ = ROI_0 − ROI_0,5`. **IC95 bootstrap por evento:** con `numpy.random.default_rng(42)`, 10.000 réplicas, en cada una se remuestrean los eventos de la unidad con reemplazo y se recalculan los dos ROI y Δ. IC por percentiles 2,5 y 97,5. Las réplicas en las que alguna política no apuesta nada dan Δ indefinido: se descartan y se cuentan.
+- **PASA** la segunda puerta si el límite inferior del IC de Δ es > 0. **FALLA** si no, si alguna política no apuesta nada en la muestra observada o si más del 1 % de las réplicas son indefinidas.
+- **Walk-forward.** El stream servido ya es fuera de muestra: cada fila guarda la `p` y el calibrador de su momento, entrenado con resultados anteriores a esa servida. Como la calibración actúa **antes** de la mezcla (`p_decision = (1 − s)·cal(p_adj) + s·fair`), `cal(p_adj)` habría sido el mismo con cualquier `s`, y la política `s = 0` se reproduce exactamente con los datos de cada momento. Los literales de la regla son anteriores al stream (fijados en junio de 2026). **Lo que no se reproduce:** límites de exposición diaria y por liga, banca dinámica, precio realmente ejecutable (se usa la mediana del consenso, igual en las dos políticas) y el efecto que `s = 0` habría tenido sobre el `prediction_gate`. Afectan a las dos políticas por igual o no influyen en la comparación de selección. Se declaran.
+- Descriptivo, sin poder de decisión: la misma comparación con la regla simple `0,02 ≤ p·cuota − 1 ≤ 0,075`, sin penalización. ROI esperado, ROI realizado, acierto y prob. prometida media de cada política se informan **por separado**. Ninguno es una promesa de rentabilidad.
+- **Las dos puertas deben pasar** (sin cambios).
+
+### E7. Comprobaciones previas (sin depender de `result`)
+
+- **`s = 0,5` en las filas** (amenaza 2 del texto original). Sobre las primeras servidas de la población con `|a − fair| ≥ 0,02`, donde `a = adjusted_probability` (con fallback por fila a `model_probability` en filas de esquema antiguo), se calcula `ŝ_i = (a − estimated_probability)/(a − fair)`. `--medir` **aborta** si la mediana de ŝ se aleja de 0,5 más de 0,01, o si más del 1 % de esas filas se aleja más de 0,05. Si aborta, el pre-registro se reescribe según la amenaza 2; no se mide. `--contar` solo informa.
+- El valor efectivo de `Settings.load().risk.market_shrink` y de los literales de E6 se registra al medir frente a `configs/default.yaml`, sin usarlo.
+- Descriptivo: fracción de primeras servidas con `|calibrated_probability·cuota − 1 − estimated_edge| > 0,001 + 0,0001·cuota`.
+
+### E8. Procedencia y publicación
+
+- **Salida JSON** (`--out`, y resumen en stdout): HEAD; H_MM; commit de este addendum y del addendum de T1; `git status --porcelain -- src configs scripts/research`; hash de blob, en HEAD y en disco, de `edge_information.py`, `model_vs_market.py`, `bootstrap.py`, `probabilities.py` y del propio script; SHA-256 y filas de cada CSV leído; ligas listadas, cargadas, vacías y faltantes; E, T1, seed y `n_boot` (marcados si difieren de 42 y 10.000); versiones de Python, pandas y numpy; recuentos de cada paso de E3; E7; primario; secundarios con `n`, G, `D̂`, SE, z, p, umbral Holm y decisión; segunda puerta por unidad; sensibilidades (todas las servidas sin colapsar, según el addendum de unidad; sin corte T1, con todo lo graduado al medir; regla simple de E6). Las sensibilidades no tienen poder de decisión.
+- **Publicación:** `docs/research/<fecha de --medir>-resultado-el-modelo-manda.md`, con el JSON al lado (`…-resultado-el-modelo-manda.json`), en **un solo commit** que contenga solo esos dos ficheros. Ese commit fija T0 de `2026-10-13-preregistro-peso-mercado-por-segmento.md` §3.1, cuyo script aborta si hay cero o más de un `.md` que case con `*resultado-el-modelo-manda*.md`. Por eso **nunca** se crea un segundo `.md` con ese patrón. Una corrección por fallo técnico posterior va como sección añadida al mismo fichero, conservando el resultado original y con revisión de Fable.
+- El resultado se commitea en los tres casos (PASA, FALLA, PEOR), como ordena el texto original.
+
+### E9. Tests mínimos (`tests/research/test_measure_el_modelo_manda.py`, solo datos sintéticos)
+
+1. El lector no renombra ni modifica ningún fichero ante un CSV corrupto (mtime y nombre intactos), lo informa y hace abortar `--medir`. Toma `league` del nombre del fichero y filtra `data_label == "real"`.
+2. Orden de E3: los filtros de resultado y de probabilidades actúan antes del colapso (si la servida más antigua de un pick no tiene `calibrated_probability`, la primera servida es la siguiente que sí la tiene, igual que en `score_model_vs_market`); un pick con `p_cal` fuera de [0,1] en la primera servida queda fuera entero aunque otra servida esté en rango; un pick con primera servida > T1 queda fuera aunque tenga otras servidas ≤ T1.
+3. `n` cuenta eventos, no picks ni filas, y el clúster es `event_id`.
+4. `--contar` no emite ningún campo con Brier, diff, acierto, ROI, z ni p (se comprueba por nombre de clave y por contenido) y añade exactamente una línea al registro. Con `--no-log` no añade ninguna.
+5. `--medir` aborta sin T1, con un T1 distinto del addendum o del registro, con `n(T1) < 3.402` o con ŝ fuera de tolerancia, y en todos esos casos sin calcular Brier.
+6. El primario coincide con `score_model_vs_market` aplicado a mano al frame sintético, y la decisión PASA/FALLA/PEOR sale del IC.
+7. CR1 por evento reproduce un cálculo a mano con 3 eventos. Holm se comprueba con p fijados (m = 3: un caso que rechaza los dos primeros y para en el tercero, y otro en que un rechazo con `D̂ > 0` se etiqueta PEOR). Los segmentos con < 800 eventos no entran en m.
+8. Regla de E6: casos frontera (`e_adj` = 0,02 apuesta; `e` = 0,0751 no apuesta; `books_count` = 1 aplica 0,015; `gap` > 0,06 aplica 0,02). Δ y su IC con semilla 42 son reproducibles. Una política sin apuestas da FALLA.
+9. E7: un frame sintético construido con `s = 0,4` hace abortar `--medir`; uno con `s = 0,5` y redondeo a 4 decimales lo pasa.
