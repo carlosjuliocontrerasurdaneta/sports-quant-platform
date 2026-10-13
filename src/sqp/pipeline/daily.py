@@ -954,6 +954,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 "implied_probability_novig": round(fair, 4) if fair is not None else float("nan"),
                 "estimated_edge": round(e, 4),
                 "books_count": int(cons_n.get(key) or 0),
+                # Mismo criterio que `_decision_probability`: sin no-vig o con
+                # shrink <= 0 la fila no se mezcla (peso efectivo 0).
+                "market_shrink": (settings.risk.market_shrink
+                                  if fair is not None and settings.risk.market_shrink > 0
+                                  else 0.0),
                 "stake": 0.0, "data_label": eo.event.data_label,
                 "flags": "served_stream", "generated_at": served_at})
             # An edge above the plausibility cap is almost certainly model

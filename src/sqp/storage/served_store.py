@@ -38,7 +38,12 @@ COLUMNS = ["league", "event_id", "home", "away", "start_time", "game_date",
            # Capa de ejecucion (2026-09-19): precio y casa donde se COBRARIA.
            # `price_decimal` sigue siendo la mediana del consenso. Ficheros
            # anteriores se reconcilian por union de columnas (guard de abajo).
-           "execution_price", "execution_book"]
+           "execution_price", "execution_book",
+           # Peso del mercado EFECTIVO con el que se calculo la fila (2026-10-13):
+           # p_decision = (1-s)*cal(p_adj) + s*fair. 0.0 si no hubo no-vig (la
+           # fila no se mezclo). Vacio en filas historicas: no se rellena
+           # retroactivamente (un `.env` no versionado pudo cambiarlo).
+           "market_shrink"]
 
 # One row per market side per run DAY: a re-run the same day must not duplicate,
 # while serving the same event on consecutive days keeps both genuine serves
