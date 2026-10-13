@@ -483,3 +483,10 @@ Format:
 - Reason: orden del operador; asegurar que cada sesión termine commiteada y subida, con verificación real del push.
 - Alternatives: ninguna planteada.
 - Consequences: el cierre complementa (no sustituye) `/memoria-guardar` y la regla Obsidian; nunca `push --force`; conflictos, tests rojos o fallos de autenticación se informan y detienen el cierre.
+
+- Date: 2026-10-13
+- Decision: **Pre-registro del peso del mercado por segmento APROBADO** (`docs/research/2026-10-13-preregistro-peso-mercado-por-segmento.md`, H = `107e9b7`, tag `prereg-peso-mercado-h`). `s_k` por liga|mercado con encogimiento jerárquico (global → familia → segmento, τ = 0,25, mínimo 30 eventos), frente a `market_shrink` 0,5 global. T0 = commit del resultado de «el modelo manda»; evaluación solo en eventos posteriores; N = 3.300 eventos (≈ marzo de 2027), disparo por `--contar`.
+- Reason: el modelo pierde contra el mercado en Brier (informe del 2026-10-01) y lo que más precisión promete es pesar más el mercado donde el modelo pierde. Diseño de Fable; el operador aprobó con T0 = resultado de MM («Sí, házlo»).
+- Alternatives: T0 = hoy (tres semanas antes, pero solapa con MM); rechazado.
+- Consequences: ningún `s_k` se calcula antes de T0. Pendientes: script `scripts/research/measure_segment_market_weight.py` (contrato en la §11) y decidir si se persiste `market_shrink` por fila servida.
+- Mismo día: addendum de unidad en «el modelo manda» (`d4383de`): una fila por pick. Fable señaló que, por convexidad, diff(p_cal) ≥ 2·diff(mezcla); con el informe del 2026-10-01 el IC de MM ya queda por encima de +0,0045, así que MM apunta a FALLA. Declarado en el addendum.

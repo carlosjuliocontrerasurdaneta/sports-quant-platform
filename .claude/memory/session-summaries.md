@@ -960,3 +960,10 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - `CLAUDE.md` raíz: nueva sección «Cierre de jornada y sincronización con GitHub» (`f128483`, ya en `origin/main`). Activación: «guarda los cambios y cierra sesión». 13 pasos (status, revisión de secretos, tests, commit selectivo, integración segura del remoto, push, verificación, informe) y reglas de seguridad (sin `--force`, sin descartar cambios, sin commits vacíos). Se añadió un párrafo de encaje: `/memoria-guardar` y Obsidian, cuando apliquen, van antes del paso 7.
 - Tests `test_claude_system_contract.py` + `test_claude_model_routing.py`: 64 passed.
 - Sin cambios de código, datos ni parámetros.
+
+## 2026-10-13 — Mejoras de precisión: pre-registro del peso del mercado por segmento
+
+- Consulta: qué mejoras necesita el sistema. Diagnóstico desde `audit/model_vs_market_20261001.md`: el mercado bate al modelo en Brier y el edge alto es error del modelo.
+- Repriorización tras verificar: KI-072 es P3 y exige pre-registro (sin tocar); los 3 calibradores live y los 12 de staging están estructuralmente sanos (sin colapso); persistir el tier no aporta (es determinista y el test de tier A congela su clasificador).
+- Pre-registro del peso del mercado por segmento (Fable, aprobado): `107e9b7` + tag `prereg-peso-mercado-h`. Addendum de unidad en «el modelo manda» y párrafo «Unidades» del informe corregido: `d4383de` (Fable APTO CON CAMBIOS, aplicados). Sin push. Detalle en `project-decisions.md`.
+- **Pendiente:** antes de ejecutar MM (≈ 1/11), añadir la reconstrucción de `p_cal` a `model_vs_market_report.py`; escribir `measure_segment_market_weight.py` (Sonnet) y su `--contar` mensual; decidir si se persiste `market_shrink` por fila.
