@@ -619,3 +619,19 @@ Format:
 - Affected files: src/sqp/providers/mlb_statsapi.py, data/historical/results_mlb.csv, data/historical/starters_mlb.csv
 - Fix: sin decidir. Opciones: (a) no tocar (≈40 partidos al año, deriva de Elo de semanas); (b) ingerir postemporada (`gameType` R,F,D,L,W) en histórico y vivo. La (b) cambia el histórico de entrenamiento: exige pre-registro y medición (y addenda de régimen en K=52 y en «el modelo manda»), con revisión de Fable y decisión del operador. Encontrado el 2026-10-11 al verificar KI-066.
 - Status: ABIERTO (observación; no bloquea).
+
+- ID: KI-073
+- Severity: Media
+- Description: CLAUDE-005 / H-2. El hook Stop de tests (`-m "not slow"`) tardaba 1080,43 s contra su autoacotado de 1080 s (2026-10-14): nunca daba veredicto. Además, sin pytest borraba el centinela y trataba rc 3/4/5 como FAIL.
+- Affected files: .claude/hooks/run-tests-on-stop.sh, .claude/hooks/_stop_tests.py, pyproject.toml, 11 módulos de tests con `pytestmark = pytest.mark.heavy`, tests/test_stop_tests_hook.py, tests/test_claude_model_routing.py
+- Fix: suite rápida `not slow and not heavy` (2461 passed en 438,32 s el 2026-10-15) más los heavy relacionados con los ficheros modificados. Veredictos PASS / FAIL / NO VERIFICADO; NO VERIFICADO sale con 0, no bloquea y conserva el centinela. CI sigue corriendo la suite completa. Detalle en `Obsidian/Bitácora/2026-10-15.md`.
+- Residual: varianza alta de tiempos en esta máquina (test_fable_gate 80 s → 173 s entre días); con muchos heavy modificados, rápida + relacionados no caben y el resultado es NO VERIFICADO; test_fable_gate solo corre en local si se toca fable_gate.py o su test. Volver a medir la suite rápida cuando crezca: el criterio es ≤ 540 s.
+- Status: CORREGIDO EN EL ÁRBOL, SIN COMMIT (2026-10-15).
+
+- ID: KI-074
+- Severity: Media
+- Description: AUD-001 (ronda audit-2026-10-15). `roi_engine._match_result` empareja resultado y cuotas por pareja y ±1 dia de forma voraz: con las cuotas del partido del dia 10 ausentes, el resultado del 10 consume las del 11 (etiqueta y PnL cruzados en backtests y mediciones de investigacion que usan este matcher).
+- Affected files: src/sqp/backtesting/roi_engine.py; consumidores realized_roi_backtest, validate_oos, oos_pitcher_mlb, scripts/research/measure_*.py
+- Fix: NINGUNO aplicado. La regla "preferir el emparejamiento exacto" se revirtio el 2026-10-16: medida sobre datos reales reasignaba 352 resultados MLB (results_mlb.csv lleva la fecha LOCAL oficial; las cuotas el commence_time UTC; en una serie de costa oeste cruzaba etiquetas en casi cada partido). Hace falta una identidad canonica del partido (calendario MLB / fecha local de la cuota por huso de la liga) antes de corregirlo; diseño con revision Fable. Evidencia: audit/latest/CHANGES.md (AUD-001).
+- Residual: mediciones pasadas con este matcher no recalculadas; frecuencia real del defecto NOT_VERIFIABLE.
+- Status: ABIERTO, BLOQUEADO por diseño (2026-10-16).

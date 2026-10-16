@@ -967,3 +967,17 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Repriorización tras verificar: KI-072 es P3 y exige pre-registro (sin tocar); los 3 calibradores live y los 12 de staging están estructuralmente sanos (sin colapso); persistir el tier no aporta (es determinista y el test de tier A congela su clasificador).
 - Pre-registro del peso del mercado por segmento (Fable, aprobado): `107e9b7` + tag `prereg-peso-mercado-h`. Addendum de unidad en «el modelo manda» y párrafo «Unidades» del informe corregido: `d4383de` (Fable APTO CON CAMBIOS, aplicados). Sin push. Detalle en `project-decisions.md`.
 - **Pendiente:** antes de ejecutar MM (≈ 1/11), añadir la reconstrucción de `p_cal` a `model_vs_market_report.py`; escribir `measure_segment_market_weight.py` (Sonnet) y su `--contar` mensual; decidir si se persiste `market_shrink` por fila.
+
+## 2026-10-14/15 — CLAUDE-005 / H-2: suite rápida del hook Stop de tests
+
+- Medido: `not slow` = 1080,43 s contra el presupuesto de 1080 s, así que el hook nunca daba veredicto. Arreglo autorizado: marcador `heavy` (11 módulos), suite rápida `not slow and not heavy` más los heavy relacionados con los ficheros modificados; lógica en `.claude/hooks/_stop_tests.py` con veredictos PASS / FAIL / NO VERIFICADO (KI-073).
+- Evidencia: suite rápida 2461 passed en 438,32 s (criterio ≤ 540 s; con 6 módulos marcados daba 749,62 s y no cumplía); heavy 519 passed en 1391,01 s; colección 3171 → 3205 sin pérdidas; tests del hook 111 passed; ruff y mypy limpios.
+- `settings.json`, `fable_gate.py`, `ci.yml` y la política de modelos intactos. Sin commit ni push.
+- Aparte, a petición del operador: `npx claude-mem install` (plugin global v13.39.0; el proceso de fondo sin arrancar).
+
+## 2026-10-16 — Ronda audit-2026-10-15: consolidacion revision 2 y remediacion (10 commits locales, sin push)
+
+- Consolidacion independiente (Claude, adjudicacion Fable): AUD-001..012 conservados, AUD-013 nuevo; 13 confirmados (1 HIGH/P1). `audit/latest/FINDINGS.md`, `BACKLOG.md`, `MANIFEST.json`; v1 en `history/consolidacion-claude-20261016T104941Z/`.
+- Remediacion (orden: todos los confirmados, commits locales sin push): `766cb8b` AUD-002/013, `2e932df` AUD-004/008, `63dd676` AUD-005, `5205778` AUD-007, `9b1608d` AUD-006/010, `5ff1475` AUD-011, `ffc5ad3` + `6c560e6` AUD-003, `4f0dffa` AUD-009, `7861a7f` AUD-012. Fable APTO antes del commit en AUD-003/005/007 (FABLE-REVIEW en current-task.md). AUD-001 BLOQUEADO (KI-074). Detalle en `audit/latest/CHANGES.md`, `STATUS.md`, `VALIDATION.md` y `Obsidian/Bitácora/2026-10-16.md`.
+- Pendientes del operador: push (y publicar tags `prereg-*` para que CI verifique el ancla real); decision sobre filas NHL h2h servidas desde 2026-09-23 (AUD-003); verificacion independiente de la ronda. KI-073 sigue sin commit y fuera de estos commits (stage parcial de los tests compartidos).
+- Leccion: una "correccion" de identidad por fecha se mide sobre datos reales antes de aceptarla — los tests sinteticos del implementador pasaban y la regla cruzaba 352 etiquetas MLB.
