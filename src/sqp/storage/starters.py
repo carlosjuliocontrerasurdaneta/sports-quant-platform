@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 from sqp.logging_config import get_logger
 from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.goalies import _norm_str  # sin ciclo: goalies no importa starters
 from sqp.storage.lock import locked
 
 log = get_logger("sqp.storage.starters")
@@ -75,8 +76,11 @@ def log_pitcher_confirmation(
             prev = last_by_event.loc[eid] if eid in last_by_event.index else None
             if prev is None:
                 to_append.append(row)
-            elif (str(prev.get("home_pitcher")) != str(row["home_pitcher"])
-                  or str(prev.get("away_pitcher")) != str(row["away_pitcher"])):
+            # auditoria 2026-10-15, AUD-007: tras releer el CSV un abridor
+            # ausente es NaN ("nan") y en `row` es None ("None"); sin
+            # normalizar, cada re-ejecucion anadia una fila identica.
+            elif (_norm_str(prev.get("home_pitcher")) != _norm_str(row["home_pitcher"])
+                  or _norm_str(prev.get("away_pitcher")) != _norm_str(row["away_pitcher"])):
                 to_append.append(row)
         if not to_append:
             return 0
@@ -87,7 +91,7 @@ def log_pitcher_confirmation(
         to_append = new_rows
 
     atomic_write_csv(combined.sort_values("confirmed_at_utc", kind="stable"), p)
-    n = len(to_append) if p.exists() else len(new_rows)
+    n = len(to_append)
     log.info("[%s] pitcher_confirmation_log: %d fila(s) nuevas/cambiadas.", league, n)
     return n
 
