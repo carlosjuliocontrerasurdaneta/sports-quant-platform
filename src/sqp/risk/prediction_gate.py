@@ -142,7 +142,40 @@ def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
     """
     return max(0, int(n_cortes)) * float(alpha)
 
+# Segmentos cuyo ``implied_probability_novig`` servido es INVALIDO antes de un
+# instante: solo cuentan las filas generadas desde ese instante. AUD-003 (ronda
+# audit-2026-10-15): en NHL (liga a 2 vias) las casas que cotizan el 1X2
+# reglamentario entraban en el h2h y el Draw deprimia las dos probabilidades
+# justas (fair(home)+fair(away) < 0,95 en 1.150 de 1.835 snapshots), asi que el
+# mercado del test de signo era un baseline falso. Medido el 2026-10-16: las
+# 692 filas usables de nhl|h2h (118 unidades, generadas del 2026-09-23 al
+# 2026-10-15) caen todas antes del arreglo, y el test de entrada no se habia
+# gastado (n=118 < min_n). El corte se fija por el instante del commit del
+# arreglo (ffc5ad3), no por ningun resultado; las filas se conservan intactas
+# en el stream, solo dejan de contar aqui. Filas sin ``generated_at`` en un
+# segmento listado no cuentan (default-deny). Enmienda del pre-registro, con el
+# resultado ya conocido declarado: docs/research/2026-10-16-enmienda-gate-nhl-h2h-aud003.md.
+INVALID_BEFORE: dict[tuple[str, str], str] = {
+    ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",
+}
+
 _REQUIRED = ("model_probability", "implied_probability_novig", "price_decimal")
+
+
+def _drop_invalid_market_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Quita las filas de ``INVALID_BEFORE`` generadas antes de su instante."""
+    if df.empty or not {"league", "market"} <= set(df.columns):
+        return df
+    keep = pd.Series(True, index=df.index)
+    gen = (pd.to_datetime(df["generated_at"], utc=True, errors="coerce",
+                          format="mixed")
+           if "generated_at" in df.columns
+           else pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]"))
+    for (league, market), since in INVALID_BEFORE.items():
+        seg = (df["league"] == league) & (df["market"] == market)
+        valid = gen >= pd.Timestamp(since)
+        keep &= ~seg | valid.fillna(False).astype(bool)
+    return df[keep]
 _TABLE_COLS = ["league", "market", "n", "wins", "p_value", "ev_flat",
                "allowed", "reason"]
 
@@ -165,7 +198,7 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
                         "filas filtradas (default-deny).", col)
             return df.iloc[0:0].assign(y=pd.Series(dtype=int))
     fecha = df["game_date"].astype(str)
-    df = df[fecha > validation_start]
+    df = _drop_invalid_market_rows(df[fecha > validation_start])
     for col in _REQUIRED:
         if col not in df.columns:
             return df.iloc[0:0].assign(y=pd.Series(dtype=int))

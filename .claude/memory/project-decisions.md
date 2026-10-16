@@ -490,3 +490,9 @@ Format:
 - Alternatives: T0 = hoy (tres semanas antes, pero solapa con MM); rechazado.
 - Consequences: ningún `s_k` se calcula antes de T0. Pendientes: script `scripts/research/measure_segment_market_weight.py` (contrato en la §11) y decidir si se persiste `market_shrink` por fila servida.
 - Mismo día: addendum de unidad en «el modelo manda» (`d4383de`): una fila por pick. Fable señaló que, por convexidad, diff(p_cal) ≥ 2·diff(mezcla); con el informe del 2026-10-01 el IC de MM ya queda por encima de +0,0045, así que MM apunta a FALLA. Declarado en el addendum.
+
+- Date: 2026-10-16
+- Decision: **Filas nhl|h2h anteriores al arreglo de AUD-003 fuera del gate de prediccion** (`INVALID_BEFORE` en `src/sqp/risk/prediction_gate.py`, corte 2026-10-16T12:56:03Z = commit `ffc5ad3`; enmienda `docs/research/2026-10-16-enmienda-gate-nhl-h2h-aud003.md`). Sin mutar datos: el stream servido y el ledger quedan intactos.
+- Reason: el `implied_probability_novig` de nhl|h2h estaba deprimido por el Draw del 1X2 (baseline de mercado falso). Las 118 unidades del corte eran todas anteriores al arreglo y el test unico de entrada no se habia gastado (n<300). Stakes de esas filas = 0, asi que no hay PnL que reparar. Resultado ya conocido y declarado: 49-69, p=0,97.
+- Alternatives: dejarlas (el test de entrada mezclaria 118 unidades con baseline falso); recalcular el baseline desde los snapshots (re-derivacion fragil); excluir tambien en degradacion (debilitaria la pausa por ROI, que es valida).
+- Consequences: nhl|h2h vuelve a n=0 y desaparece del registro hasta que acumule filas nuevas. Degradacion conserva un sesgo permisivo en `brier_market` hasta el 2026-12-15. Las mediciones pre-registradas que leen el stream (el modelo manda, peso del mercado, brecha tier A) deben declarar como tratan nhl|h2h antes de ejecutarse. Revision Fable: APTO CON CAMBIOS, aplicados.
