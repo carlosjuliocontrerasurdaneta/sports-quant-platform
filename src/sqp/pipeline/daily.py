@@ -827,9 +827,13 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
         if _already_started(eo.event.start_time):
             started_msg = "Event already started: prices are in-play, pregame estimate invalid, no candidates."
             warn = f"{warn} {started_msg}" if warn else started_msg
-        cons = _consensus_lines(eo)
-        cons_n = _consensus_counts(eo)
-        cons_spread = _consensus_spread(eo)
+        # `three_way` explicito de la liga: en ligas a dos vias las casas que
+        # cotizan Draw en h2h (1X2 reglamentario, otro contrato) quedan fuera
+        # del grupo h2h en consenso, conteos, dispersion y ejecucion por igual
+        # (auditoría 2026-10-15, AUD-003).
+        cons = _consensus_lines(eo, three_way=three_way)
+        cons_n = _consensus_counts(eo, three_way=three_way)
+        cons_spread = _consensus_spread(eo, three_way=three_way)
         # Capa de EJECUCION (cableada el 2026-09-19 por decision del operador;
         # cierra AUD-005): donde se COBRARIA cada linea entre las casas
         # accesibles declaradas en `execution.books`. Es ADITIVA: la
@@ -839,8 +843,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
         # (`execution_price`, `execution_book`). Cobrar de verdad a ese precio
         # (Kelly y liquidacion sobre el) es una decision aparte del operador.
         exec_px = _execution_prices(eo, cons, settings.execution.books,
-                                    max_uplift=settings.execution.max_uplift)
-        h2h_fair = _novig_probs(cons, "h2h", three_way=three_way)
+                                    max_uplift=settings.execution.max_uplift,
+                                    three_way=three_way)
+        _h2h_sides = (eo.event.home, eo.event.away)
+        h2h_fair = _novig_probs(cons, "h2h", three_way=three_way,
+                                outcomes=_h2h_sides)
         row = {"league": league, "event_id": eo.event.event_id, "home": eo.event.home,
                "away": eo.event.away, "start_time": eo.event.start_time,
                # abridores del MOMENTO DEL PICK (None fuera de beisbol): linea
@@ -881,7 +888,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 fair = _spread_novig(cons, eo.event.home, eo.event.away, spread).get(key[1])
             else:
                 fair = _novig_probs(cons, key[0], key[2],
-                                    three_way=three_way).get(key[1])
+                                    three_way=three_way,
+                                    outcomes=_h2h_sides).get(key[1])
             # A no-vig probability requires the complete complementary market
             # (both sides, or all three 1X2 outcomes). A lone/malformed quote can
             # still be captured in the served stream, but it must never carry

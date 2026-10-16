@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from statistics import median
 from typing import TYPE_CHECKING, Callable, Iterable
 from sqp.calibration.calibrator import calibrate_probability
-from sqp.domain.models import EventOdds
+from sqp.domain.models import EventOdds, MarketLine
 from sqp.features.rest_form import (StaleTeamIndexError, TeamHistoryIndex,
                                     compute_pregame_features,
                                     h2h_p_adjustment, home_away_form_p_adjustment,
@@ -25,6 +25,7 @@ from sqp.features.weather import weather_p_adjustment
 from sqp.logging_config import get_logger
 from sqp.markets.odds import is_usable_price
 from sqp.markets.vig import remove_vig_power
+from sqp.providers.odds_api import SPORT_KEYS
 
 if TYPE_CHECKING:
     from sqp.config import RiskConfig, WeatherConfig
@@ -32,12 +33,74 @@ if TYPE_CHECKING:
 log = get_logger("sqp.probabilities")
 
 
-def _consensus_lines(eo: EventOdds) -> dict:
+# --- Elegibilidad de casas en h2h a dos vias (auditoría 2026-10-15, AUD-003) --
+#
+# En una liga de h2h a DOS vias (NHL y demas ligas con ``three_way: False``)
+# una casa europea que cotiza el 1X2 a tiempo reglamentario (outcome "Draw")
+# vende OTRO contrato: su Home/Away no paga si el partido se decide en la
+# prorroga. Agrupar solo por (market, outcome, point) mezclaba ese precio en la
+# mediana del Home/Away americano, y el Draw entraba en el de-vig de un mercado
+# de dos desenlaces (Home+Away ~0,84; 331 de 346 pares de served_nhl.csv
+# sumaban < 0,95). Todas las lineas h2h de esa casa salen del grupo h2h del
+# evento -- no solo la del Draw --, y la regla vive aqui, en UN punto que
+# comparten consenso, conteos, dispersion, precios de ejecucion y el snapshot
+# de la revalidacion. Totals/spreads de la misma casa no se tocan.
+
+def _book_key(bookmaker: object) -> str:
+    """Identidad de casa normalizada (mismo criterio que ``_execution_prices``)."""
+    return str(bookmaker).strip().lower()
+
+
+def _league_three_way(league: object) -> bool | None:
+    """``three_way`` declarado para la liga en el registro estatico del
+    proveedor (``SPORT_KEYS``); None si la liga no esta registrada (futbol y
+    tenis se cargan dinamicamente). None significa "no se sabe" y conserva el
+    comportamiento historico: solo se excluye cuando la liga se DECLARA a dos
+    vias, nunca por inferencia sobre los precios. Solo aplica cuando el llamador
+    no pasa ``three_way``: el run diario lo pasa SIEMPRE desde la config de la
+    liga, y en tenis vale False, asi que alli la regla si rige (sin efecto hoy:
+    ninguna casa cotiza Draw en tenis, medido 2026-10-16)."""
+    meta = SPORT_KEYS.get(str(league or "").strip().lower())
+    return None if meta is None else bool(meta.get("three_way"))
+
+
+def _draw_quoting_books(rows: Iterable[tuple[object, object, object]]) -> frozenset[str]:
+    """Casas (normalizadas) que cotizan "Draw" en h2h. ``rows`` son tuplas
+    (bookmaker, market, outcome): asi sirve igual para ``MarketLine`` y para
+    las filas crudas de un snapshot del store. Se mira la presencia de la
+    linea, no la usabilidad de su precio: un Draw con precio corrupto sigue
+    delatando que la casa vende el contrato 1X2."""
+    return frozenset(_book_key(b) for b, m, o in rows
+                     if str(m) == "h2h" and str(o) == "Draw")
+
+
+def _eligible_lines(eo: EventOdds, three_way: bool | None = None) -> list[MarketLine]:
+    """Lineas del evento elegibles para consenso/conteos/dispersion/ejecucion.
+
+    ``three_way`` explicito manda; None lo deriva de la liga del evento
+    (``_league_three_way``). Solo con ``three_way`` False se excluyen las
+    lineas h2h de las casas que cotizan Draw; con True (futbol 1X2) o liga
+    desconocida (None) las lineas pasan intactas."""
+    tw = three_way if three_way is not None else _league_three_way(eo.event.league)
+    if tw is not False:
+        return list(eo.lines)
+    excluded = _draw_quoting_books((ln.bookmaker, ln.market, ln.outcome)
+                                   for ln in eo.lines)
+    if not excluded:
+        return list(eo.lines)
+    return [ln for ln in eo.lines
+            if not (ln.market == "h2h" and _book_key(ln.bookmaker) in excluded)]
+
+
+def _consensus_lines(eo: EventOdds, three_way: bool | None = None) -> dict:
     """Median price per (market, outcome, point) across books; plus the de-vig
-    no-vig probability per market used as the fair benchmark."""
+    no-vig probability per market used as the fair benchmark.
+
+    ``three_way``: None (default, compatible con los llamadores historicos) lo
+    deriva de la liga del evento; ver ``_eligible_lines`` (AUD-003)."""
     groups: dict[tuple, list[float]] = defaultdict(list)
     n_non_finite = 0
-    for ln in eo.lines:
+    for ln in _eligible_lines(eo, three_way):
         # Degenerate quotes (price_decimal <= 1.0 means "no payout") corrupt the
         # fair benchmark: 1/1.0 = 1.0 is an implied CERTAINTY, and remove_vig_power
         # then normalizes the whole market around it. Such rows exist in the
@@ -64,11 +127,13 @@ def _consensus_lines(eo: EventOdds) -> dict:
     return cons
 
 
-def _consensus_counts(eo: EventOdds) -> dict:
+def _consensus_counts(eo: EventOdds, three_way: bool | None = None) -> dict:
     """How many bookmakers quoted each (market, outcome, point). Feeds the
-    thin-market term of the edge penalty (a one-book line is less reliable)."""
+    thin-market term of the edge penalty (a one-book line is less reliable).
+    ``three_way``: mismo contrato que ``_consensus_lines`` -- una casa
+    excluida del consenso h2h tampoco cuenta en books_count (AUD-003)."""
     counts: dict[tuple, int] = defaultdict(int)
-    for ln in eo.lines:
+    for ln in _eligible_lines(eo, three_way):
         # Mismo predicado que _consensus_lines: contar lineas que el consenso
         # descarto inflaba books_count y desactivaba la penalizacion por mercado
         # fino justo donde hacia falta (auditoria 2026-08-05, COR-03).
@@ -78,16 +143,17 @@ def _consensus_counts(eo: EventOdds) -> dict:
     return dict(counts)
 
 
-def _consensus_spread(eo: EventOdds) -> dict:
+def _consensus_spread(eo: EventOdds, three_way: bool | None = None) -> dict:
     """Std dev of implied probabilities (1/price) across books per key.
 
     Returns None for keys with fewer than 2 valid quotes (no spread to measure).
     A high spread signals market disagreement and increases uncertainty about
     the fair price; used as an extra penalty term in adjusted_edge.
+    ``three_way``: mismas casas elegibles que ``_consensus_lines`` (AUD-003).
     """
     from statistics import stdev
     groups: dict[tuple, list[float]] = defaultdict(list)
-    for ln in eo.lines:
+    for ln in _eligible_lines(eo, three_way):
         if not is_usable_price(ln.price_decimal):
             continue
         groups[(ln.market, ln.outcome, ln.point)].append(1.0 / ln.price_decimal)
@@ -95,7 +161,8 @@ def _consensus_spread(eo: EventOdds) -> dict:
 
 
 def _novig_probs(cons: dict, market: str, point=None,
-                 three_way: bool = False) -> dict:
+                 three_way: bool = False,
+                 outcomes: tuple[str, str] | None = None) -> dict:
     """No-vig fair probabilities for h2h and totals. h2h pairs every outcome
     (2-way, or 1X2 for soccer with ``three_way=True``); totals share a single
     point (Over/Under at the same line). Spreads need the home/away team
@@ -105,7 +172,12 @@ def _novig_probs(cons: dict, market: str, point=None,
     a lone quoted side would de-vig to 1.0 (any single implied probability
     normalizes to certainty) and a 1X2 missing the draw inflates both team
     probabilities. Incomplete markets return {} so callers flag them instead
-    of blending a fabricated fair probability (audit 2026-07-24, C-1)."""
+    of blending a fabricated fair probability (audit 2026-07-24, C-1).
+
+    h2h a dos vias (``three_way=False``) exige EXACTAMENTE dos desenlaces y
+    ninguno "Draw"; con ``outcomes=(home, away)`` exige ademas que sean esos
+    dos. Sobrar claves es mercado incompleto ({}), no un 1X2 encubierto
+    (auditoría 2026-10-15, AUD-003)."""
     if market == "h2h":
         # El `point` DEBE ser None en h2h: es el contrato del mercado. Recoger
         # todas las claves h2h sin mirarlo mezclaba lineas de puntos distintos y
@@ -116,6 +188,17 @@ def _novig_probs(cons: dict, market: str, point=None,
         # traen `point`, asi que hoy es un no-op y manana un guard.
         keys = [k for k in cons if k[0] == "h2h" and k[2] is None]
         required = 3 if three_way else 2
+        if not three_way:
+            # Antes solo se exigia `len(keys) >= 2`, y con una casa 1X2 en el
+            # consenso se de-vig-eaban Home/Away/Draw en un mercado de dos
+            # desenlaces: Home+Away ~0,84 (auditoría 2026-10-15, AUD-003). El
+            # conjunto debe ser exacto; si no, el camino default-deny de
+            # "mercado incompleto" en vez de adivinar que claves sobran.
+            sides = {k[1] for k in keys}
+            if len(keys) != 2 or "Draw" in sides:
+                return {}
+            if outcomes is not None and sides != set(outcomes):
+                return {}
     else:
         keys = [k for k in cons if k[0] == market and k[2] == point]
         required = 2
@@ -403,7 +486,7 @@ def adjust_model_probability(p_model: float, market: str, selection: str,
 
 
 def _execution_prices(eo: EventOdds, cons: dict, books: Iterable[str], *,
-                      max_uplift: float) -> dict:
+                      max_uplift: float, three_way: bool | None = None) -> dict:
     """(mercado, seleccion, punto) -> (precio de EJECUCION, origen).
 
     Donde se COBRA un pick, que no es lo mismo que donde se ESTIMA. El benchmark
@@ -434,13 +517,17 @@ def _execution_prices(eo: EventOdds, cons: dict, books: Iterable[str], *,
     Desempate DETERMINISTA por nombre de casa: dos casas al mismo precio no
     pueden producir dos ejecuciones distintas segun el orden en que el proveedor
     devolvio las lineas.
+
+    ``three_way``: mismas casas elegibles que ``_consensus_lines``. Una casa
+    1X2 en una liga a dos vias vende otro contrato y no puede ser el precio de
+    ejecucion de un Home/Away americano (auditoría 2026-10-15, AUD-003).
     """
     permitidas = {str(b).strip().lower() for b in (books or ()) if str(b).strip()}
     salida: dict = {k: (float(v), "consensus_median") for k, v in cons.items()}
     if not permitidas:
         return salida
     mejores: dict = {}
-    for ln in eo.lines:
+    for ln in _eligible_lines(eo, three_way):
         if str(ln.bookmaker).strip().lower() not in permitidas:
             continue
         if not is_usable_price(ln.price_decimal):
