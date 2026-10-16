@@ -14,8 +14,18 @@ active=$(printf '%s' "$input" | python -c "import sys,json; print(json.load(sys.
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 marker=".claude/.crossreview-pending"
 [ -f "$marker" ] || exit 0
-rm -f "$marker"   # se limpia SIEMPRE, antes de nada: nunca bloquear en bucle
-command -v codex >/dev/null 2>&1 || exit 0
+# SIN `codex` NO SE BORRA EL CENTINELA (auditoria 2026-10-15, AUD-010). Antes el
+# `rm` iba primero y `command -v codex || exit 0` salia en silencio: la revision
+# cruzada del codigo de riesgo se perdia sin rastro ni reintento. Ahora se avisa
+# y se conserva, igual que la rama de fallo de entorno de abajo; no bloquea
+# (exit 0), asi que no hay bucle.
+if ! command -v codex >/dev/null 2>&1; then
+  { echo "LA REVISION CRUZADA NO SE EJECUTO: \`codex\` no esta en el PATH."
+    echo "Esto NO son hallazgos. El cambio de este turno se queda SIN revisar por"
+    echo "un tercero; el centinela se conserva para reintentarlo."; } >&2
+  exit 0
+fi
+rm -f "$marker"   # con codex disponible se limpia antes de revisar: nunca bloquear en bucle
 # SIN REPOSITORIO GIT NO HAY NADA QUE REVISAR (AUD-MED-007, auditoria integral
 # 2026-09-13). `codex review` trabaja sobre `--uncommitted`, `--base` o
 # `--commit HEAD`, y los tres exigen un repositorio: en el arbol de produccion

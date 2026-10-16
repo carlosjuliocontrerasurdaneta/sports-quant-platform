@@ -191,3 +191,20 @@ def test_crossreview_veredicto_valido_bloquea_y_consume_el_marcador(tmp_path):
     assert res.returncode == 2
     assert "REVISION CRUZADA AUTOMATICA" in res.stderr
     assert not marker.exists()
+
+# AUD-010 (ronda audit-2026-10-15): sin `codex` en el PATH el hook BORRABA el
+# centinela y salia en silencio; la revision cruzada se perdia sin reintento.
+# PATH reducido a /usr/bin (cat, rm, bash; ningun `codex`) para simular su
+# ausencia sin depender de lo que tenga instalado la maquina.
+def test_crossreview_sin_codex_avisa_y_conserva_el_marcador(tmp_path):
+    shutil.copytree(ROOT / ".claude/hooks", tmp_path / ".claude/hooks")
+    marker = tmp_path / ".claude/.crossreview-pending"
+    marker.write_text("", encoding="utf-8")
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
+    hook = (tmp_path / ".claude/hooks/crossreview-on-stop.sh").as_posix()
+    res = subprocess.run([_bash(), "-c", f'PATH=/usr/bin; bash "{hook}"'],
+                         cwd=tmp_path, input=json.dumps({}), text=True,
+                         capture_output=True, env=env, timeout=60)
+    assert res.returncode == 0, "la ausencia de codex no debe bloquear el turno"
+    assert "NO SE EJECUTO" in res.stderr, "la revision perdida no se avisa"
+    assert marker.exists(), "el centinela se borro: la revision no se reintentara"

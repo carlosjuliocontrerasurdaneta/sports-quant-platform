@@ -101,6 +101,39 @@ def test_every_bash_capable_hook_derives_its_targets(hook):
         "`tool_input.file_path` viene vacio en toda llamada Bash")
 
 
+# --- AUD-006 (ronda audit-2026-10-15): la herramienta PowerShell --------------
+# El matcher filtra por NOMBRE de herramienta. PowerShell es la shell primaria de
+# este entorno y `fable_gate` (PreToolUse) ya empareja `Bash|PowerShell`, pero los
+# tres controles PostToolUse solo `Edit|Write|Bash`: un `Set-Content` sobre
+# codigo de riesgo no armaba ni secretos, ni tests pendientes, ni revision cruzada.
+
+@pytest.mark.parametrize("hook", CUBREN_BASH)
+def test_the_control_hooks_are_wired_for_powershell_writes_too(hook):
+    matcher = _matchers().get(hook)
+    assert matcher is not None, f"{hook} dejo de estar cableado en PostToolUse"
+    assert "PowerShell" in matcher.split("|"), (
+        f"{hook} solo empareja con {matcher!r}: una escritura hecha con la "
+        "herramienta PowerShell no lo dispara (AUD-006)")
+
+
+@pytest.mark.parametrize("hook", SOLO_EDIT_WRITE)
+def test_the_mutating_hook_also_stays_out_of_powershell(hook):
+    """Misma asimetria que con Bash: el hook que MUTA no deduce rutas de un
+    comando, asi que una lectura no puede disparar una escritura."""
+    assert "PowerShell" not in _matchers()[hook].split("|")
+
+
+def test_a_powershell_tool_command_yields_the_paths_it_names(tmp_path):
+    """La herramienta PowerShell manda `tool_input.command` con el cmdlet a
+    secas, sin el prefijo `powershell`: el derivador tiene que verlo igual."""
+    m = _targets()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "cosa.py").write_text("x = 1\n", encoding="utf-8")
+    cmd = "Set-Content -Path src/cosa.py -Value x"
+    assert m._es_escritura(cmd)
+    assert [Path(p).name for p in m._del_comando(cmd, tmp_path)] == ["cosa.py"]
+
+
 # --- 2. El retorno de carro --------------------------------------------------
 
 @pytest.mark.parametrize("hook", CUBREN_BASH)
