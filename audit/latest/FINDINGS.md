@@ -1,387 +1,414 @@
-# Consolidación independiente · ronda `audit-2026-09-23`
+# Consolidacion - audit-2026-10-15
 
-- **Fase:** consolidación. Contrato: `audits/prompts/auditoria-consolidacion.md` (fuente `.claude/automation/audit-workflow.md`), con la taxonomía de `AGENTS.md`.
-- **Consolidador:** Claude Code (`claude-opus-5-5`), 2026-09-23T18:48Z. Esta fase **no autoriza ninguna corrección**.
-- **Base Git:** `main` @ `7bd565e19606a70b37f704ca44cdc41e168ba274`. Es la misma base de los dos informes fuente. `git diff HEAD -- src scripts configs tests .claude *.bat` sale vacío: el código no cambió entre los diagnósticos y esta consolidación.
-- **Árbol de trabajo al consolidar:** solo había cambios en entregables de auditoría: `audit/latest/{MANIFEST.json, claude/*, openai/*}` modificados y `audit/audit-2026-09-22-r2/` sin seguimiento. No había cambios de código.
+Diagnostico y consolidacion terminados; remediacion NO ejecutada. No PASS.
+Base: 65368c815530bf179c5780db78a9fe196996802d (main + cambios locales registrados).
+13 defectos confirmados: CRITICAL 0, HIGH 1, MEDIUM 6, LOW 6. P0 0; P1 1 (AUD-003).
+Los IDs completos incluyen round_id; no equivalen a IDs iguales de septiembre.
 
-## 1. Fuentes
+**Revision 2 (2026-10-16, consolidacion independiente Claude).** Conserva AUD-001..012 con sus IDs y
+contenido, anade AUD-013 (CLAUDE-003, antes integrado en AUD-002) y precisa evidencia de AUD-002/003.
+La version 1 (OpenAI, 2026-10-15T21:23Z) esta preservada byte a byte en
+`history/consolidacion-claude-20261016T104941Z/`. Metodo, conflicto de interes y discrepancias:
+seccion «Revision 2» al final.
 
-| Auditor | Ruta | SHA-256 | Ronda y base declaradas | IDs |
-|---|---|---|---|---|
-| Claude | `audit/latest/claude/REPORT.md` | `345cd9ddd6b80fe0f846545857dfc93a1fee9911bdbe900ee0d6ab41a149cd79` | audit-2026-09-23 · 7bd565e | CLAUDE-001…005 |
-| Claude | `audit/latest/claude/EVIDENCE.json` | `c57726644d637a8c93343273d791a74cc5ddf04e7e4899f40688300d578551c9` | ídem | — |
-| OpenAI | `audit/latest/openai/REPORT.md` | `83956da78b83ed1bca53c136ba30871cec65d07ab3d59ac430d68ee0b6256542` | audit-2026-09-23 · 7bd565e | OPENAI-001…009 |
-| OpenAI | `audit/latest/openai/EVIDENCE.json` | `85f08bbd2e4940df614b5ad788ff13e5cb7a8bae6e997693354221288b8907d3` | ídem | — |
+## Alcance, independencia y procedencia
 
-- **Independencia declarada:** OpenAI no leyó el informe Claude y congeló sus conclusiones a las 2026-09-23T11:08:01Z. Claude no tenía informe OpenAI de esta ronda cuando hizo su diagnóstico: su NV-2 («sin segunda opinión») quedó **superado** por el diagnóstico posterior de OpenAI.
-- **Contaminación declarada por las fuentes:**
-  - Claude: la memoria automática del harness le inyectó titulares de rondas anteriores.
-  - OpenAI: su diagnóstico añadió unos 5 mensajes a `logs/sqp.log` al importar el logger real. Es una escritura incidental fuera de su subdirectorio, declarada por el auditor. No se revierte aquí.
+Auditoria integral por areas con profundidad parcial: ver matriz en [informe OpenAI](openai/REPORT.md).
+OpenAI fijo sus dos conclusiones antes de leer conclusiones Claude. Se declara exposicion inicial a metadatos/conclusiones historicas de septiembre.
+Claude dejo su diagnostico terminado en pending, misma base y alcance; el coordinador lo adopta a esta ronda y conserva sus bytes y metadatos originales (round_id null, proposed audit-2026-10-15). No se atribuye a Claude una nueva ejecucion.
+Los 17 candidatos Claude se revisaron contra codigo/controles; no se aceptan automaticamente sus severidades o afirmaciones productivas.
+Fuentes: [OpenAI](openai/REPORT.md), [Claude](claude/REPORT.md), evidencias JSON adyacentes y [reproducciones adicionales](openai/CONSOLIDATION_REPRODUCTIONS.json).
+La ronda anterior completa se preservo en audit/audit-2026-09-23 con 41 rutas y hashes iguales.
+CHANGES.md, VALIDATION.md, STATUS.md y VERIFICATION.md que aun existen en latest pertenecen a septiembre: NO describen remediacion ni verificacion de esta ronda. Ver MANIFEST.json.
 
-## 2. Método
+## Resumen de confirmados
 
-- Se leyeron ambos informes completos.
-- Cada uno de los 14 hallazgos fuente se contrastó con el código de `7bd565e`, leyendo las líneas citadas. Todos se sostienen estáticamente.
-- En esta fase **no se volvieron a ejecutar** los arneses de reproducción. La etiqueta REPRODUCED es la del auditor de origen, y el consolidador añade la verificación estática. No se ejecutaron tests: el código no cambió desde las validaciones de las fuentes (§6).
-- La severidad y la confianza no se promedian. Si hay discrepancia, se razona con el impacto alcanzable y los controles compensatorios (§4).
-- Se agrupa por causa raíz. Solo se separan hallazgos con impacto o corrección materialmente distintos.
-
-## 3. Resumen
-
-| Severidad | Confirmados | P1 | P2 | P3 |
-|---|---:|---:|---:|---:|
-| CRITICAL | 0 | – | – | – |
-| HIGH | 3 | 3 | – | – |
-| MEDIUM | 8 | – | 8 | – |
-| LOW | 3 | – | – | 3 |
-| **Total** | **14** | 3 | 8 | 3 |
-
-- **P0:** ninguno.
-- **Estado del dinero hoy:** el registro del gate de predicción (2026-09-22T15:15Z) tiene 49 cortes y **0 autorizados**, así que todo stake es 0. Nada de lo siguiente ha causado pérdida económica demostrada. Los tres HIGH describen fallos del control que decide el primer stake real, o del ledger que lo contabiliza. Tienen que estar cerrados **antes** de que cualquier corte pueda abrirse (el pre-registro «el modelo manda» se mide hacia el 2026-11-17).
-
-| ID | Sev. | Prio. | Título | Origen | Alias fuente |
+| ID | Severidad | Confianza | Evidencia | Prioridad | Titulo |
 |---|---|---|---|---|---|
-| AUD-001 | HIGH | P1 | El gate de predicción se actualiza después de generar los picks que debía autorizar | exclusivo OpenAI | OPENAI-001 |
-| AUD-002 | HIGH | P1 | Dos actualizaciones solapadas del gate pueden desarmar el pestillo sin liberación humana | exclusivo OpenAI | OPENAI-002 |
-| AUD-003 | HIGH | P1 | Los candidatos de deportes de equipo no usan el fallback histórico: se anulan o quedan sin veredicto aunque el resultado exista | coincidencia parcial | OPENAI-003, CLAUDE-002 (parte b) |
-| AUD-004 | MEDIUM | P2 | Un pick desplazado (`superseded`) no tiene `start_time`: nunca se anula por expiración y sale del escaneo sin veredicto | exclusivo Claude | CLAUDE-002 (parte a) |
-| AUD-005 | MEDIUM | P2 | Con banca 0 la lista de candidatos desaparece entera | exclusivo Claude | CLAUDE-001 |
-| AUD-006 | MEDIUM | P2 | `daily_picks.py` ordena, filtra y calcula el «ROI esperado» con la probabilidad cruda descartada | exclusivo Claude | CLAUDE-003 |
-| AUD-007 | MEDIUM | P2 | El calibrador excluye las medias liquidaciones y aprende un objetivo distinto del precio en líneas de cuarto | exclusivo OpenAI | OPENAI-004 |
-| AUD-008 | MEDIUM | P2 | `edge_information` elimina medias liquidaciones del ROI realizado y puede invertir su signo | exclusivo OpenAI | OPENAI-005 |
-| AUD-009 | MEDIUM | P2 | `ResultsStore`, `StartersStore` y `StarterFIPStore` pierden escrituras concurrentes | exclusivo OpenAI | OPENAI-006 |
-| AUD-010 | MEDIUM | P2 | Un HTTP de error en el boxscore MLB borra FIP históricos válidos | exclusivo OpenAI | OPENAI-007 |
-| AUD-011 | MEDIUM | P2 | El hook de revisión cruzada descarta en silencio una revisión fallida sin salida | exclusivo OpenAI | OPENAI-008 |
-| AUD-012 | LOW | P3 | Un segundo run el mismo día pisa la copia de archivo del primero | exclusivo Claude | CLAUDE-004 |
-| AUD-013 | LOW | P3 | El centinela `prediction_gate.blocked` no aparece en salud y `gate_status` lo describe mal | exclusivo Claude | CLAUDE-005 |
-| AUD-014 | LOW | P3 | `simulate_poisson_game` trata las líneas de cuarto como apuestas binarias | exclusivo OpenAI | OPENAI-009 |
+| AUD-001 | MEDIUM | HIGH | REPRODUCED | P2 | El backtest asigna cuotas del dia siguiente al resultado anterior |
+| AUD-002 | MEDIUM | HIGH | STATICALLY_VERIFIED | P2 | CI exige un tag que checkout no obtiene |
+| AUD-003 | HIGH | HIGH | REPRODUCED | P1 | Un mercado h2h de dos vias incorpora Draw y cuotas incompatibles |
+| AUD-004 | MEDIUM | HIGH | REPRODUCED | P2 | Capture close comunica exito tras fallar una etapa habilitada |
+| AUD-005 | MEDIUM | HIGH | STATICALLY_VERIFIED | P2 | Liquidacion tenis confia en resultados parciales de un proveedor degradado |
+| AUD-006 | MEDIUM | HIGH | STATICALLY_VERIFIED | P2 | Los hooks posteriores omiten modificaciones hechas por PowerShell |
+| AUD-007 | LOW | HIGH | REPRODUCED | P3 | El log de pitchers duplica entradas identicas con ausentes |
+| AUD-008 | LOW | HIGH | REPRODUCED | P3 | La captura supera el limite diario de creditos |
+| AUD-009 | LOW | HIGH | REPRODUCED | P3 | Merge de resultados descarta partidos consecutivos reales |
+| AUD-010 | LOW | HIGH | STATICALLY_VERIFIED | P3 | Cross-review pierde su pendiente si falta el ejecutable |
+| AUD-011 | LOW | HIGH | REPRODUCED | P3 | Tres pruebas de no-repositorio heredan Git del workspace |
+| AUD-012 | LOW | HIGH | STATICALLY_VERIFIED | P3 | La cache da por persistido un snapshot que pudo fallar |
+| AUD-013 | MEDIUM | HIGH | REPRODUCED | P2 | pip-audit depende del exito de pytest y no corre desde 2026-09-26 |
 
-**Relaciones de causa** (se mantienen separadas porque su corrección es distinta):
+## AUD-001 - El backtest asigna cuotas del dia siguiente al resultado anterior
 
-- AUD-002 y AUD-009 comparten la clase «lectura-modificación-escritura sin exclusión: `atomic_write_*` protege el fichero, no la transacción».
-- AUD-007, AUD-008 y AUD-014 comparten la clase «semántica asiática de cuarto proyectada a binario».
-- AUD-003, AUD-004 y AUD-012 afectan a la misma garantía: todo pick archivado termina con un veredicto.
+- **Alias de origen:** OPENAI-001
+- **Categoria:** Integridad cuantitativa
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P2
+- **Archivo / lineas relevantes:** src/sqp/backtesting/roi_engine.py:179-198; caller :334
+- **Activacion:** Mismos equipos en dias consecutivos y cuotas solo del segundo partido.
+- **Problema:** El matching tolerante consume el evento equivocado.
+- **Evidencia concreta:** openai/REPRODUCTION-OPENAI-001.json; matcher y liquidacion reales con adaptador determinista.
+- **Esperado:** Emparejar la identidad correcta: +20 para junio 11, o abstenerse.
+- **Observado:** Junio 10 consume odds-jun11, registra -20; junio 11 queda sin cuotas.
+- **Causa raiz:** Busqueda voraz +/-1 dia antes de reservar coincidencias exactas.
+- **Consecuencia:** PnL y muestra de backtesting incorrectos.
+- **Correccion minima propuesta:** Resolver identidad/calendario y reservar matches exactos antes de fallback ambiguo.
+- **Pruebas necesarias:** Series consecutivas, cuota faltante, orden de filas, UTC y abstencion.
+- **Criterio de aceptacion:** Emparejar la identidad correcta: +20 para junio 11, o abstenerse.
+- **Controles compensatorios:** Settlement productivo usa otra ruta de identidad.
+- **Limitaciones:** Reproduccion sintetica; impacto historico real no cuantificado; no implica perdida monetaria live.
+- **Estado de remediacion:** OPEN
 
-## 4. Discrepancias entre auditores y resolución
+## AUD-002 - CI exige un tag que checkout no obtiene
 
-| Tema | Claude | OpenAI | Resolución |
-|---|---|---|---|
-| Severidad del hueco de liquidación de candidatos (AUD-003) | MEDIUM/P2 (CLAUDE-002): con stake 0 solo se pierden unidades de pick | HIGH/P1 (OPENAI-003): void con pnl 0 en lugar de loss | **HIGH/P1**. La anulación es **irreversible**: `DEDUP_KEY` no incluye `result` (comentario en `runner.py`, «Voiding is FINAL»), así que una graduación correcta posterior se descarta. Con stake real, el ledger y la banca dinámica quedan mal para siempre. El default-deny reduce la frecuencia actual, no el impacto alcanzable. La severidad no se rebaja por frecuencia. |
-| Mecanismo de CLAUDE-002 | Dos causas: falta `start_time` en los desplazados y falta fallback histórico en equipos | Solo la segunda | Se **divide** CLAUDE-002: la parte (b) se une a OPENAI-003 en AUD-003 y la parte (a) queda como AUD-004. Tienen corrección e impacto distintos: anular mal un pick frente a no dar veredicto. |
-| Estado del CI remoto | `gh run list`: **success** en 7bd565e | NOT_VERIFIABLE (`gh` ausente en su entorno) | Vale la evidencia de Claude: el CI en HEAD estaba verde cuando se consultó. La ausencia de `gh` en el entorno OpenAI es ENVIRONMENTAL_FAILURE, no una discrepancia de producto. |
-| Suite completa | 2299 passed, 1 skipped | 844 focalizados; suite completa no ejecutada | Sin contradicción. Ninguno de los 14 escenarios está cubierto por la suite: ambos auditores reproducen fallos con la suite en verde. |
-| Remediación de r2 | No revalidada: queda pendiente de verificación independiente | Revalida AUD-001…004 de r2 como corregidos, con límites declarados | Es la afirmación de **un** auditor, no una fase de verificación. La ronda r2 sigue **sin `VERIFICATION.md`** y su cierre formal queda pendiente. |
-| El gate con EV autoestimado (O-1) | Observación: coincide con el pre-registro | Evita confundir EV esperado con ROI realizado | Coinciden: es una observación, no un defecto. |
+- **Alias de origen:** OPENAI-002 + CLAUDE-002 (relacionado: AUD-013 / CLAUDE-003 desde la revision 2)
+- **Categoria:** CI y pruebas
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** STATICALLY_VERIFIED
+- **Prioridad:** P2
+- **Archivo / lineas relevantes:** .github/workflows/ci.yml (checkout); tests/research/test_measure_tier_a_gap.py:521-524,1073
+- **Activacion:** Checkout limpio de CI sin prereg-tier-a-t0.
+- **Problema:** Dos tests de integracion Git requieren un tag local ausente del fetch.
+- **Evidencia concreta:** Run 38256027979 sobre d985ef8: 2 failed, 3004 passed, 83 skipped; checkout --no-tags --depth=1; los dos tests pasan localmente con tag.
+- **Esperado:** Checkout reproducible con objetos requeridos y pruebas discriminantes aprobadas; escaneo de seguridad ejecutado.
+- **Observado:** Fallan tests en los cinco jobs; paso posterior pip-audit queda skipped.
+- **Causa raiz:** Dependencia de estado Git local no declarada/adquirida por CI.
+- **Consecuencia:** CI bloqueada y control de vulnerabilidades sin evidencia actual.
+- **Correccion minima propuesta:** Proveer referencias verificables necesarias en CI o aislar fixture unitario; conservar comprobacion de ancla real separada.
+- **Pruebas necesarias:** Clone limpio sin tags; adquisicion explicita; tag incorrecto debe fallar; verificar ejecucion pip-audit.
+- **Criterio de aceptacion:** Checkout reproducible con objetos requeridos y pruebas discriminantes aprobadas; escaneo de seguridad ejecutado.
+- **Controles compensatorios:** Tag existe localmente, dos pruebas locales pasan.
+- **Limitaciones:** Run remoto no es HEAD local. No afirmar vulnerabilidades ni publicar tags como parte de esta auditoria.
+- **Revision 2:** evidencia adicional de origen REPRODUCED (CLAUDE-002: clon `--no-tags --depth 1` de 65368c8, 2 failed; se conserva el estado STATICALLY_VERIFIED de la v1 porque la consolidacion no repitio el clon). Revalidado 2026-10-16: `ci.yml:34,91` sin `fetch-depth`/tags; `git_tag_message` (`scripts/research/measure_tier_a_gap.py:224-228`) devuelve `""` con un tag inexistente (rc 0 de `git tag -l`), por lo que `assert msg is not None` pasa y falla `None == 0.075` (no es un falso verde). 0 tags `prereg*` en origin, 2 locales; ultimos runs de main d985ef8 y f128483 en failure. Matiz de correccion: publicar los tags NO basta con `checkout@v4` por defecto (depth 1, sin tags); hace falta adquirirlos explicitamente. Un `skip` silencioso esconderia el ancla: si se usa, con mensaje explicito y verificacion de integracion separada. Severidad: se mantiene MEDIUM frente al HIGH de CLAUDE-002 (controles compensatorios comprobados: produccion ejecuta el arbol local, suite local verde salvo AUD-011, alerta de CI rojo abierta). Primero del bloque P2: desbloquea AUD-013.
+- **Estado de remediacion:** OPEN
 
-Ningún hallazgo se descartó como falso positivo en la consolidación.
+## AUD-003 - Un mercado h2h de dos vias incorpora Draw y cuotas incompatibles
 
-## 5. Hallazgos consolidados
+- **Alias de origen:** CLAUDE-001
+- **Categoria:** Probabilidades y equivalencia de mercado
+- **Severidad:** HIGH
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P1
+- **Archivo / lineas relevantes:** src/sqp/pipeline/probabilities.py:35-59,97-135
+- **Activacion:** Evento NHL con cotizaciones h2h Home/Away y otra casa que incluye Draw.
+- **Problema:** Consenso pierde identidad de casa/contrato y no-vig permite mas de dos desenlaces con three_way=False.
+- **Evidencia concreta:** openai/CONSOLIDATION_REPRODUCTIONS.json: Home=.4495528625890095, Away=.396861815660444, Draw=.15358532175053535.
+- **Esperado:** Dos desenlaces complementarios suman 1 con cuotas del mismo contrato, o mercado rechazado.
+- **Observado:** Home+Away=.8464146782494535 en modo dos vias.
+- **Causa raiz:** Agrupacion solo market/outcome/point; validacion len(keys)<required en vez de conjunto exacto.
+- **Consecuencia:** Benchmark de probabilidad y edge materialmente sesgados; contaminacion posible de stream servido/calibracion.
+- **Correccion minima propuesta:** Separar contratos por casa antes del consenso, exigir lados exactos y aplicar elegibilidad coherente en conteos, ejecucion y revalidacion.
+- **Pruebas necesarias:** Mixto dos/tres vias, solo dos, futbol tres, casa incompleta, conteos y precios ejecutables.
+- **Criterio de aceptacion:** Dos desenlaces complementarios suman 1 con cuotas del mismo contrato, o mercado rechazado.
+- **Controles compensatorios:** Gates limitan stakes; no reparan probabilidades servidas.
+- **Limitaciones:** No se verificaron cifras reales 320/335 del informe origen ni ROI monetario. Semantica reglamentaria externa no necesaria para demostrar el defecto matematico.
+- **Revision 2 (cifras reales revalidadas):** agregado programatico de `data/calibration/served_nhl.csv` (columnas `event_id, market, selection, implied_probability_novig, generated_at`; pares h2h por (event_id, generated_at)): **346 pares, 331 suman < 0,95, mediana 0,8477**, rango 2026-09-23 -> 2026-10-15 (el origen, un dia antes, daba 320/335). Reproduccion sintetica con funciones reales: Home .4608 + Away .383 = .8438 (Draw .1562). Controles comprobados: `data/bets/prediction_gate.json` (2026-10-15T15:05Z) `nhl|h2h` `allowed=false`, `n=107`, `wins=48`, `p=0,877`, `muestra_insuficiente`, `min_n=300`: sin stake real. Se mantiene HIGH/P1: los controles evitan el dano monetario, no la contaminacion; `p_decision` mezcla el fair sesgado con `market_shrink` (probabilities.py:220-221; `market_shrink` efectivo 0,5 en las 80 filas h2h NHL que ya lo persisten, 612 anteriores sin la columna), sesgando la probabilidad servida (metrica rectora de acierto observado vs prometido), el benchmark del test de entrada unico y el precio con el que `settle.py:161` liquida (ROI realizado NHL h2h sobrestimado). No verificado: el test de signo renormalizado (47/105 vs 41/105) del origen.
+- **Estado de remediacion:** OPEN
 
-> Evidencia en todos: **REPRODUCED** por el auditor de origen salvo que se diga otra cosa, más **STATICALLY_VERIFIED** por el consolidador en 7bd565e. Confianza: HIGH en los 14.
+## AUD-004 - Capture close comunica exito tras fallar una etapa habilitada
 
-### AUD-001 — El gate de predicción se actualiza después de generar los picks que debía autorizar
-- **Origen:** exclusivo OpenAI (OPENAI-001). **Categoría:** riesgo / orden de ejecución. **Severidad:** HIGH. **Prioridad:** P1.
-- **Archivo / línea:**
-  - `scripts/run_all.py:209-210`: bucle `run_league` de todas las ligas.
-  - `:239`: `if not args.no_report:`.
-  - Bloque `write_prediction_gate` dentro de ese `if` (≈`:305-315`).
-  - `src/sqp/pipeline/daily.py:651`: `load_prediction_gate` lee el registro anterior.
-- **Activación:**
-  - Un corte autorizado deja de cumplir la regla de salida con los resultados que `SETTLE_ALL` acaba de liquidar. Hoy genera con la autorización de ayer.
-  - Además, `--no-report` omite la actualización.
-  - Un fallo de la actualización antes de leer el estado previo (p. ej. dentro de `evaluate_markets`) deja el registro anterior sin centinela. Ese registro se sigue consumiendo en los runs siguientes.
-- **Problema:** la salida diaria que exige el pre-registro («vigilancia continua para salir») llega un run tarde. El control está subordinado a un flag de presentación.
-- **Evidencia concreta:** arnés de OpenAI con `run_all.main` y `run_league` reales, proveedores sintéticos y ROOT aislado. Resultado: 4 candidatos con stake > 0 (total 13,56); al terminar, los tres mercados NBA quedan `allowed=false, latched=true`; exit 0. El consolidador confirmó el orden en el código.
-- **Esperado:** el veredicto actualizado con lo liquidado se aplica **antes** de dimensionar. Un fallo conserva la denegación.
-- **Observado:** el registro final queda cerrado, pero los picks del día ya se publicaron con stake contra la autorización vencida.
-- **Causa raíz:** el control de riesgo se actualiza después de su consumidor y depende de `--no-report`.
-- **Consecuencia:** exposición real durante al menos un run en un mercado que ya perdió la autorización. El cierre posterior no revoca esos candidatos.
-- **Controles existentes:** pestillo (arma el cierre), límites de exposición y pausas. `RUN_DIARIO_ALL.bat` no pasa `--no-report`. Hoy hay 0 cortes autorizados.
-- **Corrección mínima:** actualizar el gate tras cargar lo liquidado y antes del bucle de ligas, sin depender de `--no-report`. Si falla, default-deny para ese run: no reutilizar la autorización anterior.
-- **Pruebas necesarias:**
-  - integración «autorizado ayer / falla hoy» → stake 0 hoy;
-  - camino `--no-report`;
-  - fallo de la actualización → default-deny;
-  - el informe coincide con el registro.
-- **Criterio de aceptación:** ningún candidato nuevo tiene stake > 0 en un mercado denegado por la evaluación vigente.
-- **Limitaciones:** frecuencia productiva no medible hoy (0 autorizados). Umbrales y pre-registro intactos.
+- **Alias de origen:** CLAUDE-006
+- **Categoria:** Observabilidad y propagacion de errores
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P2
+- **Archivo / lineas relevantes:** scripts/capture_closing_odds.py:55-56,89-90,106-108; src/sqp/pipeline/closing_capture.py:164-165; CAPTURE_CLOSE.bat
+- **Activacion:** Excepcion en revalidacion habilitada o captura por liga.
+- **Problema:** Warning capturado seguido de return 0; el BAT interpreta exito y limpia estado.
+- **Evidencia concreta:** Revalidacion simulada lanza RuntimeError(controlled revalidation failure), main() devuelve 0.
+- **Esperado:** Estado degradado observable y rc no exitoso cuando falla una etapa requerida.
+- **Observado:** rc=0 a pesar de excepcion; resumen por liga no distingue fallos.
+- **Causa raiz:** Errores convertidos en warnings sin estado agregado de fallo.
+- **Consecuencia:** Control operativo verde aunque evidencia de cierre/revalidacion falte.
+- **Correccion minima propuesta:** Acumular fallos por etapa/liga y propagar codigo o contrato de degradacion al BAT.
+- **Pruebas necesarias:** Fallo de captura, revalidacion, starters y exito; sentinel no se limpia en fallo.
+- **Criterio de aceptacion:** Estado degradado observable y rc no exitoso cuando falla una etapa requerida.
+- **Controles compensatorios:** Logs contienen warning; siguientes ejecuciones pueden recuperar.
+- **Limitaciones:** Reproduccion sin red; no se ejecuto BAT ni se alteraron sentinelas productivos.
+- **Estado de remediacion:** OPEN
 
-### AUD-002 — Dos actualizaciones solapadas del gate pueden desarmar el pestillo sin liberación humana
-- **Origen:** exclusivo OpenAI (OPENAI-002). **Categoría:** concurrencia / autorización. **Severidad:** HIGH. **Prioridad:** P1.
-- **Archivo / línea:**
-  - `src/sqp/risk/prediction_gate.py:448-520`: `write_prediction_gate` lee el estado previo, aplica `_apply_latch` y reescribe, sin lock.
-  - `:570+`: `release_prediction_gate_latch`, lectura y escritura sin lock.
-  - `scripts/update_prediction_gate.py:103`.
-  - `scripts/run_all.py` (bloque del gate).
-- **Activación:** dos escritores leen el mismo estado abierto. El que arma el pestillo escribe primero y el otro, con la evaluación anterior, escribe después. Caso típico: `update_prediction_gate.py` o `--release` manual mientras corre el run programado.
-- **Evidencia concreta:** intercalado de OpenAI con dos hilos y funciones reales:
-  - B escribe `allowed=false, latched=true, p=0,522`.
-  - A reescribe después `allowed=true, latched=false, p=8,4e-12`.
-  - No hubo ninguna llamada de liberación.
-- **Esperado:** un pestillo armado solo se desarma con liberación humana.
-- **Observado:** el pestillo se borra y el mercado se reabre automáticamente.
-- **Causa raíz:** lectura-modificación-escritura sin exclusión mutua. `atomic_write_json` es atómico por fichero, no por transacción. Es la misma clase que AUD-009.
-- **Consecuencia:** se rompe la regla de no reentrada del pre-registro y puede volver a haber stake tras una salida obligatoria. El log conserva un cierre que ya no existe.
-- **Controles existentes:** temporales únicos y fsync, centinela de lectura ilegible, `_apply_latch`. Ninguno cubre dos lecturas válidas concurrentes.
-- **Corrección mínima:** un lock compartido (`storage/lock.py`) alrededor de la transacción completa de actualización y de liberación, incluido el historial. Evaluar fuera del lock y aplicar el pestillo sobre el estado **releído** dentro del lock.
-- **Pruebas necesarias:** dos escritores con barrera y decisiones opuestas; actualización concurrente con liberación. El pestillo y el rastro se conservan.
-- **Criterio de aceptación:** ningún escritor que leyó un estado anterior puede sustituir `latched=true` por `false` sin liberación humana.
-- **Limitaciones:** carrera demostrada en un solo proceso; su frecuencia real no es medible.
+## AUD-005 - Liquidacion tenis confia en resultados parciales de un proveedor degradado
 
-### AUD-003 — Los candidatos de deportes de equipo no usan el fallback histórico
-- **Origen:** coincidencia parcial: OPENAI-003 y la parte (b) de CLAUDE-002. **Categoría:** integridad financiera / liquidación. **Severidad:** HIGH (Claude: MEDIUM; ver §4). **Prioridad:** P1.
-- **Archivo / línea:**
-  - `src/sqp/settlement/runner.py:673-676`: `settle_candidates` y `_with_stale_voids` solo con `scores` del feed.
-  - `:663-668`: `_grade_served_from_history` gradúa solo el stream servido.
-  - `:211`: `history_scores_map` existe.
-  - `settle.py:20`: `STALE_VOID_DAYS = 3`.
-- **Activación:** candidato de equipo fuera de la ventana `--days-from 3` del feed, con el resultado ya en `ResultsStore` y un feed sano con otros partidos (`scores_trusted`).
-- **Evidencia concreta:** `fetch_and_settle` real en ROOT temporal (OpenAI), WNBA, stake 100, resultado histórico 70-80. El candidato queda `void / pnl 0 / stale_void` y el mismo evento servido queda `loss`.
-- **Esperado:** el candidato se gradúa con el resultado histórico inequívoco, igual que el stream servido y los candidatos de tenis (AUD-MED-004).
-- **Observado:** si su `start_time` es conocido, se anula; si no lo es, ver AUD-004.
-- **Causa raíz:** el fallback histórico se aplicó al stream servido y al tenis, pero no a los candidatos de equipo.
-- **Consecuencia:** la anulación es **final** (`DEDUP_KEY` sin `result`). Con stake real, el ledger y la banca omiten la pérdida o la ganancia. Hoy (stake 0) desaparece un win/loss del rastro de candidatos. Si ese rastro alimenta el hit rate rector, este queda sesgado; ese uso **no se verificó** en esta fase.
-- **Controles existentes:** guard de payload vacío (`scores_trusted`), fallback en servidos y tenis, guard M2 de `run_all`. Ninguno cubre este caso.
-- **Corrección mínima:** antes de `_with_stale_voids`, intentar `history_scores_map` para los candidatos pendientes. Priorizar el feed y rechazar emparejamientos ambiguos, como ya hace el servido.
-- **Pruebas necesarias:** candidato y servido del mismo evento antiguo: win/loss, three-way, doubleheader ambiguo, feed sano ajeno, segunda pasada idempotente.
-- **Criterio de aceptación:** no hay `stale_void` cuando existe un resultado histórico inequívoco.
-- **Limitaciones:** **NOT_VERIFIABLE** cuántos `stale_void` productivos ya existen con resultado histórico disponible. Medirlo exige cruzar `settled_*` con `data/historical/` y conviene hacerlo antes de decidir cualquier reconciliación, que necesita autorización aparte.
+- **Alias de origen:** CLAUDE-007
+- **Categoria:** Integridad de liquidacion
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** STATICALLY_VERIFIED
+- **Prioridad:** P2
+- **Archivo / lineas relevantes:** src/sqp/providers/espn_tennis.py:119-151; src/sqp/settlement/runner.py:944-982
+- **Activacion:** Una ventana falla tras reintentos, otra devuelve ganador; pick vencido sin resultado en historico.
+- **Problema:** No se comunica la ventana fallida y bool(usable) habilita stale_void.
+- **Evidencia concreta:** _fetch devuelve [] tras fallo; fetch_results conserva otras ventanas; results_trusted=bool(usable) permite _void_stale_served y _with_stale_voids.
+- **Esperado:** Fallo de cobertura conocido impide anular los picks afectados y se comunica degradacion.
+- **Observado:** Una respuesta parcial se considera fiable para expiracion.
+- **Causa raiz:** Contrato de proveedor omite estado de completitud; consumidor confunde algun resultado con cobertura sana.
+- **Consecuencia:** Anulacion persistida de un pick resuelto pero temporalmente no observable.
+- **Correccion minima propuesta:** Propagar failed_windows y usarlo para confianza/expiracion y estado del backfill.
+- **Pruebas necesarias:** Una ventana 503 y otra valida; pick vencido, historico presente/ausente; ninguna anulacion atribuible a ventana fallida.
+- **Criterio de aceptacion:** Fallo de cobertura conocido impide anular los picks afectados y se comunica degradacion.
+- **Controles compensatorios:** Payload totalmente vacio bloquea voids; fallback historico recupera resultados ya descargados.
+- **Limitaciones:** Ruta confirmada estaticamente; no end-to-end ni incidencia productiva demostrada; no es defecto solo por nombres derivados aceptados.
+- **Estado de remediacion:** OPEN
 
-### AUD-004 — Un pick desplazado no tiene `start_time`: nunca se anula por expiración y sale sin veredicto
-- **Origen:** exclusivo Claude (parte a de CLAUDE-002). **Categoría:** liquidación / integridad del ledger. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `src/sqp/settlement/runner.py:406-418`: `_prediction_start_times` solo lee el `predictions_<liga>.csv` vigente.
-  - `:44-110`: `superseded_candidates`.
-  - `:34`: `SUPERSEDED_LOOKBACK_DAYS = 14`.
-  - `src/sqp/domain/models.py:56`: `BetCandidate` sin `start_time`.
-- **Activación:** un pick deja la lista antes del partido y el partido se cancela sin marcador, o la liquidación no corre dentro de la ventana del feed.
-- **Evidencia concreta:** `scratchpad/repro_superseded.py` de Claude. Control con el pick en el fichero vigente: `void/stale_void`. Pick desplazado: `[]`, sin fila liquidada.
-- **Esperado:** `stale_void` pasados `STALE_VOID_DAYS`, igual que un pick vigente.
-- **Observado:** el pick queda abierto y a los 14 días sale del escaneo sin fila en `settled_*`.
-- **Causa raíz:** el `start_time` no viaja con el candidato y se reconstruye desde un fichero que solo describe el run vigente.
-- **Consecuencia:** unidades de pick sin veredicto, la clase de hueco que AUD-MED-003 quiso cerrar. Con stake real, un partido jugado fuera de ventana tampoco se gradúa, salvo que AUD-003 quede corregido.
-- **Controles existentes:** el guard M2 cubre solo el fichero vigente; el stream servido tiene su propio fallback.
-- **Corrección mínima:** `start_time` en el candidato (columna nueva con default) o cruce con `archive/predictions_<liga>_<día>.csv`, como `_tennis_prediction_metadata`.
-- **Pruebas necesarias:** desplazado sin marcador → `stale_void`; sin duplicados por `DEDUP_KEY`.
-- **Criterio de aceptación:** ningún pick archivado dentro de la ventana sale del escaneo sin veredicto.
-- **Dependencias:** conviene hacerlo junto con AUD-003 (mismo fichero y mismas pruebas) y con AUD-012.
-- **Limitaciones:** frecuencia real no medida.
+## AUD-006 - Los hooks posteriores omiten modificaciones hechas por PowerShell
 
-### AUD-005 — Con banca 0 la lista de candidatos desaparece entera
-- **Origen:** exclusivo Claude (CLAUDE-001). **Categoría:** lógica / integridad de salida. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `src/sqp/pipeline/daily.py:897-901`: `kelly_fraction_stake(..., settings.bankroll, ...)`.
-  - `:952-953`: `elif stake <= 0 and not suspect: continue`.
-  - `src/sqp/risk/kelly.py:30-31`: `bankroll <= 0 → (0, 0)`.
-  - `src/sqp/risk/bankroll.py:384-395`: banca a 0 ante `LedgerIntegridadError`, con el comentario «la lista se sigue generando entera».
-- **Activación:** ledger ilegible o balance ≤ 0 → `settings.bankroll = 0`.
-- **Evidencia concreta:** `scratchpad/repro_bankroll0b.py` de Claude, en demo NBA: banca 1000 → 2 candidatos; banca 0 → 0 candidatos. El consolidador confirmó en código que la selección depende del stake.
-- **Esperado:** mismo conjunto de candidatos, con stake 0 y un flag propio.
-- **Observado:** `candidates_*.csv` sin filas; `_finalize` borra el fichero vigente tras archivarlo.
-- **Causa raíz:** selección y dimensionamiento acoplados en `kelly_fraction_stake`.
-- **Consecuencia:** un día sin candidatos en todas las ligas. Se pierden la liquidación de picks, el KPI y la revalidación.
-- **Controles existentes:** el stream servido se graba antes del filtrado, así que `daily_picks.py` conserva la lista del operador; log «BANCA NO VERIFICABLE»; default-deny.
-- **Corrección mínima:** seleccionar por `adjusted_edge >= min_edge` con independencia de la banca; dimensionar después; banca ≤ 0 → stake 0 con flag.
-- **Pruebas necesarias:** demo con banca 0 → mismo número de candidatos que con banca > 0, todos con stake 0 y flag; caso `LedgerIntegridadError`.
-- **Criterio de aceptación:** el conjunto de candidatos no depende de la banca.
-- **Limitaciones:** no está activo hoy (ledger legible, balance > 0).
+- **Alias de origen:** CLAUDE-008
+- **Categoria:** Gobierno de agentes
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** STATICALLY_VERIFIED
+- **Prioridad:** P2
+- **Archivo / lineas relevantes:** .claude/settings.json:1 (PostToolUse matcher Edit|Write|Bash)
+- **Activacion:** Herramienta llamada PowerShell modifica archivos vigilados sin Edit/Write/Bash posterior.
+- **Problema:** No dispara secretos, tests-pending ni crossreview-pending.
+- **Evidencia concreta:** Matcher excluye PowerShell aunque PreToolUse y permisos lo incluyen.
+- **Esperado:** Las herramientas de escritura admitidas disparan los controles previstos.
+- **Observado:** PowerShell queda fuera del matcher.
+- **Causa raiz:** Lista de herramientas incompleta en PostToolUse.
+- **Consecuencia:** Cambios pueden cerrar turno sin controles automaticos previstos.
+- **Correccion minima propuesta:** Agregar PowerShell a los tres hooks y comprobar extraccion de rutas.
+- **Pruebas necesarias:** Contrato de matchers y evento PowerShell con Set-Content sobre ruta vigilada.
+- **Criterio de aceptacion:** Las herramientas de escritura admitidas disparan los controles previstos.
+- **Controles compensatorios:** Un Edit/Write/Bash posterior puede recoger cambios por Git; fable_gate protege algunos commits.
+- **Limitaciones:** No reproducido mediante harness real; se confirma la configuracion condicional, no ejecucion concreta.
+- **Estado de remediacion:** OPEN
 
-### AUD-006 — `daily_picks.py` usa la probabilidad cruda que el sistema descartó
-- **Origen:** exclusivo Claude (CLAUDE-003). **Categoría:** cuantitativo / salida al operador. **Severidad:** MEDIUM. **Prioridad:** P2. **Evidencia:** STATICALLY_VERIFIED con medición agregada (Claude) y confirmación estática del consolidador.
-- **Archivo / línea:**
-  - `scripts/daily_picks.py:116`: `p = estimated_probability`.
-  - `:122` y `:177`: `roi_esp = p·cuota − 1`.
-  - `:175-176`: comentario falso («Es el `estimated_edge`»).
-  - Instancia secundaria en `src/sqp/audit/report.py:265`: `mean_est_prob`.
-- **Activación:** existe un calibrador live para (liga, mercado). Hoy son 3: `mlb_spreads`, `mlb_totals`, `wnba_spreads`.
-- **Evidencia concreta:** 846 picks vigentes; 4 con |calibrada − estimada| > 0,005 (máximo 0,0259); 0 discrepancias de signo hoy.
-- **Esperado:** `decision_prob`, como el dashboard y el tipster desde A-01 (2026-08-31).
-- **Observado:** orden, filtro `--min-prob 0.60` y «ROI esperado» calculados sobre la probabilidad cruda.
-- **Causa raíz:** el arreglo A-01 se aplicó a 2 de 3 consumidores.
-- **Consecuencia:** la cifra rotulada «ROI esperado» no es el edge del motor en mercados calibrados, y la diferencia crece con cada promoción de calibrador. Confunde probabilidad estimada y decisión, que las reglas de salida exigen separar.
-- **Controles existentes:** ninguno sobre este script.
-- **Corrección mínima:** `decision_prob` en `rank_picks` y en `report._segment_audit`; corregir el comentario.
-- **Pruebas necesarias:** frame con calibrada ≠ estimada; fallback por fila si la calibrada es NaN.
-- **Criterio de aceptación:** `roi_esp == estimated_edge` (redondeo aparte) en toda fila servida.
+## AUD-007 - El log de pitchers duplica entradas identicas con ausentes
 
-### AUD-007 — El calibrador excluye las medias liquidaciones en líneas de cuarto
-- **Origen:** exclusivo OpenAI (OPENAI-004). **Categoría:** cuantitativo / calibración. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `src/sqp/calibration/calibrator.py:656`: `hist[hist["result"].isin(["win","loss"])]`.
-  - Contrato: `markets/settlement_math.py:29`, `models/distributions.py:285`.
-- **Activación:** entrenar un (liga, mercado) con líneas x.25/x.75 y resultados `half_win`/`half_loss`.
-- **Evidencia concreta:** 100 eventos Over 2,25 (60 win, 20 loss, 20 half_loss) llegan al fit como 80 filas con media 0,75. El objetivo contractual es 0,6667.
-- **Esperado:** medias con target direccional y peso 0,5 en el fit y en las métricas, o exclusión explícita de los cuartos también al aplicar el calibrador.
-- **Observado:** selección de la muestra según el resultado, con un objetivo sesgado.
-- **Causa raíz:** filtro binario heredado, sin ponderación. Misma clase que AUD-008 y AUD-014.
-- **Consecuencia:** calibradores entrenados y evaluados contra un objetivo distinto del precio. El servicio calibra por (liga, mercado) sin distinguir la línea.
-- **Controles existentes:** split por evento, mínimos, ECE/Brier, staging y promoción supervisada; ninguno corrige el target.
-- **Pruebas necesarias:** 60/20/20, espejo `half_win`, spreads y totals, holdout ponderado; regresión en líneas enteras y medias.
-- **Criterio de aceptación:** el fit y las métricas reproducen el contrato `win_units/(win_units+loss_units)`.
-- **Limitaciones:** en los datos actuales hay 14 medias liquidaciones entre 30.921 filas graduadas (agregado de OpenAI). No se acredita ningún calibrador promovido afectado.
+- **Alias de origen:** CLAUDE-009 (solo duplicacion)
+- **Categoria:** Integridad del registro
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** src/sqp/storage/starters.py:78-79
+- **Activacion:** Misma fila tres veces, un pitcher presente y otro None.
+- **Problema:** Lectura CSV convierte ausente a NaN y comparacion por str detecta cambio falso.
+- **Evidencia concreta:** Reproduccion aislada append_counts_identical_input=[1,1,1].
+- **Esperado:** Una primera entrada; llamadas identicas siguientes agregan cero.
+- **Observado:** Cada llamada agrega una fila.
+- **Causa raiz:** Comparacion None frente a NaN sin normalizacion.
+- **Consecuencia:** Registro de confirmacion/timing inflado.
+- **Correccion minima propuesta:** Normalizar valores ausentes antes de comparar.
+- **Pruebas necesarias:** None/NaN/vacio y cambio real de pitcher.
+- **Criterio de aceptacion:** Una primera entrada; llamadas identicas siguientes agregan cero.
+- **Controles compensatorios:** No se establecio consumo operativo por pipeline de este log.
+- **Limitaciones:** Concurrencia sin lock separada como INFERRED; no se confunde con StartersStore.save previamente corregido.
+- **Estado de remediacion:** OPEN
 
-### AUD-008 — `edge_information` elimina medias liquidaciones del ROI realizado
-- **Origen:** exclusivo OpenAI (OPENAI-005). **Categoría:** cuantitativo / evaluación. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `src/sqp/evaluation/edge_information.py:101` (filtro win/loss) y `:117` (`_roi` binario).
-  - Consumidores: `scripts/model_vs_market_report.py:138` y `scripts/research/measure_price_floor_preregistration.py:125`.
-  - Contrato: `settlement/settle.py:133` (`realized_roi_parts`).
-- **Evidencia concreta:** 1 win y 10 `half_loss` a cuota 2 → `roi_flat = +1,0` sobre n = 1. El ROI canónico es −0,364 sobre 11.
-- **Esperado:** el ROI realizado de cada subconjunto coincide con `realized_roi_parts`. El acierto binario se define aparte.
-- **Causa raíz:** una misma proyección binaria sirve al hit rate y al ROI, y excluye filas según el resultado.
-- **Consecuencia:** escaleras de edge e informes model-vs-market pueden presentar como favorable una política perdedora.
-- **Controles existentes:** dedup por pick, finitud y bootstrap por evento; todos operan después del filtro.
-- **Pruebas necesarias:** fixtures con ambas medias y con mezcla win/loss/push/void; comparación contra `realized_roi_parts` a stake unitario.
-- **Criterio de aceptación:** ROI y denominadores idénticos al ledger canónico.
-- **Limitaciones:** **NOT_VERIFIABLE** si alguna conclusión registrada cambia. Por ejemplo, el suelo de precio no adoptado del 2026-09-19. Con 14 medias en todo el histórico el efecto agregado probablemente es pequeño, pero no se recalculó.
+## AUD-008 - La captura supera el limite diario de creditos
 
-### AUD-009 — Tres stores históricos pierden escrituras concurrentes
-- **Origen:** exclusivo OpenAI (OPENAI-006). **Categoría:** concurrencia / integridad de datos. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:** `src/sqp/storage/results_store.py:57-74`, `starters.py:101-138`, `starter_fip.py:24-42`. Leen, fusionan y hacen `atomic_write_csv` sin `locked()`.
-- **Activación:** dos backfills del mismo store y liga solapados, por ejemplo manual y `SQP_Backfill`.
-- **Evidencia concreta:** intercalado A-prepara / B-persiste / A-persiste: `['seed','A','B']` termina como `['seed','A']` en los tres stores.
-- **Esperado:** la unión de todas las escrituras completadas.
-- **Causa raíz:** la misma que AUD-002.
-- **Consecuencia:** se pierden resultados, abridores o FIP de los que dependen modelos y liquidación, incluido el fallback de AUD-003. Hay que reingerir.
-- **Controles existentes:** temporales únicos, fsync y dedup. No evitan actualizaciones perdidas.
-- **Corrección mínima:** `locked(p)` alrededor de lectura, merge y escritura, con los fetch fuera del lock.
-- **Pruebas necesarias:** dos escritores con barrera por store; timeout seguro.
-- **Criterio de aceptación:** ninguna escritura completada de claves distintas desaparece.
-- **Limitaciones:** frecuencia real no medida.
+- **Alias de origen:** CLAUDE-011
+- **Categoria:** Cuota de proveedor
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** src/sqp/pipeline/closing_capture.py:119-151
+- **Activacion:** Gasto299, limite300, siguiente peticion cuesta3.
+- **Problema:** Solo valida gasto pasado antes de iniciar una peticion.
+- **Evidencia concreta:** Mock sin API: actual_total302, cap300.
+- **Esperado:** No iniciar una peticion cuyo coste previsto exceda el saldo del limite.
+- **Observado:** Gasto acumulado302.
+- **Causa raiz:** Falta reserva/estimacion previa del coste.
+- **Consecuencia:** Exceso de cuota sobre el limite configurado.
+- **Correccion minima propuesta:** Comprobar coste conservador antes de pedir y reconciliar coste real.
+- **Pruebas necesarias:** Saldo menor/igual/mayor al coste, varias ligas, reanudacion diaria.
+- **Criterio de aceptacion:** No iniciar una peticion cuyo coste previsto exceda el saldo del limite.
+- **Controles compensatorios:** Tope previo y min_remaining limitan consumo ulterior.
+- **Limitaciones:** No gasto real. No se adopta cota universal de seis creditos sin contrato demostrado.
+- **Estado de remediacion:** OPEN
 
-### AUD-010 — Un HTTP de error en el boxscore MLB borra FIP históricos válidos
-- **Origen:** exclusivo OpenAI (OPENAI-007). **Categoría:** proveedor / integridad de datos. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `src/sqp/providers/mlb_statsapi.py:123`: `self.session.get(...).json()` sin `raise_for_status` ni `_get_with_retry`, que sí usa `schedule` en la línea 112.
-  - `src/sqp/storage/starter_fip.py:37`: `keep="last"`.
-- **Evidencia concreta:** boxscore 500 `{"message": ...}` → fila con FIP `None` que sustituye 3,2/4,1 por NaN.
-- **Esperado:** rechazar o reintentar la respuesta y preservar la fila previa.
-- **Causa raíz:** no se valida el estado HTTP ni la forma del payload, y el upsert es incondicional.
-- **Consecuencia:** un fallo transitorio destruye datos históricos.
-- **Controles existentes:** `pitcher_bound = 0.0` en producción limita el impacto inmediato en picks, no la pérdida de datos.
-- **Corrección mínima:** `_get_with_retry` y validar el boxscore antes de emitir fila.
-- **Pruebas necesarias:** reingestión con datos previos ante 429/500 JSON, timeout, payload inválido y boxscore válido.
-- **Criterio de aceptación:** un fallo del proveedor preserva los datos previos.
+## AUD-009 - Merge de resultados descarta partidos consecutivos reales
 
-### AUD-011 — El hook de revisión cruzada descarta en silencio una revisión fallida sin salida
-- **Origen:** exclusivo OpenAI (OPENAI-008). **Categoría:** operación / control de revisión. **Severidad:** MEDIUM. **Prioridad:** P2.
-- **Archivo / línea:**
-  - `.claude/hooks/crossreview-on-stop.sh:17`: el marcador se borra primero.
-  - `:96-98`: `[ -z "$out" ] && exit 0` va antes de evaluar `rc`.
-  - `:116`: el marcador solo se restaura en la rama de fallo con texto.
-  - Cableado en `Stop` en `.claude/settings.json` (verificado).
-- **Evidencia concreta:** codex devuelve rc = 7 sin salida → hook exit 0, sin salida, sin marcador.
-- **Esperado:** avisar y conservar el marcador.
-- **Causa raíz:** se comprueba la salida vacía antes que el código de salida.
-- **Consecuencia:** un cambio de riesgo se queda sin revisión cruzada y sin reintento. Es relevante mientras el MCP/CLI de Codex falla de forma intermitente (KI-055/056).
-- **Corrección mínima:** evaluar `rc != 0` primero y definir el contrato del caso `(0, '')`.
-- **Pruebas necesarias:** `(7,'')`, error con texto, veredicto válido y `(0,'')`.
-- **Criterio de aceptación:** una revisión fallida nunca pierde el marcador en silencio.
+- **Alias de origen:** CLAUDE-012
+- **Categoria:** Integridad de datos de entrenamiento
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** src/sqp/pipeline/daily.py:104-131
+- **Activacion:** Historico con A/B dia10 y feed reciente A/B dia11, historico retrasado.
+- **Problema:** Dedup por pareja +/-1 dia considera el partido nuevo ya existente.
+- **Evidencia concreta:** Reproduccion retiene solo game_id old y elimina new.
+- **Esperado:** Conservar ambos partidos distintos.
+- **Observado:** Un resultado reciente real desaparece del merge.
+- **Causa raiz:** Equivalencia temporal demasiado amplia sin identidad exacta.
+- **Consecuencia:** Ratings pierden un resultado disponible en ese run.
+- **Correccion minima propuesta:** Priorizar ID/calendario exacto; fallback no debe absorber otro partido de una serie.
+- **Pruebas necesarias:** Serie dias consecutivos, dobles jornadas y verdadero desplazamiento UTC.
+- **Criterio de aceptacion:** Conservar ambos partidos distintos.
+- **Controles compensatorios:** Backfill previo de DIARIO normalmente actualiza el historico.
+- **Limitaciones:** Activacion condicionada a historico retrasado; posible antecedente legacy sin identidad revalidada. Diferente fix/caller de AUD-001.
+- **Estado de remediacion:** OPEN
 
-### AUD-012 — Un segundo run el mismo día pisa la copia de archivo del primero
-- **Origen:** exclusivo Claude (CLAUDE-004). **Categoría:** preservación de datos. **Severidad:** LOW. **Prioridad:** P3. **Evidencia:** STATICALLY_VERIFIED (Claude y consolidador); no reproducido.
-- **Archivo / línea:** `src/sqp/pipeline/daily.py:421-428`: nombre `{stem}_{día}` y `shutil.copy2` sobre ese nombre.
-- **Activación:** dos runs el mismo día UTC. Ya ocurrió el 2026-08-27.
-- **Consecuencia:** la primera generación desaparece de `archive/` y `superseded_candidates` no la ve (AUD-004).
-- **Corrección mínima:** nombre de archivo con la marca completa de `generated_at`, adaptando `_ARCHIVE_DAY` en `runner.py`.
-- **Pruebas necesarias:** dos `_finalize` el mismo día y un tercero al día siguiente → ambas generaciones en `archive/`.
-- **Criterio de aceptación:** no se pierde ninguna generación archivada.
+## AUD-010 - Cross-review pierde su pendiente si falta el ejecutable
 
-### AUD-013 — El centinela `prediction_gate.blocked` es invisible en salud y `gate_status` lo describe mal
-- **Origen:** exclusivo Claude (CLAUDE-005). **Categoría:** observabilidad de un control. **Severidad:** LOW. **Prioridad:** P3. **Evidencia:** STATICALLY_VERIFIED. `grep` sin coincidencias en `src/sqp/monitoring/`, `scripts/health_check.py` y `scripts/gate_status.py`.
-- **Archivo / línea:** `src/sqp/risk/prediction_gate.py:474-486`, `scripts/gate_status.py:137`.
-- **Consecuencia:** el fallo es seguro (cierre indefinido), pero el diagnóstico apunta a «registro ausente» y health no avisa.
-- **Corrección mínima:** comprobación en health y mensaje específico en `gate_status.render`.
-- **Pruebas necesarias:** con el centinela presente, health da el motivo y `gate_status` muestra el mensaje.
-- **Criterio de aceptación:** el centinela aparece en la salida de salud del día.
-- **Limitaciones:** hoy no hay centinela.
+- **Alias de origen:** CLAUDE-016
+- **Categoria:** Gobierno de agentes
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** STATICALLY_VERIFIED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** .claude/hooks/crossreview-on-stop.sh:17-18
+- **Activacion:** Marker pendiente y codex no disponible en PATH.
+- **Problema:** Borra marker antes de command -v; sale cero sin aviso.
+- **Evidencia concreta:** rm -f marker seguido de command -v codex || exit 0; ramas posteriores de error no se alcanzan.
+- **Esperado:** Avisar revision no ejecutada y conservar pendiente para reintento.
+- **Observado:** Pendiente eliminado silenciosamente.
+- **Causa raiz:** Comprobacion de dependencia posterior a limpieza irreversible del estado pendiente.
+- **Consecuencia:** Cambio sensible queda sin revision y sin reintento automatico.
+- **Correccion minima propuesta:** Verificar ejecutable antes de borrar; advertir y conservar marker.
+- **Pruebas necesarias:** PATH sin codex con marker, fallos y salida vacia existentes.
+- **Criterio de aceptacion:** Avisar revision no ejecutada y conservar pendiente para reintento.
+- **Controles compensatorios:** Rama posterior de fallos de codex ya restaura marker.
+- **Limitaciones:** No se invoco codex ni se modificaron markers reales.
+- **Estado de remediacion:** OPEN
 
-### AUD-014 — `simulate_poisson_game` trata las líneas de cuarto como binarias
-- **Origen:** exclusivo OpenAI (OPENAI-009). **Categoría:** matemáticas / API de simulación. **Severidad:** LOW. **Prioridad:** P3.
-- **Archivo / línea:** `src/sqp/simulation/monte_carlo.py:53-58`.
-- **Evidencia concreta:** λ = 1,5/1,0, total 2,25, 500.000 simulaciones con seed 42: MC 0,4565 frente a 0,5233 analítico.
-- **Consecuencia:** API y oráculo de contraste incorrectos en cuartos. Solo tiene consumidores en tests y API (`grep`: ninguno en el pipeline productivo), de ahí LOW.
-- **Corrección mínima:** semántica de unidades de `settlement_math`, o rechazar los cuartos explícitamente.
-- **Pruebas necesarias:** ambos lados de .25/.75 dentro del error MC; casos enteros y medios.
-- **Criterio de aceptación:** simulación y analítico coinciden dentro del error muestral.
+## AUD-011 - Tres pruebas de no-repositorio heredan Git del workspace
 
-## 6. Validaciones y cobertura
+- **Alias de origen:** CLAUDE-017
+- **Categoria:** Aislamiento de tests
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** tests/test_fable_gate.py:770-780; tests/test_measure_tilt_nhl.py:305-316
+- **Activacion:** Basetemp dentro de .codex-tmp conforme a AGENTS.md.
+- **Problema:** No ejecutar git init no implica que tmp_path este fuera de todo repositorio.
+- **Evidencia concreta:** 3 failed20.60s; con GIT_CEILING_DIRECTORIES=C:/dev/3/sports-quant-platform/.codex-tmp:3 passed6.89s.
+- **Esperado:** Fixtures reproducen un directorio sin repositorio incluso dentro del scratch autorizado.
+- **Observado:** git_head devuelve HEAD padre; git_status devuelve cadena vacia; hook retorna0 en vez de2.
+- **Causa raiz:** Git asciende buscando .git del proyecto.
+- **Consecuencia:** Falsos rojos ambientales degradan la auditoria y pueden confundirse con regresiones.
+- **Correccion minima propuesta:** Aislar busqueda Git en fixture/subproceso mediante GIT_CEILING_DIRECTORIES.
+- **Pruebas necesarias:** Tres casos bajo scratch interno y fixture con repo propio; mantener restricciones de escritura.
+- **Criterio de aceptacion:** Fixtures reproducen un directorio sin repositorio incluso dentro del scratch autorizado.
+- **Controles compensatorios:** Clasificacion ENVIRONMENTAL_FAILURE evita atribucion incorrecta al producto.
+- **Limitaciones:** No mover basetemp a TEMP: viola restriccion conocida KI-037. Ningun test fue modificado.
+- **Estado de remediacion:** OPEN
 
-| Validación | Fuente | Resultado | Clasificación |
-|---|---|---|---|
-| `ruff check src scripts tests` | ambos | exit 0 | OK |
-| `mypy src` | ambos | exit 0, 106 ficheros | OK |
-| `pytest` suite completa | Claude | 2299 passed, 1 skipped (22 min 40 s) | OK |
-| `pytest` focalizado | OpenAI | 844 passed, en seis grupos; 45 errores de setup iniciales por WinError 5 en `.codex-tmp/pytest`, repetidos con basetemp nuevo | OK tras ENVIRONMENTAL_FAILURE declarado |
-| CI remoto en 7bd565e | Claude (`gh run list`) | success | OK. En el entorno OpenAI: NOT_VERIFIABLE |
-| sync de instrucciones y routing | ambos | exit 0 | OK |
-| `pip check` | OpenAI | exit 0 | OK |
-| Tareas programadas | OpenAI | 4 principales rc 0; `Dashboard` rc 267014 | observación (O-6) |
-| Reproducciones | Claude 2 / OpenAI 8 | fallos del producto observados con la suite en verde | la suite no cubre estos casos |
-| Consolidador | — | `git diff HEAD` vacío en código; 14/14 confirmados estáticamente; sin tests nuevos | — |
+## AUD-012 - La cache da por persistido un snapshot que pudo fallar
 
-**Cobertura combinada:**
+- **Alias de origen:** CLAUDE-013 (solo contrato de persistencia)
+- **Categoria:** Persistencia de evidencia
+- **Severidad:** LOW
+- **Confianza:** HIGH
+- **Estado de evidencia:** STATICALLY_VERIFIED
+- **Prioridad:** P3
+- **Archivo / lineas relevantes:** src/sqp/providers/odds_api.py:158-162,212-215; src/sqp/pipeline/daily.py:773-779
+- **Activacion:** Cache se escribe correctamente, append_snapshot falla y reintento llega dentro del TTL con las mismas cuotas.
+- **Problema:** Cache hit se trata como prueba de que snapshot ya existe.
+- **Evidencia concreta:** _get escribe cache antes de retornar; daily persiste despues, solo si not last_response_cached.
+- **Esperado:** Reintento recupera snapshot faltante sin duplicar ni cambiar timestamp original.
+- **Observado:** Rama cache omite append_snapshot y anuncia snapshot already persisted sin verificarlo.
+- **Causa raiz:** Acoplamiento implicito entre cache de respuesta y confirmacion de almacenamiento distinto.
+- **Consecuencia:** Hueco condicional en evidencia OOS/cierre de cuotas.
+- **Correccion minima propuesta:** Confirmar persistencia por identidad o persistir idempotentemente preservando timestamp de adquisicion.
+- **Pruebas necesarias:** Fallo controlado del primer append, reintento cacheado, cero snapshot duplicado y fecha original.
+- **Criterio de aceptacion:** Reintento recupera snapshot faltante sin duplicar ni cambiar timestamp original.
+- **Controles compensatorios:** Un fetch posterior fuera del TTL puede aportar otro snapshot, no el omitido.
+- **Limitaciones:** No se forzo fallo de disco productivo. Riesgo adicional de write_text no atomico queda INFERRED y no es segundo defecto.
+- **Estado de remediacion:** OPEN
 
-- Revisado por al menos un auditor: pipeline diario, gates de riesgo, Kelly y banca, liquidación, stores y locks, calibración (Claude parcial, OpenAI completa), backtests, proveedores, BAT, CI, hooks y routing, secretos versionados.
-- Cobertura parcial o sin revisar por ninguno: `audit/html_report.py` completo, `audit/clv*.py`, `closing_capture.py`, adaptadores deportivos y features concretas (`rest_form`, `weather`, `park`, `starters`, solo por interfaz), UI y scripts de investigación.
-- **NOT_VERIFIABLE:**
-  - secretos en `logs/` y `data/output/` (permiso denegado a Claude);
-  - vulnerabilidades actuales de dependencias;
-  - contratos vivos de proveedores;
-  - disponibilidad temporal exacta dentro del día de las features históricas (OpenAI: INFERRED, sin leakage confirmado);
-  - impacto económico real.
+## AUD-013 - pip-audit depende del exito de pytest y no corre desde 2026-09-26
 
-## 7. Observaciones (no son defectos)
+- **Alias de origen:** CLAUDE-003 (coincidencia parcial con la consecuencia descrita en OPENAI-002). Nuevo en la revision 2; en la v1 estaba integrado en AUD-002.
+- **Categoria:** CI / dependencias / estado efectivo de controles
+- **Severidad:** MEDIUM
+- **Confianza:** HIGH
+- **Estado de evidencia:** REPRODUCED (estado de los pasos en `gh run view 38256027979 --json jobs`, segun CLAUDE-003) y STATICALLY_VERIFIED (revision 2)
+- **Prioridad:** P2 (tras AUD-002)
+- **Archivo / lineas relevantes:** .github/workflows/ci.yml:75-83 (paso pip-audit dentro del job `test`, despues de Pytest, sin `if: always()`; `pip install pip-audit` sin version)
+- **Activacion:** Cualquier fallo de pytest en una pata Linux del job `test`.
+- **Problema:** El control documentado como «BLOCKING since 2026-07-02» (ci.yml:75) se omite cada vez que falla un test ajeno a las dependencias.
+- **Evidencia concreta:** pip-audit `skipped` en 3.11, 3.12, 3.13 y 3.14 del run 38256027979; ultimo run verde de main 2026-09-26 (3648b17). El job Windows no tiene el paso.
+- **Esperado:** El escaneo de vulnerabilidades se ejecuta y publica resultado con independencia del resultado de pytest.
+- **Observado:** Sin evidencia de escaneo en main desde 2026-09-26.
+- **Causa raiz:** Acoplamiento de pasos: un control de seguridad independiente depende del exito de otro control.
+- **Consecuencia:** Una vulnerabilidad nueva en `requirements.lock` pasaria inadvertida mientras CI siga rojo por cualquier motivo. Corregir AUD-002 lo reactiva solo mientras CI este verde; el acoplamiento persiste.
+- **Correccion minima propuesta:** Job propio para pip-audit (o `if: always()` en el paso) y version fijada de pip-audit.
+- **Pruebas necesarias:** Run con un test rojo deliberado en una rama: pip-audit sigue ejecutandose y su veredicto es visible.
+- **Criterio de aceptacion:** pip-audit con estado `success`/`failure` (nunca `skipped`) en todos los runs de main.
+- **Controles compensatorios:** Ninguno local (pip check no es pip-audit). La alerta de CI rojo avisa del fallo de pytest, no de la omision del escaneo.
+- **Limitaciones:** Estado actual de vulnerabilidades NOT_VERIFIABLE (requiere red). Version sin fijar: sin fallo demostrado; forma parte de la correccion, no es defecto aparte.
+- **Estado de remediacion:** OPEN
 
-- **O-1 (Claude):** la condición 2 del gate es un EV autoestimado. Coincide con el pre-registro; cambiarla es decisión del operador.
-- **O-2 (Claude):** una sola liga con picks retenidos aborta la generación de todas. Es conservador y está documentado.
-- **O-3 (Claude):** `served_pending_expired_total` = brasileirao 35, chile 49, mlb 54, wnba 12. Causa NOT_VERIFIABLE. Encaja con la clase AUD-003/004, pero no se estableció el vínculo.
-- **O-4 (Claude):** en el chequeo de calibración de `report.py` se comparan poblaciones distintas.
-- **O-5 (OpenAI, INFERRED):** un registro con `allowed: "false"` (cadena) se evalúa como verdadero. No se conoce ningún productor legítimo; es endurecimiento, no defecto.
-- **O-6 (OpenAI):** la tarea `Dashboard` terminó con rc 267014. Foto puntual, sin análisis de causa.
-- **O-7 (OpenAI, NOT_VERIFIABLE):** tratamiento de las medias liquidaciones en el test de signo del gate. El pre-registro es binario y no se inventa una regla.
+## Discrepancias, observaciones y descartes
 
-## 8. Descartes (DISMISSED) conservados
+| Origen | Resolucion | Motivo |
+|---|---|---|
+| OPENAI-001 | AUD-001 | Confirmado por reproduccion; no extrapolar a settlement live. |
+| OPENAI-002 / CLAUDE-002 | AUD-002 MEDIUM/P2 | Misma causa; CI bloqueada sin demostrar impacto HIGH en produccion. No basta eliminar asercion o saltar test. |
+| CLAUDE-001 | AUD-003 HIGH/P1 | Confirmacion matematica independiente; cifras de datos reales y ROI del origen no revalidadas. |
+| CLAUDE-003 | v1: integrado parcialmente en AUD-002. **v2: AUD-013 MEDIUM/P2** | Causa (acoplamiento de pasos) y correccion distintas de AUD-002; sobrevive a su arreglo. Version no fijada: parte de la correccion, no defecto aparte. |
+| CLAUDE-004 | NOT_VERIFIABLE como defecto (v1 y v2) | Falta contrato que exija publicacion remota de tags. v2: el commit H de `prereg-tier-a-t0` YA esta en origin (`git merge-base --is-ancestor` rc 0) y el valor 0.075 del mensaje del tag consta en `tests/research/test_measure_tier_a_gap.py` de origin/main: respaldo externo del ancla y del valor. El H de `prereg-peso-mercado-h` (107e9b7) NO esta en origin: riesgo operativo de perdida del clon, ver O-R2-1. |
+| CLAUDE-005 | DISMISSED como defecto (v1 y v2) | Commits locales ahead no prueban por si solos violacion de contrato de despliegue; suite local verde. Observacion operativa O-R2-1. |
+| CLAUDE-006 | AUD-004 | Fallo de revalidacion reproducido, sin invocar BAT. |
+| CLAUDE-007 | AUD-005 | Verificado estaticamente con condicion de historico ausente; no se adopta reproduccion ajena como propia. |
+| CLAUDE-008 | AUD-006 | Configuracion confirmada; harness real no ejercitado. |
+| CLAUDE-009 | AUD-007 | Duplicacion reproducida; carrera concurrente adicional INFERRED, no confirmada. |
+| CLAUDE-010 | INFERRED | Presupuesto por cliente confirmado, pero no contrato duro de latencia global ni impacto operativo medido; comentar por cliente/por run merece aclaracion. |
+| CLAUDE-011 | AUD-008 | Exceso299+3>300 reproducido; no asumir cota universal de6. |
+| CLAUDE-012 | AUD-009 | Merge distinto del matcher backtest; prueba independiente. |
+| CLAUDE-013 | AUD-012 parcial | Contrato cache/persistencia confirmado; corrupcion por escritura no atomica queda INFERRED sin ejecucion. |
+| CLAUDE-014 | DISMISSED como defecto activo | No se acredita productor NaN que atraviese controles existentes; hardening opcional P4. |
+| CLAUDE-015 | NOT_VERIFIABLE | Vigencia de IDs no contrastada contra fuente oficial; sin uso operativo demostrado, no se confirma. |
+| CLAUDE-016 | AUD-010 | Rama missing executable distinta de fallo no-cero ya corregido. |
+| CLAUDE-017 | AUD-011 | Reproducido y aislado dentro del scratch permitido; rechazada recomendacion de usar TEMP fuera del sandbox. |
 
-- **Claude:**
-  - D-1: lock sin latido (secciones críticas ≤ 2,2 s).
-  - D-2: referencias rotas en `.claude/agents` (notas históricas).
-  - D-3: push en team totals (solo líneas .5).
-  - D-4: secretos versionados.
-  - D-5: leakage del calibrador (split por `event_id`).
-  - D-6: leakage de `roi_engine`.
-- **OpenAI:**
-  - pérdida concurrente en `_persist_settled`: el lock la cubre;
-  - anulación masiva por payload vacío: la bloquea `scores_trusted`;
-  - red bajo `OFFLINE_MODE`;
-  - temporales fijos en `atomic`;
-  - leakage intradía en builders y backtests;
-  - contaminación entre lados en el split;
-  - test demo sin aislamiento;
-  - exposición de literales del detector;
-  - desincronización de prompts.
+Otros candidatos de origen (carreras de locks/logs, probabilidad complementaria latente, semantica de prorroga de futbol) permanecen INFERRED/NOT_VERIFIABLE; no se elevan a confirmados. No hubo consulta externa para validar contratos deportivos o modelos que aqui quedan no confirmados.
 
-El consolidador no encontró contradicción entre estos descartes y ningún hallazgo confirmado.
+## Validacion y clasificacion
 
-## 9. Comparación histórica
+OpenAI: 415 tests distintos aprobados en diagnostico (77 hooks/routing,212 core,54 integracion,2 CI-local,70 historico), mas3 pruebas de aislamiento aprobadas bajo control Git:418 distintos con resultado final satisfactorio. Los3 inicialmente fallan bajo el comando prescrito: ENVIRONMENTAL_FAILURE, causa de AUD-011; no NEW_REGRESSION del producto. El control de entorno NO es una correccion de tests.
+Primer intento previo:55 passed y22 setup errors por padre temporal ausente; ENVIRONMENTAL_FAILURE, luego77 passed con padre creado. Comandos/resultados en openai/EVIDENCE.json y CONSOLIDATION_REPRODUCTIONS.json.
+Ruff sin cache, MyPy113 archivos, sync de instrucciones, routing y pip check satisfactorios. No sustituyen escaneo de vulnerabilidades.
+Claude informa suite3 failed,3201 passed,1 skipped; procedencia secundaria, no suite ejecutada por OpenAI. Tres fallos se reprodujeron independientemente como aislamiento ambiental.
+CI remota inspeccionada:2 failed,3004 passed,83 skipped en d985ef8; PRE_EXISTING_FAILURE respecto al trabajo local de hooks, no nueva regresion atribuida. CI del HEAD local NOT_VERIFIABLE.
+Cinco reproducciones controladas adicionales (probabilidades, pitchers, merge, presupuesto, CLI) pasan sus aserciones de activacion del defecto; no son pruebas de correccion del producto.
 
-- Ninguno de los 14 hallazgos repite un ID abierto de r2 (`audit/audit-2026-09-22-r2/FINDINGS.md`, sha256 `2105cdbf…2f19`) ni de la ronda 09-18.
-- Persistencias de clase:
-  - AUD-006 es un resto de A-01 (2026-08-31).
-  - AUD-003 y AUD-004 son restos de AUD-MED-003 y AUD-MED-004 (2026-09-13).
-  - AUD-002 es la carrera que la ronda 09-18 dejó como NOT_VERIFIABLE y que ahora está reproducida.
-  - AUD-013 recae sobre código de la remediación r2 (`4fa1673`).
-- **La ronda r2 sigue sin verificación independiente.** La revalidación que hace OpenAI de sus AUD-001…004 es evidencia secundaria, no su cierre.
-- **Métricas de esta ronda:**
-  - 14 hallazgos fuente (Claude 5, OpenAI 9) → 14 consolidados: 1 fusión parcial, CLAUDE-002(b) con OPENAI-003, y 1 división, CLAUDE-002(a).
-  - 1 coincidencia parcial, 13 exclusivos, 0 falsos positivos, 0 degradados a no verificable.
-  - Descartes conservados: 6 de Claude y 9 de OpenAI.
-  - No se evalúa a los auditores por su número de hallazgos.
+## Historico, limites y siguiente fase
 
-## 10. Limitaciones de la consolidación
+Nueve causas del informe OpenAI de septiembre se revalidaron tras fijar diagnostico: controles presentes y70 tests seleccionados, segun matriz del informe fuente. No cierre masivo de IDs legacy no examinados. Las afirmaciones de persistencia del otro informe no reemplazan esa revalidacion. AUD-009 tiene posible antecedente sin identidad demostrada.
+No suite completa propia, escaneo de vulnerabilidades actual, CI de HEAD, cuantificacion economica productiva, pentest, garantias de rentabilidad ni cobertura total. Datos/logs productivos no se alteraron; las reproducciones usan temporales y mocks, sin servicios de pago.
+Solo se escribieron entregables/historicos de auditoria y temporales permitidos. Cambios locales ajenos conservados y registrados. La siguiente fase es remediacion separada, con criterios del BACKLOG; no se ejecuta implicitamente por este diagnostico.
 
-- Los arneses de reproducción no se volvieron a ejecutar. La evidencia REPRODUCED es la de origen y la confirmación estática es del consolidador.
-- La severidad de AUD-003 se eleva respecto a Claude por irreversibilidad. El volumen productivo de anulaciones indebidas ya persistidas es NOT_VERIFIABLE sin leer datos a nivel de fila.
-- `CHANGES.md`, `VALIDATION.md` y `STATUS.md` de `latest` pertenecen a r2: se verificó que son idénticos, por sha256, a `audit/audit-2026-09-22-r2/`. Esta fase no los reescribe. Los sustituirán las fases de remediación y verificación de esta ronda.
-- Nada de este documento afirma rentabilidad. Las probabilidades son estimadas; hit rate, ROI esperado y ROI realizado se tratan como magnitudes distintas.
+## Revision 2 - consolidacion independiente Claude (2026-10-16)
+
+**Procedencia y conflicto de interes.** Coordinador `claude-opus-5-5`, autor tambien de CLAUDE-001..017: conflicto de interes declarado. Mitigacion: adjudicacion independiente de severidades por `claude-fable-5-1` (agente `review-adjudicator`, solo lectura, sin acceso a esta consolidacion v1 ni a `history/`), y revalidacion propia contra codigo. Orden: (1) lectura completa de las fuentes, (2) revalidacion, (3) veredicto del adjudicador, (4) conclusiones fijadas, y solo despues (5) lectura de la v1 y comparacion. Fuentes y hashes sin cambios respecto a `source_reports` del manifest: `openai/REPORT.md` f9a08cbc…, `openai/EVIDENCE.json` abf922f3…, `openai/REPRODUCTION-OPENAI-001.json` 7be79840…, `claude/REPORT.md` 7e550acc…, `claude/EVIDENCE.json` 1ade1970…. Misma base (65368c8) y alcance integral en ambos; `src/`, `scripts/`, `configs/` y `.github/` sin cambios respecto a HEAD el 2026-10-16 (solo la remediacion KI-073 sin commit en `tests/` y `.claude/hooks`, excluida).
+
+**Revalidaciones de la revision 2** (scratchpad `consol_repro.py`, `python -I -B`, rc 0; sin escrituras en el repo):
+
+| Hallazgo | Comando / evidencia | Resultado |
+|---|---|---|
+| AUD-003 | `_consensus_lines` + `_novig_probs` sinteticos; agregado de `served_nhl.csv`; `prediction_gate.json` | .8438; 346 pares, 331 < 0,95, mediana 0,8477; gate cerrado n=107 |
+| AUD-001 | `_match_index`/`_match_result` con BOS-TB 10 y 11 de junio, cuotas solo del 11 | `{'2026-06-10': 'odds-jun11', '2026-06-11': None}` |
+| AUD-002 | `ci.yml`, `git_tag_message`, `git tag -l`, `git ls-remote --tags origin`, `gh run list --branch main --limit 3` | Ver ficha; d985ef8 y f128483 failure |
+| AUD-013 | `ci.yml:75-83` | Sin `if: always()`; version sin fijar |
+| AUD-004 | `scripts/capture_closing_odds.py:55-56,89-90,106-108` | `return 0` incondicional |
+| AUD-005 | `espn_tennis.py:149-151`, `runner.py:945` | `return []` sin `failed_windows`; `results_trusted = bool(usable)` |
+| AUD-006 | `.claude/settings.json` | PostToolUse `Edit\|Write\|Bash`; PreToolUse `Bash\|PowerShell` |
+| CLAUDE-004 | `git merge-base --is-ancestor` de cada tag frente a origin/main; `git show origin/main:tests/...` | tier-a H en origin (rc 0); peso-mercado H no (rc 1); 0.075 en origin |
+
+No se repitieron las reproducciones de AUD-007..012 (se conservan las de la v1 y las fuentes).
+
+**Discrepancias con el adjudicador Fable y su resolucion.** El adjudicador coincidio en AUD-001 (MEDIUM/P2, separado de AUD-009), AUD-002 (MEDIUM, primero de P2), AUD-003 (HIGH/P1), AUD-004..012 y CLAUDE-014/015. Discrepo en:
+- CLAUDE-004+005: el adjudicador los fusionaba como MEDIUM/P2 por la perdida del valor `max_plausible_edge` si se pierde el clon. **No se adopta**: la comprobacion posterior muestra que el commit H de tier A y el valor 0.075 ya estan en origin; queda solo el riesgo operativo de `prereg-peso-mercado-h`, sin contrato que exija publicacion (O-R2-1).
+- CLAUDE-010: el adjudicador proponia LOW STATICALLY_VERIFIED. **No se adopta**: el codigo esta confirmado pero la consecuencia (alargamiento del run) no esta demostrada ni hay contrato de latencia global; se mantiene INFERRED como en la v1.
+
+**Discrepancias con la v1.** Solo CLAUDE-003 (nuevo AUD-013, motivo en la tabla de discrepancias). Se precisan sin cambiar ID, severidad ni prioridad: AUD-002 (evidencia de origen, el «assert que no discrimina» no produce falso verde, publicar tags no basta) y AUD-003 (cifras reales revalidadas, estado del gate, `market_shrink` efectivo). Resto sin cambios. Matiz del adjudicador a AUD-004: `clv_gate` esta desactivado (`configs/default.yaml`, `enabled: false`), asi que el dano actual recae sobre la revalidacion y el guard de abridores, no sobre el gate de CLV.
+
+**Observaciones de la revision 2 (no defectos).**
+- O-R2-1: `main` lleva 10 commits sin push, entre ellos el H de `prereg-peso-mercado-h` (107e9b7) y 904af27 (codigo de produccion). Riesgo de perdida del clon y de falta de validacion externa; accion del operador tras AUD-002. Sin contrato incumplido demostrado.
+- O-R2-2: AUD-001 y AUD-009 comparten clase (tolerancia ±1 dia por pareja sin identidad); remediar con criterio comun pero por separado. Los consumidores de investigacion de AUD-001 (`measure_adjustment_battery.py`, `measure_rest_basketball.py`) sostienen decisiones registradas (descanso NBA, bateria de ajustes); si el defecto llego a activarse en esas mediciones es NOT_VERIFIABLE y conviene revisarlo tras la correccion.
+
+**Metricas de la revision 2.** Candidatos fuente: 19 (17 Claude + 2 OpenAI). Confirmados: 13 IDs consolidados (16 IDs fuente; OPENAI-002 y CLAUDE-002 fusionados). Origen: ambos 1 (AUD-002); exclusivo OpenAI 1 (AUD-001); exclusivo Claude 11. No confirmados: CLAUDE-010 INFERRED; CLAUDE-004 y CLAUDE-015 NOT_VERIFIABLE; CLAUDE-005 y CLAUDE-014 DISMISSED como defectos; no hay falsos positivos puros. La cantidad de hallazgos por auditor no mide su calidad. Cobertura: la union de las matrices de ambos informes; siguen sin revisar a fondo `clv_gate`, `backtesting/engine.py`/`tuning.py`, la mayor parte de `evaluation/*`, `sports/adapters.py` y `goalie_backfill.py`.
+
+**Limitaciones de la revision 2.** Sin suite completa nueva (la de la fuente Claude, 3201 passed / 3 ENVIRONMENTAL_FAILURE, es de 2026-10-15 sobre la misma base). CI de HEAD, pip-audit, impacto economico y test de signo renormalizado: NOT_VERIFIABLE. Ningun fichero fuera de `audit/latest/` (FINDINGS, BACKLOG, MANIFEST e `history/consolidacion-claude-20261016T104941Z/`) fue escrito. La consolidacion no autoriza correcciones.

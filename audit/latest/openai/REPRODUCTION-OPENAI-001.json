@@ -1,0 +1,19 @@
+{
+  "round_id": "audit-2026-10-15",
+  "mapping": {
+    "game-jun10": "odds-jun11",
+    "game-jun11": null
+  },
+  "rows": [
+    {
+      "event_id": "odds-jun11",
+      "date": "2026-06-10",
+      "selection": "Boston Red Sox",
+      "result": "loss",
+      "pnl": -20.0,
+      "stake": 20.0
+    }
+  ],
+  "expected": "Use June 11 result (+20) or abstain; never June 10",
+  "isolation": "No persistence calls; deterministic adapter only; real matcher/staking/settlement"
+}

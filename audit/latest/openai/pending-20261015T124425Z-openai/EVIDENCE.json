@@ -1,0 +1,130 @@
+{
+  "run_id": "pending-20261015T124425Z-openai",
+  "round_id": null,
+  "date_utc": "2026-10-15T12:44:25.548085+00:00",
+  "status": "PENDING_ROUND_COORDINATION",
+  "base_commit": "65368c815530bf179c5780db78a9fe196996802d",
+  "working_tree_before_deliverables": " M .claude/hooks/run-tests-on-stop.sh\n M pyproject.toml\n M tests/research/test_measure_adjustment_battery.py\n M tests/research/test_measure_segment_market_weight.py\n M tests/research/test_measure_tier_a_gap.py\n M tests/research/test_measure_totals_recency.py\n M tests/test_claude_model_routing.py\n M tests/test_dashboard_todos_picks.py\n M tests/test_fable_gate.py\n M tests/test_feature_manifest.py\n M tests/test_feature_research.py\n M tests/test_html_report.py\n M tests/test_measure_tilt_nhl.py\n M tests/test_picks_del_dia.py\n?? .claude/hooks/_stop_tests.py\n?? \"Obsidian/Bit\\303\\241cora/2026-10-15.md\"\n?? audit/latest/openai/pending-20261015T124425Z-openai/\n?? tests/test_stop_tests_hook.py\n",
+  "confirmed": [
+    {
+      "id": "OPENAI-001",
+      "provisional_id": true,
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": "src/sqp/backtesting/roi_engine.py",
+      "line": 179,
+      "observed": {
+        "mapping": {
+          "game-jun10": "odds-jun11",
+          "game-jun11": null
+        },
+        "result": "loss",
+        "pnl": -20.0,
+        "stake": 20.0
+      },
+      "expected": "Use result of June 11 (+20) or abstain; never result of June 10"
+    },
+    {
+      "id": "OPENAI-002",
+      "provisional_id": true,
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "STATICALLY_VERIFIED",
+      "priority": "P2",
+      "file": "tests/research/test_measure_tier_a_gap.py",
+      "line": 521,
+      "ci_run": 38256027979,
+      "ci_job": 114834217657,
+      "classification": "PRE_EXISTING_FAILURE",
+      "fetch": "--no-tags --depth=1",
+      "local_confirmation": "both affected tests passed with tag present"
+    }
+  ],
+  "tests": [
+    {
+      "name": "hook-initial",
+      "exit_code": 1,
+      "passed": 55,
+      "setup_errors": 22,
+      "classification": "ENVIRONMENTAL_FAILURE",
+      "basetemp": ".codex-tmp/pytest/astra-20261015-hook"
+    },
+    {
+      "name": "hook-rerun",
+      "exit_code": 0,
+      "passed": 77,
+      "seconds": 13.19,
+      "basetemp": ".codex-tmp/pytest/astra-20261015-hook-r2"
+    },
+    {
+      "name": "core",
+      "exit_code": 0,
+      "passed": 212,
+      "seconds": 139.54,
+      "basetemp": ".codex-tmp/pytest/astra-20261015-core"
+    },
+    {
+      "name": "integration",
+      "exit_code": 0,
+      "passed": 54,
+      "seconds": 48.27,
+      "basetemp": ".codex-tmp/pytest/astra-20261015-integration"
+    },
+    {
+      "name": "ci-cases",
+      "exit_code": 0,
+      "passed": 2,
+      "seconds": 12.4,
+      "basetemp": ".codex-tmp/pytest/astra-20261015-ci"
+    }
+  ],
+  "successful_unique_tests": 345,
+  "checks": {
+    "ruff": "passed",
+    "mypy": "113 files passed",
+    "sync": "synchronized",
+    "routing": "OK",
+    "pip_check": "No broken requirements found"
+  },
+  "ci": {
+    "url": "https://github.com/carlosjuliocontrerasurdaneta/sports-quant-platform/actions/runs/38256027979",
+    "head": "d985ef869766eca51a219d51fe1a64fe090a3a7b",
+    "result": "failure",
+    "python314": {
+      "failed": 2,
+      "passed": 3004,
+      "skipped": 83
+    },
+    "vulnerability_audit": "skipped"
+  },
+  "coverage": "See REPORT.md matrix; partial integral review, not exhaustive",
+  "historical_exposure": "Historical conclusions visible in initial MANIFEST read; declared",
+  "files_modified_by_auditor": "Only new pending diagnosis files plus permitted .codex-tmp validation artifacts",
+  "report_sha256": "9599910544acf3626f71ed2908c0efa012f167acbe1e0ba2261dfc3647b41704",
+  "source_hashes": {
+    "src/sqp/backtesting/roi_engine.py": "5539ad7cad02180bae4268814838235a9979137924dec971c685eb0fe19fdc97",
+    "tests/test_roi_engine.py": "890cff8977e2dc252110859f2bb5f32eb9971e6128f732fed3528f90c6f9bcab",
+    "tests/research/test_measure_tier_a_gap.py": "edc2c70b384d8942a09f4c8a5fe225165ce3826837e81c8b5fd3a0a472f40584",
+    ".github/workflows/ci.yml": "1b73ecc61900cc2ad813d738e6a4e327a4095b6b2d301f2d4fc6f8279a08e6f4",
+    "audit/latest/MANIFEST.json": "9d23b278a3b2595039761ec4594a3918358147ba30f0a1ec2076f17793cb01ac"
+  },
+  "unavailable": [
+    "round coordination",
+    "current HEAD CI",
+    "full suite",
+    "current vulnerability audit",
+    "quantitative production impact",
+    "full historical comparison"
+  ],
+  "final_working_tree": " M .claude/hooks/run-tests-on-stop.sh\n M .claude/memory/known-issues.md\n M .claude/memory/session-summaries.md\n M pyproject.toml\n M tests/research/test_measure_adjustment_battery.py\n M tests/research/test_measure_segment_market_weight.py\n M tests/research/test_measure_tier_a_gap.py\n M tests/research/test_measure_totals_recency.py\n M tests/test_claude_model_routing.py\n M tests/test_dashboard_todos_picks.py\n M tests/test_fable_gate.py\n M tests/test_feature_manifest.py\n M tests/test_feature_research.py\n M tests/test_html_report.py\n M tests/test_measure_tilt_nhl.py\n M tests/test_picks_del_dia.py\n?? .claude/hooks/_stop_tests.py\n?? \"Obsidian/Bit\\303\\241cora/2026-10-15.md\"\n?? audit/latest/openai/pending-20261015T124425Z-openai/\n?? tests/test_stop_tests_hook.py\n",
+  "concurrent_external_changes": [
+    ".claude/memory/known-issues.md",
+    ".claude/memory/session-summaries.md",
+    "Obsidian daily note 2026-10-15"
+  ],
+  "previous_versions": [
+    "audit\\latest\\openai\\pending-20261015T124425Z-openai\\history\\diagnostico-20261015T125433Z"
+  ]
+}

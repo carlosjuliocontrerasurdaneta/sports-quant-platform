@@ -1,0 +1,838 @@
+{
+  "schema_version": 1,
+  "round_id": "audit-2026-09-23",
+  "auditor": "openai",
+  "phase": "independent_diagnosis",
+  "generated_at_utc": "2026-09-23T16:36:04.040Z",
+  "conclusions_frozen_at_utc": "2026-09-23T11:08:01.358Z",
+  "base_commit": "7bd565e19606a70b37f704ca44cdc41e168ba274",
+  "branch": "main",
+  "cwd": "C:\\dev\\3\\sports-quant-platform",
+  "python_version": "3.14.4",
+  "scope": "Auditoría integral por inventario: src/sqp, scripts, tests, configs, BAT/PowerShell/Bash, CI y contratos .claude. Revisión selectiva de rutas críticas; estados parciales explícitos.",
+  "initial_working_tree": [
+    " M audit/latest/MANIFEST.json",
+    " M audit/latest/claude/EVIDENCE.json",
+    " M audit/latest/claude/REPORT.md",
+    "?? audit/audit-2026-09-22-r2/"
+  ],
+  "git_limitations": [
+    "Git advirtió acceso denegado al ignore global C:\\Users\\Richard/.config/git/ignore. El estado del repositorio sí se pudo consultar."
+  ],
+  "independence": {
+    "current_claude_report_read": false,
+    "current_consolidation_read": false,
+    "historical_read_after_freeze": true,
+    "context_exposure": "Solo manifest, nombres de commits y comentarios de código con referencias antiguas antes de congelar conclusiones; no se usaron como prueba.",
+    "team": [
+      "root: pipeline/risk y revalidación de evidencia",
+      "quant_review: modelos/calibración/backtests",
+      "data_review: stores/liquidación/proveedores",
+      "audit_scope: operación/contratos/infraestructura"
+    ]
+  },
+  "preservation": {
+    "previous_openai_identity": "audit-2026-09-18 (contenido obsoleto conservado dentro del archivo de audit-2026-09-22-r2)",
+    "archive": "audit/audit-2026-09-22-r2/openai",
+    "verified_files": 2,
+    "sha256_before": {
+      "REPORT_md": "a593000e9f5644a6b34879c980b4ea90a96bd3617118d043030da1b4221db863",
+      "EVIDENCE_json": "88219ecaaa2dfae87cfe4e028f149d53529c985288dd10554a9b3c24865057af"
+    },
+    "method": "Hash de latest y archivo iguales al inicio, repetido antes de publicar. Ningún histórico sobrescrito."
+  },
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 3,
+    "MEDIUM": 5,
+    "LOW": 1,
+    "P0": 0,
+    "P1": 3,
+    "confirmed": 9,
+    "passed_selected_tests": 844
+  },
+  "findings": [
+    {
+      "id": "OPENAI-001",
+      "title": "El gate se actualiza después de generar los picks que debía bloquear",
+      "category": "Riesgo / orden de ejecución",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P1",
+      "file": "scripts/run_all.py",
+      "line": 209,
+      "related_locations": [
+        "scripts/run_all.py:239",
+        "scripts/run_all.py:310",
+        "src/sqp/pipeline/daily.py:651"
+      ],
+      "trigger": "Tras liquidar, un mercado previamente autorizado ya no cumple el criterio; el run diario genera candidatos antes de actualizar el registro.",
+      "problem": "run_league consume el registro anterior. La actualización del prediction gate se ejecuta al final, dentro de la generación de informes; --no-report incluso la omite.",
+      "evidence": "Arnés con run_all.main y run_league reales, proveedores sintéticos y ROOT aislado: 4 candidatos con stake positivo, total 13.56; al terminar los tres mercados NBA tienen allowed=false y latched=true; exit 0.",
+      "expected": "Aplicar el veredicto actualizado con la información liquidada antes de dimensionar y publicar los picks; un flag de presentación no debe omitir el control.",
+      "observed": "El registro termina cerrado, pero quedan 4 picks accionables generados contra la autorización de ayer.",
+      "root_cause": "La actualización del control de riesgo está situada después de su consumidor y subordinada a if not args.no_report.",
+      "consequence": "Se publica exposición real en un mercado que ya perdió la autorización; el cierre final no revoca esos candidatos.",
+      "existing_controls": "Shadow, pausas y límites de exposición pueden reducir o anular el stake; la revalidación de precios no vuelve a consultar este gate. En el registro real observado no había mercados autorizados, por lo que no se acredita activación productiva actual.",
+      "minimal_fix": "Actualizar y validar el gate tras cargar los resultados liquidados y antes del loop de ligas, independientemente de los informes. Un fallo debe conservar la denegación segura; no reutilizar autorizaciones antiguas.",
+      "tests_needed": "Integración allowed ayer / falla hoy, camino --no-report y fallo de actualización. Comprobar que se conservan los picks con stake 0 y que el informe coincide con el registro.",
+      "acceptance": "Ningún candidato nuevo conserva stake positivo para un mercado denegado por la evaluación vigente.",
+      "limitations": "Proveedores y servicios auxiliares sustituidos; no se apostó ni se demostró pérdida económica. Se relajó el cap de plausibilidad en el fixture existente para aislar el gate, sin cambiar configuración productiva.",
+      "reproduction_ref": "R-GATES"
+    },
+    {
+      "id": "OPENAI-002",
+      "title": "Una actualización concurrente puede desarmar el pestillo sin liberación humana",
+      "category": "Concurrencia / autorización de riesgo",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P1",
+      "file": "src/sqp/risk/prediction_gate.py",
+      "line": 473,
+      "related_locations": [
+        "src/sqp/risk/prediction_gate.py:507",
+        "src/sqp/risk/prediction_gate.py:554",
+        "src/sqp/risk/prediction_gate.py:570",
+        "scripts/update_prediction_gate.py:103"
+      ],
+      "trigger": "Dos actualizaciones del mismo registro se solapan; ambas leen el estado abierto. La evaluación que debe cerrar se escribe primero y una evaluación anterior se publica después.",
+      "problem": "El reemplazo atómico no serializa lectura, aplicación del pestillo, escritura y rastro. run_all y update_prediction_gate son consumidores alcanzables sin lock compartido.",
+      "evidence": "Intercalado controlado con dos hilos y funciones reales: B deja allowed=false, latched=true, p=0.522284; A reescribe después allowed=true, latched=false, p=8.4101e-12. No se llamó release_prediction_gate_latch.",
+      "expected": "Una vez armado, el pestillo permanece cerrado hasta una liberación humana explícita.",
+      "observed": "El segundo reemplazo elimina el pestillo y reabre el mercado automáticamente.",
+      "root_cause": "Lectura-modificación-escritura del estado persistente sin exclusión mutua; atomic_write_json protege cada archivo, no la transacción.",
+      "consequence": "Se vulnera la regla de no reentrada y se puede autorizar stake después de una salida obligatoria; el log puede seguir registrando el cierre ya borrado.",
+      "existing_controls": "Temporales únicos, fsync, sentinel de lectura ilegible y lógica _apply_latch. Ninguno cubre dos lecturas válidas concurrentes. El registro actual observado no tiene mercados abiertos.",
+      "minimal_fix": "Usar un lock compartido para la transacción de actualización y liberación, incluyendo estado y rastro; mantener la evaluación costosa fuera cuando sea seguro y aplicar el resultado al estado releído bajo el lock.",
+      "tests_needed": "Dos escritores con barreras y decisiones contrapuestas; actualización concurrente con liberación y bloqueo; demostrar conservación del pestillo y del rastro.",
+      "acceptance": "Sin liberación humana, ningún escritor que leyó un estado anterior puede sustituir latched=true por false.",
+      "limitations": "Intercalado determinista en un proceso; demuestra la carrera pero no mide su frecuencia en producción.",
+      "reproduction_ref": "R-GATES"
+    },
+    {
+      "id": "OPENAI-003",
+      "title": "Se anulan candidatos aunque su resultado histórico esté disponible",
+      "category": "Integridad financiera / liquidación",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P1",
+      "file": "src/sqp/settlement/runner.py",
+      "line": 673,
+      "related_locations": [
+        "src/sqp/settlement/runner.py:663",
+        "src/sqp/settlement/runner.py:675"
+      ],
+      "trigger": "Candidato de deporte de equipo fuera de la ventana del feed, con al menos 3 días desde inicio, resultado histórico inequívoco y feed vivo saludable con otro evento.",
+      "problem": "El fallback de ResultsStore gradúa el stream servido, pero no los candidatos. Estos pasan de scores vivos incompletos a stale_void.",
+      "evidence": "fetch_and_settle real con ROOT temporal: WNBA, stake 100, resultado histórico 70-80. El candidato queda void / pnl 0 / stale_void; el mismo evento servido queda loss.",
+      "expected": "Liquidar el candidato como loss con pnl -100 usando el resultado histórico disponible.",
+      "observed": "Se persiste void y pnl 0 mientras el stream servido se liquida correctamente.",
+      "root_cause": "_grade_served_from_history actualiza únicamente el stream separado; no enriquece los resultados usados por settle_candidates.",
+      "consequence": "El ledger y la banca omiten ganancias o pérdidas reales. La deduplicación posterior por DEDUP_KEY no incluye result, por lo que una corrección ordinaria del mismo pick se descarta.",
+      "existing_controls": "El guard de scores vacíos evita anulaciones masivas y tenis sí dispone de fallback; ninguno cubre este caso de equipos con feed no vacío.",
+      "minimal_fix": "Intentar también el histórico para candidatos pendientes antes de anularlos; priorizar feed válido y conservar rechazo de emparejamientos ambiguos.",
+      "tests_needed": "Candidato y served del mismo evento antiguo: win/loss, three-way, doubleheader ambiguo, feed saludable ajeno y segunda pasada idempotente.",
+      "acceptance": "No se produce stale_void si existe un resultado histórico inequívoco que permite graduar el pick.",
+      "limitations": "Fixture sintético; no se midió cuántos registros reales fueron afectados ni se regraduaron datos productivos.",
+      "reproduction_ref": "R-DATA-A"
+    },
+    {
+      "id": "OPENAI-004",
+      "title": "La calibración de cuartos asiáticos aprende un objetivo distinto del precio",
+      "category": "Cuantitativo / calibración",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": "src/sqp/calibration/calibrator.py",
+      "line": 656,
+      "related_locations": [
+        "src/sqp/markets/settlement_math.py:29",
+        "src/sqp/models/distributions.py:285",
+        "src/sqp/pipeline/probabilities.py:194"
+      ],
+      "trigger": "Entrenamiento por liga/mercado con líneas x.25/x.75 y resultados half_win o half_loss.",
+      "problem": "El fit y sus métricas excluyen todas las medias liquidaciones. El precio analítico representa win_units/(win_units+loss_units), no P(full win | full win o full loss).",
+      "evidence": "100 eventos Over 2.25: 60 win, 20 loss, 20 half_loss y p=2/3. Al interceptar la entrada al fit llegan 80 filas con media del target 0.75; el contrato exige 60/(60+20+10)=0.6666667.",
+      "expected": "Ajuste y validación coherentes con las unidades ganadas/perdidas de la liquidación.",
+      "observed": "Se eliminan selectivamente 20 resultados y se cambia el objetivo a 0.75.",
+      "root_cause": "Filtro binario win/loss heredado en train_market_calibrators, sin ponderación de medias liquidaciones.",
+      "consequence": "Se pueden entrenar y evaluar calibradores contra un objetivo sesgado y luego aplicarlos a probabilidades de cuartos. El servicio calibra por liga/mercado sin distinguir la línea.",
+      "existing_controls": "Split por evento, mínimos de eventos, ECE/Brier, monotonía/extremos/resolución, staging y promoción supervisada. Ninguno corrige el target filtrado antes del split.",
+      "minimal_fix": "Incluir las medias con target direccional y peso 0.5 en fit y métricas; alternativamente excluir todos los cuartos tanto del entrenamiento como de la aplicación hasta soportar su semántica.",
+      "tests_needed": "Caso 60/20/20, espejo half_win, spreads y totals, ponderación del holdout y regresión para enteros/medios.",
+      "acceptance": "Fit y métricas reproducen el contrato de win_units/loss_units y no seleccionan la muestra según si el resultado fue parcial.",
+      "limitations": "Se interceptó el fit y se deshabilitó la revalidación del registro en memoria para no escribir artefactos. No se acredita que un calibrador defectuoso esté promovido ni su daño económico.",
+      "reproduction_ref": "R-QUANT-CAL"
+    },
+    {
+      "id": "OPENAI-005",
+      "title": "El análisis de ROI realizado elimina medias pérdidas y puede invertir el signo",
+      "category": "Cuantitativo / evaluación de estrategias",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": "src/sqp/evaluation/edge_information.py",
+      "line": 101,
+      "related_locations": [
+        "src/sqp/evaluation/edge_information.py:120",
+        "scripts/model_vs_market_report.py:138",
+        "scripts/research/measure_price_floor_preregistration.py:125",
+        "src/sqp/settlement/settle.py:133"
+      ],
+      "trigger": "edge_ladder o edge_signal evalúan una política con half_win/half_loss.",
+      "problem": "prepare conserva solo win/loss y calcula el ROI sobre el subconjunto sobreviviente; las medias tienen P&L real y forman parte del denominador canónico.",
+      "evidence": "Una victoria y 10 half_loss, cuota 2, stake plano: edge_ladder reporta n_rows=1, n_events=1, roi_flat=1.0; el ROI contractual es (1-10*0.5)/11=-0.3636364.",
+      "expected": "Incluir el P&L parcial y la unidad apostada correspondiente; aquí -36.36% sobre 11 apuestas.",
+      "observed": "ROI +100% sobre una sola apuesta.",
+      "root_cause": "Proyección binaria compartida por métricas de acierto y métricas económicas, con exclusión dependiente del resultado.",
+      "consequence": "Los informes y experimentos de suelo de precio pueden valorar favorablemente una política perdedora.",
+      "existing_controls": "Deduplicación por pick, finitud y bootstrap agrupado por evento; operan después de haber eliminado las medias y no evitan el sesgo.",
+      "minimal_fix": "Usar la semántica canónica de liquidación para ROI y denominadores; separar explícitamente la muestra/definición del acierto binario.",
+      "tests_needed": "Fixtures con ambas medias, mezcla con win/loss/push/void y comparación de ROI con realized_roi_parts a stake unitario; comprobar escalera, señal e intervalos.",
+      "acceptance": "El ROI de cada subconjunto económico coincide con el ledger canónico; las medias no desaparecen del conteo de apuestas resueltas.",
+      "limitations": "No se recalcularon conclusiones de experimentos productivos. El hallazgo se refiere al ROI realizado; no se sustituye el criterio EV esperado del prediction gate.",
+      "reproduction_ref": "R-QUANT-ROI"
+    },
+    {
+      "id": "OPENAI-006",
+      "title": "Tres stores históricos pierden escrituras concurrentes",
+      "category": "Concurrencia / integridad de datos",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": "src/sqp/storage/results_store.py",
+      "line": 57,
+      "related_locations": [
+        "src/sqp/storage/starters.py:130",
+        "src/sqp/storage/starter_fip.py:34"
+      ],
+      "trigger": "Dos backfills del mismo store y liga se solapan, por ejemplo el manual y el programado.",
+      "problem": "Ambos hacen lectura, merge y reemplazo completo sin lock compartido.",
+      "evidence": "Intercalado A prepara, B persiste, A persiste: en ResultsStore, StartersStore y StarterFIPStore ambos retornan éxito, pero ['seed','A','B'] termina como ['seed','A'].",
+      "expected": "Conservar la unión de las escrituras completadas.",
+      "observed": "B desaparece silenciosamente en los tres stores.",
+      "root_cause": "El reemplazo atómico no serializa la transacción completa de lectura-modificación-escritura; los callers tampoco añaden exclusión.",
+      "consequence": "Pérdida de resultados, abridores o FIP usados por los modelos; requiere reingestión.",
+      "existing_controls": "Temporales únicos, fsync, os.replace y deduplicación secuencial. Evitan truncados/duplicados, no actualizaciones perdidas.",
+      "minimal_fix": "Adquirir locked(p) alrededor de lectura, merge y escritura; crear antes el directorio y mantener los fetches fuera del lock.",
+      "tests_needed": "Dos escritores con barrera por store, unión de claves distintas, política de actualización de la misma clave y timeout seguro.",
+      "acceptance": "Ninguna operación completada desaparece por otra escritura concurrente de claves distintas.",
+      "limitations": "Intercalado controlado en un proceso, no medición de incidencia en producción.",
+      "reproduction_ref": "R-DATA-B"
+    },
+    {
+      "id": "OPENAI-007",
+      "title": "Un error HTTP de boxscore borra FIP históricos válidos",
+      "category": "Integración externa / integridad de datos",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": "src/sqp/providers/mlb_statsapi.py",
+      "line": 123,
+      "related_locations": [
+        "src/sqp/storage/starter_fip.py:34"
+      ],
+      "trigger": "Reingestión de un juego existente cuyo boxscore responde HTTP 500 con JSON de error sin teams.",
+      "problem": "La llamada .json() no comprueba el estado HTTP. El error se convierte en una fila con nombres y FIP vacíos que reemplaza la fila válida.",
+      "evidence": "Schedule simulado 200 y boxscore 500 {'message':'Internal Server Error'}; el proveedor emite ambos FIP=None y save sustituye los valores previos 3.2/4.1 por NaN.",
+      "expected": "Rechazar o reintentar la respuesta fallida y preservar el registro anterior.",
+      "observed": "El backfill devuelve una actualización vacía y se pierden ambos FIP.",
+      "root_cause": "Omisión de raise_for_status/validación de estructura en boxscore, combinada con keep='last' incondicional.",
+      "consequence": "Un fallo transitorio destruye observaciones históricas y altera consumidores futuros del store.",
+      "existing_controls": "Schedule usa _get_with_retry, pero boxscore no; su try/except no detecta un HTTP de error cuyo JSON se decodifica. pitcher_bound=0.0 en ratings limita impacto inmediato en picks, no la pérdida de datos.",
+      "minimal_fix": "Usar el helper de HTTP/reintentos y validar que el payload sea un boxscore antes de emitir una fila; una respuesta fallida no debe convertirse en actualización vacía.",
+      "tests_needed": "Reingestión con datos previos ante 429/500 JSON, timeout, payload inválido y boxscore válido.",
+      "acceptance": "Los fallos del proveedor preservan datos previos; los boxscores válidos siguen actualizando.",
+      "limitations": "Transporte simulado, sin llamada a MLB ni cuantificación de filas reales afectadas.",
+      "reproduction_ref": "R-DATA-C"
+    },
+    {
+      "id": "OPENAI-008",
+      "title": "El hook descarta una revisión fallida sin salida ni reintento",
+      "category": "Operación / control de revisión independiente",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P2",
+      "file": ".claude/hooks/crossreview-on-stop.sh",
+      "line": 96,
+      "related_locations": [
+        ".claude/hooks/crossreview-on-stop.sh:17",
+        ".claude/hooks/crossreview-on-stop.sh:101",
+        ".claude/settings.json:1"
+      ],
+      "trigger": "Hay marcador pendiente, Git y Codex resolubles, pero codex review termina con código no cero y sin stdout/stderr.",
+      "problem": "La salida vacía retorna antes de evaluar rc, después de eliminar el marcador.",
+      "evidence": "Cuerpo real del hook en scratch, funciones Git/Codex simuladas; Codex devuelve 7 sin salida: hook_exit=0, stdout='', stderr='', marker_exists=false.",
+      "expected": "Comunicar que la revisión no se ejecutó y conservar/restaurar el marcador, como hace su rama de fallo con texto.",
+      "observed": "Éxito silencioso y revisión pendiente perdida.",
+      "root_cause": "Se comprueba la ausencia de texto antes del código de salida.",
+      "consequence": "El cambio de riesgo queda sin revisión cruzada y el siguiente turno no la reintenta.",
+      "existing_controls": "El hook está cableado a Stop, conserva rc y recupera fallos con texto. Esa rama queda omitida en el caso reproducido; CI no repone esta revisión.",
+      "minimal_fix": "Procesar primero rc!=0. Definir además qué hacer con rc=0 y salida vacía, sin tratarlo implícitamente como evidencia de revisión.",
+      "tests_needed": "Hook real con (7,''), error con texto y veredicto válido; comprobar aviso y persistencia del marcador. Cubrir explícitamente el contrato (0,'').",
+      "acceptance": "Una revisión fallida nunca pierde silenciosamente el marcador y puede reintentarse.",
+      "limitations": "No se invocó el servicio Codex ni se observó este disparador en un turno productivo.",
+      "reproduction_ref": "R-HOOK"
+    },
+    {
+      "id": "OPENAI-009",
+      "title": "La simulación Poisson trata los cuartos asiáticos como apuestas binarias",
+      "category": "Matemáticas / API de simulación",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "evidence_state": "REPRODUCED",
+      "priority": "P3",
+      "file": "src/sqp/simulation/monte_carlo.py",
+      "line": 53,
+      "related_locations": [
+        "src/sqp/simulation/monte_carlo.py:57",
+        "src/sqp/models/distributions.py:285"
+      ],
+      "trigger": "simulate_poisson_game recibe spreads o totals x.25/x.75.",
+      "problem": "Las comparaciones directas contra la línea fraccionaria ignoran las medias victorias/derrotas; total!=2.25 siempre se cumple con marcadores enteros.",
+      "evidence": "lambda_home=1.5, lambda_away=1, total=2.25, 500000 simulaciones, seed=42: MC Over=0.45649 frente a 0.5233048136583535 del analítico contractual (reproducción final del agente principal).",
+      "expected": "Probabilidad de decisión ponderada por unidades ganadas/perdidas, consistente con la liquidación asiática.",
+      "observed": "Diferencia de 6.68 puntos porcentuales por semántica, no fluctuación muestral.",
+      "root_cause": "La simulación no divide la línea ni acumula unidades parciales.",
+      "consequence": "La API y el oráculo usado para contrastes de auditoría devuelven probabilidades incorrectas para cuartos.",
+      "existing_controls": "Seed y pruebas de enteros/medios; no cubren cuartos. Solo se encontraron consumidores en tests/API, no en el pipeline productivo.",
+      "minimal_fix": "Compartir la semántica de unidades parciales con settlement_math o rechazar explícitamente cuartos hasta soportarlos.",
+      "tests_needed": "Comparar ambos lados de spreads/totals .25/.75 con el analítico dentro del error Monte Carlo y conservar los casos enteros/medios.",
+      "acceptance": "La simulación y el contrato analítico coinciden dentro del error muestral.",
+      "limitations": "Sin impacto productivo o pérdida económica demostrados; por ello LOW.",
+      "reproduction_ref": "R-QUANT-MC"
+    }
+  ],
+  "coverage": [
+    {
+      "area": "Arquitectura y ejecución",
+      "criticality": "P0",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "daily, run_all, BAT diario; reconstrucción y prueba real con proveedores sintéticos",
+      "evidence": "V02, R-GATES",
+      "limitations": "Sin ejecución del diario productivo ni todas las combinaciones de deportes."
+    },
+    {
+      "area": "Riesgo, gates y frescura",
+      "criticality": "P0",
+      "status": "REVISADA",
+      "method": "prediction_gate, kelly, bankroll, degradation, revalidation, intraday; lectura, tests e intercalado",
+      "evidence": "V02, R-GATES; registro actual 49 mercados, 0 permitidos",
+      "limitations": "No se mide incidencia productiva; no se prueba cada combinación de configuración."
+    },
+    {
+      "area": "Liquidación y ROI",
+      "criticality": "P0",
+      "status": "REVISADA",
+      "method": "runner, settle, backfill_teams, settlement_math; código, callers y fixtures",
+      "evidence": "V05, R-DATA-A, R-QUANT-ROI",
+      "limitations": "Sin regraduación ni reconciliación de todos los datos reales."
+    },
+    {
+      "area": "Persistencia y concurrencia",
+      "criticality": "P0",
+      "status": "REVISADA",
+      "method": "atomic, lock, odds/served/results/starters/FIP stores; lectura y escrituras en scratch",
+      "evidence": "V05, R-DATA-B/C",
+      "limitations": "Sin simulación de caída eléctrica ni estrés completo multiproceso."
+    },
+    {
+      "area": "Probabilidades, simulación y backtests",
+      "criticality": "P0",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "distributions, engine, roi_engine, tuning, Monte Carlo; cutoffs y casos límite",
+      "evidence": "V03/V04, R-QUANT-MC",
+      "limitations": "No backtest económico completo ni afirmación de rentabilidad."
+    },
+    {
+      "area": "Calibración y promoción",
+      "criticality": "P0",
+      "status": "REVISADA",
+      "method": "calibrator/data/pergame/metrics; splits por evento, staging, objetivos y consumidores",
+      "evidence": "V03/V04, R-QUANT-CAL",
+      "limitations": "Sin entrenar/promover modelos reales ni estimar daño de modelos instalados."
+    },
+    {
+      "area": "Features y ML",
+      "criticality": "P0/P1",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "builders/mlb/temporal, ml_train/ml_predict y evaluación shadow/blocks; fuentes y tests",
+      "evidence": "V03/V04",
+      "limitations": "rest_form/weather/park/starters/independent por interfaces; disponibilidad histórica precisa y todos los modelos no verificados."
+    },
+    {
+      "area": "APIs, cuota y caché",
+      "criticality": "P1",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "Odds API/cache/date_window/ESPN/MLB; errores, reintentos y offline con mocks",
+      "evidence": "V05, R-DATA-C",
+      "limitations": "Sin llamadas a proveedores ni certificación de cuotas/esquemas/disponibilidad vivos."
+    },
+    {
+      "area": "Configuración, instalación y dependencias",
+      "criticality": "P1",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "pyproject, lock, Makefile, Dockerfile, configs y setup_local",
+      "evidence": "V06-V11; Python 3.14.4",
+      "limitations": "Sin instalación/build Docker ni base actual de vulnerabilidades."
+    },
+    {
+      "area": "Seguridad y secretos",
+      "criticality": "P0",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "redacción, detector, targets, permisos CI y superficies de shell/deserialización",
+      "evidence": "V06, V12",
+      "limitations": "Sin escaneo histórico exhaustivo de secretos ni prueba de explotación; no se imprimieron secretos."
+    },
+    {
+      "area": "CI remoto",
+      "criticality": "P1",
+      "status": "NO_VERIFICABLE",
+      "method": "ci.yml inspeccionado; consulta del estado intentada",
+      "evidence": "V13: gh ausente",
+      "limitations": "Checks locales no prueban CI verde."
+    },
+    {
+      "area": "Tareas programadas",
+      "criticality": "P1",
+      "status": "REVISADA",
+      "method": "BAT/PowerShell y consulta de acciones/últimos resultados con aprobación",
+      "evidence": "V15/V16: cuatro tareas principales rc0; Dashboard rc267014",
+      "limitations": "Foto puntual; no se ejecutaron tareas ni se certifica la próxima ejecución."
+    },
+    {
+      "area": "Observabilidad y estado",
+      "criticality": "P1",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "monitoring/health/run_status, registry y logs por agregados",
+      "evidence": "V05, V15; gate generado 2026-09-22T15:15:26.544326Z observado 2026-09-23T10:57:52Z",
+      "limitations": "Sin auditoría exhaustiva de logs; emisiones incidentales de pruebas identificadas."
+    },
+    {
+      "area": "Hooks, skills, loops, prompts y routing",
+      "criticality": "P1/P2",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "settings, hooks reales en harness, generador, routing, contrato y referencias full-audit",
+      "evidence": "V06,V09,V10,V18,R-HOOK",
+      "limitations": "Sin ejecutar todos los loops ni el servicio de revisión/modelos externos."
+    },
+    {
+      "area": "Reportes, utilidades y experimentos",
+      "criticality": "P2/P3",
+      "status": "REVISADA_PARCIALMENTE",
+      "method": "edge_information/model_vs_market_report, gate_status, informes y scripts de soporte",
+      "evidence": "R-QUANT-ROI,V18; lint/tipos globales",
+      "limitations": "HTML/JS completo, todos los scripts de investigación y UI no revisados exhaustivamente."
+    },
+    {
+      "area": "Históricos, binarios, cachés y limpieza",
+      "criticality": "P3",
+      "status": "EXCLUIDA",
+      "method": "Inventario y preservación por hash; no retirada de archivos",
+      "evidence": "2/2 antiguos entregables OpenAI iguales al archivo preservado",
+      "limitations": "Sin limpieza ni deserializar artefactos; ausencia de referencias no se usa para autorizar borrado."
+    },
+    {
+      "area": "Pagos, autenticación web pública y SQL",
+      "criticality": "—",
+      "status": "NO_APLICABLE",
+      "method": "No identificados como arquitectura primaria del sistema inspeccionado",
+      "evidence": "Inventario Python/CLI/CSV",
+      "limitations": "No constituye inventario de servicios externos desconocidos."
+    }
+  ],
+  "validations": [
+    {
+      "id": "V01",
+      "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest tests/test_prediction_gate.py tests/test_frescura_cuotas_diario.py tests/test_finite_prices.py tests/test_daily_exposure.py",
+      "exit_code": 1,
+      "result": "72 passed, 45 errors in 247.97s; los 45 errores ocurren en setup al gestionar el basetemp preexistente (WinError 5).",
+      "classification": "ENVIRONMENTAL_FAILURE",
+      "resolution": "No se borró/restauró el directorio ni se cambiaron permisos; V02 usa un basetemp nuevo dentro del scratch autorizado."
+    },
+    {
+      "id": "V02",
+      "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-openai-root-20260923b tests/test_prediction_gate.py tests/test_frescura_cuotas_diario.py tests/test_finite_prices.py tests/test_daily_exposure.py tests/test_revalidation.py tests/test_intraday_scan.py tests/test_live_gate_integration.py tests/test_bankroll.py tests/test_degradation.py tests/test_decision_probability.py",
+      "exit_code": 0,
+      "passed": 216,
+      "result": "216 passed in 83.48s"
+    },
+    {
+      "id": "V03",
+      "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-quant tests/test_distributions.py tests/test_monte_carlo.py tests/test_audit_temporal.py tests/test_temporal_cutoff.py tests/test_calibration_metrics.py tests/test_calibration_data.py tests/test_backtest_markets.py tests/test_backtest_parity.py tests/test_realized_roi_consistency.py",
+      "exit_code": 0,
+      "passed": 99,
+      "result": "99 passed in 246.59s"
+    },
+    {
+      "id": "V04",
+      "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-quant-20260923-b tests/test_calibration_live.py tests/test_pergame_calibration.py tests/test_sandbox_calibration_keys.py tests/test_mlb_features.py tests/test_pitcher_features.py tests/test_model_vs_market.py tests/test_roi_engine.py tests/test_market_tuning.py tests/test_backtest_tuning.py",
+      "exit_code": 0,
+      "passed": 101,
+      "result": "101 passed in 67.12s"
+    },
+    {
+      "id": "V05",
+      "command": "python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-data tests/test_storage.py tests/test_odds_store.py tests/test_served_store.py tests/test_settle_persist.py tests/test_settle_candidates.py tests/test_settlement_math.py tests/settlement tests/test_odds_api_retry.py tests/test_odds_cache.py tests/test_odds_api_historical.py tests/test_provider_date_window.py tests/test_run_status.py tests/test_health.py tests/test_health_scheduled_tasks.py",
+      "exit_code": 0,
+      "summary": "302 passed in 246.45s (0:04:06)",
+      "session_id": 21945,
+      "result": "PASSED",
+      "passed": 302
+    },
+    {
+      "id": "V06",
+      "command": "$env:PYTHONDONTWRITEBYTECODE='1'; python -B -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-infra tests/test_audit_hooks.py tests/test_hook_targets.py tests/test_claude_model_routing.py tests/test_agent_instruction_sync.py tests/test_portable_setup.py tests/test_astra_codex_integration.py",
+      "exit_code": 0,
+      "passed": 118,
+      "result": "118 passed in 124.32s"
+    },
+    {
+      "id": "V07",
+      "command": "python -B -m ruff check --no-cache src scripts tests",
+      "exit_code": 0,
+      "result": "All checks passed!"
+    },
+    {
+      "id": "V08",
+      "command": "python -B -m mypy --cache-dir=.codex-tmp/mypy-audit src",
+      "exit_code": 0,
+      "result": "Success: no issues found in 106 source files"
+    },
+    {
+      "id": "V09",
+      "command": "python -B scripts/sync_agent_instructions.py --check",
+      "exit_code": 0,
+      "result": "Agent instructions: synchronized"
+    },
+    {
+      "id": "V10",
+      "command": "python -B scripts/validate_claude_model_routing.py",
+      "exit_code": 0,
+      "result": "Claude model routing configuration: OK"
+    },
+    {
+      "id": "V11",
+      "command": "python -B -m pip check",
+      "exit_code": 0,
+      "result": "No broken requirements found.",
+      "limitation": "No es una consulta de vulnerabilidades actuales."
+    },
+    {
+      "id": "V12",
+      "command": "git ls-files .env .env.local .env.production",
+      "exit_code": 0,
+      "result": "Salida vacía; no se imprimieron valores de credenciales.",
+      "limitation": "No es un escaneo de toda la historia Git."
+    },
+    {
+      "id": "V13",
+      "command": "gh run list --branch main --limit 1 --json conclusion,createdAt,status,headSha,url",
+      "exit_code": 1,
+      "result": "gh no reconocido; corroboración FileNotFoundError [WinError 2].",
+      "classification": "ENVIRONMENTAL_FAILURE",
+      "status": "NOT_VERIFIABLE"
+    },
+    {
+      "id": "V14",
+      "command": "Get-ScheduledTask -TaskName 'SQP_*' -ErrorAction Stop | Select-Object TaskName,State,@{Name='LogonType';Expression={$_.Principal.LogonType}},@{Name='Execute';Expression={$_.Actions.Execute}},@{Name='Arguments';Expression={$_.Actions.Arguments}} | ConvertTo-Json -Depth 3",
+      "exit_code": 1,
+      "result": "Acceso denegado, HRESULT 0x80041003",
+      "classification": "ENVIRONMENTAL_FAILURE",
+      "resolution": "Consulta de estado reintentada con aprobación en V15/V16."
+    },
+    {
+      "id": "V15",
+      "command": "Get-ScheduledTask -TaskName 'SQP_*' | ForEach-Object { $taskState = Get-ScheduledTaskInfo -TaskName $_.TaskName -TaskPath $_.TaskPath; [PSCustomObject]@{TaskName=$_.TaskName;State=$_.State;LastRunTime=$taskState.LastRunTime;LastTaskResult=$taskState.LastTaskResult;NextRunTime=$taskState.NextRunTime} } | Format-Table -AutoSize",
+      "exit_code": 0,
+      "approval": "require_escalated, solo lectura",
+      "result": "Backfill: 2026-09-21 09:00 rc0; Capture_Close: 2026-09-23 07:52:11 rc0; Diario_Completo: 2026-09-22 12:00:01 rc0; Validate_OOS: 2026-09-17 00:00:27 rc0; Dashboard: 2026-09-23 01:29:18 rc267014. Horas locales devueltas por Windows, no UTC; todos Ready."
+    },
+    {
+      "id": "V16",
+      "command": "Get-ScheduledTask -TaskName 'SQP_*' | Select-Object TaskName,@{Name='Execute';Expression={$_.Actions.Execute}},@{Name='Arguments';Expression={$_.Actions.Arguments}},@{Name='WorkingDirectory';Expression={$_.Actions.WorkingDirectory}} | Format-List",
+      "exit_code": 0,
+      "approval": "require_escalated, solo lectura",
+      "result": "Las acciones de las cinco tareas apuntan a C:\\dev\\3\\sports-quant-platform; no se ejecutó/modificó ninguna tarea."
+    },
+    {
+      "id": "V17",
+      "command": "python -B -c \"import sqp.logging_config as lc; lc._file_handler_resuelto=True; import pytest; raise SystemExit(pytest.main(['-q','-p','no:cacheprovider','--basetemp=.codex-tmp/pytest-openai-history-20260923c','tests/test_gate_status_cli.py','tests/test_claude_system_contract.py::test_general_skills_share_an_identical_guardrail_block','tests/test_claude_system_contract.py::test_general_skills_end_with_verification_gate']))\"",
+      "exit_code": 1,
+      "result": "No tests ran. El último selector no existe: error de invocación del auditor, no fallo del producto.",
+      "classification": "NOT_VERIFIABLE",
+      "resolution": "Selector corregido en V18; no queda validación bloqueada por este error."
+    },
+    {
+      "id": "V18",
+      "command": "python -B -c \"import sqp.logging_config as lc; lc._file_handler_resuelto=True; import pytest; raise SystemExit(pytest.main(['-q','-p','no:cacheprovider','--basetemp=.codex-tmp/pytest-openai-history-20260923d','tests/test_gate_status_cli.py','tests/test_claude_system_contract.py::test_general_skills_share_an_identical_guardrail_block','tests/test_claude_system_contract.py::test_all_general_loops_finish_through_verification_gate']))\"",
+      "exit_code": 0,
+      "passed": 8,
+      "result": "8 passed in 4.27s"
+    }
+  ],
+  "reproductions": [
+    {
+      "id": "R-GATES",
+      "finding_ids": [
+        "OPENAI-001",
+        "OPENAI-002"
+      ],
+      "command": "python -B .codex-tmp/audit-openai-gates.py",
+      "exit_code": 0,
+      "harness": "\"\"\"Read-only audit probes. All writes are under a unique scratch root.\"\"\"\nimport json\nimport runpy\nimport sys\nimport threading\nimport tempfile\nfrom concurrent.futures import ThreadPoolExecutor\nfrom contextlib import ExitStack\nfrom pathlib import Path\nfrom unittest.mock import patch\n\nsys.path.insert(0, str(Path.cwd() / 'src'))\nsys.path.insert(0, str(Path.cwd() / 'scripts'))\nimport pandas as pd\nfrom sqp.risk import prediction_gate as pg\n\nROOT = Path(tempfile.mkdtemp(prefix='gate-probes-', dir='.codex-tmp')).resolve()\nrows = runpy.run_path('tests/test_prediction_gate.py')['_rows']\npassing = rows(220, 100, p_model=.62, p_market=.5, price=2.1)\nfailing = rows(160, 160, p_model=.62, p_market=.5, price=2.1)\nkey = 'brasileirao|totals'\n\n# A complete JSON scalar corruption must never manufacture authorization.\nmalformed = ROOT / 'malformed'\nmalformed.mkdir()\n(malformed / pg.PREDICTION_GATE_FILENAME).write_text(\n    json.dumps({'markets': {key: {'allowed': 'false', 'latched': False}}}),\n    encoding='utf-8')\nprint('MALFORMED', json.dumps({'allowed_string_false': pg.market_allowed(\n    pg.load_prediction_gate(malformed), 'brasileirao', 'totals')}), flush=True)\n\n# Deterministic interleaving: both read an allowed state; B latches, then A\n# publishes its earlier snapshot. No production data or global file is used.\nrace = ROOT / 'race'\npg.write_prediction_gate(passing, race)\noriginal_load = pg._load_previous_state\na_read = threading.Event()\nb_done = threading.Event()\ndef coordinated_load(bets_dir):\n    previous = original_load(bets_dir)\n    if threading.current_thread().name.endswith('_0'):\n        a_read.set()\n        if not b_done.wait(30):\n            raise RuntimeError('probe timeout')\n    return previous\ndef newer_failure():\n    if not a_read.wait(30):\n        raise RuntimeError('probe timeout')\n    pg.write_prediction_gate(failing, race)\n    denied = pg.load_prediction_gate(race)[key]\n    print('RACE_AFTER_B', json.dumps(denied), flush=True)\n    b_done.set()\nwith patch.object(pg, '_load_previous_state', coordinated_load):\n    with ThreadPoolExecutor(max_workers=2, thread_name_prefix='probe') as pool:\n        a = pool.submit(pg.write_prediction_gate, passing, race)\n        b = pool.submit(newer_failure)\n        a.result(timeout=40)\n        b.result(timeout=40)\nprint('RACE_FINAL', json.dumps(pg.load_prediction_gate(race)[key]), flush=True)\n\n# Actual run_all and actual run_league, synthetic provider and isolated stores.\nimport run_all\nfrom sqp.pipeline import daily\nfrom sqp.providers.synthetic import SyntheticProvider\nfrom sqp.storage.served_store import ServedStore\nfrom sqp.audit import segments\nhelpers = runpy.run_path('tests/test_live_gate_integration.py')\ns = helpers['_settings']()\ns.degradation_enabled = False\ns.bankroll_dynamic = False\ns.weather.enabled = False\nwork = ROOT / 'orchestration'\nbets = work / 'data' / 'bets'\nbets.mkdir(parents=True)\nhelpers['_write_gate'](work, True)\nsp = SyntheticProvider('basketball')\nresults = sp.fetch_results('nba')\nevents = sp.fetch_odds('nba', three_way=False)\nclass RS:\n    def __init__(self, *a, **k): pass\n    def load(self, *a, **k): return results\nfailed_today = pd.concat([\n    rows(160, 160, p_model=.62, p_market=.5, price=2.1, league='nba', market=m)\n    for m in ('h2h', 'spreads', 'totals')], ignore_index=True)\nwith ExitStack() as stack:\n    patches = [\n        patch.object(run_all, 'ROOT', work),\n        patch.object(daily, 'ROOT', work),\n        patch.object(run_all.Settings, 'load', return_value=s),\n        patch.object(run_all, '_supported_leagues', return_value={'nba':'basketball_nba'}),\n        patch.object(run_all, '_select_live', return_value=(['nba'], ['nba'])),\n        patch.object(run_all, 'unsettled_completed_picks', return_value={}),\n        patch.object(daily, 'OddsAPIClient', lambda *a, **k: helpers['_FakeClient'](events)),\n        patch.object(daily, 'ResultsStore', RS),\n        patch.object(daily, '_fetch_recent_scores', return_value=[]),\n        patch.object(ServedStore, 'load_all_graded', return_value=failed_today),\n        patch.object(run_all, 'consolidated_report', return_value=work/'report.md'),\n        patch.object(run_all, 'settlement_audit_report', return_value=work/'audit.md'),\n        patch.object(segments, 'segment_diagnostics_report', return_value=work/'segments.md'),\n        patch.object(run_all, 'daily_clv', return_value={'n_matched':0,'n_unmatched':0,'path':work/'clv.md','gate_path':work/'clv.json'}),\n        patch.object(run_all, 'build_pick_history', return_value=pd.DataFrame()),\n        patch.object(run_all, 'stage_calibrators_from_settled', return_value=[]),\n        patch.object(sys, 'argv', ['run_all.py','--mode','live','--no-html']),\n    ]\n    for item in patches: stack.enter_context(item)\n    rc = run_all.main()\ncandidate_path = work / 'data' / 'predictions' / 'candidates_nba.csv'\ncandidates = pd.read_csv(candidate_path)\ngate = pg.load_prediction_gate(bets)\nprint('ORCHESTRATION', json.dumps({\n    'exit':rc, 'candidates':len(candidates),\n    'positive_stakes':int((candidates.stake > 0).sum()),\n    'total_stake':float(candidates.stake.sum()),\n    'final_allowed':{k:v['allowed'] for k,v in gate.items()},\n    'final_latched':{k:v['latched'] for k,v in gate.items()},\n    'root':str(ROOT)}), flush=True)\n\r\n",
+      "evidence_state": "REPRODUCED",
+      "observed": {
+        "after_failing_writer": {
+          "allowed": false,
+          "latched": true,
+          "n": 320,
+          "wins": 160,
+          "p_value": 0.5222841351972946
+        },
+        "after_stale_writer": {
+          "allowed": true,
+          "latched": false,
+          "n": 320,
+          "wins": 220,
+          "p_value": 8.410101052042076e-12
+        },
+        "orchestration": {
+          "exit": 0,
+          "candidates": 4,
+          "positive_stakes": 4,
+          "total_stake": 13.56,
+          "final_allowed": {
+            "nba|h2h": false,
+            "nba|spreads": false,
+            "nba|totals": false
+          },
+          "final_latched": {
+            "nba|h2h": true,
+            "nba|spreads": true,
+            "nba|totals": true
+          }
+        },
+        "extra_unconfirmed_observation": {
+          "allowed_string_false": true
+        }
+      },
+      "scratch": ".codex-tmp/gate-probes-adx1_4l1",
+      "safety": "Todo output de datos redirigido al scratch; proveedores y servicios auxiliares sustituidos. Incidentalmente logger real añadió mensajes a logs/sqp.log. Sin liberación del pestillo ni apuestas reales."
+    },
+    {
+      "finding_id": "OPENAI-003",
+      "subtask_id": "DATA-A",
+      "command": "@'\nimport sys, tempfile, json\nfrom pathlib import Path\nfrom datetime import datetime, timedelta, timezone\nfrom unittest.mock import patch\nsys.path.insert(0, 'src')\nimport pandas as pd\nimport sqp.settlement.runner as runner\nfrom sqp.storage.results_store import ResultsStore\nfrom sqp.storage.served_store import ServedStore\nroot = Path(tempfile.mkdtemp(prefix='audit-data-history-', dir='.codex-tmp'))\nstart = datetime.now(timezone.utc) - timedelta(days=4)\nrow = dict(league='wnba', event_id='older-game', home='Las Vegas Aces', away='Chicago Sky', start_time=start.isoformat(), game_date=start.date().isoformat(), market='h2h', selection='Las Vegas Aces', line=float('nan'), price_decimal=2.0, bookmaker='test', model_probability=.6, estimated_probability=.6, calibrated_probability=.6, implied_probability_novig=.5, estimated_edge=.1, books_count=3, stake=100., data_label='real', flags='', generated_at=(start-timedelta(hours=2)).isoformat())\npred = root/'data'/'predictions'\npred.mkdir(parents=True)\npd.DataFrame([row]).to_csv(pred/'candidates_wnba.csv', index=False)\npd.DataFrame([row]).to_csv(pred/'predictions_wnba.csv', index=False)\nResultsStore(root).upsert('wnba', [dict(date=start.date().isoformat(), home=row['home'], away=row['away'], game_id='old-id', home_score=70, away_score=80, neutral=False)])\nServedStore(root).append_served('wnba', [dict(row, stake=0.)])\nclass Client:\n    def fetch_scores(self, *args, **kwargs):\n        return [dict(id='recent-unrelated-game', completed=True, home_team='A', away_team='B', scores=[dict(name='A',score='2'),dict(name='B',score='1')])]\nwith patch.object(runner, 'ROOT', root):\n    settled=runner.fetch_and_settle('wnba', None, client=Client())\n    served=pd.read_csv(ServedStore(root).graded_path('wnba'))\n    print(json.dumps(dict(candidate=settled[['result','pnl','flags']].to_dict('records'), served=served[['result','pnl']].to_dict('records'), expected_candidate=dict(result='loss',pnl=-100), scratch=str(root))))\n'@ | python -B -",
+      "exit_code": 0,
+      "session_id": 64986,
+      "evidence_state": "REPRODUCED",
+      "stdout": "2026-09-23 01:52:11,896 | WARNING | sqp.settle | [wnba] served stream: 1 pending row(s) older than the 2-day scores window; they will not grade from this feed (re-run settlement with a deeper window or accept the gap).\n2026-09-23 01:52:12,564 | INFO | sqp.settle | [wnba] served stream: 1 probabilities graded for calibration (0 still pending scores).\n2026-09-23 01:52:12,758 | WARNING | sqp.settle | [wnba] 1 pick(s) comenzados hace >3d sin resultado: se liquidan como VOID (flag stale_void, pnl 0).\n{\"candidate\": [{\"result\": \"void\", \"pnl\": 0.0, \"flags\": \"stale_void\"}], \"served\": [{\"result\": \"loss\", \"pnl\": -0.0}], \"expected_candidate\": {\"result\": \"loss\", \"pnl\": -100}, \"scratch\": \"C:\\\\dev\\\\3\\\\sports-quant-platform\\\\.codex-tmp\\\\audit-data-history-0ycp8032\"}\n",
+      "id": "R-DATA-A"
+    },
+    {
+      "finding_id": "OPENAI-006",
+      "subtask_id": "DATA-B",
+      "command": "@'\nimport sys, tempfile, json\nfrom pathlib import Path\nfrom unittest.mock import patch\nsys.path.insert(0,'src')\nimport pandas as pd\nfrom sqp.storage import results_store, starters, starter_fip\nroot = Path(tempfile.mkdtemp(prefix='audit-data-race-',dir='.codex-tmp'))\nresult=[]\ncases=[(results_store, results_store.ResultsStore, 'upsert',dict(date='2026-09-20',home='A',away='B',home_score=1,away_score=0,neutral=False)),(starters,starters.StartersStore,'save',dict(date='2026-09-20',home_starter='Pitcher A',away_starter='Pitcher B')),(starter_fip,starter_fip.StarterFIPStore,'save',dict(date='2026-09-20',home_starter='Pitcher A',away_starter='Pitcher B',home_starter_fip=3.,away_starter_fip=4.))]\nfor module,cls,method,base in cases:\n    store=cls(root)\n    save=getattr(store,method)\n    save('audit',[dict(base,game_id='seed')])\n    atomic=module.atomic_write_csv\n    returns={}\n    def interleave(df,path):\n        with patch.object(module,'atomic_write_csv',atomic):\n            returns['B']=save('audit',[dict(base,game_id='B')])\n        atomic(df,path)\n    with patch.object(module,'atomic_write_csv',interleave):\n        returns['A']=save('audit',[dict(base,game_id='A')])\n    ids=pd.read_csv(store.path('audit'))['game_id'].tolist()\n    result.append(dict(store=cls.__name__,successful_returns=returns,expected_ids=['seed','A','B'],actual_ids=ids))\nprint(json.dumps(dict(cases=result,scratch=str(root))))\n'@ | python -B -",
+      "exit_code": 0,
+      "session_id": 15326,
+      "evidence_state": "REPRODUCED",
+      "stdout": "{\"cases\": [{\"store\": \"ResultsStore\", \"successful_returns\": {\"B\": 1, \"A\": 1}, \"expected_ids\": [\"seed\", \"A\", \"B\"], \"actual_ids\": [\"seed\", \"A\"]}, {\"store\": \"StartersStore\", \"successful_returns\": {\"B\": 2, \"A\": 2}, \"expected_ids\": [\"seed\", \"A\", \"B\"], \"actual_ids\": [\"seed\", \"A\"]}, {\"store\": \"StarterFIPStore\", \"successful_returns\": {\"B\": 2, \"A\": 2}, \"expected_ids\": [\"seed\", \"A\", \"B\"], \"actual_ids\": [\"seed\", \"A\"]}], \"scratch\": \"C:\\\\dev\\\\3\\\\sports-quant-platform\\\\.codex-tmp\\\\audit-data-race-ueivnxfv\"}\n",
+      "id": "R-DATA-B"
+    },
+    {
+      "finding_id": "OPENAI-007",
+      "subtask_id": "DATA-C",
+      "command": "@'\nimport sys,json,tempfile\nfrom pathlib import Path\nsys.path.insert(0,'src')\nimport pandas as pd\nfrom sqp.providers.mlb_statsapi import MLBStatsProvider\nfrom sqp.storage.starter_fip import StarterFIPStore\nroot=Path(tempfile.mkdtemp(prefix='audit-data-fip-',dir='.codex-tmp'))\nstore=StarterFIPStore(root)\nstore.save('mlb',[dict(game_id='42',date='2026-09-20',home_starter='A',away_starter='B',home_starter_fip=3.2,away_starter_fip=4.1)])\nclass Response:\n    def __init__(self,status,data): self.status_code=status; self.data=data\n    def raise_for_status(self):\n        if self.status_code>=400: raise RuntimeError('upstream HTTP error')\n    def json(self): return self.data\nclass Session:\n    def get(self,url,**kwargs):\n        if url.endswith('/schedule'): return Response(200,dict(dates=[dict(date='2026-09-20',games=[dict(gamePk=42,status=dict(abstractGameState='Final',detailedState='Final'))])]))\n        return Response(500,dict(message='Internal Server Error'))\nrows=MLBStatsProvider(session=Session()).fetch_starter_fip(days_back=3)\nstore.save('mlb',rows)\nsaved=pd.read_csv(store.path('mlb'))\nprint(json.dumps(dict(response_status=500,provider_rows=rows,saved=saved.to_dict('records'),both_ratings_erased=bool(saved[['home_starter_fip','away_starter_fip']].isna().all().all()),scratch=str(root))))\n'@ | python -B -",
+      "exit_code": 0,
+      "evidence_state": "REPRODUCED",
+      "stdout": "{\"response_status\": 500, \"provider_rows\": [{\"game_id\": \"42\", \"date\": \"2026-09-20\", \"home_starter\": null, \"home_starter_fip\": null, \"away_starter\": null, \"away_starter_fip\": null}], \"saved\": [{\"game_id\": 42, \"date\": \"2026-09-20\", \"home_starter\": NaN, \"home_starter_fip\": NaN, \"away_starter\": NaN, \"away_starter_fip\": NaN, \"ingested_at\": \"2026-09-23T10:52:41+00:00\"}], \"both_ratings_erased\": true, \"scratch\": \"C:\\\\dev\\\\3\\\\sports-quant-platform\\\\.codex-tmp\\\\audit-data-fip-5fs3zhxc\"}\n",
+      "id": "R-DATA-C"
+    },
+    {
+      "id": "R-QUANT-CAL",
+      "combined_reproduction_ids": [
+        "R-QUANT-ROI",
+        "R-QUANT-MC"
+      ],
+      "finding_ids": [
+        "OPENAI-004",
+        "OPENAI-005",
+        "OPENAI-009"
+      ],
+      "command": "@'\nimport json\nfrom unittest.mock import patch\nimport sqp.logging_config as lc\nlc._file_handler_resuelto = True\nimport pandas as pd\nfrom sqp.calibration import calibrator as c\nfrom sqp.evaluation.edge_information import edge_ladder\nfrom sqp.models.distributions import poisson_match_probs\nfrom sqp.simulation.monte_carlo import simulate_poisson_game\ncaptured = []\ndef capture(df, **kwargs):\n    captured.append(df.copy())\n    raise ValueError('CAPTURE_ONLY_NO_WRITE')\nhist = pd.DataFrame({'league':'epl','market':'totals','event_id':[str(i) for i in range(100)],'selection':'Over','line':2.25,'date':pd.date_range('2025-01-01',periods=100).strftime('%Y-%m-%d'),'estimated_probability':2/3,'result':['win']*60+['loss']*20+['half_loss']*20})\nwith patch.object(c, 'train_calibration', capture), patch.object(c, 'revalidate_live_registry', lambda: []):\n    result = c.train_market_calibrators(hist)\nprint(json.dumps({'probe':'calibration','input_rows':len(hist),'training_rows':len(captured[0]),'target_mean':float(captured[0].won.mean()),'expected':60/90,'intercept':result[0]['error']}))\nh = pd.DataFrame({'event_id':[str(i) for i in range(11)],'market':'totals','selection':'Over','line':2.25,'result':['win']+['half_loss']*10,'price_decimal':2.0,'estimated_edge':0.1})\nout = edge_ladder(h, thresholds=(0.,), n_boot=10)\nprint(json.dumps({'probe':'roi','rows':int(out.iloc[0].n_rows),'actual_roi':float(out.iloc[0].roi_flat),'expected_roi':(1-10*.5)/11}))\na=poisson_match_probs(1.5,1.0,None,2.25)['over']\nm=simulate_poisson_game(1.5,1.0,None,2.25,n_sims=500000,seed=42)['over_estimated_probability']\nprint(json.dumps({'probe':'monte_carlo','analytic_over':a,'simulation_over':m}))\n'@ | python -B -",
+      "exit_code": 0,
+      "stdout": "{\"probe\": \"calibration\", \"input_rows\": 100, \"training_rows\": 80, \"target_mean\": 0.75, \"expected\": 0.6666666666666666, \"intercept\": \"CAPTURE_ONLY_NO_WRITE\"}\r\n{\"probe\": \"roi\", \"rows\": 1, \"actual_roi\": 1.0, \"expected_roi\": -0.36363636363636365}\r\n{\"probe\": \"monte_carlo\", \"analytic_over\": 0.5233048136583535, \"simulation_over\": 0.45649}\r\n",
+      "evidence_state": "REPRODUCED",
+      "safety": "Todo en memoria; train_calibration interceptado antes de escribir; revalidate_live_registry sustituido y handler de archivo deshabilitado. CAPTURE_ONLY_NO_WRITE es un centinela deliberado del arnés, no un fallo del entrenamiento real."
+    },
+    {
+      "id": "R-HOOK",
+      "finding_ids": [
+        "OPENAI-008"
+      ],
+      "command": "@'\nfrom pathlib import Path\nimport json, os, subprocess\nroot=Path.cwd()\nscratch=(root/'.codex-tmp/repro-crossreview-infra-20260923').resolve()\nassert scratch.is_relative_to((root/'.codex-tmp').resolve())\n(scratch/'.claude').mkdir(parents=True, exist_ok=True)\nmarker=scratch/'.claude/.crossreview-pending'\nmarker.write_text('fixture',encoding='utf-8')\nhook=(root/'.claude/hooks/crossreview-on-stop.sh').read_text(encoding='utf-8')\nprefix='''git() { case \"$*\" in *--git-dir*) echo .git;; *--porcelain*) :;; *--abbrev-ref*) echo origin/main;; *rev-list*) echo 1;; esac; }\ncodex() { return 7; }\n'''\nenv={**os.environ,'CLAUDE_PROJECT_DIR':str(scratch),'PYTHONDONTWRITEBYTECODE':'1'}\nr=subprocess.run(['C:/Program Files/Git/bin/bash.exe','-c',prefix+hook],input='{}',text=True,capture_output=True,env=env,cwd=scratch,timeout=30)\nprint(json.dumps({'scenario':'codex exit 7 with empty output','hook_exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr,'marker_exists':marker.exists()}))\n'@ | python -B -",
+      "exit_code": 0,
+      "evidence_state": "REPRODUCED",
+      "observed": {
+        "scenario": "codex exit 7 with empty output",
+        "hook_exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "marker_exists": false
+      },
+      "safety": "Cuerpo real del hook ejecutado en scratch, funciones git/codex falsas. No servicio externo."
+    }
+  ],
+  "historical_sources": [
+    {
+      "path": "audit/audit-2026-09-22-r2/FINDINGS.md",
+      "round_id": "audit-2026-09-22-r2",
+      "sha256": "2105cdbf7868431f255fd28d3d8716c1dee4eaddada598d250be3f9802652f19"
+    },
+    {
+      "path": "audit/audit-2026-09-22-r2/openai/REPORT.md",
+      "round_id": "audit-2026-09-18",
+      "sha256": "a593000e9f5644a6b34879c980b4ea90a96bd3617118d043030da1b4221db863"
+    }
+  ],
+  "historical_revalidation": [
+    {
+      "source_round": "audit-2026-09-22-r2",
+      "id": "AUD-001",
+      "status": "CORREGIDO_EN_EL_ESTADO_INSPECCIONADO",
+      "evidence": "git status no muestra cambios en src/scripts/configs/BAT que activen el guard; solo entregables de auditoría preexistentes. La condición local descrita dejó de estar presente.",
+      "limitation": "No predice el estado del árbol ni el resultado de una ejecución futura."
+    },
+    {
+      "source_round": "audit-2026-09-22-r2",
+      "id": "AUD-002",
+      "status": "CORREGIDO_PARA_EL_DISPARADOR_ORIGINAL",
+      "evidence": "_load_previous_state estricto, sentinel y recuperación conservadora; tests completos prediction_gate y degradation aprobados en V02.",
+      "limitation": "La carrera independiente OPENAI-002 de esta ronda sigue abierta; no equivale a pérdida de estado por registro ilegible."
+    },
+    {
+      "source_round": "audit-2026-09-22-r2",
+      "id": "AUD-003",
+      "status": "CORREGIDO",
+      "evidence": "Código actual distingue K< n <=50 como tolerancia informativa y >50 como error; pruebas específicas de ambas ramas aprobadas en V02.",
+      "limitation": "No se revalida ni modifica la decisión estadística del pre-registro."
+    },
+    {
+      "source_round": "audit-2026-09-22-r2",
+      "id": "AUD-004",
+      "status": "CORREGIDO",
+      "evidence": "full-audit enlaza audit-workflow, conserva guardrails y verification-gate; sync/routing V06/V09/V10 y contratos V18 aprobados.",
+      "limitation": "No se ejecutaron loops mutadores."
+    },
+    {
+      "source_round": "audit-2026-09-18",
+      "id": "OPENAI-001",
+      "status": "CORREGIDO",
+      "evidence": "gate_status usa verdict_table/market_allowed del registro y evaluate_markets para progreso; seis tests CLI en V18 aprobados.",
+      "limitation": "No se invocó el CLI contra servicios externos."
+    },
+    {
+      "source_round": "audit-2026-09-18",
+      "id": "OPENAI-002",
+      "status": "CORREGIDO_PARA_LA_RAIZ_JSON",
+      "evidence": "load_prediction_gate verifica isinstance(payload,dict); pruebas de registros inválidos aprobadas en V02.",
+      "limitation": "No certifica validación completa de todos los campos internos; el endurecimiento de tipos internos se conserva como observación separada."
+    },
+    {
+      "source_round": "audit-2026-09-18",
+      "id": "OPENAI-003",
+      "status": "CORREGIDO",
+      "evidence": "run_all anuncia gate_allowed_markets después de escribir. R-GATES observó 'ninguno' con registro final cerrado, aunque descubrió un defecto distinto de orden en los picks.",
+      "limitation": "OPENAI-001 actual tiene otra causa: generación anterior a la actualización."
+    }
+  ],
+  "historical_relation": "Los nueve defectos actuales son nuevos respecto a esos siete IDs, no se afirma que sean recién introducidos. El candidato de carrera antes NOT_VERIFIABLE en r18 queda REPRODUCED como OPENAI-002 actual. Otras rondas no revalidadas íntegramente.",
+  "effective_gate": {
+    "observed_at_utc": "2026-09-23T10:57:52.019277+00:00",
+    "generated_at": "2026-09-22T15:15:26.544326+00:00",
+    "markets": 49,
+    "allowed": [],
+    "blocked_sentinel": false
+  },
+  "limitations": [
+    "Estado remoto de CI no verificable: gh ausente.",
+    "No consulta actual de vulnerabilidades.",
+    "Suite focalizada; no suite completa/cobertura/build Docker/ejecución de cada loop/UI.",
+    "No ejecución de apuestas, backfills reales ni providers externos; daño productivo y rentabilidad no medidos.",
+    "Disponibilidad temporal precisa de todos los datos/modelos históricos no reconstruida.",
+    "No escaneo exhaustivo de historial de secretos.",
+    "Histórico comparado acotado a fuentes identificadas; no cierre global de rondas anteriores."
+  ],
+  "candidates_not_confirmed": [
+    {
+      "state": "INFERRED",
+      "candidate": "Tipos internos del JSON del gate (allowed cadena false)",
+      "observed": "truthy en scratch",
+      "reason": "No se encontró productor legítimo de ese tipo; escritores emiten bool. Endurecimiento separado, no décimo defecto operacional."
+    },
+    {
+      "state": "INFERRED",
+      "candidate": "Cutoff intradía preciso de calibración/features",
+      "reason": "Falta timestamp verificable de disponibilidad para cada observación; no se confirma leakage."
+    },
+    {
+      "state": "NOT_VERIFIABLE",
+      "candidate": "Extensión del test de signo a medias liquidaciones",
+      "reason": "El pre-registro binario no fija un nuevo contraste para cuartos; no se inventa fórmula ni se confunde EV esperado con ROI realizado."
+    }
+  ],
+  "dismissed": [
+    "Locks existentes en _persist_settled/backfill_settled_file.",
+    "Guard scores_trusted ante payload completamente vacío.",
+    "OFFLINE_MODE guard independiente de cache.",
+    "Temporales únicos y fsync en atomic.",
+    "pending/flush diario y group_col en rutas revisadas.",
+    "Fixture global de aislamiento de test_calibration_live.",
+    "Secretos no impresos por detector; sincronización/routing actualmente verdes."
+  ],
+  "files_modified": [
+    "audit/latest/openai/REPORT.md",
+    "audit/latest/openai/EVIDENCE.json"
+  ],
+  "incidental_effects": [
+    {
+      "path": "logs/sqp.log",
+      "state": "OBSERVED",
+      "detail": "Imports/tests/reproducciones previas usaron handler real. Consulta agregada de últimas 3000 líneas confirmó cinco referencias al scratch gate-probes-adx1_4l1 y el warning de la carrera. No se borró/restauró ni se atribuye toda actividad concurrente.",
+      "last_probes": "Handler deshabilitado en memoria."
+    },
+    {
+      "path": ".codex-tmp/",
+      "detail": "Fixtures, cachés de mypy/pytest, arneses y drafts; scratch autorizado, sin limpieza."
+    }
+  ],
+  "manifest_update": {
+    "performed": false,
+    "reason": "Diagnóstico de segundo auditor: solo su subdirectorio. Coordinador integra rutas/hashes/fecha/validaciones; no consolidación solicitada."
+  },
+  "bookkeeping_excluded": [
+    ".claude/automation/runtime/current-task.md",
+    "Obsidian"
+  ],
+  "final_result": "DIAGNOSTICO_COMPLETADO_CON_HALLAZGOS",
+  "final_result_rationale": "9 confirmados;3P1 pendientes. No PASS y no remediación.844pruebas focalizadas aprobadas con límites explícitos.",
+  "report_sha256": "83956da78b83ed1bca53c136ba30871cec65d07ab3d59ac430d68ee0b6256542",
+  "published_at_utc": "2026-09-23T16:38:24.842011+00:00",
+  "publication_note": "La primera comprobaci?n detuvo la publicaci?n sin escribir: el hash esperado de EVIDENCE conten?a un car?cter transcrito de m?s (65). Se consultaron de nuevo los cuatro hashes y se corrigi? la transcripci?n; latest y archivo permanec?an iguales.",
+  "integrity_checks": {
+    "head_unchanged": true,
+    "source_tree_clean": true,
+    "old_openai_preserved_sha256_2_of_2": true,
+    "findings_schema_complete": true,
+    "test_count_verified": 844
+  }
+}

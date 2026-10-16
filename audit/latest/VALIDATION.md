@@ -1,116 +1,51 @@
-# Validación de la remediación · ronda `audit-2026-09-23`
+# Validacion de la remediacion - audit-2026-10-15
 
-Evidencia real de esta sesión (2026-09-23). Todas las ejecuciones usaron `-p no:cacheprovider` con un `--basetemp` propio bajo `.codex-tmp/`.
+Evidencia real de la fase de remediacion (2026-10-16). HEAD final `7861a7f` sobre la base `65368c8`; el arbol conserva sin commit la remediacion KI-073 (fuera de alcance). Todos los pytest con `-p no:cacheprovider`, `PYTHONPATH=src` y basetemp unico bajo `.codex-tmp/`.
 
-## 1. Línea base, antes de tocar código
+## Validacion global (HEAD 7861a7f)
 
-| Comando | Resultado |
-|---|---|
-| `ruff check src scripts tests` | exit 0 |
-| `mypy src` | exit 0, 106 ficheros |
-| pytest focalizado de los componentes afectados (gate, run_all, liquidación, stores, FIP, daily_picks, reports, calibrador, edge_information, MC, hooks, health, gate_status, kelly, banca, pipeline) | **511 passed** |
-| Suite completa en HEAD (diagnóstico Claude, misma base) | 2299 passed, 1 skipped |
-
-**Limitación:** la línea base focalizada se lanzó en segundo plano y la primera edición (un import, que el autofix retiró acto seguido) coincidió con su inicio. La suite completa del diagnóstico, sobre el mismo código de HEAD, respalda la línea base.
-
-## 2. Método «falla antes / pasa después»
-
-- **Antes:** el código de HEAD se exportó con `git archive HEAD src scripts configs .claude/hooks` a `scratchpad/head_tree/`. Los tests se ejecutaron con `PYTHONPATH=<head>/src` y `-o pythonpath=`, porque `pyproject` antepone `src/` del repo. Los tests que cargan scripts por ruta se copiaron apuntando `ROOT` a ese árbol.
-- **Después:** los mismos tests contra el árbol de trabajo.
-
-| ID | Antes (HEAD) | Después | Naturaleza del fallo en HEAD |
+| Comando | rc | Resultado | Clasificacion |
 |---|---|---|---|
-| AUD-002 | 2 failed | pasan | comportamiento: `latched` False tras la carrera; la liberación devuelve False |
-| AUD-001 | 4 failed | pasan | interfaz (`_refresh_prediction_gate` y `gate_deny_all` no existen). La evidencia de comportamiento es el arnés R-GATES de OpenAI (4 picks con stake contra la autorización de ayer) |
-| AUD-004 / AUD-012 | 2 failed (+ AUD-003 retirado) | pasan | comportamiento: desplazado sin fila liquidada; una sola copia de archivo |
-| AUD-009 | 3 failed | pasan | comportamiento: la escritura B se pierde en los 3 stores |
-| AUD-010 | 4 failed | pasan (+1 contraprueba) | comportamiento: fila vacía emitida y FIP borrados |
-| AUD-005 | 2 failed | pasan | comportamiento: 0 candidatos con banca 0 en las ramas edge y accuracy |
-| AUD-006 | 3 failed | pasan | comportamiento: probabilidad cruda en orden, filtro y `mean_est_prob` |
-| AUD-013 | fallo de import | pasan | interfaz; comprobación de comportamiento aparte (§3) |
-| AUD-011 | 2 failed | pasan (+2 contrapruebas iguales en ambos lados) | comportamiento: exit 0 sin aviso y marcador perdido |
-| AUD-007 | 4 failed | pasan (+1 contraprueba) | comportamiento: 80 filas con objetivo 0,75; sin `weight` |
-| AUD-008 | 2 failed | pasan (+2 contrapruebas) | comportamiento: ROI +1,0 sobre n = 1 |
-| AUD-014 | 7 failed | pasan (+2 contrapruebas) | comportamiento: Over 0,4565 frente a 0,5233 |
+| `python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-rem-final` (suite completa) | 0 | **3252 passed, 1 skipped in 4021.60s** | OK. Los 3 ENVIRONMENTAL_FAILURE de la base (AUD-011) ya no aparecen con el basetemp dentro del repo |
+| `ruff check src scripts tests` | 0 | All checks passed | OK |
+| `mypy src` | 0 | Success: no issues found in 113 source files | OK |
+| `python scripts/sync_agent_instructions.py --check` | 0 | synchronized | OK |
+| `python scripts/validate_claude_model_routing.py` | 0 | OK | OK |
+| `git status --porcelain -- src scripts configs *.bat` | 0 | vacio | La guarda de arbol sucio de `DIARIO_COMPLETO.bat:73` no abortara el run diario |
 
-## 3. AUD-013: comprobación de comportamiento en HEAD
+Base de comparacion (2026-10-15, HEAD 65368c8, fuente Claude): 3201 passed, 1 skipped, 3 ENVIRONMENTAL_FAILURE. Diferencia de +51 tests = tests nuevos de esta remediacion.
 
-Script `scratchpad/aud013_before.py`, con un registro legible y un centinela presentes:
+## Por lote: fallo antes / exito despues
 
-- `generate_health_report`: 0 avisos sobre el centinela.
-- `gate_status`: «registro ausente o ilegible -> default-deny…».
+| ID | Antes (codigo de HEAD previo) | Despues | Relacionados |
+|---|---|---|---|
+| AUD-003 | `tests/test_aud003_two_way_draw.py`: 10 failed / 2 passed | 12 passed | 830 passed (48 ficheros de probabilities/daily/revalidation/clv/roi_engine); intradia: 1 failed → 43 passed |
+| AUD-002 | Clon `--no-tags --depth 1` de HEAD: 2 failed | 1 passed + 1 skipped (motivo explicito) | Local con tag: 116 passed |
+| AUD-013 | — | YAML validado con `yaml.safe_load`: jobs `test, dependency-audit, test-windows, alerta-ci-rojo`; `needs` incluye `dependency-audit` | Ejecucion en GitHub: NOT_VERIFIABLE (sin push) |
+| AUD-004/008 | `tests/pipeline/test_closing_capture_aud004.py`: 8 failed / 4 passed | 12 passed | 43 passed (closing + clv) |
+| AUD-005 | 5 failed / 1 passed | 6 passed | 171 passed; revision Fable 9 + 362 passed |
+| AUD-007 | 2 failed / 1 passed | 3 passed | 147 passed |
+| AUD-006 | Contratos con settings de HEAD: 3 failed / 3 passed | 39 passed | 246 passed (routing, codex_review, astra, hook_targets) |
+| AUD-010 | Test dinamico con hook de HEAD: 1 failed | 26 passed (`test_audit_hooks.py`) | idem |
+| AUD-011 | Mismo basetemp, tests de HEAD: 3 failed | 3 passed | Suite completa sin fallos ambientales |
+| AUD-009 | 1 failed / 2 passed (las 2 son contrapruebas) | 3 passed | 91 passed (run diario, team_names, AUD-003) |
+| AUD-012 | 3 failed / 2 passed (contrapruebas) | 5 passed | 119 passed (cache, cliente, frescura, line shopping, gate, team totals, run diario) |
+| AUD-001 | Reproduccion: `{'2026-06-10': 'odds-jun11', '2026-06-11': None}` | **Sin cambio (BLOQUEADO)** | Medicion de la regla rechazada sobre datos reales: MLB 606 asignaciones distintas (254 sin emparejar, 352 reasignadas); NBA 0; NHL 0 |
 
-## 4. Revisión independiente (Fable) y correcciones posteriores
+## Mediciones sobre datos reales usadas en la aceptacion
 
-- **Lo que ejecutó el revisor:** 294 tests del diff, que pasan en el árbol de trabajo (38 fallan en HEAD).
-- **FABLE-001, reproducido por el implementador:** `scratchpad/repro_fable/test_repro_future.py` fallaba (`g2` liquidado como `loss`, pnl −100). Tras retirar el fallback **pasa** (1 passed).
-- **Tras las correcciones:**
-  - liquidación: 123 passed;
-  - calibrador + `edge_information`: 77 passed.
+- AUD-003 (revision Fable, script `scratchpad/aud003_measure.py`): ultimo snapshot h2h por evento de todos los `data/odds/odds_*.csv` a 2 vias y tenis. NHL fair(home)+fair(away) = 1,000000 en 422/422 (antes 120/422 < 0,95, minimo 0,36); 0 eventos incompletos nuevos por el chequeo `outcomes` en mlb 2454, nba 262, ncaaf 730, nfl 379, nhl 422, wnba 390 y tenis 2002 eventos.
+- AUD-008: `.closing_credits_20261011` = 310 con tope 300; totales diarios multiplos de 5, coherentes con mercados × regiones.
+- AUD-001: `scratchpad/aud001_impact.py` (`load_closing_odds` + `results_{mlb,nba,nhl}.csv`, sin escrituras).
 
-## 5. Medición FABLE-002 (solo lectura, agregados)
+## Efectos observados de hooks
 
-`scratchpad/medir_fable002.py` sobre `data/predictions/archive` y `data/bets/settled_*`, a fecha 2026-09-23:
+- `post-edit-format.sh` (`ruff check --fix`) borro imports anadidos antes de usarlos (AUD-003 en probabilities/revalidation; AUD-003 H1 en intraday_scan); repuestos y validados.
+- `check-secrets` aviso sobre `tests/test_audit_hooks.py` (fixtures de claves falsas preexistentes); sin secretos reales.
+- Ningun hook modifico ficheros fuera de los editados.
 
-- 85 desplazados sin liquidar;
-- 0 expirarían en la primera pasada;
-- 84 son partidos futuros;
-- 0 sin `start_time`.
+## No ejecutado / NOT_VERIFIABLE
 
-## 6. Validación final
-
-| Comando | Resultado | Clasificación |
-|---|---|---|
-| `ruff check src scripts tests` | exit 0 | OK |
-| `mypy src` | exit 0, 106 ficheros | OK |
-| `pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-rem-final` (suite completa, código definitivo) | **2350 passed, 1 skipped**, 20 min 52 s, exit 0 | OK |
-| `python scripts/sync_agent_instructions.py --check` | exit 0 | OK |
-| `python scripts/validate_claude_model_routing.py` | exit 0 | OK |
-| Inspección de BAT (`DIARIO_COMPLETO`, `RUN_DIARIO_ALL`, `SETTLE_ALL`) | sin cambios necesarios: SETTLE → `run_all --mode live` sin `--no-report` | OK |
-| Guard KI-036 (`DIARIO_COMPLETO.bat:73`) | **el árbol está sucio en `src/` y `scripts/`: el run programado ABORTARÁ hasta que se commitee** | riesgo operativo |
-
-- Una suite completa intermedia (2351 passed, 1 skipped) corrió sobre el código **con** el fallback de AUD-003. Queda superada por la final.
-- Ninguna `NEW_REGRESSION` ni `PRE_EXISTING_FAILURE` observada.
-- CI remoto: NOT_VERIFIABLE, porque no hay push.
-- No se ejecutó ningún BAT, operación productiva ni proveedor.
-
-## 7. Remediación 2 (2026-09-24): identidad exacta
-
-| Comando / evidencia | Resultado |
-|---|---|
-| Medición de convención de fecha (`scratchpad/medir_identidad.py`) y conversión ET para MLB | ESPN: mismo día UTC. MLB: 655 coinciden y 0 no coinciden |
-| Efecto en seco sobre datos reales (`scratchpad/medir_efecto_identidad.py`) | 3 pendientes empezados, 0 graduables; 0 `stale_void` reconciliables |
-| `tests/settlement/test_candidate_history_fallback.py` contra `6676e9a` | 8 failed y 8 passed (las que pasan son contrapruebas) |
-| Reproducción del verificador `verif_served_series.py` (KI-058) | `6676e9a`: `gN` graduado como `loss`. Código nuevo: 0 graduadas |
-| Reproducción de Fable `repro_r2.py` | A de punta a punta: `void`; B (Tokio): `{}`; C (ET nocturno): correcto |
-| `tests/settlement` + `test_settle_candidates.py` + `test_settle_persist.py` | 134 passed |
-| `ruff check src scripts tests` / `mypy src` | exit 0 / 106 ficheros OK |
-| Suite completa v1 y v2 (ambas superadas) | 2355 passed, 1 skipped / 2360 passed, 1 skipped |
-| Suite completa v3 (código final) | ver el manifest (`remediation_2.tests`) |
-
-## 9. Remediación 3 (KI-059)
-
-| Evidencia | Resultado |
-|---|---|
-| Medición del calendario (`medir_ki059.py`) | 705 de 710 a 5 min o menos; el segundo juego del par, a 181 min o más |
-| Función real con calendario en memoria (`validar_ki059.py`) | 668 coinciden / 0 no coinciden |
-| Función real a través del store, con todas las guardas (`validar_ki059_store.py`) | **667 coinciden / 0 no coinciden** / 25 sin graduar |
-| Reproducción real de Fable (`repro.py`, `repro2.py`) | BOS–BAL y CHC–MIL `{}`; ATL–SF `(2,7)`; KC–COL (hora por confirmar) `{}` |
-| `test_candidate_history_fallback.py` contra `8b19c5d` | 13 fallan (todos los de calendario) |
-| REG-001 contra `6676e9a` | falla (±1); pasa ahora |
-| `tests/settlement` + liquidación + backfill | 165 passed |
-| ruff / mypy | exit 0 / 107 ficheros OK |
-| Suite completa | ver `remediation_3.tests` en el manifest |
-
-## 10. Remediación 4
-
-| Evidencia | Resultado |
-|---|---|
-| Consulta ESPN (NFL) | rango `20260921-20260926` → 400; día `20260921` → 200 |
-| `results_*` ESPN en producción (agregado) | última ingesta 2026-09-14 en las 11 ligas; MLB 2026-09-21 |
-| Backfill de 3 días en ROOT temporal, antes de la corrección | 247 s; todas las ligas ESPN 0 resultados; rc=0 |
-| Backfill de 3 días en ROOT temporal, después | 117 s; ESPN con datos (WNBA 12, NHL 28…); rc=0; 0 ventanas fallidas |
-| Mutación N3 | detectada por el test nuevo |
-| `tests/test_espn_results.py` + backfill + ventana de fechas | 45 passed |
-| Validación MLB a través del store tras REG-002 | 661 coinciden / 0 no coinciden / 31 sin graduar |
-| Suite completa | ver el manifest (`remediation_4.tests`) |
+- CI de GitHub del nuevo HEAD y pip-audit (sin push; red de pago no usada).
+- Disparo real de los hooks PostToolUse con PowerShell (requiere sesion nueva).
+- BAT, pipelines y APIs reales (no ejecutados).

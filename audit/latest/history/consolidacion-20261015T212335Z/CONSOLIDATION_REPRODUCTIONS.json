@@ -1,0 +1,37 @@
+{
+  "CLAUDE-001": {
+    "fair": {
+      "Home": 0.4495528625890095,
+      "Away": 0.396861815660444,
+      "Draw": 0.15358532175053535
+    },
+    "two_way_sum": 0.8464146782494535,
+    "classification": "REPRODUCED"
+  },
+  "CLAUDE-009": {
+    "append_counts_identical_input": [
+      1,
+      1,
+      1
+    ],
+    "classification": "REPRODUCED",
+    "concurrency": "separate inferred risk, not reproduced"
+  },
+  "CLAUDE-012": {
+    "retained_ids": [
+      "old"
+    ],
+    "classification": "REPRODUCED"
+  },
+  "CLAUDE-011": {
+    "already": 299,
+    "cap": 300,
+    "actual_total": 302,
+    "classification": "REPRODUCED"
+  },
+  "CLAUDE-006": {
+    "exception": "controlled revalidation failure",
+    "cli_exit_code": 0,
+    "classification": "REPRODUCED"
+  }
+}
