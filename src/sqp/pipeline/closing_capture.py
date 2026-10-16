@@ -94,6 +94,22 @@ def add_spent(odds_dir: Path, day: str, credits: int, prefix: str = CREDITS_PREF
     return total
 
 
+def estimate_fetch_cost(client: Any, markets: str) -> int:
+    """Coste PREVISTO en creditos de un ``fetch_odds``: mercados x regiones
+    (The Odds API). Si el cliente no expone ``regions`` se asume 1 region."""
+    regions = getattr(client, "regions", None)
+    n_regions = len([r for r in regions.split(",") if r.strip()]) if isinstance(regions, str) else 1
+    n_markets = len([m for m in markets.split(",") if m.strip()])
+    return max(1, n_regions) * max(1, n_markets)
+
+
+def all_leagues_failed(summary: dict) -> bool:
+    """True si se intento capturar al menos una liga y TODAS fallaron (AUD-004)."""
+    attempted = summary.get("attempted") or []
+    failed = summary.get("failed_leagues") or {}
+    return bool(attempted) and all(lg in failed for lg in attempted)
+
+
 def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
                     max_credits: int = 300, min_remaining: int = 100,
                     now: datetime | None = None, client=None, odds_store=None) -> dict:
@@ -113,7 +129,8 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
     targets = leagues_with_imminent_bets(predictions_dir, now, window_min)
     summary: dict[str, Any] = {"captured": {}, "bet_events": {},
                                "skipped_budget": [], "credits_spent": 0,
-                               "leagues_considered": list(targets)}
+                               "leagues_considered": list(targets),
+                               "attempted": [], "failed_leagues": {}}
     if not targets:
         return summary
     already = spent_today(odds_dir, day)
@@ -138,11 +155,23 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
             log.warning("closing: requests_remaining %s < %d; skipping %s",
                         client.requests_remaining, min_remaining, league)
             continue
+        summary["attempted"].append(league)
         try:
             meta = _league_meta(league)
             # Mismos mercados que el run diario (AUD-006): en tenis solo h2h.
-            events = client.fetch_odds(league, meta["sport_key"],
-                                       markets_for_family(meta["family"]))
+            markets = markets_for_family(meta["family"])
+            # Coste PREVISTO, no gasto consumado (AUD-008): no pedir si la
+            # peticion rebasaria el tope diario (patron de team_totals_capture).
+            est = estimate_fetch_cost(client, markets)
+            if already + spent + est > max_credits:
+                summary["attempted"].remove(league)
+                summary["skipped_budget"].append(league)
+                log.info("closing: [%s] coste previsto %d rebasaria el tope %d "
+                         "(%d gastados); se omite", league, est, max_credits,
+                         already + spent)
+                continue
+            events = client.fetch_odds(league, meta["sport_key"], markets)
+            # Reconciliar con el coste real reportado por la API.
             delta = client.requests_last or 0
             if delta:
                 # Persistencia incremental por liga: un crash a mitad del loop
@@ -162,6 +191,7 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
                 log.info("closing: [%s] %d lines snapshotted from %d events "
                          "(%d bet events)", league, n, len(events), n_bets)
         except Exception as exc:
+            summary["failed_leagues"][league] = f"{type(exc).__name__}: {exc}"
             log.warning("[%s] closing capture failed: %s", league, exc)
     summary["credits_spent"] = spent
     return summary

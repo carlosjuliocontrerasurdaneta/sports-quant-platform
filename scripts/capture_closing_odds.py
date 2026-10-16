@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqp.config import ROOT, Settings
 from sqp.logging_config import get_logger
-from sqp.pipeline.closing_capture import capture_closing
+from sqp.pipeline.closing_capture import all_leagues_failed, capture_closing
 
 log = get_logger("sqp.capture_close")
 
@@ -31,6 +31,13 @@ def main() -> int:
     settings = Settings.load()
     out = capture_closing(ROOT / "data" / "predictions", settings,
                           window_min=args.window_min, max_credits=args.max_credits)
+    failures: list[str] = []  # AUD-004: etapas fallidas -> rc=1 al final
+    if all_leagues_failed(out):
+        failures.append("closing capture: fallaron TODAS las ligas intentadas "
+                        f"{out['failed_leagues']}")
+    elif out.get("failed_leagues"):
+        log.warning("closing capture: ligas fallidas (parcial): %s",
+                    out["failed_leagues"])
     log.info("closing capture: captured=%s skipped_budget=%s credits_spent=%d",
              out["captured"], out["skipped_budget"], out["credits_spent"])
     print(f"Closing capture: {sum(out['captured'].values())} lines across "
@@ -53,7 +60,8 @@ def main() -> int:
                   f"{rv['kept']} kept, {rv['revoked']} revoked, "
                   f"{rv['skipped_no_price']} without fresh price")
         except Exception as exc:
-            log.warning("revalidation pass failed (non-fatal): %s", exc)
+            log.error("revalidation pass failed: %s", exc)
+            failures.append(f"revalidation: {type(exc).__name__}: {exc}")
         # Guard de abridores (informacion temprana, ligas de beisbol): revoca
         # picks cuyo abridor anunciado cambio o fue retirado. Statsapi es
         # gratis; solo eventos inminentes. Best-effort igual que el de precio.
@@ -87,10 +95,13 @@ def main() -> int:
                           f"{rp['revoked']} revoked, "
                           f"{rp['skipped_unmatched']} unmatched")
         except Exception as exc:
-            log.warning("pitcher guard failed (non-fatal): %s", exc)
+            log.error("pitcher guard failed: %s", exc)
+            failures.append(f"pitcher guard: {type(exc).__name__}: {exc}")
     # Observatorio de edge intradia: re-evalua el edge h2h de lo SERVIDO a las
     # 11:00 contra el consenso recien capturado y lo loguea (medicion pura,
-    # sin picks ni stakes; decide la fase ofensiva #4 con datos). Best-effort.
+    # sin picks ni stakes; decide la fase ofensiva #4 con datos). Best-effort
+    # DOCUMENTADO: no protege ninguna decision ni stake, asi que su fallo sigue
+    # siendo warning y NO cambia el rc (AUD-004).
     if settings.intraday_scan_enabled:
         try:
             from sqp.pipeline.intraday_scan import log_intraday_edges
@@ -105,6 +116,12 @@ def main() -> int:
                   f"{sc['would_generate']} above min_edge")
         except Exception as exc:
             log.warning("intraday scan failed (non-fatal): %s", exc)
+    if failures:
+        # Todos los pasos ya se ejecutaron; rc!=0 hace que CAPTURE_CLOSE.bat
+        # registre el fallo del centinela en vez de limpiarlo.
+        for f in failures:
+            log.error("FALLO: %s", f)
+        return 1
     return 0
 
 
