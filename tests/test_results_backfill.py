@@ -154,3 +154,26 @@ def test_merge_results_history_wins_and_sorted():
     merged = _merge_results(history, recent)
     assert [m["home_score"] for m in merged] == [3, 100]  # sorted by day; history kept
     assert len(merged) == 2
+
+# AUD-009 (ronda audit-2026-10-15): con el historico retrasado, el ±1 dia ciego
+# descartaba un partido REAL del dia siguiente de una serie. Con hora, la fila
+# reciente solo se descarta si el historico cubre una fecha local POSIBLE de
+# ese instante (husos UTC-12..UTC+14).
+def test_merge_results_keeps_next_day_series_game_when_history_lags():
+    history = [dict(_row("2026-06-10", hs=1), game_id="745001")]
+    recent = [dict(_row("2026-06-11T23:05:00Z", hs=7), game_id="odds-jun11")]
+    merged = _merge_results(history, recent)
+    assert [m["game_id"] for m in merged] == ["745001", "odds-jun11"]
+
+
+def test_merge_results_still_drops_the_shifted_west_coast_game():
+    history = [dict(_row("2026-06-10", hs=1), game_id="745001")]
+    recent = [dict(_row("2026-06-11T02:10:00Z", hs=1), game_id="odds-jun10")]
+    assert [m["game_id"] for m in _merge_results(history, recent)] == ["745001"]
+
+
+def test_merge_results_without_time_keeps_the_conservative_window():
+    """Sin hora no hay forma de distinguir los dos casos: se conserva el ±1."""
+    history = [dict(_row("2026-06-10", hs=1), game_id="745001")]
+    recent = [dict(_row("2026-06-11", hs=7), game_id="odds-jun11")]
+    assert len(_merge_results(history, recent)) == 1

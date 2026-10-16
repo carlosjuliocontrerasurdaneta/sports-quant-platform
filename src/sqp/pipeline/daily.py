@@ -124,8 +124,13 @@ def _merge_results(history: list[dict], recent: list[dict],
         # games start past midnight UTC). Without this tolerance the same game
         # enters the ratings fit twice (audit 2026-07-24, I-3). The row's own key
         # keeps its UTC date: only the drop check is widened.
+        #
+        # Con HORA, la tolerancia se acota a las fechas locales posibles de ese
+        # instante (auditoria 2026-10-15, AUD-009): ±1 dia ciego descartaba un
+        # partido REAL del dia siguiente de una serie (A/B el 10 en el historico,
+        # A/B el 11 a las 23:00Z recien jugado) cuando el historico iba retrasado.
         if any((d, nk(r["home"]), nk(r["away"])) in history_days
-               for d in _adjacent_days(day)):
+               for d in _possible_local_days(str(r.get("date", "")))):
             continue
         seen.setdefault((day, nk(r["home"]), nk(r["away"]), str(r.get("game_id") or "")), r)
     return [seen[k] for k in sorted(seen, key=lambda k: k[0])]
@@ -140,6 +145,21 @@ def _adjacent_days(day: str) -> tuple[str, ...]:
         return (day,)
     return (day, (base - timedelta(days=1)).strftime("%Y-%m-%d"),
             (base + timedelta(days=1)).strftime("%Y-%m-%d"))
+
+
+def _possible_local_days(stamp: str) -> tuple[str, ...]:
+    """Fechas LOCALES que puede tener un partido que empieza en el instante UTC
+    `stamp`: las de [t-12 h, t+14 h], los husos reales UTC-12..UTC+14. Un
+    partido a las 23:00Z del 11 solo puede ser del 11 o del 12 local, nunca del
+    10; uno a las 02:00Z del 11 puede ser del 10 (costa oeste). Sin hora (solo
+    el dia) no hay como acotarlo y se conserva el ±1 dia de `_adjacent_days`
+    (auditoria 2026-10-15, AUD-009)."""
+    t = _parse_iso_utc(stamp) if len(stamp) > 10 else None
+    if t is None:
+        return _adjacent_days(stamp[:10])
+    t = t.astimezone(timezone.utc)
+    lo, hi = (t - timedelta(hours=12)).date(), (t + timedelta(hours=14)).date()
+    return tuple((lo + timedelta(days=i)).isoformat() for i in range((hi - lo).days + 1))
 
 
 def _within_horizon(events: list[EventOdds], max_days: int) -> list[EventOdds]:
