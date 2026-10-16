@@ -36,8 +36,12 @@ def main() -> int:
         failures.append("closing capture: fallaron TODAS las ligas intentadas "
                         f"{out['failed_leagues']}")
     elif out.get("failed_leagues"):
-        log.warning("closing capture: ligas fallidas (parcial): %s",
-                    out["failed_leagues"])
+        # Fallo PARCIAL tambien es rc=1 (seguimiento de AUD-004, 2026-10-16): esas
+        # ligas se quedan sin snapshot de cierre y su CLV deja de ser medible.
+        # Hasta hoy era solo un warning en el log, invisible para health_check.
+        # El centinela se limpia solo en la siguiente pasada buena (30 min).
+        failures.append("closing capture: ligas fallidas (parcial) "
+                        f"{out['failed_leagues']}")
     log.info("closing capture: captured=%s skipped_budget=%s credits_spent=%d",
              out["captured"], out["skipped_budget"], out["credits_spent"])
     print(f"Closing capture: {sum(out['captured'].values())} lines across "

@@ -158,10 +158,13 @@ def test_script_todas_las_ligas_fallidas_rc1(script):
     assert script.calls == {"reval": 1, "intraday": 1}   # los pasos siguientes corren
 
 
-def test_script_fallo_parcial_de_ligas_rc0(script):
+def test_script_fallo_parcial_de_ligas_rc1_y_siguen_los_pasos(script):
+    # Seguimiento de AUD-004: la liga fallida no tiene snapshot de cierre, asi que
+    # el fallo debe llegar al centinela; las demas etapas corren igual.
     script.mp.setattr(script.mod, "capture_closing", lambda *a, **k: _summary(
         attempted=["mlb", "nba"], failed_leagues={"mlb": "boom"}))
-    assert script.mod.main() == 0
+    assert script.mod.main() == 1
+    assert script.calls == {"reval": 1, "intraday": 1}
 
 
 @pytest.mark.parametrize("exc", [RuntimeError("boom"), LockNoAdquiridoError("lock")])

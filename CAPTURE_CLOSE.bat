@@ -19,17 +19,23 @@ if not exist logs mkdir logs
 call scripts\rotate_log.cmd logs\capture_close.log
 echo === SQP - CAPTURA CIERRE (%DATE% %TIME%) === >> logs\capture_close.log
 "%SQP_PYTHON%" scripts\capture_closing_odds.py >> logs\capture_close.log 2>&1
-if %ERRORLEVEL% neq 0 goto :error
-
-REM Captura correcta: limpia SOLO esta etapa (corre cada 30 min, asi que se
-REM auto-recupera en la siguiente pasada buena).
-"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage capture_close
+REM El rc se guarda ANTES de los porteros (seguimiento de AUD-004, 2026-10-16):
+REM con el salto inmediato a :error, cualquier rc!=0 de la captura -- desde hoy
+REM tambien el fallo parcial de ligas -- se llevaba por delante la captura de
+REM porteros de esa pasada, que no depende de ella.
+set "CAPTURE_RC=%ERRORLEVEL%"
 
 REM Porteros probables NHL (2026-09-26): DESPUES de la captura de cierre para
 REM no retrasarla; log propio; no bloqueante (nunca salta a :error).
 call scripts\rotate_log.cmd logs\goalie_probables.log
 "%SQP_PYTHON%" scripts\capture_goalie_probables_nhl.py --source-run capture >> logs\goalie_probables.log 2>&1
 if %ERRORLEVEL% neq 0 echo [AVISO] captura de porteros probables NHL fallo (no bloqueante) >> logs\goalie_probables.log
+
+if not "%CAPTURE_RC%"=="0" goto :error
+
+REM Captura correcta: limpia SOLO esta etapa (corre cada 30 min, asi que se
+REM auto-recupera en la siguiente pasada buena).
+"%SQP_PYTHON%" scripts\run_status.py --clear --only-stage capture_close
 
 endlocal
 goto :eof
