@@ -298,7 +298,10 @@ def test_load_league_passes_with_the_real_nhl_base_configuration(mod, tmp_path, 
 
 
 # --------------------------------------------------------- git_head (procedencia) --
-def test_git_head_returns_none_when_not_a_git_repo(mod, tmp_path):
+def test_git_head_returns_none_when_not_a_git_repo(mod, tmp_path, monkeypatch):
+    # Techo para git: con el basetemp dentro del repo (`.codex-tmp`) git subia
+    # hasta el .git del proyecto (auditoria 2026-10-15, AUD-011).
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", tmp_path.parent.as_posix())
     assert mod.git_head(tmp_path) is None
 
 
@@ -308,7 +311,8 @@ def test_git_head_returns_a_string_for_this_repository(mod):
 
 
 # ------------------------------------------ git status --porcelain (punto 6) --
-def test_git_status_porcelain_returns_none_when_not_a_git_repo(mod, tmp_path):
+def test_git_status_porcelain_returns_none_when_not_a_git_repo(mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", tmp_path.parent.as_posix())  # AUD-011
     assert mod.git_status_porcelain(tmp_path) is None
 
 

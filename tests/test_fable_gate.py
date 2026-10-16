@@ -771,8 +771,13 @@ def test_defense_in_depth_hard_blocks_with_an_explanatory_message_when_git_canno
     de fallar abierto en silencio -- la unica excepcion deliberada al
     fail-open general de este candado."""
     root = tmp_path  # deliberadamente SIN `git init`
+    # Sin techo, git asciende desde tmp_path y encuentra el .git del proyecto
+    # cuando el basetemp vive dentro del repo (`.codex-tmp`, el que prescribe
+    # el contrato de auditoria): la raiz dejaba de "no ser un repo" (auditoria
+    # 2026-10-15, AUD-011).
     result = _run(root, {"tool_name": "Bash",
-                         "tool_input": {"command": 'git+commit -m "msg"'}})
+                         "tool_input": {"command": 'git+commit -m "msg"'}},
+                  {"GIT_CEILING_DIRECTORIES": tmp_path.parent.as_posix()})
     assert result.returncode == 2, result.stderr
     assert "no pudo" in result.stderr.lower()
     assert "separa" in result.stderr.lower()
