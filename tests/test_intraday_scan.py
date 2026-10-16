@@ -140,3 +140,18 @@ def test_la_lectura_se_acota_con_la_frescura_configurada(tmp_path, monkeypatch):
     mod.log_intraday_edges(pred, tmp_path, min_edge=0.02, now=NOW,
                            price_max_age_min=45.0)
     assert vistos == [NOW - timedelta(minutes=45)]
+
+# AUD-003 (ronda audit-2026-10-15, observacion H1 de la revision Fable): el
+# observatorio re-preciaba el h2h de una liga a 2 vias contra la mediana que
+# incluia el Home/Away 1X2 de una casa que cotiza Draw.
+def test_two_way_league_ignores_draw_quoting_books(tmp_path):
+    def fila(book, outcome, price):
+        return {**_odds_row("h2h", outcome, None, price=price), "bookmaker": book}
+    pred = _setup(tmp_path, [_served("h2h", "A", "")], [
+        fila("us1", "A", 2.00), fila("us1", "B", 1.90),
+        fila("eu1", "A", 3.00), fila("eu1", "B", 3.20), fila("eu1", "Draw", 4.00),
+    ])
+    s = log_intraday_edges(pred, tmp_path, min_edge=0.02, now=NOW)
+    assert s["scanned"] == 1
+    assert _read_log(tmp_path).iloc[0]["price_now"] == 2.00, (
+        "la casa que cotiza Draw contamino el precio de consenso del h2h")

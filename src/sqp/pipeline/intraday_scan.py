@@ -36,7 +36,8 @@ import pandas as pd
 from sqp.audit.clv_movement import snapshot_consensus_price
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
-from sqp.pipeline.revalidation import _append_log, _fresh_snapshot, _league_odds
+from sqp.pipeline.revalidation import (_append_log, _exclude_two_way_draw_books,
+                                       _fresh_snapshot, _league_odds)
 
 log = get_logger("sqp.intraday_scan")
 
@@ -127,8 +128,11 @@ def log_intraday_edges(predictions_dir: Path, root: Path, *,
         for r, st in en_ventana:
             eid = str(r.event_id)
             if eid not in snap_cache:
-                snap_cache[eid] = _fresh_snapshot(
-                    by_event.get(eid, pd.DataFrame()), now, price_max_age_min)
+                # Mismo consenso que el run diario y la revalidacion: en ligas a
+                # 2 vias, sin las casas que cotizan Draw en h2h (auditoria
+                # 2026-10-15, AUD-003; observacion H1 de la revision Fable).
+                snap_cache[eid] = _exclude_two_way_draw_books(_fresh_snapshot(
+                    by_event.get(eid, pd.DataFrame()), now, price_max_age_min), league)
             snap = snap_cache[eid]
             if snap.empty:
                 continue
