@@ -35,6 +35,7 @@ closing line) and never a profit guarantee.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -49,6 +50,7 @@ from sqp.pipeline.probabilities import (_consensus_spread, adjust_model_probabil
                                         build_adjustment_context,
                                         build_model_map)
 from sqp.risk.kelly import edge, kelly_fraction_stake
+from sqp.settlement.runner import expected_result_date
 from sqp.settlement.settle import realized_roi_parts, settle_candidates, staked_mask
 from sqp.sports.registry import get_adapter
 from sqp.sports.team_names import get_team_normalizer, normalize_key
@@ -149,6 +151,10 @@ def _match_result(r: dict, idx: dict, used: set[str],
     commence date within +-1 day (UTC vs local date drift). Each odds event is
     consumed at most once. Tennis matches order-insensitively (no home/away).
 
+    AUD-001: para ligas NO tenis el emparejamiento correcto es `match_results`
+    (clave pareja + fecha canonica, 1:1, sin voracidad). Esta funcion se conserva
+    para tenis y para los scripts de investigacion que la importan.
+
     Picks the candidate with the SMALLEST day distance (exact date first),
     breaking ties by commence_time: taking the first candidate within the
     window could pair a bet's odds with the score of the adjacent day's game
@@ -197,6 +203,91 @@ def _match_result(r: dict, idx: dict, used: set[str],
     best = empatados[0]
     used.add(best.event.event_id)
     return best
+
+
+def _shift_day(day: str, delta: int) -> str | None:
+    try:
+        return (date.fromisoformat(day[:10]) + timedelta(days=delta)).isoformat()
+    except ValueError:
+        return None
+
+
+def match_results(results: list[dict], odds_by_id: dict[str, EventOdds], league: str,
+                  normalize: Callable[[str | None], str] = normalize_key,
+                  order_insensitive: bool = False) -> dict[int, EventOdds]:
+    """Empareja cada resultado con su evento de cuotas (indice de resultado ->
+    EventOdds), 1:1 y sin voracidad (AUD-001).
+
+    Clave: (pareja normalizada, dia D). En las cuotas
+    ``D = expected_result_date(league, start_time)`` (identidad canonica de la
+    liquidacion: MLB = fecha ET oficial, resto = fecha UTC de ESPN); en los
+    resultados ``D = date[:10]``. Solo se empareja si la clave tiene EXACTAMENTE
+    un evento y un resultado; dos o mas en cualquier lado (doble jornada) = sin
+    pareja. El resultado no depende del orden de recorrido ni de `results`.
+
+    Respaldo de +-1 dia, solo con unicidad mutua, para un resultado sin pareja
+    exacta y SIN eventos en su propia clave: (1) hay exactamente un evento de la
+    pareja a +-1 dia de D; (2) ese evento no tiene resultado en su propia clave;
+    (3) la pareja no tiene otro resultado a +-1 dia del dia de ese evento. Cubre
+    el desfase de hora de inicio del proveedor de cuotas cerca de medianoche UTC
+    en ligas ESPN. Un resultado sin cuotas en su clave NUNCA toma las del dia
+    siguiente si ese evento tiene su propio resultado.
+
+    Limitaciones documentadas:
+    (a) la regla de fecha ET de MLB es empirica (0 de 2.356 eventos entre las
+        00:00 y las 04:00 ET);
+    (b) el respaldo depende de la existencia de resultados contiguos: es un
+        sesgo de CALENDARIO (que haya o no otro partido de la pareja cerca),
+        no de marcador.
+
+    Tenis (`order_insensitive=True`) conserva el comportamiento anterior (voraz,
+    `_match_result`): su convencion de fechas no esta medida."""
+    if order_insensitive:
+        idx = _match_index(odds_by_id, True, normalize)
+        used: set[str] = set()
+        legacy: dict[int, EventOdds] = {}
+        for i, r in enumerate(results):
+            eo = _match_result(r, idx, used, True, normalize)
+            if eo is not None:
+                legacy[i] = eo
+        return legacy
+
+    ev_by_key: dict[tuple, list[EventOdds]] = defaultdict(list)
+    for eo in odds_by_id.values():
+        d = expected_result_date(league, eo.event.start_time)
+        if d is None:
+            continue
+        ev_by_key[(_pair_key(eo.event.home, eo.event.away, False, normalize), d)].append(eo)
+    res_by_key: dict[tuple, list[int]] = defaultdict(list)
+    for i, r in enumerate(results):
+        d = str(r.get("date", ""))[:10]
+        if _shift_day(d, 0) is None:
+            continue
+        res_by_key[(_pair_key(r["home"], r["away"], False, normalize), d)].append(i)
+
+    out: dict[int, EventOdds] = {}
+    for (pair, d), idxs in res_by_key.items():
+        evs = ev_by_key.get((pair, d), [])
+        if len(idxs) == 1 and len(evs) == 1:
+            out[idxs[0]] = evs[0]
+            continue
+        if len(idxs) != 1 or evs:
+            continue  # doble jornada o ambiguedad: nunca se empareja
+        near = [(dd, e) for k in (-1, 1)
+                if (dd := _shift_day(d, k)) is not None
+                for e in ev_by_key.get((pair, dd), [])]
+        if len(near) != 1:
+            continue
+        eday, ev = near[0]
+        if res_by_key.get((pair, eday)):
+            continue
+        others = [j for k in (-1, 0, 1)
+                  if (dd := _shift_day(eday, k)) is not None
+                  for j in res_by_key.get((pair, dd), []) if j != idxs[0]]
+        if others:
+            continue
+        out[idxs[0]] = ev
+    return out
 
 
 def _result_instant(r: dict) -> str | None:
@@ -278,10 +369,11 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     if risk.line_movement_penalty != 0 or risk.line_velocity_penalty != 0:
         raise ValueError("ROI backtest cannot apply movement/velocity penalties without historical trajectories")
     adapter = get_adapter(league, family, league_params)
-    # Orden determinista: el emparejamiento resultado<->cuotas es codicioso con
-    # consumo (`used`), asi que el reparto depende del ORDEN de entrada. Con
-    # dobles jornadas o series en dias consecutivos dos resultados compiten por
-    # las mismas cuotas y barajar la entrada cambiaba el ROI: el backtest no era
+    # Orden determinista. Desde AUD-001 (2026-10-16) el emparejamiento de las
+    # familias con local/visitante (`match_results`) no depende del orden; el de
+    # tenis sigue siendo voraz con consumo (`used`), y ahi el reparto SI depende
+    # del ORDEN de entrada. El orden fija ademas los lotes diarios del adaptador.
+    # Historia: barajar la entrada cambiaba el ROI y el backtest no era
     # reproducible bit a bit (auditoria 2026-08-05, F-11).
     # La clave debe determinar el orden por CONTENIDO. Con solo
     # (fecha, home, away) los dos partidos de una doble jornada empatan, y
@@ -299,7 +391,18 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     # still matches instead of silently dropping the game from the backtest.
     # Leagues without aliases get byte-identical behavior to normalize_key.
     match_normalize = get_team_normalizer(league)
-    idx = _match_index(odds_by_id, order_insensitive, match_normalize)
+    # Tenis: el emparejamiento voraz de siempre, DENTRO del bucle y solo para las
+    # filas apostables (tras warmup y desde bet_from_date). Precalcularlo sobre
+    # todas las filas dejaba que un resultado de warmup o anterior a la ventana
+    # consumiera las cuotas del partido valido del dia siguiente (revision Fable
+    # de AUD-001, 2026-10-16). El resto de familias: `match_results`, 1:1 y sin
+    # consumo, asi que ninguna fila fuera de ventana quita un emparejamiento exacto.
+    if order_insensitive:
+        matches: dict[int, EventOdds] = {}
+        tennis_idx = _match_index(odds_by_id, True, match_normalize)
+        tennis_used: set[str] = set()
+    else:
+        matches = match_results(results, odds_by_id, league, match_normalize)
     # Historial walk-forward por equipo: (indice, fecha, fila) apendizados en
     # despues de cada prediccion. Las features de ajuste de un partido
     # solo pueden ver partidos de fechas estrictamente anteriores (via
@@ -317,7 +420,6 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
             _norm_cache[name] = v
         return v
 
-    used: set[str] = set()
     cand_rows: list[dict] = []
     scores: dict[str, tuple[int, int, str]] = {}
     n_matched = 0
@@ -331,7 +433,8 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
             pending.clear()
         in_window = bet_from_date is None or str(r.get("date", ""))[:10] >= bet_from_date
         if i >= warmup and in_window:
-            eo = _match_result(r, idx, used, order_insensitive, match_normalize)
+            eo = (_match_result(r, tennis_idx, tennis_used, True, match_normalize)
+                  if order_insensitive else matches.get(i))
             if eo is not None:
                 n_matched += 1
                 ev = Event(event_id=eo.event.event_id, sport_key="bt", league=league,
