@@ -954,7 +954,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
             # edge produces a smaller stake (and often falls below min_edge). No-op
             # when the penalty coefficients are 0. estimated_edge stays the RAW e.
             _lm = event_line_movement(
-                _league_odds, eo.event.event_id, key[0], key[1], key[2])
+                _league_odds, eo.event.event_id, key[0], key[1], key[2],
+                league=league)
             adj = adjusted_edge(p_decision, price, fair, cons_n.get(key),
                                 uncertainty_penalty=settings.risk.uncertainty_penalty,
                                 anomaly_edge_gap=settings.risk.anomaly_edge_gap,

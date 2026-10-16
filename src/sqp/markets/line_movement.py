@@ -48,12 +48,17 @@ def event_line_movement(
     market: str,
     selection: str,
     point: float | None,
+    *,
+    league: str | None = None,
 ) -> LineMovement | None:
     """Return movement and velocity from oldest to newest snapshot.
 
     movement_pp: implied-prob delta in pp (negative = adverse for pick).
     velocity_pp_per_h: movement_pp / hours between first and last snapshot.
     None when <2 snapshots or no consensus price at one or both ends.
+    ``league``: in a two-way league, h2h lines of books quoting Draw are
+    excluded from each snapshot's consensus, as in the daily consensus
+    (AUD-003). Without it the snapshots are used as-is.
     """
     if league_odds.empty:
         return None
@@ -92,10 +97,10 @@ def event_line_movement(
     if len(stamps) < 2:
         return None
     ref = snapshot_consensus_price(
-        valid[valid_ts == stamps[0]], market, selection, point
+        valid[valid_ts == stamps[0]], market, selection, point, league=league
     )
     last = snapshot_consensus_price(
-        valid[valid_ts == stamps[-1]], market, selection, point
+        valid[valid_ts == stamps[-1]], market, selection, point, league=league
     )
     if ref is None or last is None:
         return None

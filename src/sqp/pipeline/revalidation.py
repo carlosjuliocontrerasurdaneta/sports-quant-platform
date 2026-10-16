@@ -41,11 +41,10 @@ from typing import Any
 import pandas as pd
 
 from sqp.audit.clv import _point
-from sqp.audit.clv_movement import snapshot_consensus_price
+from sqp.audit.clv_movement import (exclude_two_way_draw_books,
+                                    snapshot_consensus_price)
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
-from sqp.pipeline.probabilities import (_book_key, _draw_quoting_books,
-                                        _league_three_way)
 from sqp.sports.team_names import normalize_key
 from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.lock import locked
@@ -185,24 +184,10 @@ def _fresh_snapshot(event_odds: pd.DataFrame, now: datetime,
     return pre[pd.to_datetime(pre["captured_at"], utc=True) == latest]
 
 
-def _exclude_two_way_draw_books(snap: pd.DataFrame, league: str) -> pd.DataFrame:
-    """Quita del snapshot las lineas h2h de las casas que cotizan Draw cuando
-    la liga se declara a dos vias: mismo predicado y misma regla que el
-    consenso del run diario (``probabilities._eligible_lines``), para que la
-    revalidacion no re-valore un Home/Away americano contra el 1X2
-    reglamentario de una casa europea (auditoría 2026-10-15, AUD-003). Liga
-    three_way o no registrada: snapshot intacto."""
-    if snap.empty or _league_three_way(league) is not False:
-        return snap
-    if not {"bookmaker", "market", "outcome"}.issubset(snap.columns):
-        return snap
-    excluded = _draw_quoting_books(
-        zip(snap["bookmaker"], snap["market"], snap["outcome"]))
-    if not excluded:
-        return snap
-    drop = ((snap["market"].astype(str) == "h2h")
-            & snap["bookmaker"].map(_book_key).isin(excluded))
-    return snap[~drop]
+# La exclusion vive junto a `snapshot_consensus_price` desde el 2026-10-16 para
+# que `line_movement` y `clv_movement` la compartan; el nombre privado se
+# conserva porque lo importan `intraday_scan` y los tests de AUD-003.
+_exclude_two_way_draw_books = exclude_two_way_draw_books
 
 
 def _prob_basis(row) -> float | None:

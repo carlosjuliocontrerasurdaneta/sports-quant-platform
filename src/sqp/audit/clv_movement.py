@@ -21,6 +21,8 @@ from pathlib import Path
 import pandas as pd
 
 from sqp.audit.clv import CLOSE_MAX_AGE_MIN, _point, compute_clv
+from sqp.pipeline.probabilities import (_book_key, _draw_quoting_books,
+                                        _league_three_way)
 
 # |movimiento| <= este umbral (pp de prob. implicita) se clasifica "plano":
 # absorbe ruido de redondeo de cuotas y cambios de composicion de books.
@@ -37,11 +39,38 @@ def movement_direction(movement_pp: float,
     return "plano"
 
 
+def exclude_two_way_draw_books(snap: pd.DataFrame, league: str) -> pd.DataFrame:
+    """Quita del snapshot las lineas h2h de las casas que cotizan Draw cuando
+    la liga se declara a dos vias: mismo predicado y misma regla que el
+    consenso del run diario (``probabilities._eligible_lines``), para que un
+    Home/Away americano no se mezcle con el 1X2 reglamentario de una casa
+    europea (auditoría 2026-10-15, AUD-003). Liga three_way o no registrada:
+    snapshot intacto."""
+    if snap.empty or _league_three_way(league) is not False:
+        return snap
+    if not {"bookmaker", "market", "outcome"}.issubset(snap.columns):
+        return snap
+    excluded = _draw_quoting_books(
+        zip(snap["bookmaker"], snap["market"], snap["outcome"]))
+    if not excluded:
+        return snap
+    drop = ((snap["market"].astype(str) == "h2h")
+            & snap["bookmaker"].map(_book_key).isin(excluded))
+    return snap[~drop]
+
+
 def snapshot_consensus_price(snap: pd.DataFrame, market: str, selection: str,
-                             point: float | None) -> float | None:
+                             point: float | None, *,
+                             league: str | None = None) -> float | None:
     """Mediana del precio decimal entre books para (market, selection, point)
     dentro de un snapshot; None sin filas validas. Mismo criterio de consenso
-    que _consensus_lines (mediana real), sobre las filas crudas del store."""
+    que _consensus_lines (mediana real), sobre las filas crudas del store.
+
+    Con ``league`` aplica antes ``exclude_two_way_draw_books`` (AUD-003); sin
+    ella el snapshot se usa tal cual, como hacen los llamadores que ya lo
+    filtraron (revalidacion, barrido intradia)."""
+    if league is not None:
+        snap = exclude_two_way_draw_books(snap, league)
     m = snap[(snap["market"].astype(str) == market)
              & (snap["outcome"].astype(str) == selection)]
     if m.empty:
@@ -54,7 +83,8 @@ def snapshot_consensus_price(snap: pd.DataFrame, market: str, selection: str,
 
 
 def pre_pick_movement(event_odds: pd.DataFrame, *, market: str, selection: str,
-                      point: float | None, picked_at: str) -> dict | None:
+                      point: float | None, picked_at: str,
+                      league: str | None = None) -> dict | None:
     """Movimiento del consenso de la seleccion entre el snapshot mas antiguo
     del evento y el ultimo <= picked_at. None si no hay >= 2 snapshots
     distintos pre-pick o falta consenso en alguno de los dos extremos."""
@@ -75,9 +105,9 @@ def pre_pick_movement(event_odds: pd.DataFrame, *, market: str, selection: str,
         return None
     pre_ts = pd.to_datetime(pre["captured_at"], utc=True)
     ref = snapshot_consensus_price(pre[pre_ts == stamps[0]], market, selection,
-                                   point)
+                                   point, league=league)
     at_pick = snapshot_consensus_price(pre[pre_ts == stamps[-1]], market,
-                                       selection, point)
+                                       selection, point, league=league)
     if ref is None or at_pick is None:
         return None
     return {
@@ -115,7 +145,7 @@ def clv_by_movement(bets_dir: Path, root: Path, *,
             mov = pre_pick_movement(
                 eo, market=str(r.market), selection=str(r.selection),
                 point=_point(str(r.market), r.line),
-                picked_at=str(r.generated_at))
+                picked_at=str(r.generated_at), league=str(lg))
             if mov is None:
                 continue
             rows.append({**r._asdict(), **mov,
