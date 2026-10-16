@@ -110,6 +110,23 @@ class OddsAPIClient:
             from sqp.config import ROOT
             cache_dir = ROOT / "data" / "cache" / "odds"
         self._cache = FileCache(cache_dir)
+        # Clave de cache de la ultima respuesta (None si no era cacheable): la
+        # usa el run diario para la marca de snapshot pendiente (AUD-012).
+        self.last_cache_key: str | None = None
+
+    def mark_snapshot_pending(self) -> None:
+        """Marca que el snapshot de la ultima respuesta aun no esta en disco."""
+        if self.last_cache_key is not None:
+            self._cache.mark_pending(self.last_cache_key)
+
+    def clear_snapshot_pending(self) -> None:
+        if self.last_cache_key is not None:
+            self._cache.clear_pending(self.last_cache_key)
+
+    def snapshot_pending(self) -> bool:
+        """True si la ultima respuesta salio de una peticion cuyo snapshot no
+        llego a persistirse (auditoria 2026-10-15, AUD-012)."""
+        return self.last_cache_key is not None and self._cache.is_pending(self.last_cache_key)
 
     def _retry_wait(self, attempt: int, *, unreachable: bool) -> float | None:
         """Segundos a esperar antes del intento siguiente, o `None` para rendirse.
@@ -147,6 +164,7 @@ class OddsAPIClient:
         # distinta de si se puede leer (AUD-20260906-06).
         self.last_response_age_s = 0.0
         ckey = self._cache.key(path, params) if cache else None
+        self.last_cache_key = ckey
         if ckey is not None and not self.force_refresh:
             # `inf` en offline: leer una respuesta vieja sigue permitido -- ese
             # es el proposito del modo --, pero YA NO se pierde su antiguedad.

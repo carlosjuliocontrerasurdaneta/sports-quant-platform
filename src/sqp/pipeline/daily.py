@@ -790,10 +790,33 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
             log.info("[%s] %d of %d events dropped as beyond the %d-day horizon "
                      "(e.g. next-season opener lines).",
                      league, n_fetched - len(events), n_fetched, settings.event_horizon_days)
+        # Marca de snapshot pendiente (auditoria 2026-10-15, AUD-012): un cache
+        # hit no prueba que el snapshot de la peticion original llegara a disco.
+        # Si `append_snapshot` fallo (o el proceso murio) tras la respuesta de
+        # red, el reintento dentro del TTL lo recupera con su instante REAL de
+        # adquisicion en vez de anunciar "already persisted" sin comprobarlo.
+        # `getattr`: los clientes dobles de los tests no tienen la marca.
+        _marcar = getattr(client, "mark_snapshot_pending", None)
+        _limpiar = getattr(client, "clear_snapshot_pending", None)
+        _pendiente = getattr(client, "snapshot_pending", None)
         if events and not client.last_response_cached:
+            if _marcar:
+                _marcar()
             n_lines = OddsStore(ROOT).append_snapshot(league, events)
+            if _limpiar:
+                _limpiar()
             log.info("[%s] odds snapshot persisted: %d lines from %d events "
                      "(forward out-of-sample dataset).", league, n_lines, len(events))
+        elif events and _pendiente and _pendiente() is True:
+            adquirido = (datetime.now(timezone.utc)
+                         - timedelta(seconds=float(client.last_response_age_s or 0.0)))
+            n_lines = OddsStore(ROOT).append_snapshot(
+                league, events, captured_at=adquirido.isoformat(timespec="seconds"))
+            if _limpiar:
+                _limpiar()
+            log.warning("[%s] odds served from cache whose snapshot never reached "
+                        "disk: recovered %d lines with the original acquisition "
+                        "time %s.", league, n_lines, adquirido.isoformat(timespec="seconds"))
         elif events:
             log.info("[%s] odds served from cache; snapshot already persisted on "
                      "the originating fetch, not re-appending.", league)

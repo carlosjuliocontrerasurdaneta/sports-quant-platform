@@ -77,6 +77,30 @@ class FileCache:
         except (ValueError, OSError):
             return None
 
+    # Marca "snapshot pendiente" (auditoria 2026-10-15, AUD-012). La escribe y
+    # la consume SOLO el run diario: se pone tras una respuesta de red y se
+    # retira al persistir su snapshot en data/odds/. Si sigue ahi cuando la
+    # misma respuesta se sirve de cache, el snapshot nunca llego a disco. Sin
+    # marca = comportamiento previo (otros consumidores y entradas antiguas).
+    def _pending_file(self, key: str) -> Path:
+        return self.dir / f"{key}.pending"
+
+    def mark_pending(self, key: str) -> None:
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            self._pending_file(key).touch()
+        except OSError:
+            pass  # best-effort, como `put`
+
+    def clear_pending(self, key: str) -> None:
+        try:
+            self._pending_file(key).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def is_pending(self, key: str) -> bool:
+        return self._pending_file(key).exists()
+
     def put(self, key: str, data) -> None:
         try:
             self.dir.mkdir(parents=True, exist_ok=True)
