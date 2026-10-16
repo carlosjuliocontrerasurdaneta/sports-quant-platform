@@ -943,7 +943,17 @@ def _settle_tennis(league: str, days_from: int, provider=None) -> pd.DataFrame:
     # sin una fuente tercera, y endurecerlo mas resucitaria el bloqueo indefinido.
     usable = [m for m in results if m.get("winner")]
     results_trusted = bool(usable)
-    if not results_trusted:
+    # Auditoria 2026-10-15, AUD-005: una ventana de fechas que fallo del todo
+    # deja el payload INCOMPLETO (no mudo): un partido sin resultado puede ser
+    # uno de los de la ventana perdida, y anular es irreversible. Misma via que
+    # el backfill (`failed_windows` del proveedor).
+    failed_windows = list(getattr(provider, "failed_windows", []) or [])
+    if failed_windows:
+        log.error("[%s] %d ventana(s) de ESPN tenis fallaron del todo: NO se "
+                  "anula nada en esta pasada (%s).", league, len(failed_windows),
+                  "; ".join(failed_windows[:3]))
+        results_trusted = False
+    elif not results_trusted:
         log.error("[%s] ESPN no devolvio ni un resultado utilizable (%d fila(s) "
                   "crudas): NO se anula nada en esta pasada. Anular es "
                   "irreversible, asi que un payload vacio o ilegible no puede "

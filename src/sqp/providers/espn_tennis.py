@@ -107,8 +107,13 @@ def query_days(start: date, end: date) -> list[date]:
 class ESPNTennisResultsProvider(ResultsProvider):
     def __init__(self, session: requests.Session | None = None):
         self.session = session or requests.Session()
+        # Ventanas que fallaron del todo en la ULTIMA llamada a `fetch_results`
+        # (mismo contrato que `ESPNResultsProvider.failed_windows`; auditoria
+        # 2026-10-15, AUD-005).
+        self.failed_windows: list[str] = []
 
     def fetch_results(self, league: str = "atp", days_back: int = 365) -> list[dict]:
+        self.failed_windows = []
         tour = tour_from_league(league)
         if tour is None:
             raise ProviderNotConfiguredError(
@@ -148,4 +153,7 @@ class ESPNTennisResultsProvider(ResultsProvider):
                 time.sleep(retry_wait_seconds(r, attempt, _BACKOFF_SECONDS))
         log.warning("[tennis/%s] ESPN window %s failed after %d attempts (%s); skipped.",
                     tour, dates, _MAX_ATTEMPTS, last_error)
+        # AUD-005: la ventana perdida se registra para que el backfill salga
+        # rc=1 y la liquidacion no anule por expiracion con datos incompletos.
+        self.failed_windows.append(f"{tour} {dates}: {last_error}")
         return []

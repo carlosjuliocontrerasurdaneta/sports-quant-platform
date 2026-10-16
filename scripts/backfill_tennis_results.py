@@ -43,6 +43,14 @@ def main() -> int:
             if not results:
                 log.warning("[tennis/%s] provider returned 0 results (schema change or "
                             "off-window?).", tour)
+            # Auditoria 2026-10-15, AUD-005: igual que backfill_results.py, una
+            # ventana perdida no puede salir en verde con el historico incompleto.
+            fallidas = list(provider.failed_windows)
+            if fallidas:
+                failures += 1
+                log.error("[tennis/%s] %d ventana(s) fallaron del todo; el historico "
+                          "queda INCOMPLETO: %s", tour, len(fallidas),
+                          "; ".join(fallidas[:3]))
         except Exception as exc:
             failures += 1
             log.error("[tennis/%s] backfill failed: %s", tour, exc)
