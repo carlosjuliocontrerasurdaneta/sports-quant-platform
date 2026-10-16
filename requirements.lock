@@ -31,8 +31,11 @@ charset-normalizer==3.4.7
 # DoS on crafted encode input) and PYSEC-2026-141/142 (urllib3<2.7.0, resource
 # exhaustion on streamed compressed responses + header forwarding on cross-origin
 # redirects). Low real-world impact for SQP (fixed API hosts) but trivial to fix.
+# urllib3 2.7.0 -> 2.8.0 el 2026-10-16: el primer run del job dependency-audit
+# (AUD-013) marco PYSEC-2026-4175/4176/4177 (fix 2.8.0). El entorno de produccion
+# sigue en 2.7.0 hasta que el operador lo actualice; este fichero es restriccion.
 idna==3.18
-urllib3==2.7.0
+urllib3==2.8.0
 python-dateutil==2.9.0.post0
 tzdata==2026.1
 threadpoolctl==3.6.0
