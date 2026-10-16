@@ -45,52 +45,25 @@
 # harness, el script siempre gana la carrera y puede decir lo que paso. Es la
 # misma disciplina que `crossreview-on-stop.sh`: un fallo de infraestructura se
 # anuncia como tal, nunca se disfraza de veredicto ni de silencio.
+# SUITE RAPIDA + VEREDICTO EN TRES ESTADOS (CLAUDE-005 / H-2, 2026-10-14). El
+# subconjunto `not slow` volvio a llenar el presupuesto entero: 2946 passed en
+# 1080,43 s medidos el 2026-10-14 contra el autoacotado de 1080 s, asi que el
+# `timeout` cortaba siempre. Y sin `pytest` en el PATH este script BORRABA el
+# centinela sin comprobar nada. La logica vive ahora en `_stop_tests.py` (Python
+# se puede probar directamente; `subprocess` en esta maquina resuelve el bash de
+# WSL): suite rapida obligatoria `-m "not slow and not heavy"`, los `heavy`
+# relacionados con los ficheros modificados, y tres veredictos -- PASS, FAIL y
+# NO VERIFICADO --. NO VERIFICADO sale con 0 y NO BLOQUEA el cierre del turno
+# (bloquear solo produciria un bucle: el modelo no puede acortar la suite), pero
+# CONSERVA el centinela pendiente y lo anuncia; nunca es una validacion
+# satisfactoria. CI sigue corriendo la suite COMPLETA (`pytest -q`).
 set -uo pipefail
-# Por debajo del timeout del hook (1200 s en settings.json) para que el aviso
-# salga de aqui y no del harness. Con 796 s medidos deja ~35 % de margen.
-PRESUPUESTO_S=1080
-input=$(cat)
-# Guard anti-bucle: si este Stop ya fue provocado por un hook Stop previo y los
-# tests vuelven a fallar, no bloquear indefinidamente.
-active=$(printf '%s' "$input" | python -c "import sys,json; print(json.load(sys.stdin).get('stop_hook_active', False))" 2>/dev/null)
-[ "$active" = "True" ] && exit 0
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
-marker=".claude/.tests-pending"
-[ -f "$marker" ] || exit 0
-command -v pytest >/dev/null 2>&1 || { rm -f "$marker"; exit 0; }
-log=$(mktemp)
-# `timeout` acota el trabajo DENTRO del script. Si no esta disponible se corre
-# igual: perder el auto-acotado es peor que no correr la suite.
-if command -v timeout >/dev/null 2>&1; then
-  PYTHONPATH=src timeout "$PRESUPUESTO_S" pytest tests/ -q -x --maxfail=1 -m "not slow" >"$log" 2>&1
-else
-  PYTHONPATH=src pytest tests/ -q -x --maxfail=1 -m "not slow" >"$log" 2>&1
-fi
-rc=$?
-
-# 124 = `timeout` corto la ejecucion. NO son tests en rojo: la suite no llego a
-# terminar, asi que no hay veredicto. Se dice en voz alta y se sale sin bloquear
-# (el modelo no puede acortar la suite a mitad de turno), pero el centinela se
-# DEJA puesto: "no se pudo comprobar" no es "esta bien", y olvidarlo en silencio
-# es exactamente la averia que este bloque existe para impedir.
-if [ "$rc" -eq 124 ]; then
-  { echo "LA SUITE NO CABE EN SU PRESUPUESTO (${PRESUPUESTO_S}s): NO HAY VEREDICTO."
-    echo "Los cambios de este turno se quedan SIN comprobar por la suite local."
-    echo "Ultimas lineas antes del corte:"
-    tail -15 "$log"
-    echo
-    echo "Volver a medir y subir PRESUPUESTO_S y el timeout del hook en"
-    echo ".claude/settings.json, o acotar el alcance de la suite del hook."
-    echo "Ver audit/latest/FINDINGS.md AUD-007 (ronda audit-2026-09-22)."; } >&2
-  rm -f "$log"
+if ! command -v python >/dev/null 2>&1; then
+  # Sin interprete no hay veredicto: se anuncia y el centinela se CONSERVA.
+  if [ -f ".claude/.tests-pending" ]; then
+    echo "Tests locales: NO VERIFICADO. python no esta disponible; el centinela .claude/.tests-pending sigue pendiente. Esto NO es una validacion satisfactoria." >&2
+  fi
   exit 0
 fi
-
-if [ "$rc" -ne 0 ]; then
-  echo "Tests fallaron tras las ediciones de este turno:" >&2
-  tail -25 "$log" >&2
-  rm -f "$log"
-  exit 2
-fi
-rm -f "$log" "$marker"
-exit 0
+exec python ".claude/hooks/_stop_tests.py"

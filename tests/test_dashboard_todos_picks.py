@@ -15,8 +15,13 @@ import re
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
 from sqp.audit.html_report import _todos_records, html_dashboard
+
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
 
 
 def _served(tmp_path, rows):

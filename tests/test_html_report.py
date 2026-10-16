@@ -13,6 +13,10 @@ from sqp.audit import html_report, patterns
 from sqp.audit.html_report import html_dashboard, open_in_browser
 from sqp.monitoring.health import RUN_MAX_AGE_DAYS
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 
 def _candidates() -> pd.DataFrame:
     return pd.DataFrame([

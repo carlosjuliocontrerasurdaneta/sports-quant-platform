@@ -603,15 +603,14 @@ def test_the_test_hook_excludes_slow_tests_and_has_budget_for_the_rest():
 
     Los `slow` no se pierden: CI los ejecuta en las patas 3.11/3.13/3.14.
     """
+    # Desde CLAUDE-005 / H-2 (2026-10-14) el `.sh` delega en `_stop_tests.py`,
+    # y la invocacion de pytest vive alli: se lee la expresion -m que construye.
     hook = (ROOT / ".claude/hooks/run-tests-on-stop.sh").read_text(encoding="utf-8")
-    # Solo lineas EJECUTABLES: el encabezado documenta la medicion citando el
-    # comando antiguo, y contarlo como invocacion hacia fallar al test contra su
-    # propia evidencia.
-    invocacion = [ln for ln in hook.splitlines()
-                  if "pytest" in ln and not ln.lstrip().startswith("#")
-                  and "command -v" not in ln]
-    assert invocacion, "el hook dejo de invocar pytest"
-    assert all('-m "not slow"' in ln for ln in invocacion), (
+    assert '_stop_tests.py' in hook, "el hook dejo de delegar en _stop_tests.py"
+    runner = (ROOT / ".claude/hooks/_stop_tests.py").read_text(encoding="utf-8")
+    expresion = re.search(r'^EXPRESION_RAPIDA = "([^"]+)"', runner, re.MULTILINE)
+    assert expresion, "el runner dejo de declarar la expresion de la suite rapida"
+    assert "not slow" in expresion.group(1), (
         "el hook de tests corre la suite COMPLETA (1028 s medidos el "
         "2026-09-04); no cabe en ningun timeout del harness. Debe excluir los "
         "`slow`, que CI ya ejecuta.")

@@ -50,6 +50,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "slow: tests que corren el pipeline completo, entrenan modelos o backtests walk-forward (excluir con '-m \"not slow\"')",
+    "heavy: no son slow pero son caros; fuera de la suite rapida del hook Stop (-m \"not slow and not heavy\"), que solo corre los relacionados con los ficheros modificados. CI los ejecuta siempre; a mano: pytest -m heavy (CLAUDE-005 / H-2, 2026-10-14)",
 ]
 
 [tool.mypy]

@@ -14,6 +14,10 @@ from sqp.features.research import (FeatureDataset, build_research_dataset,
 from sqp.features.temporal import daily_splits, holdout_start
 from sqp.evaluation.feature_blocks import evaluate_blocks
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 
 def games(n=36):
     return pd.DataFrame([{"date": str(pd.Timestamp("2025-01-01") + pd.Timedelta(days=i // 2))[:10],

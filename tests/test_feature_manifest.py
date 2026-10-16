@@ -19,6 +19,10 @@ import pytest
 from sqp.storage.feature_store import (build_training_dataset, builder_fingerprint,
                                        dataset_is_current)
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 
 def _sembrar(root, liga="nba", n=140):
     """Resultados minimos para que el builder produzca un dataset."""

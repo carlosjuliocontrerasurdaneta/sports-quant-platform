@@ -28,6 +28,10 @@ from sqp.features.rest_form import (
 )
 from sqp.sports.registry import get_adapter
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 SCRIPT = ROOT / "scripts" / "research" / "measure_adjustment_battery.py"
 
 

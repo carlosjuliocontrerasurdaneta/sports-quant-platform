@@ -27,6 +27,10 @@ from pathlib import Path
 
 import pytest
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / ".claude" / "hooks" / "fable_gate.py"
 GATE_CONFIG = ROOT / ".claude" / "automation" / "fable-gate.json"

@@ -15,9 +15,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import pytest
 
 from sqp.audit.html_report import _picks_records
 from sqp.audit.report import rank_candidates
+
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
 
 
 def _en_dias(n: int) -> str:

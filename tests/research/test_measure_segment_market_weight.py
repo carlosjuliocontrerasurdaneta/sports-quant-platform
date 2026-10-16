@@ -20,6 +20,10 @@ import pytest
 
 from sqp.config import ROOT
 
+# Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
+# lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
+pytestmark = pytest.mark.heavy
+
 SCRIPT = ROOT / "scripts" / "research" / "measure_segment_market_weight.py"
 T0 = pd.Timestamp("2026-11-05T00:00:00Z")
 
