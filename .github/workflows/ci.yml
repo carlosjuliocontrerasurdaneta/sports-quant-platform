@@ -31,7 +31,14 @@ jobs:
         # requiere >=3.11.
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
+      # Historial y tags completos (auditoria 2026-10-15, AUD-002): los tests del
+      # pre-registro leen su tag anotado (`prereg-tier-a-t0`), y el checkout por
+      # defecto (depth 1, sin tags) no lo trae. Sin el tag en origin el test de
+      # integracion se SALTA con motivo explicito; con el tag publicado, se verifica.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -72,14 +79,28 @@ jobs:
           pip install pytest-cov -c requirements.lock
           pytest -q --cov=sqp --cov-report=term
 
-      # BLOCKING since 2026-07-02: the lockfile was audited clean after bumping
-      # idna (PYSEC-2026-215) and urllib3 (PYSEC-2026-141/142). Audits the pinned
-      # set in requirements.lock so results are deterministic. If a new advisory
-      # blocks an unrelated PR, bump the pinned package in requirements.lock
-      # (keeping pyproject floors satisfied) in that same PR.
+  # BLOCKING since 2026-07-02: the lockfile was audited clean after bumping
+  # idna (PYSEC-2026-215) and urllib3 (PYSEC-2026-141/142). Audits the pinned
+  # set in requirements.lock so results are deterministic. If a new advisory
+  # blocks an unrelated PR, bump the pinned package in requirements.lock
+  # (keeping pyproject floors satisfied) in that same PR.
+  #
+  # JOB PROPIO desde 2026-10-16 (auditoria 2026-10-15, AUD-013): como paso del
+  # job `test`, despues de Pytest, se omitia (`skipped`) cada vez que fallaba un
+  # test ajeno a las dependencias, y no corrio en main del 2026-09-26 al
+  # 2026-10-16. Un control de seguridad no puede depender del exito de otro.
+  # pip-audit fijado: un cambio de version del auditor no debe cambiar el
+  # veredicto sin un commit que lo diga.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
       - name: Dependency vulnerability audit (pip-audit)
         run: |
-          pip install pip-audit
+          pip install pip-audit==2.10.1
           pip-audit -r requirements.lock
 
   # Production runs on Windows (Task Scheduler + BATs); one Windows leg catches
@@ -89,6 +110,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # tags del pre-registro (AUD-002), igual que `test`
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -113,7 +137,7 @@ jobs:
   # abierto con la etiqueta, no hace nada -- ya esta gritando. Al cerrarlo, el
   # siguiente fallo abre otro.
   alerta-ci-rojo:
-    needs: [test, test-windows]
+    needs: [test, test-windows, dependency-audit]
     if: failure() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

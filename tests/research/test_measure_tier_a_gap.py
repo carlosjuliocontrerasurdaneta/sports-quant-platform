@@ -515,8 +515,17 @@ def test_parse_max_plausible_edge_from_tag_message(mod):
 
 
 def test_git_tag_message_reads_the_real_tag(mod):
+    """Verificacion de INTEGRACION del ancla real (seccion 2.5). Un checkout sin
+    el tag -- CI con `actions/checkout` mientras el tag no este publicado -- no
+    puede verificarla: se SALTA con el motivo explicito en vez de fallar o de
+    pasar en falso. `git tag -l` sale 0 y devuelve "" con un tag inexistente,
+    asi que `is not None` no distinguia ausencia de presencia (auditoria
+    2026-10-15, AUD-002)."""
+    if mod.git_rev_parse(f"refs/tags/{mod.TAG_NAME}", mod.DEFAULT_ROOT) is None:
+        pytest.skip(f"tag {mod.TAG_NAME} ausente en este checkout: el ancla real del "
+                    "pre-registro NO se verifica aqui (AUD-002)")
     msg = mod.git_tag_message(mod.TAG_NAME, mod.DEFAULT_ROOT)
-    assert msg is not None
+    assert msg, f"el tag {mod.TAG_NAME} existe pero su mensaje esta vacio"
     assert mod.parse_max_plausible_edge_from_tag_message(msg) == pytest.approx(0.075)
 
 
@@ -1048,6 +1057,11 @@ def test_medir_mode_full_success_with_tz_sensitivity(mod, tmp_path, monkeypatch)
     monkeypatch.setattr(mod, "git_status_porcelain", lambda cwd, *a, **k: "")
     monkeypatch.setattr(mod, "git_show_text",
                         _fake_show_builder({rel_pre: doc_text, rel_jsonl: jsonl_line}))
+    # Test sintetico: el mensaje del tag tambien es un doble, como el resto de
+    # git arriba. La lectura del tag REAL la cubre
+    # `test_git_tag_message_reads_the_real_tag` (auditoria 2026-10-15, AUD-002).
+    monkeypatch.setattr(mod, "git_tag_message", lambda tag, cwd: (
+        "max_plausible_edge efectivo de Settings en H: 0.075 (doble del test)\n"))
 
     class _Args:
         pass
