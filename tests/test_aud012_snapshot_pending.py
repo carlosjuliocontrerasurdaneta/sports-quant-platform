@@ -31,6 +31,59 @@ def test_file_cache_pending_marker_roundtrip(tmp_path):
     c.clear_pending("k")  # idempotente
 
 
+def test_new_content_for_a_key_retires_its_marker(tmp_path):
+    """Ventana (b): la captura de cierre refresca la clave (force_refresh) y
+    guarda su propio snapshot. La marca del run diario hablaba del contenido
+    ANTERIOR; si sobreviviera, el reintento re-persistiria lo ya guardado."""
+    c = FileCache(tmp_path / "cache")
+    c.put("k", {"v": 1})
+    c.mark_pending("k")
+    c.put("k", {"v": 2})
+    assert not c.is_pending("k")
+    assert c.get("k", ttl=60) == {"v": 2}
+
+
+def test_a_failed_cache_write_keeps_the_marker(tmp_path, monkeypatch):
+    """Si el put falla, el contenido anterior sigue en la cache y su marca vale."""
+    c = FileCache(tmp_path / "cache")
+    c.put("k", {"v": 1})
+    c.mark_pending("k")
+    c.put("k", {"no-serializable": object()})     # TypeError -> best-effort
+    assert c.is_pending("k")
+
+
+def test_force_refresh_fetch_retires_the_daily_marker(tmp_path):
+    """Extremo a extremo en el cliente: run diario con marca huerfana, y una
+    peticion con force_refresh=True a la MISMA clave antes del reintento."""
+    class _Resp:
+        status_code = 200
+        headers: dict = {}
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return [{"id": "e1"}]
+
+    class _Session:
+        def get(self, *a, **k):            # noqa: ARG002
+            return _Resp()
+
+    cli = OddsAPIClient(api_key="x", cache_dir=tmp_path / "cache", cache_ttl=600,
+                        force_refresh=False)
+    cli.session = _Session()
+    cli._get("/sports/x/odds", cache=True, regions="us")
+    cli.mark_snapshot_pending()              # el append del run diario fallo
+    assert cli.snapshot_pending()
+
+    captura = OddsAPIClient(api_key="x", cache_dir=tmp_path / "cache",
+                            cache_ttl=600, force_refresh=True)
+    captura.session = _Session()
+    captura._get("/sports/x/odds", cache=True, regions="us")
+    assert captura.last_cache_key == cli.last_cache_key
+    assert not cli.snapshot_pending()        # el reintento no re-persistira
+
+
 def test_client_marker_follows_the_last_cache_key(tmp_path):
     cli = OddsAPIClient(api_key="x", cache_dir=tmp_path / "cache", cache_ttl=60)
     assert cli.last_cache_key is None and not cli.snapshot_pending()

@@ -106,4 +106,10 @@ class FileCache:
             self.dir.mkdir(parents=True, exist_ok=True)
             self._file(key).write_text(json.dumps(data), encoding="utf-8")
         except (TypeError, OSError):
-            pass  # cache write is best-effort; never break a live fetch over it
+            return  # cache write is best-effort; never break a live fetch over it
+        # La marca habla del contenido ANTERIOR de la clave: si otra peticion lo
+        # reemplaza (la captura de cierre refresca con force_refresh=True y guarda
+        # su propio snapshot), el reintento del run diario re-persistiria como
+        # "pendiente" una respuesta que ya esta en disco (ventana (b) de AUD-012,
+        # verificacion 2026-10-16). El run diario vuelve a marcar tras su put.
+        self.clear_pending(key)
