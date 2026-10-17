@@ -41,8 +41,9 @@ rentabilidad.
    «pregame», asi que se excluye y se cuenta junto a esa causa
    (`pregame_ilegible`).
 4. **Conteos de exclusion mutuamente excluyentes.** Orden: identidad,
-   resultado (void/push/half/otro), colapso, pregame, probabilidades
-   presentes, `s_t` (=1 o desconocido), `p_cal` fuera de [0,1].
+   resultado (void/push/half/otro), colapso, pregame, mercado invalido
+   (AUD-003, ambiguedad 13), probabilidades presentes, `s_t` (=1 o
+   desconocido), `p_cal` fuera de [0,1].
 5. **«Picks sin graduar» (11).** Picks SERVIDOS (primera servida de
    `served_*.csv`, `start_time` en (T0, T1]) sin ninguna fila en el stream
    graduado. No depende de `result`.
@@ -67,6 +68,11 @@ rentabilidad.
     `league` sale del nombre del fichero y nunca se renombra ni toca nada.
 12. **`--seed`/`--n-boot` distintos de 42/10.000** no abortan: se marcan en la
     procedencia (`difiere_de_lo_congelado`).
+13. **AUD-003 (Addendum 2026-10-17).** La fila de decision (primera servida)
+    de `nhl|h2h` con `generated_at` anterior a 2026-10-16T12:56:03Z
+    (ffc5ad3) se excluye y se cuenta (`mercado_invalido_aud003`) en ajuste y
+    evaluacion, igual en todos los modos; el pick no se sustituye por una
+    servida posterior. En S1 (sin colapsar) el filtro actua por fila.
 """
 from __future__ import annotations
 
@@ -117,6 +123,14 @@ _BLOBS = ("src/sqp/pipeline/probabilities.py", "src/sqp/evaluation/edge_informat
           "src/sqp/pipeline/daily.py")
 _REGIME_CHANGES_PRE_T0 = {"mlb": "2026-09-26", "nhl": "2026-09-30"}   # 10, S3
 _IDENTIDAD = ("event_id", "market", "selection")
+
+# Addendum 2026-10-17 (AUD-003): `liga|mercado` cuyo `implied_probability_novig`
+# es falso antes de un instante. Literal CONGELADO (no se importa del gate: una
+# entrada nueva alli no puede cambiar esta poblacion sin su propio addendum).
+# Un test fija que coincide con `sqp.risk.prediction_gate.INVALID_BEFORE`.
+INVALID_BEFORE: dict[tuple[str, str], str] = {
+    ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",   # ffc5ad3
+}
 # Campos permitidos en la linea de `--contar` (11): nada que dependa de y/p/s_k.
 CONTAR_CAMPOS = frozenset({
     "instante_ejecucion_utc", "head", "h", "t0", "t1_candidato",
@@ -471,6 +485,20 @@ def reconstruct_p_cal(cal: np.ndarray, fair: np.ndarray, s_t: np.ndarray) -> np.
     return np.where(np.isfinite(s_t) & (s_t < 1.0), p, np.nan)
 
 
+def invalid_market_mask(df: pd.DataFrame) -> pd.Series:
+    """True en las filas de `INVALID_BEFORE` con `_gen` anterior a su instante
+    o ilegible (Addendum 2026-10-17; semantica de `_drop_invalid_market_rows`
+    del gate). `league` es la del nombre del fichero. No depende de `result`."""
+    out = pd.Series(False, index=df.index)
+    if df.empty or not {"league", "market", "_gen"} <= set(df.columns):
+        return out
+    for (league, market), since in INVALID_BEFORE.items():
+        seg = (df["league"].astype(str) == league) & (df["market"].astype(str) == market)
+        valido = (df["_gen"] >= pd.Timestamp(since)).fillna(False).astype(bool)
+        out |= seg & ~valido
+    return out
+
+
 def prepare_picks(graded: pd.DataFrame, table: list[dict], collapse: bool = True,
                   liga_familia: dict[str, str | None] | None = None,
                   ) -> tuple[pd.DataFrame, dict]:
@@ -508,6 +536,13 @@ def prepare_picks(graded: pd.DataFrame, table: list[dict], collapse: bool = True
     cnt["pregame_ilegible"] = int(ilegible.sum())
     cnt["generado_en_vivo_o_despues"] = int(en_vivo.sum())
     df = df[~ilegible & ~en_vivo].copy()
+
+    # Addendum 2026-10-17 (AUD-003): fila de decision de un `liga|mercado` con
+    # no-vig falso en su instante -> fuera (el pick entero con `collapse`; no
+    # se busca otra servida). `_gen` ya es legible aqui.
+    invalido = invalid_market_mask(df)
+    cnt["mercado_invalido_aud003"] = int(invalido.sum())
+    df = df[~invalido].copy()
 
     cal = _num(df, "calibrated_probability")
     fair = _num(df, "implied_probability_novig")

@@ -222,6 +222,50 @@ def test_first_serve_failing_2_4_stays_out_even_if_a_later_serve_would_pass(mod)
     assert out["counts"]["generado_en_vivo_o_despues"] == 1
 
 
+def test_aud003_nhl_h2h_decision_row_before_fix_is_excluded_without_substitution(mod):
+    """Addendum 2 (2026-10-17): primera servida de nhl|h2h anterior a ffc5ad3
+    -> pick fuera aunque una servida posterior sea valida; corte con >= (como
+    el gate); nhl|totals y nfl|h2h del mismo instante no se tocan; recuento
+    mutuamente excluyente con pregame."""
+    antes, corte = "2026-10-16T12:56:02Z", "2026-10-16T12:56:03Z"
+    st = "2026-10-17T00:00:00Z"
+    rows = [
+        _served_row(event_id="n1", league="nhl", generated_at=antes, start_time=st),
+        _served_row(event_id="n1", league="nhl", generated_at="2026-10-16T20:00:00Z",
+                    start_time=st),                                   # re-servida valida
+        _served_row(event_id="n2", league="nhl", generated_at=corte, start_time=st),
+        _served_row(event_id="n3", league="nhl", market="totals", line=5.5,
+                    generated_at=antes, start_time=st),
+        _served_row(event_id="n4", league="nhl", generated_at=antes,
+                    start_time="2026-10-16T00:00:00Z"),               # en vivo: cuenta pregame
+        _served_row(event_id="f1", league="nfl", generated_at=antes, start_time=st),
+    ]
+    primeras, _ = mod.first_serve_rows(pd.DataFrame(rows))
+    graded = pd.DataFrame(columns=["event_id", "market", "selection", "line", "result"])
+    head = mod.git_rev_parse("HEAD", mod.DEFAULT_ROOT)
+    labels_mod, tipster_mod = mod.load_frozen_classifier(mod.DEFAULT_ROOT, head, head)[:2]
+    out = mod.build_primary_from_primeras(primeras, graded, labels_mod, tipster_mod,
+                                          pd.Timestamp("2026-10-01T00:00:00Z"),
+                                          pd.Timestamp("2027-10-01T00:00:00Z"),
+                                          mod.DEFAULT_TZ_CLUSTER, mod.MAX_PLAUSIBLE_EV)
+    assert sorted(out["frame"]["event_id"]) == ["f1", "n2", "n3"]
+    assert out["counts"]["mercado_invalido_aud003"] == 1
+    assert out["counts"]["generado_en_vivo_o_despues"] == 1
+    # Ledger (S1): misma regla sobre su propia fila de decision.
+    settled = pd.DataFrame([{**r, "result": "win", "stake": 0.0} for r in rows])
+    led = mod.build_ledger_population(primeras, settled, labels_mod, tipster_mod,
+                                      pd.Timestamp("2026-10-01T00:00:00Z"),
+                                      pd.Timestamp("2027-10-01T00:00:00Z"),
+                                      mod.DEFAULT_TZ_CLUSTER, mod.MAX_PLAUSIBLE_EV)
+    assert sorted(led["frame"]["event_id"]) == ["f1", "n2", "n3"]
+    assert led["counts"]["mercado_invalido_aud003"] == 1
+
+
+def test_aud003_literal_matches_the_prediction_gate(mod):
+    from sqp.risk.prediction_gate import INVALID_BEFORE
+    assert mod.INVALID_BEFORE == INVALID_BEFORE
+
+
 def test_pregame_mask_excludes_and_counts_illegible_start_time(mod):
     head = mod.git_rev_parse("HEAD", mod.DEFAULT_ROOT)
     labels_mod, _ = mod.load_frozen_classifier(mod.DEFAULT_ROOT, head, head)[:2]

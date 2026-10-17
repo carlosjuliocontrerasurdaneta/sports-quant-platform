@@ -280,6 +280,35 @@ def test_s_t_one_or_unknown_is_excluded_and_counted(mod):
     assert picks.set_index("event_id").loc["e0", "_p_cal"] == pytest.approx(0.60)
 
 
+def test_aud003_nhl_h2h_decision_row_before_fix_is_excluded_without_substitution(mod):
+    """Addendum 2026-10-17: primera servida de nhl|h2h anterior a ffc5ad3 ->
+    pick fuera aunque tenga una servida posterior valida; nhl|totals y
+    nfl|h2h del mismo instante no se tocan; el corte es >= (gate)."""
+    corte = pd.Timestamp("2026-10-16T12:56:03Z")
+    st = corte + pd.Timedelta(hours=10)
+    gen_antes = 10.0 + 1.0 / 3600            # 1 s antes del corte
+    rows = [
+        _row("n1", st, league="nhl", gen_h=gen_antes),
+        _row("n1", st, league="nhl", gen_h=1.0),                  # re-servida valida
+        _row("n2", st, league="nhl", gen_h=10.0),                 # justo en el corte
+        _row("n3", st, league="nhl", market="totals", gen_h=gen_antes, line=5.5),
+        _row("f1", st, league="nfl", gen_h=gen_antes),
+    ]
+    picks, cnt = _picks(mod, rows)
+    assert cnt["mercado_invalido_aud003"] == 1
+    assert sorted(picks["event_id"]) == ["f1", "n2", "n3"]
+    # S1 (sin colapsar): el filtro actua por fila y la re-servida valida queda.
+    s1, cnt1 = mod.prepare_picks(pd.DataFrame(rows), mod.parse_regime_table(None),
+                                 collapse=False)
+    assert cnt1["mercado_invalido_aud003"] == 1
+    assert sorted(s1["event_id"]) == ["f1", "n1", "n2", "n3"]
+
+
+def test_aud003_literal_matches_the_prediction_gate(mod):
+    from sqp.risk.prediction_gate import INVALID_BEFORE
+    assert mod.INVALID_BEFORE == INVALID_BEFORE
+
+
 def test_p_cal_outside_unit_interval_is_excluded_not_clipped(mod):
     rows = [_row("e0", "2026-10-10T20:00:00Z", cal=0.10, fair=0.90),   # 2*0.1-0.9 < 0
             _row("e1", "2026-10-10T20:00:00Z", cal=0.55, fair=0.50)]
@@ -758,7 +787,8 @@ def test_liga_familia_is_saved_in_sk_and_overrides_live_lookup(mod, tmp_path, mo
     sk = json.loads(mod.sk_json_path(w.pre).read_text(encoding="utf-8"))
     assert sk["liga_familia"] == {"nfl": "football"}
     rows = [_row("f0", "2026-10-10T20:00:00Z", league="nfl"),
-            _row("f1", "2026-10-10T20:00:00Z", league="nhl")]
+            # nhl|h2h posterior a ffc5ad3: anterior lo excluye AUD-003 (Addendum 2026-10-17).
+            _row("f1", "2026-10-20T20:00:00Z", league="nhl")]
     picks, cnt = mod.prepare_picks(pd.DataFrame(rows), mod.parse_regime_table(None),
                                    liga_familia={"nfl": "inventada"})
     p = picks.set_index("event_id")

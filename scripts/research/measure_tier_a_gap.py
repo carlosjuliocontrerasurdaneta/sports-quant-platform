@@ -99,6 +99,11 @@ fuentes congeladas).
    lectura posterior vea que el bootstrap de esa ejecucion no uso los
    parametros congelados, en vez de abortar una ejecucion unica ya cara de
    repetir por un parametro que no es ninguno de los que decide el veredicto.
+7. **AUD-003 (Addendum 2, 2026-10-17).** Tras pregame y antes de p/cuota/
+   novig (recuentos mutuamente excluyentes, ambiguedad 4), la fila de
+   decision de `nhl|h2h` con `generated_at` anterior a 2026-10-16T12:56:03Z
+   (ffc5ad3) o ilegible se excluye y se cuenta (`mercado_invalido_aud003`),
+   en el universo primario y en el ledger. No se salta a otra servida.
 
 ## Modos (seccion 7)
 
@@ -168,6 +173,14 @@ _YAML_REL = "configs/default.yaml"
 _GIT_STATUS_PATHS = ("src", "configs", "scripts/research")
 
 _IDENTIDAD_PICK = ("event_id", "market", "selection")
+
+# Addendum 2 (2026-10-17, AUD-003): `liga|mercado` cuyo `implied_probability_novig`
+# es falso antes de un instante. Literal CONGELADO (no se importa del gate: una
+# entrada nueva alli no puede cambiar esta poblacion sin su propio addendum).
+# Un test fija que coincide con `sqp.risk.prediction_gate.INVALID_BEFORE`.
+INVALID_BEFORE: dict[tuple[str, str], str] = {
+    ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",   # ffc5ad3
+}
 
 
 # ------------------------------------------------------------------- git --
@@ -618,6 +631,22 @@ def pregame_mask(df: pd.DataFrame, labels_mod) -> tuple[pd.Series, dict]:
                     "generado_en_vivo_o_despues": int(en_vivo.sum())}
 
 
+def invalid_market_mask(df: pd.DataFrame, labels_mod) -> tuple[pd.Series, dict]:
+    """Addendum 2 (AUD-003): mascara de filas VALIDAS. Fuera la fila de
+    decision de un `liga|mercado` de `INVALID_BEFORE` con `generated_at`
+    anterior a su instante o ilegible (semantica de `_drop_invalid_market_rows`
+    del gate). Se aplica tras `pregame_mask` y antes de `pyp_mask`; el pick no
+    se sustituye por otra servida. No depende de `result`."""
+    invalido = pd.Series(False, index=df.index)
+    if not df.empty and {"league", "market"} <= set(df.columns):
+        gen = labels_mod.instantes_utc(df.get("generated_at"), index=df.index)
+        for (league, market), since in INVALID_BEFORE.items():
+            seg = (df["league"].astype(str) == league) & (df["market"].astype(str) == market)
+            valido = (gen >= pd.Timestamp(since)).fillna(False).astype(bool)
+            invalido |= seg & ~valido
+    return ~invalido, {"mercado_invalido_aud003": int(invalido.sum())}
+
+
 def pyp_mask(df: pd.DataFrame, labels_mod) -> tuple[pd.Series, dict]:
     """p finita, cuota > 1.0, novig presente (seccion 2.4). Recuentos
     MUTUAMENTE EXCLUYENTES: orden p -> cuota -> novig (ambiguedad 4 del
@@ -863,6 +892,9 @@ def build_primary_from_primeras(primeras: pd.DataFrame, graded: pd.DataFrame,
     # L1: pyp_mask SOLO sobre lo que ya paso pregame, para que sus recuentos
     # sean mutuamente excluyentes con los de pregame (no solo entre si).
     ventana_pre_ok = ventana[valido_pre]
+    valido_mkt, c_mkt = invalid_market_mask(ventana_pre_ok, labels_mod)   # Addendum 2
+    counts.update(c_mkt)
+    ventana_pre_ok = ventana_pre_ok[valido_mkt]
     valido_pyp, c_pyp = pyp_mask(ventana_pre_ok, labels_mod)
     counts.update(c_pyp)
     validas = ventana_pre_ok[valido_pyp].copy()
@@ -947,6 +979,9 @@ def build_ledger_population(served_primeras: pd.DataFrame, settled: pd.DataFrame
     valido_pre, c_pre = pregame_mask(ventana, labels_mod)
     counts.update(c_pre)
     ventana_pre_ok = ventana[valido_pre]  # L1
+    valido_mkt, c_mkt = invalid_market_mask(ventana_pre_ok, labels_mod)   # Addendum 2
+    counts.update(c_mkt)
+    ventana_pre_ok = ventana_pre_ok[valido_mkt]
     valido_pyp, c_pyp = pyp_mask(ventana_pre_ok, labels_mod)
     counts.update(c_pyp)
     validas = ventana_pre_ok[valido_pyp].copy()

@@ -240,6 +240,38 @@ def test_e3_filters_act_before_collapse_and_range_and_cut_exclude_whole_pick(
     assert "p3" in set(mod.build_population(pd.DataFrame(rows), None)["frame"]["event_id"])
 
 
+def test_aud003_nhl_h2h_first_serve_before_fix_excludes_whole_pick(mod: Any) -> None:
+    """Addendum 2026-10-17: primera servida de nhl|h2h anterior a ffc5ad3 (o
+    sin sello legible) -> pick entero fuera, sin saltar a una servida
+    posterior; nhl|totals y mlb|h2h del mismo instante no se tocan."""
+    antes, despues = "2026-10-16T12:56:02Z", "2026-10-16T12:56:03Z"
+    ilegible = _row("n3", league="nhl", gen=antes)
+    ilegible["generated_at"] = "no-es-fecha"
+    rows = [
+        _row("n1", league="nhl", gen=antes),
+        _row("n1", league="nhl", gen="2026-10-17T10:00:00Z"),     # re-servida valida
+        _row("n2", league="nhl", gen=despues),                     # justo en el corte
+        ilegible,
+        _row("n4", league="nhl", market="totals", gen=antes, line=5.5),
+        _row("m1", league="mlb", gen=antes),
+    ]
+    for t1 in (T_FAR, None):
+        res = mod.build_population(pd.DataFrame(rows), t1)
+        assert set(res["frame"]["event_id"]) == {"n2", "n4", "m1"}
+        assert res["counts"]["picks_mercado_invalido_aud003"] == 2
+        assert res["counts"]["eventos_sin_corte"] == 3
+        # La sensibilidad sin colapsar tampoco conserva la re-servida de n1.
+        malos = res["filtradas"][res["gid"].isin(res["malos_gid"])]
+        assert set(malos["event_id"]) == {"n1", "n3"}
+
+
+def test_aud003_literal_matches_the_prediction_gate(mod: Any) -> None:
+    """Si el gate anade o cambia una entrada, este test obliga a decidir por
+    addendum como la trata esta medicion (enmienda del gate 2026-10-16)."""
+    from sqp.risk.prediction_gate import INVALID_BEFORE
+    assert mod.INVALID_BEFORE == INVALID_BEFORE
+
+
 def test_e3_counts_non_pregame_and_illegible_first_serve_without_excluding(mod: Any) -> None:
     r = _row("a", gen="2026-01-01T10:00:00Z")
     r["start_time"] = "2026-01-01T09:00:00Z"                 # generado despues del inicio

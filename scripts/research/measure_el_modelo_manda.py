@@ -64,6 +64,11 @@ addendum que fija T1 (y antes de la revision de Fable). `--contar` si se puede.
    considera NO verificado y `--medir` aborta.
 9. **Politica ROI sin apuestas en una replica**: la replica se descarta y se
    cuenta (E6). `ROI_s = sum(PnL)/n apuestas` recalculado por replica.
+10. **AUD-003 (Addendum 2026-10-17).** Paso 4b de E3: un pick cuya primera
+    servida es de `nhl|h2h` con `generated_at` anterior a
+    2026-10-16T12:56:03Z (ffc5ad3), ilegible o ausente queda fuera entero
+    (`picks_mercado_invalido_aud003`), tambien en `--contar` y en las
+    sensibilidades. No se sustituye por una servida posterior.
 """
 from __future__ import annotations
 
@@ -124,6 +129,15 @@ _BLOB_FILES = ("src/sqp/evaluation/edge_information.py",
                "src/sqp/pipeline/probabilities.py",
                "scripts/research/measure_el_modelo_manda.py")
 _ADDENDUM_E_MARCA = "## Addendum 2026-10-13 (2)"
+
+# Addendum 2026-10-17 (AUD-003): `liga|mercado` cuyo `implied_probability_novig`
+# es falso antes de un instante. Literal CONGELADO aqui (no se importa de
+# `sqp.risk.prediction_gate.INVALID_BEFORE`: una entrada nueva en el gate no
+# puede cambiar la poblacion de este test sin su propio addendum). Un test fija
+# que coincide con el del gate, para que cualquier divergencia obligue a decidir.
+INVALID_BEFORE: dict[tuple[str, str], str] = {
+    ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",   # ffc5ad3
+}
 _SEGMENT_COLS = ["league", "market"]
 _REQUIRED_COLS = ("result", "calibrated_probability", "implied_probability_novig",
                   "event_id", "selection", "market", "generated_at", "league")
@@ -282,6 +296,22 @@ def _ts(s: pd.Series) -> pd.Series:
     return pd.to_datetime(s, errors="coerce", utc=True, format="ISO8601")
 
 
+def invalid_market_mask(df: pd.DataFrame) -> pd.Series:
+    """True en las filas de `INVALID_BEFORE` con `generated_at` anterior a su
+    instante, ilegible o ausente (Addendum 2026-10-17, misma semantica que
+    `_drop_invalid_market_rows` del gate). No depende de `result`."""
+    out = pd.Series(False, index=df.index)
+    if df.empty or not {"league", "market"} <= set(df.columns):
+        return out
+    gen = (_ts(df["generated_at"]) if "generated_at" in df.columns
+           else pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]"))
+    for (league, market), since in INVALID_BEFORE.items():
+        seg = (df["league"].astype(str) == league) & (df["market"].astype(str) == market)
+        valido = (gen >= pd.Timestamp(since)).fillna(False).astype(bool)
+        out |= seg & ~valido
+    return out
+
+
 def build_population(graded: pd.DataFrame, t1: pd.Timestamp | None) -> dict[str, Any]:
     """Pasos 1-6 de E3, en el orden vinculante. `t1=None` omite el corte (5).
 
@@ -324,8 +354,13 @@ def build_population(graded: pd.DataFrame, t1: pd.Timestamp | None) -> dict[str,
     p_cal = primeras["p_cal"].to_numpy(float)
     fuera = ~((p_cal >= 0.0) & (p_cal <= 1.0))
     counts["picks_p_cal_fuera_de_rango"] = int(fuera.sum())
-    malos_gid = {int(g) for g in gid.loc[primeras.index[fuera]]}
-    p4 = primeras[~fuera].copy()
+    # 4b. Addendum 2026-10-17 (AUD-003): si la primera servida es de un
+    # `liga|mercado` con no-vig falso en su instante, el pick entero fuera; no
+    # se sustituye por una servida posterior (misma regla que el paso 4).
+    invalido = invalid_market_mask(primeras).to_numpy() & ~fuera
+    counts["picks_mercado_invalido_aud003"] = int(invalido.sum())
+    malos_gid = {int(g) for g in gid.loc[primeras.index[fuera | invalido]]}
+    p4 = primeras[~(fuera | invalido)].copy()
     counts["eventos_sin_corte"] = int(p4["event_id"].nunique())
     counts["picks_sin_corte"] = int(len(p4))
     # 5. corte temporal sobre el generated_at de ESA primera servida
