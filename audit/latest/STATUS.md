@@ -17,3 +17,19 @@ Linea base: `FINDINGS.md` (revision 2) y `BACKLOG.md`, sin modificar. Remediacio
 | AUD-010 | P3 | IMPLEMENTADO | VERIFICADO-CORREGIDO | `9b1608d` | `command -v codex` antes del `rm` | — |
 | AUD-011 | P3 | IMPLEMENTADO | VERIFICADO-CORREGIDO | `5ff1475` | Pasan con basetemp dentro del repo | — |
 | AUD-012 | P3 | IMPLEMENTADO | VERIFICADO-MITIGADO | `7861a7f` | Tests sobre la base: 3 failed; 0 marcas huerfanas | Seguimiento: ventanas de duplicado inferidas (a) y (b) |
+
+## Seguimiento posterior a la verificacion (2026-10-16/17)
+
+Commits posteriores a `VERIFICATION.md`; no tienen verificacion independiente. Las columnas de arriba no se tocan.
+
+| ID | Commit | Que cierra |
+|---|---|---|
+| AUD-003 | `22da441` | El gate descarta nhl\|h2h generado antes de `ffc5ad3`; enmienda `docs/research/2026-10-16-enmienda-gate-nhl-h2h-aud003.md` (Fable APTO CON CAMBIOS) |
+| AUD-003 | `3e9b7aa` | Movimiento de linea sin casas con Draw en ligas a 2 vias (seguimiento P3) |
+| AUD-003 | este cierre | Addenda 2026-10-17 en los tres pre-registros que leen el stream servido (MM, peso del mercado, brecha tier A): excluyen nhl\|h2h anterior a `ffc5ad3`; N, T0/T1 y calendario intactos (Fable APTO) |
+| AUD-013 | `1f4d300` | urllib3 2.8.0 en el lockfile (primer run real de dependency-audit); produccion actualizada a 2.8.0 el 2026-10-17 |
+| AUD-004 | `4b4ca2e` | Fallo parcial de ligas da rc=1; porteros NHL se capturan igual |
+| AUD-012 | `57906ff` | Ventana (b): `FileCache.put` retira la marca pendiente |
+| AUD-001 | `813292d` | `match_results` 1:1 por (pareja, fecha canonica): MLB 2.247 emparejados, 0 cruces (Fable APTO CON CAMBIOS); residual cerrado 2026-10-17 (KI-074) |
+
+Sigue pendiente del operador: publicar los tags `prereg-*` (AUD-002) y una verificacion independiente de estos commits.

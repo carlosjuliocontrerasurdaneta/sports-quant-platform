@@ -19,6 +19,7 @@
 
 Orden permanente del operador (2026-10-12). **Comando de activación:** cuando el operador escriba «guarda los cambios y cierra sesión», ejecuta este procedimiento completo:
 
+0. Finaliza primero todas las tareas pendientes (orden del operador, 2026-10-17). Lo que dependa de un permiso denegado o de una decisión del operador no bloquea el cierre: se informa en el paso 12 con el comando o la decisión exacta que falta.
 1. Guarda todos los archivos y cambios pendientes que estén bajo tu control.
 2. Comprueba el estado del repositorio mediante `git status`.
 3. Identifica la rama activa y su repositorio remoto.

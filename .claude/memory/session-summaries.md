@@ -990,3 +990,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - `813292d` AUD-001 desbloqueado: `roi_engine.match_results` 1:1 por (pareja, `expected_result_date`); MLB 1.803 -> 2.247 emparejados, 0 cruces (antes 90). Fable APTO CON CAMBIOS, aplicados. KI-074 CORREGIDO con residual.
 - Evidencia: suite completa sobre 57906ff 3269 passed, 1 skipped; 719 passed en los ficheros de AUD-001; ruff y mypy limpios.
 - Pendientes: tags `prereg-*` sin publicar (push de tags denegado por el modo automatico; el operador: `! git push origin refs/tags/prereg-tier-a-t0 refs/tags/prereg-peso-mercado-h`); recalcular mediciones MLB con el matcher nuevo (abridor 0,05, clima, bateria, validate_oos) y migrar scripts de investigacion; declarar el trato de nhl|h2h previo a ffc5ad3 en cada pre-registro; actualizar audit/latest STATUS/VERIFICATION; worktree `.claude/worktrees/agent-a2bc3d835b878219b` pendiente de permiso para borrar.
+
+## 2026-10-17 — Pendientes: urllib3 en produccion, residual AUD-001, addenda AUD-003 en pre-registros
+
+- urllib3 2.8.0 instalado en produccion. KI-074 residual cerrado con medicion (ver la entrada KI-074). Addenda Fable APTO en los tres pre-registros que leen el stream servido. Paso 0 del cierre en `CLAUDE.md`. Detalle en `Obsidian/Bitácora/2026-10-17.md` y `audit/latest/STATUS.md`.
+- Tests: 228 passed (tests/research de MM, tier A y peso del mercado, mas contrato del sistema Claude); ruff limpio.
+- Pendientes del operador: tags `prereg-*` y borrado de worktrees de agentes (ambos denegados por el modo automatico).
