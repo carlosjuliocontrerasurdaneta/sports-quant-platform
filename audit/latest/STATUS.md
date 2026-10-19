@@ -24,10 +24,19 @@
 | AUD-016 | P3 | Corregido en local; falta confirmar el CI en Linux y en 3.11–3.14 tras el push |
 | AUD-017 | P3 | Mitigado (`_git_decide`); la causa sigue sin reproducirse sin carga |
 
-## Pendientes del operador
+## Autorización del operador (2026-10-19, «Te autorizo») y lo que se hizo
 
-1. Push de `main` y revisión del CI. Lo nuevo que verá por primera vez: los jobs `secret-scan` y `cierre-ci-verde`, y el lock ampliado.
-2. Autorizar, por separado, si procede: reparar en disco los duplicados de AUD-003, re-graduar las filas de cuarto de AUD-008 y el residuo KI-071.
-3. Decidir el reintento automático de `SQP_Diario_Completo_Cdev`. Requiere un proceso elevado, y su semántica ante un exit distinto de 0 relanzaría llamadas de pago.
-4. **Recencia de totales, fase M (2027-01-31):** la instantánea `C:\dev\3\snapshots\bateria-ajustes-20261008`, con `H.json` y `pre_H`, no existe en esta máquina. Hay que localizarla antes de la fase M, que exige `--h-json` con SHA-256 `32a0e9e3…5348b1ac`. Registrado como **KI-075**. Según Fable, la fase M queda bloqueada hasta recuperarla, y repetir la fase H no vale sin enmienda.
-5. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).
+1. **Push** de `main` (`32e1b2f..ba6f3e3`), sin bloqueos de la push protection. Primer CI: `secret-scan`, `dependency-audit` y `test-windows` en verde. Las 4 patas Linux de `test` fallaron por 2 tests de AUD-004 que usaban una ruta Windows (`\tmp\...`) en Linux: defecto del test, no del hook. Corregido. `alerta-ci-rojo` abrió su issue como debe, y `cierre-ci-verde` lo cerrará en el próximo run verde.
+2. **KI-075 resuelto:** la instantánea H estaba en la papelera de reciclaje. Se copió de vuelta y su SHA y su `codigo_sha256` cuadran.
+3. **Reintento de la tarea diaria (AUD-005):** `scripts/set_daily_retry.ps1` (RestartCount 3, cada 15 min; la caché de cuotas de 6 h evita gastar créditos). Necesita UAC, así que lo ejecuta el operador.
+4. **Reparación de datos:** `scripts/repair_audit_20261018.py`, con dry-run por defecto, copia de seguridad, SHA tomado al planificar y comprobado bajo lock. Revisión de Fable:
+   - **AUD-003 NO se repara en disco.** Rompería la Enmienda 3(c) de la batería y la Enmienda 2 de recencia, y `load` ya deduplica al leer. Queda resuelto en la lectura.
+   - **KI-071:** 9 filas (stake 0).
+   - **AUD-008:** 124 filas del stream re-graduadas a medias (pnl 0). El ledger tiene 0 filas emparejables y no cambia.
+   - El clasificador del modo automático no permite ejecutarlo a Claude, así que lo ejecuta el operador.
+
+## Pendientes
+
+1. Que el operador ejecute `scripts/set_daily_retry.ps1` (UAC) y `scripts/repair_audit_20261018.py` (dry-run y después `--apply`, fuera de las ventanas de SETTLE y DIARIO).
+2. Confirmar el CI en verde tras el arreglo del test (AUD-015/016).
+3. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).

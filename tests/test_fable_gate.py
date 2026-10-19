@@ -1049,7 +1049,10 @@ def test_aud004_fable_followup_escapes_are_blocked(tmp_path, plantilla):
     root = _repo(tmp_path)
     _tracked_modified_sensitive_file(root)
     _current_task(root)
-    command = plantilla.format(root_win=str(root).replace("/", "\\"))
+    # Ruta absoluta de la raiz: con contrabarras y unidad en Windows, que es el
+    # caso del hallazgo; en el runner Linux del CI, la POSIX tal cual.
+    absoluta = str(root).replace("/", "\\") if os.name == "nt" else str(root)
+    command = plantilla.format(root_win=absoluta)
     result = _run(root, {"tool_name": "PowerShell", "tool_input": {"command": command}})
     assert result.returncode == 2, (command, result.stderr)
     assert "configs/x.yaml" in result.stderr

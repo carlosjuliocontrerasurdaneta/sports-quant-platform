@@ -3,14 +3,17 @@
 Auditoria audit-2026-10-18, AUD-008. Una linea asiatica de cuarto (+-x.25 /
 +-x.75) liquida a medias (`half_win`/`half_loss`) cuando el resultado cae en la
 mitad entera. Antes del arreglo, la produccion las graduaba `win`/`loss`
-enteras. El stream servido es append-only, asi que esas filas siguen ahi: 92
-graduadas mal (re-graduadas por Fable con el `_grade` actual), 58 dentro de la
-ventana del gate. Medido el 2026-10-18 sobre `data/calibration/graded_*.csv`:
-antes del corte apenas hay medias liquidaciones (8 de 572 filas de cuarto);
-despues, 80 de 284.
+enteras. El stream servido es append-only, asi que esas filas siguen ahi. El
+diagnostico encontro al menos 92 graduadas mal (58 dentro de la ventana del
+gate), con 244 filas sin cruce; re-graduadas contra el historico con
+`exact_history_scores_map` salen 124, todas win->half_win o loss->half_loss
+(dry-run de `scripts/repair_audit_20261018.py`, 2026-10-19). Medido el
+2026-10-18 sobre `data/calibration/graded_*.csv`: antes del corte apenas hay
+medias liquidaciones (8 de 572 filas de cuarto); despues, 80 de 284.
 
-No se re-gradua el stream (los datos crudos no se mutan; re-graduar exige una
-autorizacion aparte). Lo que se hace es dejar de CONTAR esas filas, igual que
+El stream se re-gradua UNA vez, con autorizacion del operador (2026-10-19), con
+`scripts/repair_audit_20261018.py`, que corrige el registro. La decision no
+cambia: este modulo deja de CONTAR esas filas, igual que
 `prediction_gate.INVALID_BEFORE`: el corte es el instante del commit que trajo
 el arreglo a produccion (`c578f52`, 2026-09-13), fijado por el codigo y no por
 ningun resultado. Excluye tambien las filas de cuarto de antes del corte que
