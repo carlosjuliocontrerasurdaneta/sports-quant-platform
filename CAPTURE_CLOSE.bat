@@ -31,6 +31,12 @@ call scripts\rotate_log.cmd logs\goalie_probables.log
 "%SQP_PYTHON%" scripts\capture_goalie_probables_nhl.py --source-run capture >> logs\goalie_probables.log 2>&1
 if %ERRORLEVEL% neq 0 echo [AVISO] captura de porteros probables NHL fallo (no bloqueante) >> logs\goalie_probables.log
 
+REM Vigilancia del lanzamiento del run diario (AUD-005, ronda audit-2026-10-18):
+REM el 17-10 la tarea de las 12:00 no arranco (0x8007045B, reinicio de Windows
+REM Update) y nada lo dijo, porque los avisos viven DENTRO del run que falto.
+REM No bloqueante y no relanza nada: solo escribe/borra el centinela.
+"%SQP_PYTHON%" scripts\check_daily_launch.py >> logs\capture_close.log 2>&1
+
 if not "%CAPTURE_RC%"=="0" goto :error
 
 REM Captura correcta: limpia SOLO esta etapa (corre cada 30 min, asi que se

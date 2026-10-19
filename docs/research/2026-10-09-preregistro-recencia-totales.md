@@ -824,3 +824,21 @@ Los SHA-256 de código de (e) (`codigo_sha256`) se calculan sobre el contenido d
 normalizados a LF (CRLF → LF), no sobre los bytes de la copia de trabajo: el repositorio
 fija `eol=lf` y una copia CRLF reescrita por git no es un cambio de código. Cualquier otra
 diferencia sigue abortando como dice (e).
+
+## Enmienda 2 (2026-10-18, antes de mirar nada de la fase M): cambio de código por la remediación audit-2026-10-18
+
+Escrita **antes** de ejecutar `--fase M --pre` y sin ningún desenlace de la fase M: no se ha calculado ningún Brier, ningún `diff` ni ningún acierto de la ventana M. Es la enmienda que exige la Enmienda 1(e) cuando el SHA-256 de `measure_totals_recency.py` o de `measure_adjustment_battery.py` difiere del registrado en `H.json`.
+
+**Qué cambió en producción.** La remediación de la ronda `audit-2026-10-18` introdujo dos cambios que alteran lo que estos scripts leen de producción:
+- AUD-001: `HockeyAdapter.TIE_ADDS_GOAL`, que reparte el empate reglamentario de la NHL en (k+1,k)/(k,k+1) y reescala los ritmos;
+- AUD-003: `ResultsStore.load`, que ahora descarta las filas con `game_id` repetido.
+
+Sin tocar los scripts, la fase M mediría NHL con un pricing distinto del de la fase H, y la Enmienda 3(c) de la batería dejaría de ver los 15 `gamePk` MLB, que ya descarta `load`, y abortaría.
+
+**Cambio de código, solo para conservar el contrato de la fase H:**
+1. El `__main__` de `measure_totals_recency.py` ejecuta `main()` dentro de `sqp.sports.adapters.regulation_tie_without_goal()`. Ese gestor fija `HockeyAdapter.TIE_ADDS_GOAL = False` solo mientras dura la ejecución y lo restaura al salir. Es el pricing con el que se midió la fase H, y lo usan igual el adaptador del script y el motor de producción (`walk_forward_backtest`) contra el que se comprueba la paridad.
+2. Los dos scripts leen con `ResultsStore.load(league, dedupe_game_id=False)`, es decir, las mismas filas crudas que en la fase H, y su propia regla 3(c) sigue decidiendo.
+
+Ningún otro byte de lógica cambia. N, ventana, cortes, criterios, asertos de paridad y salidas quedan como estaban.
+
+**Efecto en los hashes.** El `codigo_sha256` de la fase M diferirá del de `H.json` solo por estos dos cambios y por la comprobación que sigue. Esta enmienda es la justificación que exige la Enmienda 1(e). La autorización es verificable y no circular: el fichero versionado `2026-10-09-preregistro-recencia-totales.codigo-M.json`, commiteado después del último cambio de los dos scripts, registra `codigo_sha256_H` (copia literal del de `H.json`; reconstruido desde `f315f4c`, y el script lo contrasta con `H.json` al ejecutarse) y `codigo_sha256_M` (el `code_hashes()` de esa versión final). `--fase M --pre` acepta el código solo si `code_hashes()` coincide con `H.json` o si coincide con `codigo_sha256_M` de un registro cuyo `codigo_sha256_H` es igual al de `H.json`; en cualquier otro caso aborta. pre_M anota cuál de las dos fuentes lo autorizó (`codigo_autorizado_por`), y la comparación de pre_M frente a M no cambia. Cualquier cambio posterior de los scripts invalida el registro y exige una enmienda nueva. Se registra antes de mirar ningún resultado. **No altera ningún criterio**, y queda prohibido usarla para recortar o re-segmentar la ventana.

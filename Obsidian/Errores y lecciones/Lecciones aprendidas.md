@@ -1,7 +1,7 @@
 ---
 tags: [lecciones, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-06
+actualizada: 2026-10-18
 ---
 
 # Lecciones aprendidas
@@ -33,5 +33,7 @@ Principios destilados de la experiencia real del proyecto, en orden de importanc
 12. **Un arreglo cierra el caso que se miró, no el mecanismo.** `FileCache` pasó de `>` a `>=` el 2026-08-05 para que `ttl=0` caducara con edad `0.0`; la edad NEGATIVA quedó abierta y tuvo el CI en rojo desde el 2026-09-05. Su test de borde congela reloj y `mtime` al mismo valor, así que por construcción no puede producir el fallo: cubre el síntoma anterior, no la desincronización que lo causa. Al arreglar un borde, preguntar cuál es la magnitud que se descontroló y acotarla por los dos lados.
 
 13. **Un control cuyo veredicto no cambia lo que pasa después no es un control.** El digest `.sha256` de los calibradores avisaba «integrity check FAILED … loading anyway» y cargaba igual (corregido 2026-09-06). Misma familia que el CI rojo 75 runs sin que nada lo llevara a ninguna parte, y que las tareas programadas fuera de la cadena diaria, cuyo `LastTaskResult` no lee nadie. Al inventariar un control hay que responder dos preguntas, y la segunda es la que se olvida: ¿existe, y **está pasando ahora mismo**?
+
+14. **Corregir la forma de una distribución sin re-anclar su media mete un sesgo nuevo.** AUD-001 (2026-10-18): en la NHL, sumar el gol del empate a la celda (k,k) parecía el arreglo entero, pero los ritmos se ajustan sobre marcadores FINALES, que ya traen ese gol. Sin reescalar, el total esperado subía unos 0,17 goles y el Over 6,5 pasaba a quedar 2,5 pp por ENCIMA de lo empírico, el error opuesto al de partida. Se vio midiendo contra el histórico antes de commitear, no leyendo el código. Al cambiar el soporte de una distribución, comprobar qué momento se ajustó sobre los datos y conservarlo.
 
 Relacionado: [[Errores y lecciones/Errores detectados y soluciones]], [[Decisiones/Registro de decisiones]].

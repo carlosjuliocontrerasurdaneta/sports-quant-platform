@@ -360,7 +360,7 @@ def load_league(league: str, data_root: Path, *, assert_params: bool = True
     En MLB se enriquecen con abridores y FIP (seccion 6). Sin reutilizar
     `measure_tilt_nhl.load_league` (su invariante es tilt 0,9)."""
     store = ResultsStore(data_root)
-    results = [r for r in store.load(league) if str(r.get("date", ""))[:10] <= CUTOFF]
+    results = [r for r in store.load(league, dedupe_game_id=False) if str(r.get("date", ""))[:10] <= CUTOFF]
     n_before = len(results)
     results, dropped = dedupe_by_game_id(results)     # Enmienda 3(c): antes de adjuntar abridores/FIP
     if assert_params and league in EXPECTED_DEDUPE_DROPS:

@@ -78,7 +78,18 @@ class MLBStatsProvider(ResultsProvider):
                     "neutral": False,
                     "game_id": str(g.get("gamePk", "")),  # distinguishes doubleheaders
                 })
-        return out
+        # Un partido suspendido y reanudado aparece con el MISMO gamePk, Final, en
+        # la fecha original y en la de reanudacion (auditoria audit-2026-10-18,
+        # AUD-003: 15 filas duplicadas en results_mlb.csv). Se guarda una vez, en
+        # la ULTIMA fecha, que es cuando el partido termino de verdad.
+        por_pk: dict[str, dict] = {}
+        sin_pk: list[dict] = []
+        for fila in out:
+            if fila["game_id"]:
+                por_pk[fila["game_id"]] = fila   # `dates` viene en orden: gana la ultima
+            else:
+                sin_pk.append(fila)
+        return sin_pk + list(por_pk.values())
 
     def fetch_schedule(self, days_back: int = 365) -> list[dict]:
         """Calendario COMPLETO de temporada regular, aplazados incluidos: la

@@ -30,8 +30,10 @@ from sqp.monitoring.run_status import clear_run_status, record_run_failure
 #
 # Mantener sincronizado con `_BAT_POR_ETAPA` en sqp.monitoring.health, que
 # traduce cada etapa al BAT que hay que re-ejecutar.
+# `diario_no_lanzado` (AUD-005, ronda audit-2026-10-18): la escribe y la borra
+# `scripts/check_daily_launch.py` desde CAPTURE_CLOSE.bat, no el run diario.
 STAGES = ["settle", "run", "validate_oos", "backfill", "capture_close",
-          "refresh_ml", "guard_arbol"]
+          "refresh_ml", "guard_arbol", "diario_no_lanzado"]
 
 
 def main() -> int:

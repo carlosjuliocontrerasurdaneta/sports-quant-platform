@@ -177,3 +177,111 @@ def test_merge_results_without_time_keeps_the_conservative_window():
     history = [dict(_row("2026-06-10", hs=1), game_id="745001")]
     recent = [dict(_row("2026-06-11", hs=7), game_id="odds-jun11")]
     assert len(_merge_results(history, recent)) == 1
+
+
+# --- AUD-003 (ronda audit-2026-10-18): un game_id, un partido ------------------
+
+def _gid(date: str, home: str, away: str, gid: str, hs: int = 3, as_: int = 1) -> dict:
+    return {**_row(date, home, away, hs, as_), "game_id": gid}
+
+
+def test_aud003_resumed_game_is_read_once_on_its_final_date(tmp_path):
+    """MLB suspendido y reanudado: mismo gamePk Final en dos fechas. La fila de
+    la reanudacion se guarda (el CSV es append-only) y se LEE una sola vez, en
+    la fecha del final: con la de la suspension el marcador entraba en el ajuste
+    antes de existir (revision Fable 2026-10-18)."""
+    store = ResultsStore(tmp_path)
+    assert store.upsert("mlb", [_gid("2023-09-28", "NYM", "MIA", "716404", 1, 0)]) == 1
+    assert store.upsert("mlb", [_gid("2023-10-02", "NYM", "MIA", "716404", 1, 0)]) == 1
+    assert [r["date"] for r in store.load("mlb")] == ["2023-10-02"]
+    # re-ingerir la fecha antigua no vuelve a crecer
+    assert store.upsert("mlb", [_gid("2023-09-28", "NYM", "MIA2", "716404", 1, 0)]) == 0
+
+
+def test_aud003_renamed_team_with_same_game_id_does_not_grow_the_store(tmp_path):
+    """ESPN renombra un equipo y el backfill vuelve a bajar el mismo partido."""
+    store = ResultsStore(tmp_path)
+    store.upsert("ncaab", [_gid("2025-11-10", "TCU", "Saint Francis Red Flash", "401812250")])
+    assert store.upsert("ncaab", [_gid("2025-11-10", "TCU", "Red Wolves", "401812250")]) == 0
+    loaded = store.load("ncaab")
+    assert len(loaded) == 1 and loaded[0]["away"] == "Saint Francis Red Flash"
+
+
+def test_aud003_in_batch_repeated_game_id_keeps_one_row(tmp_path):
+    store = ResultsStore(tmp_path)
+    assert store.upsert("wncaab", [_gid("2025-11-10", "A", "B", "9"),
+                                   _gid("2025-11-10", "A", "B2", "9")]) == 1
+
+
+def test_aud003_load_drops_repeated_game_ids_already_in_the_csv(tmp_path):
+    """Las filas ya guardadas no se reparan en disco (datos crudos), pero el
+    ajuste de ratings las lee una sola vez: gana la ULTIMA por (date,
+    ingested_at)."""
+    import pandas as pd
+
+    store = ResultsStore(tmp_path)
+    store.dir.mkdir(parents=True)
+    pd.DataFrame([
+        {"date": "2023-10-02", "home": "NYM", "away": "MIA", "game_id": "716404",
+         "home_score": 1, "away_score": 0, "neutral": False, "ingested_at": "x"},
+        {"date": "2023-09-28", "home": "NYM", "away": "MIA", "game_id": "716404",
+         "home_score": 1, "away_score": 0, "neutral": False, "ingested_at": "x"},
+        {"date": "2023-09-29", "home": "A", "away": "B", "game_id": "",
+         "home_score": 2, "away_score": 1, "neutral": False, "ingested_at": "x"},
+        {"date": "2023-09-29", "home": "C", "away": "D", "game_id": "",
+         "home_score": 2, "away_score": 1, "neutral": False, "ingested_at": "x"},
+    ]).to_csv(store.path("mlb"), index=False)
+    loaded = store.load("mlb")
+    assert [(r["date"], r["game_id"]) for r in loaded] == [
+        ("2023-09-29", ""), ("2023-09-29", ""), ("2023-10-02", "716404")]
+
+
+def test_aud003_same_day_rename_keeps_the_latest_ingestion_on_read(tmp_path):
+    import pandas as pd
+
+    store = ResultsStore(tmp_path)
+    store.dir.mkdir(parents=True)
+    pd.DataFrame([
+        {"date": "2025-11-10", "home": "TCU", "away": "Red Wolves", "game_id": "401812250",
+         "home_score": 70, "away_score": 60, "neutral": False,
+         "ingested_at": "2026-06-21T00:00:00+00:00"},
+        {"date": "2025-11-10", "home": "TCU", "away": "Saint Francis Red Flash",
+         "game_id": "401812250", "home_score": 70, "away_score": 60, "neutral": False,
+         "ingested_at": "2026-06-13T00:00:00+00:00"},
+    ]).to_csv(store.path("ncaab"), index=False)
+    loaded = store.load("ncaab")
+    assert len(loaded) == 1 and loaded[0]["away"] == "Red Wolves"
+
+
+def test_aud003_doubleheaders_with_distinct_game_ids_still_both_kept(tmp_path):
+    store = ResultsStore(tmp_path)
+    assert store.upsert("mlb", [_gid("2026-06-06", "A", "B", "1"),
+                                _gid("2026-06-06", "A", "B", "2")]) == 2
+    assert len(store.load("mlb")) == 2
+
+
+def test_aud003_mlb_resumed_game_is_returned_once_on_its_last_date():
+    from sqp.providers.mlb_statsapi import MLBStatsProvider
+
+    def _g(pk):
+        return {"gamePk": pk, "status": {"abstractGameState": "Final", "detailedState": "Final"},
+                "teams": {"home": {"team": {"name": "NYM"}, "score": 1},
+                          "away": {"team": {"name": "MIA"}, "score": 0}}}
+
+    payload = {"dates": [{"date": "2023-09-28", "games": [_g(716404)]},
+                         {"date": "2023-10-02", "games": [_g(716404), _g(716500)]}]}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return payload
+
+    class _Session:
+        def get(self, url, params=None, timeout=None):
+            return _Resp()
+
+    results = MLBStatsProvider(session=_Session()).fetch_results("mlb")
+    assert sorted((r["game_id"], r["date"]) for r in results) == [
+        ("716404", "2023-10-02"), ("716500", "2023-10-02")]

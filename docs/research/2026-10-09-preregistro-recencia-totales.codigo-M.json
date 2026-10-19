@@ -1,0 +1,12 @@
+{
+  "codigo_sha256_H": {
+    "measure_totals_recency.py": "326bb83750b8b59ad26a4cc40bab8f6faf9b10819689eef43266c50e69482c8f",
+    "measure_adjustment_battery.py": "bf1e096412a07617b013f7e3609cd68e938e87201aef9ffe98770abb15c324b4"
+  },
+  "codigo_sha256_M": {
+    "measure_totals_recency.py": "7f278d4648fcf13b7a14abd35e2b1b8c2b9bb04a9496ef2b5e303cb6808fb222",
+    "measure_adjustment_battery.py": "d958f1a0d927c6594a667eb418b1b8baaf7fa4f3521afc2b832a280c2eb2a3a2"
+  },
+  "motivo": "Enmienda 2 (2026-10-18) de docs/research/2026-10-09-preregistro-recencia-totales.md: remediacion audit-2026-10-18 (AUD-001 pricing NHL fijado en __main__, AUD-003 load sin dedupe, codigo_autorizado). codigo_sha256_H reconstruido desde git en f315f4c (el commit de la fase H), igual a los prefijos publicados en el informe de la fase H; H.json no estaba disponible en esta maquina.",
+  "creado": "2026-10-19"
+}

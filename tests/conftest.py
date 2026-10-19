@@ -7,7 +7,17 @@ que se puede cerrar de una vez para toda la suite.
 """
 from __future__ import annotations
 
+import os
+import tempfile
+
 import pytest
+
+# AUD-011 (ronda audit-2026-10-18): la suite escribia en el `logs/sqp.log` de
+# PRODUCCION -- este arbol es a la vez produccion y carpeta de trabajo -- y sus
+# errores sinteticos se mezclaban con los reales. Se fija a NIVEL DE MODULO, no
+# en un fixture: los modulos de `sqp` crean sus loggers al importarse, durante
+# la coleccion, antes de que corra ningun fixture. Los subprocesos la heredan.
+os.environ["SQP_LOG_DIR"] = tempfile.mkdtemp(prefix="sqp-tests-logs-")
 
 
 @pytest.fixture

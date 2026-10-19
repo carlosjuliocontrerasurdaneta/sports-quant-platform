@@ -602,3 +602,23 @@ def test_medir_end_to_end_on_synthetic_data(
     assert out["procedencia"]["market_shrink_en_graduado"]["columna_presente"] is False
     assert out["procedencia"]["difiere_de_lo_congelado"] is True      # n_boot = 100
     assert os.path.exists(mod.__file__) and "segunda_puerta" in out
+
+
+def test_aud008_pre_fix_quarter_line_first_serve_excludes_whole_pick(mod: Any) -> None:
+    """Addendum 2026-10-18 (AUD-008): primera servida totals/spreads de linea de
+    cuarto anterior a c578f52 -> pick entero fuera; media linea no se toca."""
+    antes, despues = "2026-09-13T12:36:33Z", "2026-09-13T12:36:34Z"
+    rows = [
+        _row("q1", league="laliga", market="totals", gen=antes, line=2.75),
+        _row("q1", league="laliga", market="totals", gen="2026-09-14T10:00:00Z", line=2.75),
+        _row("q2", league="laliga", market="totals", gen=despues, line=2.75),
+        _row("h1", league="laliga", market="totals", gen=antes, line=2.5),
+    ]
+    res = mod.build_population(pd.DataFrame(rows), None)
+    assert set(res["frame"]["event_id"]) == {"q2", "h1"}
+    assert res["counts"]["picks_linea_cuarto_aud008"] == 1
+
+
+def test_aud008_literal_matches_quarter_line_fix(mod: Any) -> None:
+    from sqp.settlement.quarter_line_fix import QUARTER_LINE_GRADING_FIXED_AT
+    assert mod.QUARTER_LINE_INVALID_BEFORE == QUARTER_LINE_GRADING_FIXED_AT

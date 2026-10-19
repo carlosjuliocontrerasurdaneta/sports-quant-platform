@@ -18,6 +18,17 @@ import pytest
 
 from sqp.config import ROOT
 
+
+@pytest.fixture(autouse=True)
+def _pricing_preregistrado():
+    """La medicion se pre-registro con el pricing NHL anterior a AUD-001 (ronda
+    audit-2026-10-18); el script lo fija en su `__main__` y estos tests, que
+    llaman a sus funciones directamente, lo fijan aqui."""
+    from sqp.sports.adapters import regulation_tie_without_goal
+    with regulation_tie_without_goal():
+        yield
+
+
 # Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
 # lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
 pytestmark = pytest.mark.heavy

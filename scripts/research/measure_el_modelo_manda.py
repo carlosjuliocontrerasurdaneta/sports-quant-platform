@@ -92,6 +92,7 @@ from sqp.config import ROOT as DEFAULT_ROOT
 from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 from sqp.evaluation.edge_information import PICK_KEY, one_row_per_pick
 from sqp.evaluation.model_vs_market import score_model_vs_market
+from sqp.markets.settlement_math import is_quarter_line
 
 _WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -138,6 +139,13 @@ _ADDENDUM_E_MARCA = "## Addendum 2026-10-13 (2)"
 INVALID_BEFORE: dict[tuple[str, str], str] = {
     ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",   # ffc5ad3
 }
+
+# Addendum 2026-10-18 (AUD-008, ronda audit-2026-10-18): las filas totals/spreads
+# de linea de cuarto generadas antes de este instante (c578f52) se graduaron
+# win/loss sin medias. Literal CONGELADO, como INVALID_BEFORE; un test fija que
+# coincide con `sqp.settlement.quarter_line_fix.QUARTER_LINE_GRADING_FIXED_AT`.
+QUARTER_LINE_INVALID_BEFORE = "2026-09-13T12:36:34+00:00"
+_QUARTER_LINE_MARKETS = ("totals", "spreads")
 _SEGMENT_COLS = ["league", "market"]
 _REQUIRED_COLS = ("result", "calibrated_probability", "implied_probability_novig",
                   "event_id", "selection", "market", "generated_at", "league")
@@ -312,6 +320,23 @@ def invalid_market_mask(df: pd.DataFrame) -> pd.Series:
     return out
 
 
+def quarter_line_mask(df: pd.DataFrame) -> pd.Series:
+    """True en las filas totals/spreads de linea de cuarto con instante de
+    generacion anterior a `QUARTER_LINE_INVALID_BEFORE` o ilegible (Addendum
+    2026-10-18, AUD-008; misma semantica que `sqp.settlement.quarter_line_fix`).
+    No depende de `result`."""
+    out = pd.Series(False, index=df.index)
+    if df.empty or not {"market", "line"} <= set(df.columns):
+        return out
+    gen = (_ts(df["generated_at"]) if "generated_at" in df.columns
+           else pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]"))
+    linea = _num(df, "line")
+    cuarto = df["market"].astype(str).isin(_QUARTER_LINE_MARKETS) & linea.map(
+        lambda x: bool(np.isfinite(x) and is_quarter_line(float(x))))
+    antes = ~(gen >= pd.Timestamp(QUARTER_LINE_INVALID_BEFORE)).fillna(False).astype(bool)
+    return (cuarto & antes).astype(bool)
+
+
 def build_population(graded: pd.DataFrame, t1: pd.Timestamp | None) -> dict[str, Any]:
     """Pasos 1-6 de E3, en el orden vinculante. `t1=None` omite el corte (5).
 
@@ -359,6 +384,11 @@ def build_population(graded: pd.DataFrame, t1: pd.Timestamp | None) -> dict[str,
     # se sustituye por una servida posterior (misma regla que el paso 4).
     invalido = invalid_market_mask(primeras).to_numpy() & ~fuera
     counts["picks_mercado_invalido_aud003"] = int(invalido.sum())
+    # 4c. Addendum 2026-10-18 (AUD-008): primera servida de linea de cuarto
+    # anterior al arreglo de su liquidacion -> el pick entero fuera.
+    cuarto = quarter_line_mask(primeras).to_numpy() & ~fuera & ~invalido
+    counts["picks_linea_cuarto_aud008"] = int(cuarto.sum())
+    invalido = invalido | cuarto
     malos_gid = {int(g) for g in gid.loc[primeras.index[fuera | invalido]]}
     p4 = primeras[~(fuera | invalido)].copy()
     counts["eventos_sin_corte"] = int(p4["event_id"].nunique())

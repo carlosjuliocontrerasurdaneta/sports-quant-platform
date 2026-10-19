@@ -7,6 +7,7 @@ Every function returns *estimated probabilities*.
 """
 from __future__ import annotations
 import math
+import warnings
 from numbers import Integral
 
 import numpy as np
@@ -204,7 +205,7 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
                         total_line: float | None, three_way: bool = False,
                         max_goals: int = 15, dc_rho: float = 0.0,
                         dispersion_k: float | None = None,
-                        score_rho: float = 0.0):
+                        score_rho: float = 0.0, tie_adds_goal: bool = False):
     """Exact probabilities from per-team scoring over a joint score grid.
 
     Returns home/away win (+draw if three_way), spread cover and total O/U.
@@ -214,12 +215,38 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
     ``score_rho`` correlates the two teams' scores across the WHOLE grid, unlike
     dc_rho which only touches the i,j<=1 corner; see `_joint_grid`. Default 0.0
     reproduces independence byte for byte.
+
+    ``tie_adds_goal`` (audit-2026-10-18, AUD-001): in the NHL a regulation tie
+    ALWAYS ends with one more goal (OT or the shootout winner's goal), so the
+    tie cell (k,k) is not a final score: it becomes (k+1,k) and (k,k+1) with
+    half the mass each. The draw split for h2h stays 50/50; totals count
+    that mass as 2k+1, not 2k -- before, P(Over) was biased 2-5 pp
+    with a sign that alternated with the line's parity (n=4.658 NHL games since
+    2023-10, 0 ties). Spreads see the one-goal margin. Only for 2-way leagues.
+
+    The rates passed in are fit on FINAL scores, which already include that
+    extra goal; using them as regulation rates and then adding it would push
+    the expected final total up by P(tie) (~0.17 goals in the NHL). So the two
+    rates are scaled by one common factor (the home/away split is kept) until
+    the grid's expected FINAL total equals ``lam_home + lam_away``. Measured on
+    the NHL history at its mean total (6.158): P(Over) 4.5/5.5/6.5/7.5 =
+    0.764/0.553/0.442/0.255 against 0.781/0.558/0.444/0.244 observed (before:
+    0.736/0.579/0.419/0.278; adding the goal WITHOUT rescaling: 0.783/0.579/
+    0.469/0.278). The rescaling DOES move h2h and spreads slightly: smaller
+    rates mean fewer goals of separation (Fable review 2026-10-18: h2h up to
+    -0.22 pp, puck line -1.5 -0.3 to -0.6 pp). And the final total now depends a
+    little on the split: balanced teams tie more often.
     """
     _finite("dc_rho", dc_rho)
+    if tie_adds_goal and three_way:
+        raise ValueError("tie_adds_goal only applies to 2-way leagues (three_way=False)")
     if spread_line is not None:
         _finite("spread_line", spread_line)
     if total_line is not None:
         _finite("total_line", total_line)
+    if tie_adds_goal:
+        lam_home, lam_away = _regulation_rates(lam_home, lam_away, max_goals,
+                                               dispersion_k, score_rho, dc_rho)
     p_home = score_pmf(lam_home, max_goals, dispersion_k)
     p_away = score_pmf(lam_away, max_goals, dispersion_k)
     joint = _joint_grid(p_home, p_away, score_rho)
@@ -251,12 +278,19 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
             if m > 0: win += p
             elif m == 0: draw += p
             else: loss += p
-            for k, line in enumerate(spread_lines):
-                if m > -line: cover[k] += p
-                elif m == -line: push[k] += p
-            for k, line in enumerate(total_lines):
-                if t > line: over[k] += p
-                elif t == line: total_push[k] += p
+            # Final (margin, total, mass) cells this grid cell settles as.
+            cells: tuple[tuple[int, int, float], ...]
+            if tie_adds_goal and m == 0:
+                cells = ((1, t + 1, p / 2.0), (-1, t + 1, p / 2.0))
+            else:
+                cells = ((m, t, p),)
+            for mf, tf, pf in cells:
+                for k, line in enumerate(spread_lines):
+                    if mf > -line: cover[k] += pf
+                    elif mf == -line: push[k] += pf
+                for k, line in enumerate(total_lines):
+                    if tf > line: over[k] += pf
+                    elif tf == line: total_push[k] += pf
     mass = win + draw + loss  # normalize truncated grid mass
     if not math.isfinite(mass) or mass <= 0:
         raise ValueError("score grid has no finite positive mass; check rates and max_goals")
@@ -273,6 +307,64 @@ def poisson_match_probs(lam_home: float, lam_away: float, spread_line: float | N
         out["over"] = _decision_probability(over, total_push, mass)
         out["under"] = 1.0 - out["over"]
     return out
+
+
+def _tie_mass_and_mean(lam_home: float, lam_away: float, max_goals: int,
+                       dispersion_k: float | None, score_rho: float,
+                       dc_rho: float) -> tuple[float, float]:
+    """(P(tie), E[total]) of the normalized regulation grid, with the same
+    pmf, correlation and Dixon-Coles terms `poisson_match_probs` uses."""
+    joint = _joint_grid(score_pmf(lam_home, max_goals, dispersion_k),
+                        score_pmf(lam_away, max_goals, dispersion_k), score_rho)
+    n = max_goals + 1
+    if dc_rho:
+        joint = joint.copy()
+        for i in range(min(2, n)):
+            for j in range(min(2, n)):
+                joint[i, j] *= max(0.0, _dixon_coles_tau(i, j, lam_home, lam_away, dc_rho))
+    mass = float(joint.sum())
+    if not math.isfinite(mass) or mass <= 0:
+        raise ValueError("score grid has no finite positive mass; check rates and max_goals")
+    totals = np.add.outer(np.arange(n), np.arange(n))
+    return float(np.trace(joint)) / mass, float((joint * totals).sum()) / mass
+
+
+_REGULATION_C_MIN = 1e-6
+
+
+def _regulation_rates(lam_home: float, lam_away: float, max_goals: int,
+                      dispersion_k: float | None, score_rho: float,
+                      dc_rho: float) -> tuple[float, float]:
+    """Rates c*lam_home, c*lam_away whose grid, with the tie goal added,
+    has expected FINAL total lam_home + lam_away (AUD-001). Bisection on c in
+    (0, 1]: the final mean c*L + P(tie) grows with c, tends to 1 (a sure 0-0
+    tie plus its goal) as c -> 0, and c=1 already overshoots. So a solution
+    exists for any total above 1 goal, the minimum possible final total."""
+    target = lam_home + lam_away
+    lo, hi = _REGULATION_C_MIN, 1.0
+    for _ in range(50):
+        mid = (lo + hi) / 2.0
+        tie, mean = _tie_mass_and_mean(mid * lam_home, mid * lam_away, max_goals,
+                                       dispersion_k, score_rho, dc_rho)
+        if mean + tie < target:
+            lo = mid
+        else:
+            hi = mid
+    c = (lo + hi) / 2.0
+    # Saturated at a bracket end: no factor reproduces the target, which only
+    # happens for a total of 1 goal or less, impossible when every tie adds one
+    # (Fable review 2026-10-18 asked for a loud signal). A first bracket of
+    # [0.5, 1] saturated on an ordinary low-scoring input (total 1.1 in
+    # `tests/test_market_tuning.py`), so the bracket is (0, 1]. The signal is
+    # a warning, not an exception: an impossible input must not take down the
+    # daily run of every league; the rates are used as given.
+    if c - _REGULATION_C_MIN < 1e-9 or 1.0 - c < 1e-9:
+        warnings.warn(
+            f"tie_adds_goal: no regulation rates reproduce a final total of "
+            f"{target:.3f} (factor saturated at {c:.6g}); rates used unscaled",
+            RuntimeWarning, stacklevel=3)
+        return lam_home, lam_away
+    return c * lam_home, c * lam_away
 
 
 def _adjacent_lines(line: float | None) -> list[float]:

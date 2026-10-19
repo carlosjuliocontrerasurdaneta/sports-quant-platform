@@ -51,6 +51,24 @@ def test_lower_tilt_shrinks_the_favourite_without_moving_the_total():
     old = _fitted(0.9).estimate(ev, None, 5.5)
     # El favorito (Boston, 20 victorias) queda menos extremo con el tilt nuevo.
     assert 0.5 < new.home_win_estimated_probability < old.home_win_estimated_probability
-    # El total no depende del tilt (salvo truncamiento de la rejilla).
+    # Con el gol del empate reglamentario (AUD-001, ronda audit-2026-10-18) el
+    # total ya NO es exactamente independiente del reparto: dos equipos parejos
+    # empatan mas a menudo y esa masa pasa a 2k+1. El total ESPERADO se conserva
+    # (lo fija `test_aud001_expected_final_total_is_preserved`); la P(Over) se
+    # mueve poco con el tilt.
+    assert new.over_estimated_probability == pytest.approx(
+        old.over_estimated_probability, abs=0.01)
+
+
+def test_without_the_tie_goal_the_total_does_not_depend_on_the_tilt(monkeypatch):
+    """La invariancia original, sobre la rejilla sin el gol del empate."""
+    from sqp.sports.adapters import HockeyAdapter
+
+    monkeypatch.setattr(HockeyAdapter, "TIE_ADDS_GOAL", False)
+    ev = Event(event_id="t", sport_key="icehockey_nhl", league="nhl",
+               home="Boston Bruins", away="Buffalo Sabres",
+               start_time="2026-02-01T00:00:00Z")
+    new = _fitted(TILT_NHL).estimate(ev, None, 5.5)
+    old = _fitted(0.9).estimate(ev, None, 5.5)
     assert new.over_estimated_probability == pytest.approx(
         old.over_estimated_probability, abs=1e-4)

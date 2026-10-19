@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -73,7 +74,16 @@ def _shared_file_handler(fmt: logging.Formatter) -> RotatingFileHandler | None:
     if _file_handler_resuelto:
         return _file_handler
     _file_handler_resuelto = True
-    logdir = Path(__file__).resolve().parents[2] / "logs"
+    # `SQP_LOG_DIR` redirige el fichero (auditoria audit-2026-10-18, AUD-011):
+    # la suite lo fija en `tests/conftest.py` para que sus errores sinteticos
+    # (`fallo en el pipeline: boom`) no acaben en el `logs/sqp.log` de
+    # produccion, mezclados con los reales. Sin la variable, como siempre.
+    destino = os.environ.get("SQP_LOG_DIR", "").strip()
+    if destino:
+        logdir = Path(destino)
+        logdir.mkdir(parents=True, exist_ok=True)
+    else:
+        logdir = Path(__file__).resolve().parents[2] / "logs"
     if logdir.exists():
         # Rotacion: sqp.log crecia sin limite (auditoria 2026-07-24, M-3).
         fh = RotatingFileHandler(logdir / "sqp.log", maxBytes=5_000_000,

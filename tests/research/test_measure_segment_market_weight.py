@@ -865,3 +865,57 @@ def test_csv_provenance_oserror_is_reported_not_raised(mod, tmp_path, monkeypatc
     monkeypatch.setattr("builtins.open", fallido)
     out = mod.csv_provenance(tmp_path / "dr")
     assert out and "bloqueado" in out[0]["error"]
+
+
+# AUD-017 (ronda audit-2026-10-18): con la maquina cargada, `git log` pasaba de
+# 30 s, `_git` devolvia None y `--medir` abortaba con "T0 no existe", un motivo
+# falso. Un fallo del entorno se reintenta y, si persiste, se dice que fue git.
+def test_resolve_t0_git_timeout_is_not_read_as_missing_t0(mod, tmp_path, monkeypatch):
+    llamadas = []
+
+    def _lento(*a, **k):
+        llamadas.append(k.get("timeout"))
+        raise subprocess.TimeoutExpired(cmd="git", timeout=k.get("timeout"))
+
+    monkeypatch.setattr(mod.subprocess, "run", _lento)
+    with pytest.raises(SystemExit, match="no respondio"):
+        mod.resolve_t0(tmp_path)
+    assert llamadas == list(mod._GIT_DECIDE_TIMEOUTS)
+
+
+def test_resolve_t0_retries_once_after_a_transient_timeout(mod, tmp_path, monkeypatch):
+    repo = _init_repo(tmp_path)
+    _commit(repo, {MM_REL: "r\n"}, date="2026-11-05T00:00:00+00:00")
+    real = subprocess.run
+    estado = {"n": 0}
+
+    def _una_vez_lento(*a, **k):
+        estado["n"] += 1
+        if estado["n"] == 1:
+            raise subprocess.TimeoutExpired(cmd="git", timeout=k.get("timeout"))
+        return real(*a, **k)
+
+    monkeypatch.setattr(mod.subprocess, "run", _una_vez_lento)
+    out = mod.resolve_t0(repo)
+    assert out is not None and out["t0"] == T0
+
+
+# Addendum 2026-10-18 (AUD-008): linea de cuarto graduada sin medias antes de c578f52.
+def test_aud008_pre_fix_quarter_line_rows_are_excluded(mod):
+    corte = pd.Timestamp(mod.QUARTER_LINE_INVALID_BEFORE)
+    st = corte + pd.Timedelta(hours=10)
+    antes = 10.0 + 1.0 / 3600
+    rows = [
+        _row("q1", st, league="laliga", market="totals", gen_h=antes, line=2.75),
+        _row("q2", st, league="laliga", market="spreads", gen_h=antes, line=-0.25),
+        _row("q3", st, league="laliga", market="totals", gen_h=10.0, line=2.75),   # en el corte
+        _row("h1", st, league="laliga", market="totals", gen_h=antes, line=2.5),   # media linea
+    ]
+    picks, cnt = _picks(mod, rows)
+    assert cnt["linea_cuarto_aud008"] == 2
+    assert sorted(picks["event_id"]) == ["h1", "q3"]
+
+
+def test_aud008_literal_matches_quarter_line_fix(mod):
+    from sqp.settlement.quarter_line_fix import QUARTER_LINE_GRADING_FIXED_AT
+    assert mod.QUARTER_LINE_INVALID_BEFORE == QUARTER_LINE_GRADING_FIXED_AT

@@ -23,6 +23,17 @@ from sqp.config import ROOT
 from sqp.models import distributions as dist
 from sqp.sports.registry import get_adapter
 
+
+@pytest.fixture(autouse=True)
+def _pricing_preregistrado():
+    """La medicion se pre-registro con el pricing NHL anterior a AUD-001 (ronda
+    audit-2026-10-18); el script lo fija en su `__main__` y estos tests, que
+    llaman a sus funciones directamente, lo fijan aqui."""
+    from sqp.sports.adapters import regulation_tie_without_goal
+    with regulation_tie_without_goal():
+        yield
+
+
 # Modulo caro (CLAUDE-005 / H-2): fuera de la suite rapida del hook Stop; CI
 # lo ejecuta siempre. A mano: `PYTHONPATH=src pytest -m heavy`.
 pytestmark = pytest.mark.heavy
@@ -994,3 +1005,42 @@ def test_f6_quarter_lines_counted(mod, monkeypatch, tmp_path):
     res = mod.measure_m_league("nba", rows, odds, lp, 90.0, set(), n_boot=10)
     assert res["n_lineas_cuarto_sin_paridad4"] == res["n"] > 0
     assert res["paridad_M"]["desviacion_max"] == 0.0
+
+
+# --- Enmienda 2 (2026-10-18): autorizacion del codigo de la fase M --------------
+
+def _registro(tmp_path, h, m):
+    p = tmp_path / "docs" / "research" / "2026-10-09-preregistro-recencia-totales.codigo-M.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"codigo_sha256_H": h, "codigo_sha256_M": m, "motivo": "Enmienda 2"}),
+                 encoding="utf-8")
+
+
+def test_codigo_autorizado_por_h_json(mod, tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_WORKTREE_ROOT", tmp_path)
+    assert mod.codigo_autorizado({"codigo_sha256": mod.code_hashes()}) == "H.json"
+
+
+def test_codigo_autorizado_por_el_registro(mod, tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_WORKTREE_ROOT", tmp_path)
+    h = {"measure_totals_recency.py": "a" * 64, "measure_adjustment_battery.py": "b" * 64}
+    _registro(tmp_path, h, mod.code_hashes())
+    assert mod.codigo_autorizado({"codigo_sha256": h}) == mod.CODIGO_M_REL
+
+
+def test_codigo_no_autorizado_sin_registro_o_con_hashes_distintos(mod, tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_WORKTREE_ROOT", tmp_path)
+    h = {"measure_totals_recency.py": "a" * 64, "measure_adjustment_battery.py": "b" * 64}
+    assert mod.codigo_autorizado({"codigo_sha256": h}) is None              # sin registro
+    _registro(tmp_path, {**h, "measure_totals_recency.py": "c" * 64}, mod.code_hashes())
+    assert mod.codigo_autorizado({"codigo_sha256": h}) is None              # _H distinto
+    _registro(tmp_path, h, {"measure_totals_recency.py": "d" * 64})
+    assert mod.codigo_autorizado({"codigo_sha256": h}) is None              # _M distinto
+
+
+def test_el_registro_versionado_autoriza_el_codigo_actual(mod):
+    """Candado de la Enmienda 2: si alguien vuelve a tocar measure_totals_recency.py
+    o measure_adjustment_battery.py, el registro deja de autorizarlos y este test
+    falla, lo que obliga a escribir una enmienda nueva ANTES de la fase M."""
+    reg = json.loads((mod._WORKTREE_ROOT / mod.CODIGO_M_REL).read_text(encoding="utf-8"))
+    assert mod.codigo_autorizado({"codigo_sha256": reg["codigo_sha256_H"]}) == mod.CODIGO_M_REL

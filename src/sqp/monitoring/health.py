@@ -56,6 +56,9 @@ _BAT_POR_ETAPA = {
     # No es un fallo del pipeline sino un ABORTO deliberado: el arbol tenia
     # cambios sin commitear en codigo de produccion (KI-036).
     "guard_arbol": "DIARIO_COMPLETO.bat (commitea o exporta SQP_SKIP_TREE_GUARD=1)",
+    # La tarea de las 12:00 no llego a arrancar (AUD-005): lo detecta
+    # CAPTURE_CLOSE.bat; se recupera lanzando el run a mano.
+    "diario_no_lanzado": "DIARIO_COMPLETO.bat (la tarea no arranco; lanzarla a mano)",
 }
 
 
@@ -575,3 +578,67 @@ def generate_health_report(root: Path = ROOT) -> dict:
     log.info("Health report: %s (%d errors, %d warnings)",
              report["status"], len(errors), len(warnings))
     return report
+
+
+# --- Lanzamiento perdido de la tarea diaria (AUD-005, ronda audit-2026-10-18) ---
+#
+# El 17-10 `SQP_Diario_Completo_Cdev` no llego a arrancar: un reinicio de Windows
+# Update la dejo en 0x8007045B ("apagado en curso") y se perdio el dia. Nada lo
+# dijo: `pipeline_liveness` y `scheduled_tasks_status` se ejecutan DENTRO del run
+# diario, que es justo el proceso que falto, y el BAT no escribe centinela si no
+# arranca. Este detector lo llama `CAPTURE_CLOSE.bat` (otra tarea, cada 30 min) y
+# escribe el centinela de la etapa `diario_no_lanzado`, que ya leen el tablero y
+# `health_check`. Solo VIGILA: no relanza el run (un relanzamiento automatico
+# repetiria llamadas de pago y la liquidacion, y es decision del operador).
+
+DAILY_TRIGGER_LOCAL = (12, 0)          # disparador diario de SQP_Diario_Completo_Cdev
+DAILY_GRACE_MIN = 45                   # margen tras el disparador antes de avisar
+
+
+def daily_launch_missed(raw: str | None, now_local: datetime) -> str | None:
+    """Motivo por el que el run diario de HOY (o el de ayer, antes de la hora
+    de hoy) no llego a lanzarse, o `None` si se lanzo o no se puede saber.
+
+    ``now_local`` es la hora LOCAL con zona (el disparador es local). Un
+    `LastTaskResult` HRESULT (>= 0x80000000) con la ultima ejecucion en la
+    ventana es un fallo de LANZAMIENTO; un codigo pequeno (1, 2...) es el BAT
+    que fallo, y ese ya escribe su propio centinela.
+    """
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if isinstance(tasks, dict):
+        tasks = [tasks]
+    daily = next((t for t in tasks or [] if isinstance(t, dict)
+                  and t.get("Task") == DAILY_TASK), None)
+    if daily is None:
+        return None
+    h, m = DAILY_TRIGGER_LOCAL
+    trigger = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    if now_local < trigger + timedelta(minutes=DAILY_GRACE_MIN):
+        trigger -= timedelta(days=1)
+    last = None
+    if daily.get("LastRun"):
+        try:
+            last = datetime.fromisoformat(str(daily["LastRun"]))
+        except ValueError:
+            last = None
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=now_local.tzinfo)
+    if last is None or last < trigger - timedelta(minutes=5):
+        cuando = last.isoformat() if last else "nunca"
+        return (f"{DAILY_TASK} no se lanzo en su disparador de {trigger.isoformat()} "
+                f"(ultima ejecucion: {cuando})")
+    try:
+        rc = int(str(daily.get("LastResult")))
+    except (TypeError, ValueError):
+        return None
+    rc &= 0xFFFFFFFF
+    if rc >= 0x80000000 and rc != _TASK_RUNNING:
+        return (f"{DAILY_TASK} no llego a arrancar el {last.isoformat()}: el "
+                f"Programador devolvio 0x{rc:08X}")
+    return None

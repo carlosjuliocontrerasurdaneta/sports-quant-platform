@@ -107,8 +107,12 @@ from sqp.calibration.metrics import expected_calibration_error, reliability_tabl
 from sqp.config import ROOT as DEFAULT_ROOT
 from sqp.models import distributions as dist
 from sqp.pipeline.daily import _league_meta
+from sqp.sports.adapters import regulation_tie_without_goal
 from sqp.sports.registry import get_adapter
+
 from sqp.storage.results_store import ResultsStore
+
+
 
 _WORKTREE_ROOT = Path(__file__).resolve().parents[2]  # para git_head() y el docstring del CLI
 
@@ -1164,4 +1168,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Pricing NHL con el que se pre-registro esta medicion: sin el gol del empate
+    # reglamentario de AUD-001 (addendum 2026-10-18 del pre-registro).
+    with regulation_tie_without_goal():
+        raise SystemExit(main())

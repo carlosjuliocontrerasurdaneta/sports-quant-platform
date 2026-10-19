@@ -98,6 +98,7 @@ from sqp.evaluation.bootstrap import cluster_bootstrap_ci
 from sqp.evaluation.edge_information import one_row_per_pick
 from sqp.evaluation.labels import instantes_utc
 from sqp.evaluation.model_vs_market import _EPS, flattened_segments, log_loss_safe
+from sqp.markets.settlement_math import is_quarter_line
 
 _WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -131,6 +132,13 @@ _IDENTIDAD = ("event_id", "market", "selection")
 INVALID_BEFORE: dict[tuple[str, str], str] = {
     ("nhl", "h2h"): "2026-10-16T12:56:03+00:00",   # ffc5ad3
 }
+
+# Addendum 2026-10-18 (AUD-008, ronda audit-2026-10-18): las filas totals/spreads
+# de linea de cuarto generadas antes de este instante (c578f52) se graduaron
+# win/loss sin medias. Literal CONGELADO, como INVALID_BEFORE; un test fija que
+# coincide con `sqp.settlement.quarter_line_fix.QUARTER_LINE_GRADING_FIXED_AT`.
+QUARTER_LINE_INVALID_BEFORE = "2026-09-13T12:36:34+00:00"
+_QUARTER_LINE_MARKETS = ("totals", "spreads")
 # Campos permitidos en la linea de `--contar` (11): nada que dependa de y/p/s_k.
 CONTAR_CAMPOS = frozenset({
     "instante_ejecucion_utc", "head", "h", "t0", "t1_candidato",
@@ -148,6 +156,31 @@ def _git(args: list[str], cwd: Path) -> str | None:
         return res.stdout.strip()
     except Exception:  # noqa: BLE001 -- procedencia, no decide nada
         return None
+
+
+# Auditoria audit-2026-10-18, AUD-017. `resolve_t0`/`resolve_h` SI deciden (si
+# `--medir` puede correr), pero usaban `_git`, que convierte un timeout o un git
+# que no arranca en `None`: con la maquina cargada, `git log` pasaba de 30 s y el
+# script abortaba con "--medir exige T0 y no existe", un motivo FALSO (el test
+# `test_medir_aborts_with_different_t1` fallo asi 1 de 3 veces). Aqui un fallo
+# del ENTORNO se reintenta una vez con mas margen y, si persiste, aborta diciendo
+# que fue git; solo un `returncode != 0` (ref inexistente) vale `None`.
+_GIT_DECIDE_TIMEOUTS = (60, 180)
+
+
+def _git_decide(args: list[str], cwd: Path) -> str | None:
+    ultimo: Exception | None = None
+    for limite in _GIT_DECIDE_TIMEOUTS:
+        try:
+            res = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True,
+                                 text=True, encoding="utf-8", check=True, timeout=limite)
+            return res.stdout.strip()
+        except subprocess.CalledProcessError:
+            return None
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            ultimo = exc
+    raise SystemExit(f"git {args[0]} no respondio ({ultimo!r}); no se puede resolver "
+                     "la procedencia. Es un fallo del entorno, no de T0/H. Aborta.")
 
 
 def git_show_or_none(ref: str, relpath: str, cwd: Path) -> str | None:
@@ -200,11 +233,11 @@ def _parse_ts(value: object) -> pd.Timestamp | None:
 def resolve_h(preregistro: Path, cwd: Path, tag: str = TAG_NAME) -> dict | None:
     """H (11): tag anotado, si no `git log --diff-filter=A` sobre el fichero.
     Aborta si los dos existen y difieren; `None` si ninguno resuelve."""
-    h_tag = _git(["rev-parse", f"{tag}^{{commit}}"], cwd)
+    h_tag = _git_decide(["rev-parse", f"{tag}^{{commit}}"], cwd)
     rel = _relpath(preregistro, cwd)
     h_fb = None
     if rel:
-        out = _git(["log", "--diff-filter=A", "--format=%H", "--", rel], cwd)
+        out = _git_decide(["log", "--diff-filter=A", "--format=%H", "--", rel], cwd)
         lineas = [x for x in (out or "").splitlines() if x.strip()]
         h_fb = lineas[-1] if lineas else None   # la mas antigua
     if h_tag and h_fb and h_tag != h_fb:
@@ -220,7 +253,7 @@ def resolve_t0(cwd: Path) -> dict | None:
     """T0 (3.1): committer date UTC del commit que AÑADE el unico fichero
     `docs/research/*resultado-el-modelo-manda*.md`. `None` si hay cero;
     aborta si hay mas de uno."""
-    out = _git(["log", "--diff-filter=A", "--name-only", "--format=@@%H %cI",
+    out = _git_decide(["log", "--diff-filter=A", "--name-only", "--format=@@%H %cI",
                 "--", T0_PATHSPEC], cwd)
     if not out:
         return None
@@ -499,6 +532,21 @@ def invalid_market_mask(df: pd.DataFrame) -> pd.Series:
     return out
 
 
+def quarter_line_mask(df: pd.DataFrame) -> pd.Series:
+    """True en las filas totals/spreads de linea de cuarto con instante de
+    generacion anterior a `QUARTER_LINE_INVALID_BEFORE` o ilegible (Addendum
+    2026-10-18, AUD-008; misma semantica que `sqp.settlement.quarter_line_fix`).
+    No depende de `result`."""
+    out = pd.Series(False, index=df.index)
+    if df.empty or not {"market", "line", "_gen"} <= set(df.columns):
+        return out
+    linea = _num(df, "line")
+    cuarto = df["market"].astype(str).isin(_QUARTER_LINE_MARKETS) & linea.map(
+        lambda x: bool(np.isfinite(x) and is_quarter_line(float(x))))
+    antes = ~(df["_gen"] >= pd.Timestamp(QUARTER_LINE_INVALID_BEFORE)).fillna(False).astype(bool)
+    return (cuarto & antes).astype(bool)
+
+
 def prepare_picks(graded: pd.DataFrame, table: list[dict], collapse: bool = True,
                   liga_familia: dict[str, str | None] | None = None,
                   ) -> tuple[pd.DataFrame, dict]:
@@ -543,6 +591,10 @@ def prepare_picks(graded: pd.DataFrame, table: list[dict], collapse: bool = True
     invalido = invalid_market_mask(df)
     cnt["mercado_invalido_aud003"] = int(invalido.sum())
     df = df[~invalido].copy()
+    # Addendum 2026-10-18 (AUD-008): linea de cuarto graduada sin medias.
+    cuarto = quarter_line_mask(df)
+    cnt["linea_cuarto_aud008"] = int(cuarto.sum())
+    df = df[~cuarto].copy()
 
     cal = _num(df, "calibrated_probability")
     fair = _num(df, "implied_probability_novig")

@@ -59,9 +59,13 @@ from sqp.pipeline.probabilities import (
     build_model_map,
 )
 from sqp.sports.adapters import NormalMarginAdapter, PoissonAdapter
+from sqp.sports.adapters import regulation_tie_without_goal
 from sqp.sports.registry import get_adapter
+
 from sqp.sports.team_names import get_team_normalizer
 from sqp.storage.results_store import ResultsStore
+
+
 
 # --------------------------------------------------- reutilizado de la bateria --
 # Alias de modulo: los tests los sustituyen (git, bootstrap) en ESTE modulo.
@@ -136,6 +140,26 @@ def code_hashes() -> dict:
             for n in ("measure_totals_recency.py", "measure_adjustment_battery.py")}
 
 
+# Enmienda 2 (2026-10-18): registro VERSIONADO que autoriza el codigo de la fase M
+# cuando difiere del de H.json. Vive fuera de los ficheros que se hashean, asi que
+# no hay circularidad; se commitea despues del ultimo cambio de los dos scripts.
+CODIGO_M_REL = "docs/research/2026-10-09-preregistro-recencia-totales.codigo-M.json"
+
+
+def codigo_autorizado(h_json: dict) -> str | None:
+    """Enmienda 2: la fuente que autoriza el codigo actual, o None."""
+    actual = code_hashes()
+    if h_json.get("codigo_sha256") == actual:
+        return "H.json"
+    p = _WORKTREE_ROOT / CODIGO_M_REL
+    if not p.is_file():
+        return None
+    reg = json.loads(p.read_text(encoding="utf-8"))
+    if reg.get("codigo_sha256_H") == h_json.get("codigo_sha256") and reg.get("codigo_sha256_M") == actual:
+        return CODIGO_M_REL
+    return None
+
+
 def candidate_params(league_params: dict | None, h: float) -> dict:
     """Seccion 5: el candidato es SIEMPRE `league_params U {scoring_half_life_days: h}`."""
     out = dict(league_params or {})
@@ -184,7 +208,7 @@ def load_league_cut(league: str, data_root: Path, cutoff: str) -> tuple[list[dic
     procedencia. Misma logica que `bat.load_league` con el corte parametrizado
     (la fase M corta en D, la fase H en 2026-09-26)."""
     store = ResultsStore(data_root)
-    rows = [r for r in store.load(league) if str(r.get("date", ""))[:10] <= cutoff]
+    rows = [r for r in store.load(league, dedupe_game_id=False) if str(r.get("date", ""))[:10] <= cutoff]
     n_before = len(rows)
     rows, dropped = bat.dedupe_by_game_id(rows)
     bat.assert_dedupe_drops(league, dropped)
@@ -1174,7 +1198,8 @@ def informe_pre_M(data_root: Path, h_json_path: Path, h_sha: str, cutoff: str,
     params = resolved_report(LEAGUES)
     if _clean(h_json.get("parametros_resueltos")) != _clean(params):
         raise SystemExit("Los parametros resueltos de H.json difieren de los actuales (base cambiada). Se aborta.")
-    if h_json.get("codigo_sha256") != code_hashes():       # Enmienda 1(e), F4
+    fuente = codigo_autorizado(h_json)                      # Enmienda 1(e), F4; Enmienda 2
+    if fuente is None:
         raise SystemExit("El codigo (measure_totals_recency.py / measure_adjustment_battery.py) difiere del de "
                          "H.json. Solo una enmienda previa a mirar la fase M puede justificarlo. Se aborta.")
     if cutoff == M_CUTOFF_EXT and prev_pre_m is None:
@@ -1183,7 +1208,7 @@ def informe_pre_M(data_root: Path, h_json_path: Path, h_sha: str, cutoff: str,
                  "snapshot_root": str(data_root), "corte_fase_M": cutoff, "mercado_desde": MARKET_START,
                  "h_json_sha256": sha256_of(h_json_path), "manifiesto": manifest(data_root, odds=True),
                  "config_sha256": bat.config_hashes(), "parametros_resueltos": params,
-                 "codigo_sha256": code_hashes(),
+                 "codigo_sha256": code_hashes(), "codigo_autorizado_por": fuente,
                  "prev_pre_m_sha256": None if prev_pre_m_path is None else sha256_of(Path(prev_pre_m_path)),
                  "h_C": {lg: h_c_of(h_json, lg) for lg in LEAGUES}, "minimos": M_MIN_N, "ligas": {}}
     for lg in LEAGUES:
@@ -1442,4 +1467,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Pricing NHL con el que se pre-registro esta medicion: sin el gol del empate
+    # reglamentario de AUD-001 (addendum 2026-10-18 del pre-registro).
+    with regulation_tie_without_goal():
+        raise SystemExit(main())

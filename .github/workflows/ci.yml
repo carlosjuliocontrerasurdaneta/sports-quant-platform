@@ -103,6 +103,20 @@ jobs:
           pip install pip-audit==2.10.1
           pip-audit -r requirements.lock
 
+  # Escaneo de secretos de los ficheros rastreados (auditoria audit-2026-10-18,
+  # AUD-006). El repositorio es PUBLICO y no habia ninguna barrera antes de
+  # publicar: el hook check-secrets.sh avisa DESPUES de escribir y solo dentro
+  # de Claude Code. Mismo detector que el hook; nunca imprime el valor.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Literales de credencial en ficheros rastreados
+        run: python scripts/scan_tracked_secrets.py
+
   # Production runs on Windows (Task Scheduler + BATs); one Windows leg catches
   # path/locale/os.replace regressions that ubuntu can't. Single Python version
   # to keep minutes bounded (Windows runners cost 2x).
@@ -137,7 +151,7 @@ jobs:
   # abierto con la etiqueta, no hace nada -- ya esta gritando. Al cerrarlo, el
   # siguiente fallo abre otro.
   alerta-ci-rojo:
-    needs: [test, test-windows, dependency-audit]
+    needs: [test, test-windows, dependency-audit, secret-scan]
     if: failure() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -172,3 +186,26 @@ jobs:
 
           Contexto de por que existe este aviso: el CI estuvo rojo 75 runs
           seguidos (2026-08-06 a 2026-09-05) sin que nada lo señalara."
+
+  # Cierre automatico al volver a verde (auditoria audit-2026-10-18, AUD-015).
+  # `alerta-ci-rojo` no abre otro issue mientras haya uno abierto, y el cierre
+  # dependia de que alguien se acordara: el #4 siguio abierto con main en verde,
+  # asi que el SIGUIENTE rojo no habria avisado. Un run verde de main cierra los
+  # issues `ci-rojo` abiertos con un comentario que enlaza el run.
+  cierre-ci-verde:
+    needs: [test, test-windows, dependency-audit, secret-scan]
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Cerrar los issues ci-rojo abiertos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --repo "$REPO" --label ci-rojo --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$REPO" --comment "CI de main en verde de nuevo: $RUN_URL"
+          done

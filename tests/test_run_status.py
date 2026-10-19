@@ -810,3 +810,56 @@ def test_limpiar_una_etapa_que_solo_estaba_en_el_legado(tmp_path):
     assert clear_run_status(tmp_path, "backfill") is True
     assert read_run_status(tmp_path) is None
     assert not (logs / STATUS_FILENAME).exists()
+
+
+# --- AUD-005 (ronda audit-2026-10-18): lanzamiento perdido del run diario -----
+
+def _tareas(last_run: str | None, last_result: int) -> str:
+    import json
+    return json.dumps({"history_enabled": False, "tasks": [
+        {"Task": "SQP_Diario_Completo_Cdev", "State": "Ready", "LastRun": last_run,
+         "LastResult": last_result, "Missed": 0}]})
+
+
+def _local(iso: str):
+    from datetime import datetime, timedelta, timezone
+    return datetime.fromisoformat(iso).replace(tzinfo=timezone(timedelta(hours=-3)))
+
+
+def test_aud005_launch_failure_hresult_is_detected():
+    """El caso real del 17-10: LastRun 12:00:01 con 0x8007045B."""
+    from sqp.monitoring.health import daily_launch_missed
+    motivo = daily_launch_missed(_tareas("2026-10-17T12:00:01-03:00", 0x8007045B),
+                                 _local("2026-10-17T13:00:00"))
+    assert motivo and "8007045B" in motivo
+
+
+def test_aud005_no_launch_since_yesterday_is_detected():
+    from sqp.monitoring.health import daily_launch_missed
+    motivo = daily_launch_missed(_tareas("2026-10-16T12:00:01-03:00", 0),
+                                 _local("2026-10-17T13:00:00"))
+    assert motivo and "no se lanzo" in motivo
+
+
+def test_aud005_healthy_or_too_early_or_bat_failure_is_not_a_launch_miss():
+    from sqp.monitoring.health import daily_launch_missed
+    # lanzado hoy y bien
+    assert daily_launch_missed(_tareas("2026-10-18T12:00:01-03:00", 0),
+                               _local("2026-10-18T13:00:00")) is None
+    # antes del margen de hoy manda el disparador de ayer
+    assert daily_launch_missed(_tareas("2026-10-17T12:00:01-03:00", 0),
+                               _local("2026-10-18T12:30:00")) is None
+    # el BAT fallo (rc 1): tiene su propio centinela
+    assert daily_launch_missed(_tareas("2026-10-18T12:00:01-03:00", 1),
+                               _local("2026-10-18T13:00:00")) is None
+    # en ejecucion
+    assert daily_launch_missed(_tareas("2026-10-18T12:00:01-03:00", 0x41301),
+                               _local("2026-10-18T13:00:00")) is None
+    # sin datos no se inventa un aviso
+    assert daily_launch_missed(None, _local("2026-10-18T13:00:00")) is None
+
+
+def test_aud005_capture_close_calls_the_watchdog_without_blocking():
+    bat = (ROOT / "CAPTURE_CLOSE.bat").read_text(encoding="utf-8")
+    linea = next(ln for ln in bat.splitlines() if "check_daily_launch.py" in ln)
+    assert "goto :error" not in linea and "if %ERRORLEVEL%" not in linea

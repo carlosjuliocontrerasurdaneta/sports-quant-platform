@@ -23,7 +23,11 @@ modelo=$(printf '%s' "$input" | python -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
-    print(str((d.get('tool_input') or {}).get('model') or '').strip())
+    ti = d.get('tool_input') or {}
+    m = str(ti.get('model') or '').strip()
+    if not m and str(ti.get('subagent_type') or '').strip().lower() == 'fork':
+        m = '__FORK__'
+    print(m)
 except Exception:
     print('__PARSE_FAIL__')
 " 2>/dev/null || echo '__PARSE_FAIL__')
@@ -31,6 +35,14 @@ except Exception:
 # vacia) se confundia con un fallo de parseo y el hook no bloqueaba NUNCA.
 # Detectado probando el comportamiento; la sintaxis era valida.
 [ "$modelo" = "__PARSE_FAIL__" ] && exit 0
+# FORK (auditoria audit-2026-10-18, AUD-013): un fork hereda el contexto Y el
+# modelo de la sesion; la herramienta Agent documenta que ignora `model`. Exigirlo
+# hacia creer que el despacho cumplia la politica de escalones cuando el fork
+# corria igual con el modelo de la sesion. Se deja pasar con un aviso honesto.
+if [ "$modelo" = "__FORK__" ]; then
+  echo "require-dispatch-model: fork sin \`model\` -- un fork corre SIEMPRE con el modelo de la sesion; para otro escalon, despachar un subagente con \`model\`." >&2
+  exit 0
+fi
 [ -n "$modelo" ] && exit 0
 cat >&2 <<'MSG'
 DESPACHO BLOQUEADO: falta el parametro `model`.

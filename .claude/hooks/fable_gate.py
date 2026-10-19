@@ -470,10 +470,22 @@ def _segmenta_nivel_superior(texto: str) -> list[tuple[str, bool]]:
     return segmentos
 
 
+# Auditoria audit-2026-10-18, AUD-004: `shlex` en modo POSIX se come la
+# contrabarra de una ruta de PowerShell (`configs\default.yaml` ->
+# `configsdefault.yaml`) y la ruta sensible dejaba de verse. Una contrabarra
+# ENTRE dos caracteres de ruta se lee como separador antes de tokenizar; los
+# escapes de comillas (`\"`) y las continuaciones de linea no casan. En bash,
+# `a\b` es `ab`: tratarlo como `a/b` solo puede bloquear de mas, nunca de menos.
+# `:` en el lado izquierdo para la unidad de Windows (`C:\dev` -> `C:/dev`;
+# revision Fable 2026-10-18).
+_CONTRABARRA_DE_RUTA_RE = re.compile(r"(?<=[\w.*?:\-])\\+(?=[\w.*?\-])")
+
+
 def _tokeniza(segmento: str) -> list[str]:
     """Tokeniza un segmento de comando. Si `shlex` no puede (comillas sin
     cerrar, etc.) se hace un split ingenuo: mejor una deteccion imprecisa que
     tumbar el hook entero por un fallo de parseo en un solo segmento."""
+    segmento = _CONTRABARRA_DE_RUTA_RE.sub("/", segmento)
     try:
         return shlex.split(segmento, posix=True)
     except ValueError:
@@ -586,6 +598,65 @@ def _parsea_invocacion_git_desde(partes: list[str], idx: int) -> tuple[str, list
     if i >= n:
         return None
     return partes[i], partes[i + 1:]
+
+
+def _dirs_git_C(partes: list[str], idx: int) -> list[str]:
+    """Valores de las opciones globales `-C <dir>` de la invocacion de `git`
+    que empieza en `partes[idx]`, en orden (git las encadena)."""
+    dirs: list[str] = []
+    i, n = idx + 1, len(partes)
+    while i < n:
+        t = partes[i]
+        if t in _GIT_GLOBAL_OPTS_CON_VALOR:
+            if t == "-C" and i + 1 < n:
+                dirs.append(partes[i + 1])
+            i += 2
+            continue
+        if t.startswith("-"):
+            i += 1
+            continue
+        break
+    return dirs
+
+
+# AUD-004: un `cd`/`Set-Location` previo en el mismo comando cambia el
+# directorio contra el que git resuelve las rutas del `add`/`commit`. Se lleva
+# una PILA para `pushd`/`popd` (revision Fable 2026-10-18: `pushd src; popd;
+# git commit ... src/...` dejaba el directorio en `src` y la ruta no casaba).
+# Aun asi, las rutas se resuelven SIEMPRE tambien contra la raiz: un directorio
+# mal deducido solo puede bloquear de mas, nunca dejar pasar.
+_COMANDOS_CD = frozenset({"cd", "chdir", "set-location", "sl"})
+_COMANDOS_PUSH = frozenset({"pushd", "push-location"})
+_COMANDOS_POP = frozenset({"popd", "pop-location"})
+
+
+def _cambio_de_directorio(partes: list[str]) -> tuple[str, str | None] | None:
+    """`("cd"|"push"|"pop", destino)` si el segmento cambia de directorio."""
+    primero = _primer_token_efectivo(partes)
+    if primero is None:
+        return None
+    nombre = primero.lower()
+    if nombre in _COMANDOS_POP:
+        return ("pop", None)
+    if nombre not in _COMANDOS_CD and nombre not in _COMANDOS_PUSH:
+        return None
+    resto = partes[partes.index(primero) + 1:]
+    args = [a for a in resto if a == "-" or not a.startswith("-")]
+    return ("push" if nombre in _COMANDOS_PUSH else "cd", args[0] if args else None)
+
+
+def _resuelve_dir(base: Path, destino: str, root: Path | None = None) -> Path:
+    destino = destino.strip().strip('"').strip("'")
+    # `cd -` y destinos con variables (`$HOME`, `$env:X`) no se pueden deducir:
+    # se vuelve a la raiz (revision Fable 2026-10-18).
+    if root is not None and (destino == "-" or "$" in destino or "%" in destino):
+        return root
+    if destino.startswith("~"):
+        destino = os.path.expanduser(destino)
+    candidato = Path(destino)
+    if not candidato.is_absolute():
+        candidato = base / candidato
+    return candidato
 
 
 def _extrae_cadena_wrapper(partes: list[str]) -> str | None:
@@ -796,19 +867,44 @@ def _procesa_texto(
     texto: str, root: Path, acumulado_add: set[str], resultados: list[set[str]],
     profundidad: int = 0, segmentos_reconocidos: list[str] | None = None,
     segmentos_sin_blanquear: list[str] | None = None,
+    dir_actual: list[Path] | None = None,
 ) -> None:
     if profundidad > _PROFUNDIDAD_MAXIMA_RECURSION:
         return
+    # AUD-004: directorio contra el que git resolvera las rutas, compartido
+    # (lista de un elemento) con las cadenas anidadas de `bash -c`/`pwsh`.
+    if dir_actual is None:
+        dir_actual = [root]
     preparado = _prepara_texto(texto)
     for segmento, seguido_de_pipe in _segmenta_nivel_superior(preparado):
         partes = _tokeniza(segmento)
         if not partes:
+            continue
+        cambio = _cambio_de_directorio(partes)
+        if cambio is not None:
+            tipo, destino = cambio
+            if tipo == "pop":
+                if len(dir_actual) > 1:
+                    dir_actual.pop()
+            elif destino is not None:
+                nuevo = _resuelve_dir(dir_actual[-1], destino, root)
+                if tipo == "push":
+                    dir_actual.append(nuevo)
+                else:
+                    dir_actual[-1] = nuevo
+            if profundidad == 0 and segmentos_sin_blanquear is not None:
+                segmentos_sin_blanquear.append(segmento)
             continue
         idx = _localiza_git(partes)
         if idx is not None:
             invocacion = _parsea_invocacion_git_desde(partes, idx)
             if invocacion is None:
                 continue
+            dir_git = dir_actual[-1]
+            for d in _dirs_git_C(partes, idx):
+                dir_git = _resuelve_dir(dir_git, d, root)
+            # Siempre tambien la raiz: ver `_COMANDOS_CD` (solo bloquea de mas).
+            dirs_git = [dir_git] if dir_git == root else [dir_git, root]
             # Revision Fable 2026-09-26: este segmento de nivel superior SI
             # fue interpretado como una invocacion real de `git` (con
             # cualquier subcomando, no solo `add`/`commit`) -- se recuerda
@@ -824,24 +920,31 @@ def _procesa_texto(
             if profundidad == 0 and segmentos_reconocidos is not None:
                 segmentos_reconocidos.append(segmento)
             subcomando, args = invocacion
-            if subcomando == "add":
-                acumulado_add.update(_resuelve_rutas_add(root, args))
+            # AUD-004: `git stage` es un sinonimo exacto de `git add`.
+            if subcomando in ("add", "stage"):
+                for d in dirs_git:
+                    acumulado_add.update(_resuelve_rutas_add(d, args))
             elif subcomando == "commit":
                 rutas = set(acumulado_add)
-                rutas |= _git_name_only(root, ["diff", "--cached", "--name-only"])
+                rutas |= _git_name_only(dir_git, ["diff", "--cached", "--name-only"])
                 if _tiene_flag_all(args):
-                    rutas |= _git_name_only(root, ["diff", "--name-only"])
+                    rutas |= _git_name_only(dir_git, ["diff", "--name-only"])
                 pathspecs = _pathspecs_de_commit(args)
                 if pathspecs:
-                    rutas |= _git_name_only(
-                        root,
-                        ["ls-files", "-m", "-o", "--exclude-standard", "--", *pathspecs],
-                    )
+                    # `--full-name`: rutas relativas a la raiz del repo aunque
+                    # el commit se lance desde un subdirectorio (AUD-004).
+                    for d in dirs_git:
+                        rutas |= _git_name_only(
+                            d,
+                            ["ls-files", "--full-name", "-m", "-o", "--exclude-standard",
+                             "--", *pathspecs],
+                        )
                 resultados.append(rutas)
             continue
         cadena_anidada = _extrae_cadena_wrapper(partes)
         if cadena_anidada and "git" in cadena_anidada:
-            _procesa_texto(cadena_anidada, root, acumulado_add, resultados, profundidad + 1, None, None)
+            _procesa_texto(cadena_anidada, root, acumulado_add, resultados, profundidad + 1, None, None,
+                           dir_actual)
         # Verificacion de Fable 2026-09-26, hallazgo 1 (segunda ronda): este
         # segmento de nivel superior NO se reconocio como una invocacion real
         # de `git` (ni directamente ni via wrapper). Si tampoco es de solo
@@ -864,7 +967,7 @@ def _procesa_texto(
 
 
 def _conjuntos_de_rutas_por_commit(
-    command: str, root: Path,
+    command: str, root: Path, cwd: Path | None = None,
 ) -> tuple[list[set[str]], set[str], list[str], list[str]]:
     """Un elemento por cada `git commit` hallado en `command` (incluidos los
     envueltos en `bash -c`/`sh -c`/`pwsh -Command`), en el orden en que
@@ -890,7 +993,7 @@ def _conjuntos_de_rutas_por_commit(
     segmentos_reconocidos: list[str] = []
     segmentos_sin_blanquear: list[str] = []
     _procesa_texto(command, root, acumulado_add, resultados, 0,
-                    segmentos_reconocidos, segmentos_sin_blanquear)
+                    segmentos_reconocidos, segmentos_sin_blanquear, [cwd or root])
     return resultados, acumulado_add, segmentos_reconocidos, segmentos_sin_blanquear
 
 
@@ -1172,6 +1275,19 @@ def _registra_fallo_abierto(root: Path, motivo: str) -> None:
         pass
 
 
+def _cwd_del_payload(payload: dict, root: Path) -> Path:
+    """Directorio desde el que el harness ejecutara el comando (campo `cwd`
+    del payload del hook). Sin el, o si no existe, la raiz del repo: las rutas
+    relativas de un commit lanzado desde un subdirectorio se resolvian contra
+    la raiz y no casaban con ningun fichero (AUD-004)."""
+    crudo = (payload or {}).get("cwd")
+    if isinstance(crudo, str) and crudo.strip():
+        candidato = Path(crudo)
+        if candidato.is_dir():
+            return candidato
+    return root
+
+
 def _run(payload: dict, root: Path) -> int:
     tool_name = str((payload or {}).get("tool_name") or "")
     if tool_name not in ("Bash", "PowerShell"):
@@ -1182,7 +1298,8 @@ def _run(payload: dict, root: Path) -> int:
         return 0
 
     (conjuntos, acumulado_add, segmentos_reconocidos,
-     segmentos_sin_blanquear) = _conjuntos_de_rutas_por_commit(command, root)
+     segmentos_sin_blanquear) = _conjuntos_de_rutas_por_commit(
+        command, root, _cwd_del_payload(payload, root))
     if not conjuntos:
         texto_preparado = _prepara_texto(command)
         respaldo = _defensa_en_profundidad(

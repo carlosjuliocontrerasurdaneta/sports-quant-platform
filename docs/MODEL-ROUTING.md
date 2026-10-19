@@ -73,8 +73,8 @@ Es el modelo más capaz de Anthropic. Cuesta 2,5x lo que Opus 5.5 ($10/$50 frent
 **Desde la CLI:**
 ```
 claude --model claude-opus-5-5
-claude --model claude-sonnet-5
-claude --model claude-haiku-4-5
+claude --model claude-sonnet-5-5
+claude --model claude-haiku-5-5
 claude --model claude-fable-5-1
 ```
 

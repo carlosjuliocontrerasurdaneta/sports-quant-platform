@@ -262,6 +262,15 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     # toda la muestra y las contradicciones gap/ROI parecen inexplicables.
     graded["_staked"] = (graded["stake"] > 0).astype(int)
     graded["_decided"] = decided.astype(int)
+    # Edge esperado de la MISMA poblacion que `realized_roi` (auditoria
+    # audit-2026-10-18, AUD-010): `mean_est_edge` promedia todas las liquidadas
+    # (n=3.145, 0,178) y el ROI solo las que llevaron stake (n=150); comparar las
+    # dos invitaba a leer un edge inflado. El analogo exacto de pnl/stake es el
+    # edge PONDERADO POR STAKE de las filas con stake.
+    stake_pos = pd.to_numeric(graded["stake"], errors="coerce").fillna(0.0).clip(lower=0.0)
+    graded["_edge_x_stake"] = (pd.to_numeric(graded["estimated_edge"], errors="coerce")
+                               .fillna(0.0) * stake_pos)
+    graded["_stake_pos"] = stake_pos
     g = graded.groupby(by)
     out = g.agg(n=("_decided", "sum"),
                 n_staked=("_staked", "sum"),
@@ -270,7 +279,9 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
                 pnl=("pnl", "sum"),
                 mean_est_edge=("estimated_edge", "mean"),
                 mean_est_prob=("_p_decision", "mean"),
-                breakeven_hit_rate=("_breakeven", "mean")).reset_index()
+                breakeven_hit_rate=("_breakeven", "mean"),
+                _edge_x_stake=("_edge_x_stake", "sum"),
+                _stake_pos=("_stake_pos", "sum")).reset_index()
     out["hit_rate"] = (out["wins"] / out["n"].where(out["n"] > 0)).round(4)
     # Sin stake no hay ROI: 0.0 se leia como "equilibrio" cuando significa "no se
     # arriesgo nada" (auditoria 2026-07-29, B-10).
@@ -286,8 +297,10 @@ def _segment_audit(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     out["hit_rate_vs_breakeven"] = (out["hit_rate"] - out["breakeven_hit_rate"]).round(4)
     out["breakeven_hit_rate"] = out["breakeven_hit_rate"].round(4)
     out["mean_est_edge"] = out["mean_est_edge"].round(4)
+    out["est_edge_staked"] = (out["_edge_x_stake"]
+                              / out["_stake_pos"].where(out["_stake_pos"] > 0)).round(4)
     out["mean_est_prob"] = out["mean_est_prob"].round(4)
-    return out
+    return out.drop(columns=["_edge_x_stake", "_stake_pos"])
 
 
 def settlement_audit_report(bets_dir: Path | None = None) -> str:
@@ -329,8 +342,11 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
             "## Por liga", _segment_audit(df, ["league"]).to_string(index=False), "",
             "## Por mercado", _segment_audit(df, ["market"]).to_string(index=False), "",
             "## Estimado vs realizado (chequeo de calibracion)",
-            "mean_est_prob deberia aproximar hit_rate; mean_est_edge deberia "
-            "aproximar realized_roi si el modelo esta bien calibrado.", "",
+            "mean_est_prob deberia aproximar hit_rate (ambos sobre todas las "
+            "liquidadas); est_edge_staked deberia aproximar realized_roi (ambos "
+            "sobre las filas con stake, ponderados por stake) si el modelo esta "
+            "bien calibrado. mean_est_edge es sobre TODAS las liquidadas y no se "
+            "compara con el ROI.", "",
             f"> {DISCLAIMER}",
         ]
     bets_dir.mkdir(parents=True, exist_ok=True)

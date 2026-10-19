@@ -87,3 +87,16 @@ def test_la_rotacion_compartida_no_pierde_ni_un_registro(tmp_path):
         for lg in loggers:
             lg.removeHandler(fh)
         fh.close()
+
+
+def test_la_suite_no_escribe_en_el_log_de_produccion():
+    """AUD-011 (ronda audit-2026-10-18): con `SQP_LOG_DIR` (lo fija
+    `tests/conftest.py`) el handler de fichero apunta fuera de `logs/` del
+    repositorio."""
+    from pathlib import Path
+
+    repo_logs = (Path(__file__).resolve().parents[1] / "logs").resolve()
+    handlers = _handlers_de_fichero(get_logger("sqp.prueba.aud011"))
+    assert handlers, "SQP_LOG_DIR fijado: el handler de fichero debe existir"
+    for fh in handlers:
+        assert repo_logs not in Path(fh.baseFilename).resolve().parents

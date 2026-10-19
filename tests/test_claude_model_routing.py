@@ -274,7 +274,7 @@ def test_governing_principle_is_declared_and_takes_precedence():
     #    distintas -- empezar en Fable costaria el doble sin que la mayoria del
     #    volumen lo necesite, y no tenerlo disponible dejaria el principio
     #    rector sin destino al que escalar.
-    assert "`claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5` > `claude-haiku-4-5`" in policy
+    assert "`claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`" in policy
     # El candado tiene dos lados: la jerarquia real y el reparto declarado. Sin
     # el segundo, mover el defecto o el techo en la prosa no rompe nada y la
     # politica vuelve a divergir en silencio -- que es el modo de fallo que este
@@ -1029,3 +1029,20 @@ def test_el_guard_sigue_cableado_como_pretooluse_sobre_agent():
     assert grupos[0]["matcher"] == "Agent", (
         f"el matcher paso a ser {grupos[0]['matcher']!r}: el guard deja de ver "
         "los despachos, que es como murio KI-023 la primera vez")
+
+
+def test_un_fork_sin_modelo_se_distingue_de_un_modelo_ausente():
+    """AUD-013 (ronda audit-2026-10-18): un fork ignora `model` y corre con el
+    modelo de la sesion, asi que exigirlo era un control que decia algo falso.
+    El parser lo marca aparte; un subagente normal sin `model` sigue vacio
+    (y por tanto bloqueado)."""
+    assert _modelo_visto_por_el_guard(
+        '{"tool_input":{"subagent_type":"fork","prompt":"x"}}') == "__FORK__"
+    assert _modelo_visto_por_el_guard(
+        '{"tool_input":{"subagent_type":"Explore","prompt":"x"}}') == ""
+    assert _modelo_visto_por_el_guard(
+        '{"tool_input":{"subagent_type":"fork","model":"haiku"}}') == "haiku"
+    lineas = _lineas_ejecutables(_guard())
+    assert '[ "$modelo" = "__FORK__" ]' in lineas
+    bloque = lineas[lineas.index('[ "$modelo" = "__FORK__" ]'):]
+    assert bloque.index("exit 0") < bloque.index("DESPACHO BLOQUEADO")

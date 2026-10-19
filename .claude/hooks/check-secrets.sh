@@ -43,15 +43,21 @@ while IFS= read -r file; do
   case "$ruta" in
     */data/*|*/historical/*|*/exports/*|*/logs/*) continue ;;
   esac
-  # audit/ y audits/ DE LA RAIZ: informes que CITAN codigo y evidencias de otros
-  # agentes, ajenos al turno y sin secretos del proyecto (AUD-007,
-  # audit-2026-09-18). Anclado a la raiz a proposito: un `*/audit/*` sin anclar
-  # tambien casaba con `src/sqp/audit/` (paquete de PRODUCCION) y dejaba ese
-  # codigo sin escanear (revision cruzada de Codex al cierre, 2026-09-18).
+  # audit/ y audits/ YA NO SE EXCLUYEN (auditoria audit-2026-10-18, AUD-006). Se
+  # excluyeron en audit-2026-09-18 (AUD-007) por un falso positivo -- una
+  # asignacion reflexiva citada en un EVIDENCE.json --, que `_symbolic` ya
+  # descarta por el VALOR. La exclusion por carpeta dejaba sin escanear 325
+  # ficheros rastreados de un repositorio PUBLICO, sin ninguna otra barrera
+  # antes del push.
+  #
+  # Unica exencion por ruta EXACTA: los fixtures deliberados del propio detector,
+  # la misma lista cerrada que `scripts/scan_tracked_secrets.py`
+  # (_FIXTURES_DEL_DETECTOR). Sin ella, editar ese fichero hacia que el hook
+  # bloqueara cada comando de la sesion (revision Fable 2026-10-18).
   raiz="${proyecto//\\//}"
   rel="${ruta#"$raiz"/}"
   case "$rel" in
-    audit/*|audits/*) continue ;;
+    tests/test_audit_hooks.py) continue ;;
   esac
   hits=$(python "$proyecto/.claude/hooks/_secret_literals.py" "$file" 2>/dev/null || true)
   if [ -n "$hits" ]; then

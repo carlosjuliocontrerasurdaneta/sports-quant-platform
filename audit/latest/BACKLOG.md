@@ -1,130 +1,42 @@
-# Backlog - audit-2026-10-15
+# BACKLOG — ronda `audit-2026-10-18`
 
-Todos OPEN; remediacion no ejecutada. Prioridad independiente de severidad. Sin P0.
+Este backlog sale de la consolidación de `FINDINGS.md`. Consolidar no autoriza corregir: cada lote necesita una autorización por ID o por grupo. Las columnas son:
 
-Revision 2 (2026-10-16, consolidacion independiente Claude): anade AUD-013 y precisa AUD-002/AUD-003; v1 preservada en
-`history/consolidacion-claude-20261016T104941Z/`. Orden recomendado dentro de P2: AUD-002 -> AUD-013 -> resto.
-Autorizacion pendiente en todos: el operador debe aprobar cada remediacion. AUD-003 toca la evidencia del
-`prediction_gate` y los precios servidos: clase de escalado (MODEL_ROUTING), revision Fable antes del commit, y la
-decision sobre las filas NHL h2h ya servidas desde 2026-09-23 es del operador.
+- **Clase:** si el cambio cae en una clase de escalado (modelo, gate, umbral, artefacto persistido o cifra publicable). En ese caso exige revisión Fable antes del commit, según `MODEL_ROUTING.md` y `fable_gate`.
+- **Externa:** si el cambio requiere una acción del operador fuera del repo.
 
-## AUD-003 - P1 - Un mercado h2h de dos vias incorpora Draw y cuotas incompatibles
+| Orden | ID | Prio. | Cambio mínimo | Archivos | Pruebas / aceptación | Clase | Autorización pendiente | Depende de |
+|---|---|---|---|---|---|---|---|---|
+| 1 | AUD-001 | P1 | Totals a dos vías: la celda (k,k) cuenta como 2k+1 | `src/sqp/models/distributions.py` | P(Over) frente a empírico NHL < 2 pp en 4,5–7,5; fútbol invariante; alternancia eliminada | Modelo (probabilidad servida) → pre-registro y Fable | Sí: cambio de modelo | — |
+| 2 | AUD-002 | P2 | Ajuste de descanso a 0 si el evento no es el siguiente partido de ambos, o usar el calendario de eventos | `src/sqp/models/rest.py`, `sports/adapters.py` | Evento a D+3 con partido en D+2; paridad con el walk-forward | Feature de modelo → Fable | Sí | — |
+| 3 | AUD-004 | P2 | Normalizar `\`, resolver rutas contra `cwd`/`cd`, tratar `stage` como `add` | `.claude/hooks/fable_gate.py`, `tests/test_fable_gate.py` | Los 4 escapes reproducidos quedan bloqueados; los tests actuales siguen en verde | Ruta sensible del candado → Fable | Sí | Antes de cualquier commit de AUD-001/002/008 |
+| 4 | AUD-003 | P2 | Deduplicar por `gamePk`/`game_id` y avisar de los renombres; añadir alias | `providers/mlb_statsapi.py`, `storage/results_store.py`, `configs/leagues/team_aliases.yaml` | Mismo `game_id` → 1 fila; aviso registrado | Datos persistidos (la reparación de las 143 filas es aparte) | Sí: código. Reparar datos requiere autorización expresa aparte | Antes de noviembre (ncaab/wncaab) |
+| 5 | AUD-005 | P2 | Reintento acotado en la tarea diaria, o detector del hueco anterior en health_check | Tarea del Programador (elevado, S4U) y/o `monitoring/health.py` | Simulación de 0x8007045B → reintento o alerta | Operación de producción | Sí: proceso elevado y valores del operador | — |
+| 6 | AUD-006 | P2 | Activar secret scanning y push protection, o un paso de escaneo en CI; escanear `audit/` con el filtro `_symbolic` | Ajustes de GitHub; `ci.yml`; `check-secrets.sh` | Hex falso en `audit/` detectado; push con secreto falso bloqueado | Externa (GitHub) | Sí | — |
+| 7 | AUD-007 | P2 | `timeout 540` en `codex review`; con rc 124, recrear el centinela | `.claude/hooks/crossreview-on-stop.sh` | `codex` simulado lento → centinela presente y aviso | — | Sí | — |
+| 8 | AUD-008 | P3 | `INVALID_BEFORE` para las filas con línea de cuarto anteriores a `c578f52` | `src/sqp/risk/prediction_gate.py` (+ filtro en `calibration/data.py`) | Fila −0,75 `win` previa queda fuera de `_usable` | Gate → Fable | Sí. Re-graduar: autorización expresa aparte | AUD-004 |
+| 9 | AUD-009 | P3 | Exigir `close_captured_at > generated_at` | `audit/clv.py`, `backtesting/roi_engine.py` | Pick con un solo snapshot propio → `sin_cierre` | Métrica de gate (desactivado) → Fable si se reactiva | Sí | — |
+| 10 | AUD-010 | P3 | Calcular `mean_est_edge` sobre la población con stake, o renombrar | `src/sqp/audit/report.py` | Test de mezcla con y sin stake | Cifra publicable → Fable | Sí | — |
+| 11 | AUD-011 | P3 | Fixture autouse que desactive el handler de fichero | `tests/conftest.py` | La suite no hace crecer `logs/sqp.log` | — | Sí | — |
+| 12 | AUD-012 | P3 | Ampliar los patrones del detector | `.claude/hooks/_secret_literals.py`, tests | Los casos de AUD-012 detectados | — | Sí | Con AUD-006 |
+| 13 | AUD-013 | P3 | Dejar pasar `fork` con aviso | `.claude/hooks/require-dispatch-model.sh`, tests, `MODEL_ROUTING.md` | Caso fork rc 0 | Política de modelos | Sí | — |
+| 14 | AUD-014 | P3 | Corregir los IDs tras verificar contra la documentación viva | `MODEL_ROUTING.md:98`, `tests/test_claude_model_routing.py:277` | Test en verde con los IDs vigentes | Política de modelos | Sí | — |
+| 15 | AUD-015 | P3 | Cerrar #4; paso de cierre automático en verde | GitHub; `ci.yml` | Run verde → 0 issues `ci-rojo` abiertos | Externa | Sí | — |
+| 16 | AUD-016 | P3 | Regenerar el lock con el cierre transitivo | `requirements.lock` | Cierre de 32 paquetes fijado; pip-audit limpio; CI en verde | Dependencias | Sí | — |
+| 17 | AUD-017 | P3 | Diagnosticar y estabilizar el fixture git | `tests/research/test_measure_segment_market_weight.py` | 20 ejecuciones seguidas en verde | — | Sí | — |
 
-- Origen: CLAUDE-001; severidad HIGH.
-- Cambio minimo: Separar contratos por casa antes del consenso, exigir lados exactos y aplicar elegibilidad coherente en conteos, ejecucion y revalidacion.
-- Pruebas: Mixto dos/tres vias, solo dos, futbol tres, casa incompleta, conteos y precios ejecutables.
-- Aceptacion: Dos desenlaces complementarios suman 1 con cuotas del mismo contrato, o mercado rechazado.
-- Dependencias/control: Gates limitan stakes; no reparan probabilidades servidas.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
+## Acciones del operador que no son código
 
-## AUD-001 - P2 - El backtest asigna cuotas del dia siguiente al resultado anterior
+- Reparar los datos persistidos de AUD-003 (143 filas) y el residuo KI-071 (14 identidades). Las dos requieren autorización expresa.
+- Cerrar el issue #4 (AUD-015) y activar los controles de GitHub (AUD-006).
+- Hacer push de los 2 commits locales para que pasen por el CI.
+- Resolver N-01 (permisos `allow` frente a `deny`) consultando la documentación oficial.
 
-- Origen: OPENAI-001; severidad MEDIUM.
-- Cambio minimo: Resolver identidad/calendario y reservar matches exactos antes de fallback ambiguo.
-- Pruebas: Series consecutivas, cuota faltante, orden de filas, UTC y abstencion.
-- Aceptacion: Emparejar la identidad correcta: +20 para junio 11, o abstenerse.
-- Dependencias/control: Settlement productivo usa otra ruta de identidad.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
+## Propuesta de lotes
 
-## AUD-002 - P2 - CI exige un tag que checkout no obtiene
-
-- Origen: OPENAI-002 + CLAUDE-002; relacionado AUD-013 (CLAUDE-003); severidad MEDIUM.
-- Cambio minimo: Proveer referencias verificables necesarias en CI o aislar fixture unitario; conservar comprobacion de ancla real separada.
-- Pruebas: Clone limpio sin tags; adquisicion explicita; tag incorrecto debe fallar; verificar ejecucion pip-audit.
-- Aceptacion: Checkout reproducible con objetos requeridos y pruebas discriminantes aprobadas; escaneo de seguridad ejecutado.
-- Dependencias/control: Tag existe localmente, dos pruebas locales pasan. Publicar los tags (accion del operador, escritura externa) no basta sin adquirirlos en el checkout (`ci.yml:34,91`).
-- Archivos: `.github/workflows/ci.yml`; `tests/research/test_measure_tier_a_gap.py`.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-013 - P2 - pip-audit depende del exito de pytest y no corre desde 2026-09-26
-
-- Origen: CLAUDE-003 (revision 2); severidad MEDIUM. Depende de: ninguno (se puede hacer antes o junto a AUD-002).
-- Cambio minimo: Job o paso de pip-audit independiente del resultado de pytest (`if: always()` o job propio) y version de pip-audit fijada.
-- Archivos: `.github/workflows/ci.yml:75-83`.
-- Pruebas: Run de rama con un test rojo deliberado: pip-audit se ejecuta y su veredicto es visible.
-- Aceptacion: pip-audit nunca `skipped` en main.
-- Dependencias/control: Sin compensacion local; pip check no sustituye.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-004 - P2 - Capture close comunica exito tras fallar una etapa habilitada
-
-- Origen: CLAUDE-006; severidad MEDIUM.
-- Cambio minimo: Acumular fallos por etapa/liga y propagar codigo o contrato de degradacion al BAT.
-- Pruebas: Fallo de captura, revalidacion, starters y exito; sentinel no se limpia en fallo.
-- Aceptacion: Estado degradado observable y rc no exitoso cuando falla una etapa requerida.
-- Dependencias/control: Logs contienen warning; siguientes ejecuciones pueden recuperar.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-005 - P2 - Liquidacion tenis confia en resultados parciales de un proveedor degradado
-
-- Origen: CLAUDE-007; severidad MEDIUM.
-- Cambio minimo: Propagar failed_windows y usarlo para confianza/expiracion y estado del backfill.
-- Pruebas: Una ventana 503 y otra valida; pick vencido, historico presente/ausente; ninguna anulacion atribuible a ventana fallida.
-- Aceptacion: Fallo de cobertura conocido impide anular los picks afectados y se comunica degradacion.
-- Dependencias/control: Payload totalmente vacio bloquea voids; fallback historico recupera resultados ya descargados.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-006 - P2 - Los hooks posteriores omiten modificaciones hechas por PowerShell
-
-- Origen: CLAUDE-008; severidad MEDIUM.
-- Cambio minimo: Agregar PowerShell a los tres hooks y comprobar extraccion de rutas.
-- Pruebas: Contrato de matchers y evento PowerShell con Set-Content sobre ruta vigilada.
-- Aceptacion: Las herramientas de escritura admitidas disparan los controles previstos.
-- Dependencias/control: Un Edit/Write/Bash posterior puede recoger cambios por Git; fable_gate protege algunos commits.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-007 - P3 - El log de pitchers duplica entradas identicas con ausentes
-
-- Origen: CLAUDE-009 (solo duplicacion); severidad LOW.
-- Cambio minimo: Normalizar valores ausentes antes de comparar.
-- Pruebas: None/NaN/vacio y cambio real de pitcher.
-- Aceptacion: Una primera entrada; llamadas identicas siguientes agregan cero.
-- Dependencias/control: No se establecio consumo operativo por pipeline de este log.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-008 - P3 - La captura supera el limite diario de creditos
-
-- Origen: CLAUDE-011; severidad LOW.
-- Cambio minimo: Comprobar coste conservador antes de pedir y reconciliar coste real.
-- Pruebas: Saldo menor/igual/mayor al coste, varias ligas, reanudacion diaria.
-- Aceptacion: No iniciar una peticion cuyo coste previsto exceda el saldo del limite.
-- Dependencias/control: Tope previo y min_remaining limitan consumo ulterior.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-009 - P3 - Merge de resultados descarta partidos consecutivos reales
-
-- Origen: CLAUDE-012; severidad LOW.
-- Cambio minimo: Priorizar ID/calendario exacto; fallback no debe absorber otro partido de una serie.
-- Pruebas: Serie dias consecutivos, dobles jornadas y verdadero desplazamiento UTC.
-- Aceptacion: Conservar ambos partidos distintos.
-- Dependencias/control: Backfill previo de DIARIO normalmente actualiza el historico.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-010 - P3 - Cross-review pierde su pendiente si falta el ejecutable
-
-- Origen: CLAUDE-016; severidad LOW.
-- Cambio minimo: Verificar ejecutable antes de borrar; advertir y conservar marker.
-- Pruebas: PATH sin codex con marker, fallos y salida vacia existentes.
-- Aceptacion: Avisar revision no ejecutada y conservar pendiente para reintento.
-- Dependencias/control: Rama posterior de fallos de codex ya restaura marker.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-011 - P3 - Tres pruebas de no-repositorio heredan Git del workspace
-
-- Origen: CLAUDE-017; severidad LOW.
-- Cambio minimo: Aislar busqueda Git en fixture/subproceso mediante GIT_CEILING_DIRECTORIES.
-- Pruebas: Tres casos bajo scratch interno y fixture con repo propio; mantener restricciones de escritura.
-- Aceptacion: Fixtures reproducen un directorio sin repositorio incluso dentro del scratch autorizado.
-- Dependencias/control: Clasificacion ENVIRONMENTAL_FAILURE evita atribucion incorrecta al producto.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-## AUD-012 - P3 - La cache da por persistido un snapshot que pudo fallar
-
-- Origen: CLAUDE-013 (solo contrato de persistencia); severidad LOW.
-- Cambio minimo: Confirmar persistencia por identidad o persistir idempotentemente preservando timestamp de adquisicion.
-- Pruebas: Fallo controlado del primer append, reintento cacheado, cero snapshot duplicado y fecha original.
-- Aceptacion: Reintento recupera snapshot faltante sin duplicar ni cambiar timestamp original.
-- Dependencias/control: Un fetch posterior fuera del TTL puede aportar otro snapshot, no el omitido.
-- Estado: OPEN; verificacion pendiente tras cambio autorizado.
-
-Observaciones P4/no confirmadas se conservan en FINDINGS, sin convertirlas en obligaciones de correccion. No debilitar aserciones ni gates para producir verde. Al remediar, preservar FINDINGS y registrar CHANGES/VALIDATION/STATUS con historico de la misma ronda.
+1. **Lote A (P1, modelo):** AUD-001, con pre-registro y Fable. Antes conviene AUD-004, para que el candado cubra el commit.
+2. **Lote B (P2, controles):** AUD-004, AUD-007, AUD-006/012 y AUD-013.
+3. **Lote C (P2, datos y modelo):** AUD-003 y AUD-002.
+4. **Lote D (P3, cuantitativos menores):** AUD-008, AUD-009 y AUD-010.
+5. **Lote E (P3, mantenimiento):** AUD-011, AUD-014, AUD-015, AUD-016 y AUD-017.
+6. **Operación:** AUD-005.

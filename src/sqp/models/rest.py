@@ -26,6 +26,16 @@ semantics regardless of the order rows are fed to it, so the correction is
 inert for the engine's own walk-forward (which never stores a same-day date
 before estimating that day) and fixes the production gap instead of requiring
 a separate change to the day-batching of ``SportAdapter.fit_results``.
+
+SCHEDULED GAMES (audit-2026-10-18, AUD-002). Production estimates events up to
+7 days ahead, but ``observe`` only knows PLAYED games: for an event at D+3 with
+another game of the same team at D+2, rest came out as "days since the last
+played game" (capped at 4) instead of 1, a value the walk-forward never
+produces (the day before the game it has seen the D+2 game). ``schedule``
+registers the upcoming games of the run (the events being priced) and
+``rest_days`` takes the most recent date strictly before ``game_date`` among
+played AND scheduled games. The walk-forward never calls ``schedule``, so it is
+unchanged. Limitation: only games present in the odds feed are known.
 """
 from __future__ import annotations
 
@@ -43,6 +53,8 @@ class RestModel:
         # one, so `rest_days` can skip a stored date equal to `game_date`
         # itself and fall back to the true previous date -- see KI-070 above.
         self._dates: dict[str, list[str]] = {}
+        # Upcoming (not yet played) game dates per team, from `schedule` (AUD-002).
+        self._scheduled: dict[str, set[str]] = {}
 
     def observe(self, home: str, away: str, game_date: str | None) -> None:
         if not game_date:
@@ -56,6 +68,14 @@ class RestModel:
             if len(hist) > 2:
                 del hist[0]
 
+    def schedule(self, home: str, away: str, game_date: str | None) -> None:
+        """Register an upcoming game (AUD-002). Never touches played history."""
+        if not game_date:
+            return
+        day = str(game_date)[:10]
+        for team in (self.nk(home), self.nk(away)):
+            self._scheduled.setdefault(team, set()).add(day)
+
     def rest_days(self, team: str, game_date: str | None) -> int | None:
         """Capped days since the team's most recent game STRICTLY BEFORE
         `game_date`, or None if unknown (KI-070: a stored date equal to
@@ -64,9 +84,15 @@ class RestModel:
         if not game_date:
             return None
         day = str(game_date)[:10]
-        last = next((d for d in reversed(self._dates.get(self.nk(team), ())) if d < day), None)
+        key = self.nk(team)
+        last = next((d for d in reversed(self._dates.get(key, ())) if d < day), None)
         if last is None:
+            # Rest stays unknown without a PLAYED game: a scheduled one alone
+            # cannot start the history (same contract as before AUD-002).
             return None
+        between = [d for d in self._scheduled.get(key, ()) if last < d < day]
+        if between:
+            last = max(between)
         try:
             d = (_date.fromisoformat(day) - _date.fromisoformat(last)).days
         except ValueError:

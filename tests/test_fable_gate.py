@@ -970,3 +970,86 @@ def test_known_tradeoff_whitelist_segment_piped_to_a_readonly_command_now_overbl
     result = _run(root, {"tool_name": "Bash", "tool_input": {
         "command": 'echo "a | git commit" | grep x'}})
     assert result.returncode == 2, result.stderr
+
+
+# --- Auditoria audit-2026-10-18, AUD-004: rutas con contrabarra, relativas al
+#     directorio del comando y `git stage` --------------------------------------
+
+
+def _tracked_modified_sensitive_file(root: Path) -> None:
+    """`configs/x.yaml` commiteado y luego modificado SIN stagear: solo el
+    propio comando analizado puede meterlo en el commit."""
+    (root / "configs").mkdir(exist_ok=True)
+    (root / "configs" / "x.yaml").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "configs/x.yaml"], cwd=root, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True,
+                   capture_output=True)
+    (root / "configs" / "x.yaml").write_text("y", encoding="utf-8")
+
+
+@pytest.mark.parametrize("tool_name,command,cwd_rel", [
+    ("PowerShell", r"git commit -m x configs\x.yaml", None),
+    ("PowerShell", r"git add configs\x.yaml; git commit -m x", None),
+    ("PowerShell", r"git add .\configs\x.yaml; if ($?) { git commit -m x }", None),
+    ("Bash", "cd configs && git commit -m x x.yaml", None),
+    ("PowerShell", "Set-Location configs; git add x.yaml; git commit -m x", None),
+    ("Bash", "git commit -m x x.yaml", "configs"),
+    ("Bash", "git -C configs add x.yaml && git commit -m x", None),
+    ("Bash", "git stage configs/x.yaml && git commit -m x", None),
+    ("Bash", "bash -c 'cd configs && git add x.yaml && git commit -m x'", None),
+])
+def test_aud004_escapes_are_blocked(tmp_path, tool_name, command, cwd_rel):
+    root = _repo(tmp_path)
+    _tracked_modified_sensitive_file(root)
+    _current_task(root)
+    payload: dict = {"tool_name": tool_name, "tool_input": {"command": command}}
+    if cwd_rel:
+        payload["cwd"] = str(root / cwd_rel)
+    result = _run(root, payload)
+    assert result.returncode == 2, result.stderr
+    assert "configs/x.yaml" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    r"git add docs\notas.md; git commit -m x",
+    r'git add docs/notas.md && git commit -m "dice \"hola\" en docs"',
+    "cd docs && git add notas.md && git commit -m x",
+])
+def test_aud004_non_sensitive_paths_still_pass(tmp_path, command):
+    root = _repo(tmp_path)
+    _tracked_modified_sensitive_file(root)
+    (root / "docs").mkdir()
+    (root / "docs" / "notas.md").write_text("n", encoding="utf-8")
+    _current_task(root)
+    result = _run(root, {"tool_name": "PowerShell", "tool_input": {"command": command}})
+    assert result.returncode == 0, result.stderr
+
+
+def test_aud004_review_line_still_covers_backslash_path(tmp_path):
+    root = _repo(tmp_path)
+    _tracked_modified_sensitive_file(root)
+    _current_task(root, (f"FABLE-REVIEW: {HOY} | veredicto: APTO | rutas: configs/x.yaml",))
+    result = _run(root, {"tool_name": "PowerShell",
+                         "tool_input": {"command": r"git commit -m x configs\x.yaml"}})
+    assert result.returncode == 0, result.stderr
+
+
+# Revision Fable 2026-10-18 de AUD-004: tres falsos negativos de la primera
+# version (pila pushd/popd, `cd -` y la unidad de Windows en Set-Location).
+@pytest.mark.parametrize("plantilla", [
+    "pushd configs; popd; git commit -m x configs/x.yaml",
+    "Push-Location configs; Pop-Location; git commit -m x configs/x.yaml",
+    "cd configs && cd - && git commit -m x configs/x.yaml",
+    "cd $HOME && git commit -m x configs/x.yaml",
+    "Set-Location {root_win}\\configs; git commit -m x x.yaml",
+    "git -C {root_win}\\configs commit -m x x.yaml",
+])
+def test_aud004_fable_followup_escapes_are_blocked(tmp_path, plantilla):
+    root = _repo(tmp_path)
+    _tracked_modified_sensitive_file(root)
+    _current_task(root)
+    command = plantilla.format(root_win=str(root).replace("/", "\\"))
+    result = _run(root, {"tool_name": "PowerShell", "tool_input": {"command": command}})
+    assert result.returncode == 2, (command, result.stderr)
+    assert "configs/x.yaml" in result.stderr

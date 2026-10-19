@@ -72,8 +72,11 @@ def compute_clv(bets_dir: Path, root: Path,
     settled = settled[settled["result"].isin(["win", "loss"])].copy()
 
     cons_cache: dict[str, dict] = {}
+    capturas: dict[str, dict[str, pd.Timestamp]] = {}
     for lg in sorted(settled["league"].unique()):
-        odds = load_closing_odds(root, lg, max_age_min=max_age_min)
+        capturas[lg] = {}
+        odds = load_closing_odds(root, lg, max_age_min=max_age_min,
+                                 captured_out=capturas[lg])
         cons_cache[lg] = {eid: _consensus_lines(eo) for eid, eo in odds.items()}
 
     rows: list[dict] = []
@@ -85,6 +88,16 @@ def compute_clv(bets_dir: Path, root: Path,
             close = cons.get((str(r.market), str(r.selection),
                               _point(str(r.market), r.line)))
         if close is None or close <= 1.0:
+            unmatched += 1
+            continue
+        # Un "cierre" capturado EN la entrada o antes no es un cierre: es el
+        # precio de la propia entrada, y el CLV sale 0 por construccion
+        # (auditoria audit-2026-10-18, AUD-009: 146 de 1.268 filas, 135 de los
+        # 366 CLV exactamente 0). Cuenta como sin_cierre. Sin `generated_at`
+        # legible no se puede comprobar y se conserva como antes.
+        cap = capturas.get(r.league, {}).get(str(r.event_id))
+        gen_ts = pd.to_datetime(getattr(r, "generated_at", None), utc=True, errors="coerce")
+        if cap is not None and not pd.isna(gen_ts) and cap <= gen_ts:
             unmatched += 1
             continue
         entry = float(r.price_decimal)

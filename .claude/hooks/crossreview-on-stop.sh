@@ -101,8 +101,23 @@ fi
 # El riesgo no es cosmetico: invita al modelo a "atender o refutar" hallazgos que
 # no existen, y en un repositorio cuya enfermedad cronica es que un control diga
 # algo distinto de lo que mide, esto es esa enfermedad dentro del propio control.
-out=$(codex review $alcance 2>&1)
-rc=$?
+#
+# PRESUPUESTO PROPIO (auditoria audit-2026-10-18, AUD-007). El hook tiene 600 s
+# en settings.json y `codex review` corria sin limite: si se pasaba, el harness
+# mataba el hook sin ejecutar una linea mas, con el centinela ya borrado arriba,
+# y la revision se perdia en silencio. Mismo patron que run-tests-on-stop.sh:
+# `timeout` por debajo del limite del harness; rc 124 cae en la rama de fallo de
+# entorno de abajo, que restaura el centinela y avisa.
+presupuesto="${SQP_CROSSREVIEW_TIMEOUT_S:-540}"
+if command -v timeout >/dev/null 2>&1; then
+  out=$(timeout "$presupuesto" codex review $alcance 2>&1)
+  rc=$?
+else
+  out=$(codex review $alcance 2>&1)
+  rc=$?
+fi
+[ "$rc" -eq 124 ] && out="codex review supero el presupuesto de ${presupuesto} s y se corto.
+${out:-}"
 # El codigo de salida se mira ANTES que la salida vacia (AUD-011, ronda
 # audit-2026-09-23, reproducido por OpenAI). Antes, `[ -z "$out" ] && exit 0`
 # iba primero: un `codex review` que fallaba SIN escribir nada (rc=7, salida

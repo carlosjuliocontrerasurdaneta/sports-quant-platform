@@ -863,6 +863,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
     _league_odds = (load_league_odds(league, ROOT / "data" / "odds")
                     if _movimiento_activo else pd.DataFrame())
     _venues = load_yaml(CONFIG_DIR / "venues.yaml").get(league, {})
+    # Calendario del run para el descanso (AUD-002, ronda audit-2026-10-18): un
+    # evento a D+3 debe ver el partido del mismo equipo a D+2, no solo el ultimo
+    # jugado. Solo lo implementan los adaptadores con modelo de descanso.
+    if hasattr(adapter, "schedule"):
+        adapter.schedule([eo.event for eo in events])
     for eo in events:
         spread, total = _pick_main_lines(eo)
         est = adapter.estimate(eo.event, spread, total)

@@ -136,3 +136,27 @@ def test_mean_est_prob_es_la_probabilidad_de_decision():
     df["calibrated_probability"] = [0.6, float("nan")]   # fila 2: fallback 0.5
     out = _segment_audit(df, ["league"])
     assert out["mean_est_prob"].iloc[0] == pytest.approx(0.55)
+
+
+def test_aud010_edge_to_compare_with_roi_uses_the_staked_population():
+    """AUD-010 (ronda audit-2026-10-18): `realized_roi` es pnl/stake de las filas
+    CON stake; la cifra de edge que se le compara debe salir de esas mismas
+    filas, ponderada por stake. Las filas en shadow (stake 0) con edge enorme
+    no pueden inflarla."""
+    df = _settled([("win", 2.0), ("loss", 2.0), ("win", 2.0), ("loss", 2.0)])
+    df["estimated_edge"] = [0.02, 0.04, 0.60, 0.60]
+    df.loc[0, "stake"] = 30.0
+    df.loc[0, "pnl"] = 30.0
+    df.loc[2:, "stake"] = 0.0
+    df.loc[2:, "pnl"] = 0.0
+    out = _segment_audit(df, ["league"])
+    assert out["mean_est_edge"].iloc[0] == pytest.approx(0.315)
+    assert out["est_edge_staked"].iloc[0] == pytest.approx((0.02 * 30 + 0.04 * 10) / 40)
+    assert not {"_edge_x_stake", "_stake_pos"} & set(out.columns)
+
+
+def test_aud010_staked_edge_is_na_without_stake():
+    df = _settled([("win", 2.0)])
+    df["stake"] = 0.0
+    df["pnl"] = 0.0
+    assert pd.isna(_segment_audit(df, ["league"])["est_edge_staked"].iloc[0])

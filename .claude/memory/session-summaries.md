@@ -996,3 +996,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - urllib3 2.8.0 instalado en produccion. KI-074 residual cerrado con medicion (ver la entrada KI-074). Addenda Fable APTO en los tres pre-registros que leen el stream servido. Paso 0 del cierre en `CLAUDE.md`. Detalle en `Obsidian/Bitácora/2026-10-17.md` y `audit/latest/STATUS.md`.
 - Tests: 228 passed (tests/research de MM, tier A y peso del mercado, mas contrato del sistema Claude); ruff limpio.
 - Pendientes del operador: tags `prereg-*` y borrado de worktrees de agentes (ambos denegados por el modo automatico).
+
+## 2026-10-18 — Auditoria integral audit-2026-10-18 y remediacion completa (AUD-001..017)
+
+- Diagnostico: 17 confirmados (1 HIGH: NHL totals contaba el empate reglamentario como 2k). Remediacion autorizada «corregílos todos»; detalle por ID en `audit/latest/CHANGES.md`, evidencia en `VALIDATION.md`, estado en `STATUS.md`, bitacora `Obsidian/Bitácora/2026-10-18.md`.
+- Fable: APTO CON CAMBIOS (primera ronda) y APTO (segunda) antes del commit. Addenda de regimen en K52, MM, tier A, segmento y portero NHL (AUD-001/002/008).
+- Externo (autorizado): secret scanning y push protection activados en GitHub; issue `ci-rojo` #4 cerrado.
+- Pendientes del operador: reparar en disco duplicados AUD-003, re-graduar AUD-008, KI-071; decidir RestartCount de la tarea diaria (AUD-005); push y verificar CI (jobs nuevos `secret-scan` y `cierre-ci-verde`, lock ampliado); verificacion independiente.
+- Leccion: al corregir el soporte de una distribucion, conservar el momento ajustado sobre los datos (sin reescalar, AUD-001 invertia el sesgo).
+- 2026-10-19: tercera ronda. La suite completa (17 fallos) destapó el efecto sobre las mediciones congeladas: el gestor `regulation_tie_without_goal()` en el `__main__` de tilt NHL y de recencia, `load(dedupe_game_id=False)` en batería y recencia, y la Enmienda 2 de recencia con `codigo_autorizado()` y `.codigo-M.json`. Suite final: 3367 passed, 1 skipped. KI-075 abierto: la instantánea H de recencia está perdida y la fase M queda bloqueada.

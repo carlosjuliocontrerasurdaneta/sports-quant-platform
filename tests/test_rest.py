@@ -73,3 +73,44 @@ def test_keeps_only_the_last_two_distinct_dates_per_team():
         m.observe("A", "X", day)
     assert m._dates["A"] == ["2026-06-03", "2026-06-10"]
     assert m.rest_days("A", "2026-06-15") == 5
+
+
+# --- AUD-002 (ronda audit-2026-10-18): partidos programados antes del evento ---
+
+def test_aud002_scheduled_game_before_the_event_counts_as_last_game():
+    """Evento a D+3 con otro partido del mismo equipo a D+2: el descanso es 1,
+    no los dias desde el ultimo partido JUGADO (topado en 4)."""
+    m = RestModel(points_per_day=1.0, max_rest=4)
+    m.observe("PHI", "X", "2026-10-17")
+    m.observe("CLE", "Y", "2026-10-17")
+    assert m.rest_days("PHI", "2026-10-22") == 4
+    m.schedule("PHI", "Z", "2026-10-21")
+    assert m.rest_days("PHI", "2026-10-22") == 1
+    assert m.rest_days("CLE", "2026-10-22") == 4
+    assert m.margin_adjustment("PHI", "CLE", "2026-10-22") == -3.0
+
+
+def test_aud002_scheduled_same_day_or_later_games_do_not_count():
+    m = RestModel(points_per_day=1.0)
+    m.observe("A", "B", "2026-10-17")
+    m.schedule("A", "C", "2026-10-22")   # el propio dia del evento
+    m.schedule("A", "D", "2026-10-24")   # despues
+    assert m.rest_days("A", "2026-10-22") == 4
+
+
+def test_aud002_schedule_alone_does_not_invent_a_rest_history():
+    m = RestModel(points_per_day=1.0)
+    m.schedule("A", "B", "2026-10-20")
+    assert m.rest_days("A", "2026-10-22") is None
+
+
+def test_aud002_matches_the_walk_forward_state_of_the_previous_day():
+    """Paridad: con el calendario, el valor servido a D+3 es el que el
+    walk-forward calcula tras observar el partido de D+2."""
+    servido = RestModel(points_per_day=1.0)
+    servido.observe("A", "B", "2026-10-17")
+    servido.schedule("A", "C", "2026-10-21")
+    walk = RestModel(points_per_day=1.0)
+    walk.observe("A", "B", "2026-10-17")
+    walk.observe("A", "C", "2026-10-21")
+    assert servido.rest_days("A", "2026-10-22") == walk.rest_days("A", "2026-10-22") == 1

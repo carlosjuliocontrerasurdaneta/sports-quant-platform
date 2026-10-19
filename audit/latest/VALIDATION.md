@@ -1,51 +1,58 @@
-# Validacion de la remediacion - audit-2026-10-15
+# VALIDATION — remediación de la ronda `audit-2026-10-18`
 
-Evidencia real de la fase de remediacion (2026-10-16). HEAD final `7861a7f` sobre la base `65368c8`; el arbol conserva sin commit la remediacion KI-073 (fuera de alcance). Todos los pytest con `-p no:cacheprovider`, `PYTHONPATH=src` y basetemp unico bajo `.codex-tmp/`.
+Evidencia real ejecutada por el implementador (Opus) entre el 2026-10-18 y el 2026-10-19. No sustituye a la verificación independiente.
 
-## Validacion global (HEAD 7861a7f)
+## Global (sobre el árbol final del commit)
 
-| Comando | rc | Resultado | Clasificacion |
-|---|---|---|---|
-| `python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-rem-final` (suite completa) | 0 | **3252 passed, 1 skipped in 4021.60s** | OK. Los 3 ENVIRONMENTAL_FAILURE de la base (AUD-011) ya no aparecen con el basetemp dentro del repo |
-| `ruff check src scripts tests` | 0 | All checks passed | OK |
-| `mypy src` | 0 | Success: no issues found in 113 source files | OK |
-| `python scripts/sync_agent_instructions.py --check` | 0 | synchronized | OK |
-| `python scripts/validate_claude_model_routing.py` | 0 | OK | OK |
-| `git status --porcelain -- src scripts configs *.bat` | 0 | vacio | La guarda de arbol sucio de `DIARIO_COMPLETO.bat:73` no abortara el run diario |
+| Comando | Resultado |
+|---|---|
+| `PYTHONPATH=src python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-r1018-full3` (suite completa) | **3367 passed, 1 skipped, 6 warnings, rc=0** (47 min 49 s). Los 6 warnings son el `RuntimeWarning` esperado de `tie_adds_goal` con totales sintéticos de exactamente 1,0 en `tests/test_market_tuning.py` |
+| `ruff check src scripts tests` | All checks passed |
+| `mypy src` | Success: no issues found in 114 source files |
+| `python scripts/sync_agent_instructions.py --check` | synchronized |
+| `python scripts/scan_tracked_secrets.py` | Sin literales de credencial en los ficheros rastreados (rc 0) |
+| `pip-audit -r requirements.lock --no-deps --disable-pip` | No known vulnerabilities found |
 
-Base de comparacion (2026-10-15, HEAD 65368c8, fuente Claude): 3201 passed, 1 skipped, 3 ENVIRONMENTAL_FAILURE. Diferencia de +51 tests = tests nuevos de esta remediacion.
+## Historial de ejecuciones intermedias (lo que falló y cómo se resolvió)
 
-## Por lote: fallo antes / exito despues
+| Ejecución | Resultado | Clasificación |
+|---|---|---|
+| Suite completa n.º 1 (con `timeout 3000`) | Cortada en torno al 60 % por el timeout; host cargado por la revisión de Fable | ENVIRONMENTAL_FAILURE: sin veredicto |
+| Hook Stop (suite rápida) tras AUD-001 | `test_nhl_tilt_activation::test_lower_tilt_shrinks_the_favourite_without_moving_the_total`: 0,5464 frente a 0,5536 | NEW_REGRESSION, prevista por el modelo: con el gol de empate, el total depende del reparto. Test ajustado con revisión de Fable |
+| Suite completa n.º 2 | **17 failed, 3344 passed, 1 skipped** | NEW_REGRESSION: guarda de saturación (`test_market_tuning`, 7) y mediciones congeladas (`measure_totals_recency` 6, `measure_tilt_nhl` 3, `measure_adjustment_battery` 1). Resueltas en la tercera ronda (`CHANGES.md`) |
+| Ficheros afectados tras la tercera ronda | battery + recency + tilt + distributions + results_backfill: 236 passed | — |
+| Suite completa n.º 3 | 3367 passed, 1 skipped | PASS |
 
-| ID | Antes (codigo de HEAD previo) | Despues | Relacionados |
-|---|---|---|---|
-| AUD-003 | `tests/test_aud003_two_way_draw.py`: 10 failed / 2 passed | 12 passed | 830 passed (48 ficheros de probabilities/daily/revalidation/clv/roi_engine); intradia: 1 failed → 43 passed |
-| AUD-002 | Clon `--no-tags --depth 1` de HEAD: 2 failed | 1 passed + 1 skipped (motivo explicito) | Local con tag: 116 passed |
-| AUD-013 | — | YAML validado con `yaml.safe_load`: jobs `test, dependency-audit, test-windows, alerta-ci-rojo`; `needs` incluye `dependency-audit` | Ejecucion en GitHub: NOT_VERIFIABLE (sin push) |
-| AUD-004/008 | `tests/pipeline/test_closing_capture_aud004.py`: 8 failed / 4 passed | 12 passed | 43 passed (closing + clv) |
-| AUD-005 | 5 failed / 1 passed | 6 passed | 171 passed; revision Fable 9 + 362 passed |
-| AUD-007 | 2 failed / 1 passed | 3 passed | 147 passed |
-| AUD-006 | Contratos con settings de HEAD: 3 failed / 3 passed | 39 passed | 246 passed (routing, codex_review, astra, hook_targets) |
-| AUD-010 | Test dinamico con hook de HEAD: 1 failed | 26 passed (`test_audit_hooks.py`) | idem |
-| AUD-011 | Mismo basetemp, tests de HEAD: 3 failed | 3 passed | Suite completa sin fallos ambientales |
-| AUD-009 | 1 failed / 2 passed (las 2 son contrapruebas) | 3 passed | 91 passed (run diario, team_names, AUD-003) |
-| AUD-012 | 3 failed / 2 passed (contrapruebas) | 5 passed | 119 passed (cache, cliente, frescura, line shopping, gate, team totals, run diario) |
-| AUD-001 | Reproduccion: `{'2026-06-10': 'odds-jun11', '2026-06-11': None}` | **Sin cambio (BLOQUEADO)** | Medicion de la regla rechazada sobre datos reales: MLB 606 asignaciones distintas (254 sin emparejar, 352 reasignadas); NBA 0; NHL 0 |
+## Pruebas discriminantes por ID (fallan antes y pasan después)
 
-## Mediciones sobre datos reales usadas en la aceptacion
+Comprobado cambiando temporalmente el fichero corregido por su versión de `HEAD` y restaurándolo después.
 
-- AUD-003 (revision Fable, script `scratchpad/aud003_measure.py`): ultimo snapshot h2h por evento de todos los `data/odds/odds_*.csv` a 2 vias y tenis. NHL fair(home)+fair(away) = 1,000000 en 422/422 (antes 120/422 < 0,95, minimo 0,36); 0 eventos incompletos nuevos por el chequeo `outcomes` en mlb 2454, nba 262, ncaaf 730, nfl 379, nhl 422, wnba 390 y tenis 2002 eventos.
-- AUD-008: `.closing_credits_20261011` = 310 con tope 300; totales diarios multiplos de 5, coherentes con mercados × regiones.
-- AUD-001: `scratchpad/aud001_impact.py` (`load_closing_odds` + `results_{mlb,nba,nhl}.csv`, sin escrituras).
+| ID | Antes (HEAD) | Después |
+|---|---|---|
+| AUD-004 | `test_aud004_escapes_are_blocked`: 9 de 9 fallan | 104 passed (fichero completo, primera ronda); 19 passed en `-k aud004` tras la segunda |
+| AUD-007 | `test_crossreview_lento_*` falla | 6 passed (`-k crossreview`) |
+| AUD-012 y AUD-006 (hook) | `-k "aud012 or scanned_too"`: 10 fallan | 78 passed (test_audit_hooks + test_hook_targets) |
+| AUD-011 | `test_la_suite_no_escribe_en_el_log_de_produccion` falla | 4 passed |
+| AUD-016 | `test_the_lock_pins_the_whole_installed_closure` falla con el lock anterior | 1 passed |
+| AUD-003 | `-k aud003`: 5 fallan | 21 passed en la primera ronda; 46 passed con distribuciones tras la segunda |
 
-## Efectos observados de hooks
+Otros:
+- **AUD-001:** error de P(Over) frente al histórico NHL (n=4.658) por debajo de 2 pp en 4,5/5,5/6,5/7,5: −0,017, −0,005, −0,001 y +0,011. Antes llegaba a 4,5 pp.
+- **AUD-002, 008, 009, 010, 013, 014, 005 y 017:** tests nuevos en verde. El vigilante de AUD-005 se ejecutó en vivo: «El run diario se lanzo en su disparador».
 
-- `post-edit-format.sh` (`ruff check --fix`) borro imports anadidos antes de usarlos (AUD-003 en probabilities/revalidation; AUD-003 H1 en intraday_scan); repuestos y validados.
-- `check-secrets` aviso sobre `tests/test_audit_hooks.py` (fixtures de claves falsas preexistentes); sin secretos reales.
-- Ningun hook modifico ficheros fuera de los editados.
+## Mediciones sobre datos reales (solo agregados)
 
-## No ejecutado / NOT_VERIFIABLE
+- **AUD-003:** filas descartadas al leer: mlb 15, ncaab 31, wncaab 95, atp 2, wta 3, ligamx 1 y ucl 1. El partido 716404 queda en 2023-10-02, la fecha de la reanudación.
+- **AUD-008:** filas de línea de cuarto antes del corte: 572, con 8 medias liquidaciones. Después del corte: 284, con 80. En el ledger hay 58 filas de cuarto y se excluyen 27.
+- **AUD-001:** λ medio NHL 6,158; factor de ritmos reglamentarios c = 0,973.
 
-- CI de GitHub del nuevo HEAD y pip-audit (sin push; red de pago no usada).
-- Disparo real de los hooks PostToolUse con PowerShell (requiere sesion nueva).
-- BAT, pipelines y APIs reales (no ejecutados).
+## Acciones externas verificadas
+
+- `gh api … security_and_analysis`: `secret_scanning: enabled` y `secret_scanning_push_protection: enabled`.
+- `gh issue close 4` hecho; `gh issue list --label ci-rojo --state open` devuelve `[]`.
+
+## No verificado
+
+- CI en GitHub con el lock ampliado y los jobs nuevos: no hubo push.
+- `logs/` y `.env`: lectura denegada por permisos.
+- Instantánea H de recencia: inexistente (KI-075).

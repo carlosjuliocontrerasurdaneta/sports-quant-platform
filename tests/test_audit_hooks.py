@@ -111,29 +111,60 @@ def test_real_literals_still_detected(line):
     assert _suspicious_lines()(line) == [1]
 
 
-def test_audit_reports_are_excluded_from_the_scan(tmp_path):
-    """Los informes de auditoria citan codigo y evidencias de otros agentes;
-    no son ficheros del turno y no llevan secretos del proyecto. Se excluyen
-    como ya se excluian data/, logs/ y exports/."""
+def test_audit_reports_are_scanned_too(tmp_path):
+    """AUD-006 (ronda audit-2026-10-18): `audit/` y `audits/` se excluian del
+    escaneo por carpeta (AUD-007, audit-2026-09-18) y quedaban 325 ficheros
+    rastreados de un repo PUBLICO sin ninguna barrera. Ahora se escanean: un
+    literal bloquea igual que en el codigo, y la asignacion reflexiva citada que
+    motivo la exclusion sigue sin dar aviso porque `_symbolic` la descarta por
+    el valor."""
     shutil.copytree(ROOT / ".claude/hooks", tmp_path / ".claude/hooks")
-    for rel in ("audit/latest/openai/EVIDENCE.json", "audits/x/REPORT.md"):
+    for rel in ("audit/latest/openai/EVIDENCE.json", "audits/x/REPORT.md",
+                "src/x.py", "src/sqp/audit/html_report.py", "scripts/audit_team_names.py"):
         target = tmp_path / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('ODDS_API_KEY="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"',
                           encoding="utf-8")
         result = _run(tmp_path, ".claude/hooks/check-secrets.sh",
                       {"tool_input": {"file_path": str(target)}})
-        assert result.returncode == 0, result.stderr
-    # ...pero un fichero de codigo con el mismo literal sigue bloqueando, y el
-    # paquete de PRODUCCION `src/sqp/audit/` NO queda excluido: la exclusion esta
-    # anclada a la raiz (revision cruzada de Codex al cierre, 2026-09-18: un
-    # `*/audit/*` sin anclar dejaba ese codigo sin escanear).
-    for rel in ("src/x.py", "src/sqp/audit/html_report.py", "scripts/audit_team_names.py"):
-        src = tmp_path / rel
-        src.parent.mkdir(parents=True, exist_ok=True)
-        src.write_text('ODDS_API_KEY="ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"', encoding="utf-8")
-        assert _run(tmp_path, ".claude/hooks/check-secrets.sh",
-                    {"tool_input": {"file_path": str(src)}}).returncode == 2, rel
+        assert result.returncode == 2, rel
+        assert "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345" not in result.stderr
+    citado = tmp_path / "audit/latest/claude/EVIDENCE.json"
+    citado.parent.mkdir(parents=True, exist_ok=True)
+    citado.write_text('{"output": "        self.api_key = api_key\\r\\n        x = 1"}',
+                      encoding="utf-8")
+    assert _run(tmp_path, ".claude/hooks/check-secrets.sh",
+                {"tool_input": {"file_path": str(citado)}}).returncode == 0
+
+
+# AUD-012 (ronda audit-2026-10-18): formatos que el detector no veia. El valor se
+# construye en tiempo de ejecucion para no dejar mas literales en este fichero.
+_HEX = "a1b2c3d4" * 4
+_GH = "A1b2C3d4E5f6G7h8I9j0" * 2
+
+
+@pytest.mark.parametrize("line", [
+    f'key="{_HEX}"',
+    f'ODDS_KEY="{_HEX}"',
+    '{"x-api-key": "' + _HEX + '"}',
+    f"headers = {{'X-Api-Key': '{_HEX}'}}",
+    "ghp_" + _GH,
+    "github_pat_" + _GH + "_" + _GH,
+])
+def test_aud012_new_formats_are_detected(line):
+    assert _suspicious_lines()(line) == [1]
+
+
+@pytest.mark.parametrize("line", [
+    'key="home_team_name_long_value"',
+    "rows.sort(key=lambda r: r.start_time)",
+    'cache_key = "2026-10-18_nba_h2h_home_team"',
+    'secret = tmp_path / ".env"',
+    "| `secret_scanning: disabled` |",
+    "grep -rlE 'apiKey=[A-Za-z0-9]{8,}' logs",
+])
+def test_aud012_common_code_is_not_a_secret(line):
+    assert _suspicious_lines()(line) == []
 
 
 # AUD-011 (ronda audit-2026-09-23, OPENAI-008 reproducido): `[ -z "$out" ] &&
@@ -141,7 +172,8 @@ def test_audit_reports_are_excluded_from_the_scan(tmp_path):
 # sin escribir nada salia con exito, sin aviso y con el centinela ya borrado:
 # la revision pendiente se perdia en silencio. `codex` es un doble en PATH; no
 # se llama a ningun servicio.
-def _crossreview(tmp_path, rc: int, salida: str):
+def _crossreview(tmp_path, rc: int, salida: str, espera_s: int = 0,
+                 env_extra: dict | None = None):
     shutil.copytree(ROOT / ".claude/hooks", tmp_path / ".claude/hooks")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True,
                    capture_output=True)
@@ -151,11 +183,13 @@ def _crossreview(tmp_path, rc: int, salida: str):
     bin_dir.mkdir()
     fake = bin_dir / "codex"
     fake.write_text("#!/usr/bin/env bash\n"
+                    + (f"sleep {espera_s}\n" if espera_s else "")
                     + (f"printf '%s\n' {json.dumps(salida)}\n" if salida else "")
                     + f"exit {rc}\n", encoding="utf-8", newline="\n")
     fake.chmod(0o755)
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path),
-           "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
+           "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+           **(env_extra or {})}
     res = subprocess.run([_bash(), "-c",
                           f'export PATH="$(cygpath -u "{bin_dir}" 2>/dev/null '
                           f'|| echo "{bin_dir}"):$PATH"; '
@@ -192,6 +226,19 @@ def test_crossreview_veredicto_valido_bloquea_y_consume_el_marcador(tmp_path):
     assert "REVISION CRUZADA AUTOMATICA" in res.stderr
     assert not marker.exists()
 
+# AUD-007 (ronda audit-2026-10-18): `codex review` no tenia presupuesto propio.
+# Si se pasaba de los 600 s del harness, el hook moria con el centinela ya
+# borrado. Con un presupuesto de 1 s y un doble que tarda 5, debe cortarse,
+# avisar y conservar el centinela.
+def test_crossreview_lento_se_corta_avisa_y_conserva_el_marcador(tmp_path):
+    res, marker = _crossreview(tmp_path, 0, "Finding: tarde", espera_s=5,
+                               env_extra={"SQP_CROSSREVIEW_TIMEOUT_S": "1"})
+    assert res.returncode == 0
+    assert "NO SE EJECUTO" in res.stderr
+    assert "presupuesto" in res.stderr
+    assert marker.exists()
+
+
 # AUD-010 (ronda audit-2026-10-15): sin `codex` en el PATH el hook BORRABA el
 # centinela y salia en silencio; la revision cruzada se perdia sin reintento.
 # PATH reducido a /usr/bin (cat, rm, bash; ningun `codex`) para simular su
@@ -208,3 +255,18 @@ def test_crossreview_sin_codex_avisa_y_conserva_el_marcador(tmp_path):
     assert res.returncode == 0, "la ausencia de codex no debe bloquear el turno"
     assert "NO SE EJECUTO" in res.stderr, "la revision perdida no se avisa"
     assert marker.exists(), "el centinela se borro: la revision no se reintentara"
+
+
+# AUD-013 (ronda audit-2026-10-18): el guard de despacho ejecutado de verdad. Un
+# fork ignora `model`, asi que pasa con aviso; un subagente sin `model`, no.
+def test_dispatch_guard_lets_fork_through_but_not_a_plain_subagent(tmp_path):
+    shutil.copytree(ROOT / ".claude/hooks", tmp_path / ".claude/hooks")
+    hook = ".claude/hooks/require-dispatch-model.sh"
+    fork = _run(tmp_path, hook, {"tool_name": "Agent",
+                                 "tool_input": {"subagent_type": "fork", "prompt": "x"}})
+    assert fork.returncode == 0, fork.stderr
+    assert "modelo de la sesion" in fork.stderr
+    plano = _run(tmp_path, hook, {"tool_name": "Agent",
+                                  "tool_input": {"subagent_type": "Explore", "prompt": "x"}})
+    assert plano.returncode == 2
+    assert "DESPACHO BLOQUEADO" in plano.stderr

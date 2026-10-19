@@ -193,8 +193,11 @@ def _audit_section(bets_dir: Path) -> str:
         "<h3>Por liga</h3>", _df_to_html_table(by_league, empty_msg="(sin datos)"),
         "<h3>Por mercado</h3>", _df_to_html_table(by_market, empty_msg="(sin datos)"),
         '<p class="note">Chequeo de calibracion: <code>mean_est_prob</code> deberia '
-        'aproximar <code>hit_rate</code> y <code>mean_est_edge</code> deberia '
-        'aproximar <code>realized_roi</code> si el modelo esta bien calibrado.</p>',
+        'aproximar <code>hit_rate</code> (todas las liquidadas) y '
+        '<code>est_edge_staked</code> deberia aproximar <code>realized_roi</code> '
+        '(filas con stake, ponderadas por stake) si el modelo esta bien calibrado. '
+        '<code>mean_est_edge</code> es sobre todas las liquidadas y no se compara '
+        'con el ROI.</p>',
     ])
 
 

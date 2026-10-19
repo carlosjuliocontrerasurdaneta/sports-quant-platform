@@ -26,6 +26,7 @@ import pandas as pd
 
 from sqp.audit.report import load_all_settled
 from sqp.config import ROOT
+from sqp.settlement.quarter_line_fix import drop_pre_fix_quarter_lines
 
 # `implied_probability_novig` viaja aunque el entrenamiento no la use: la
 # metrica primaria del pre-registro del 2026-08-24 es el ECE de la probabilidad
@@ -171,7 +172,7 @@ def load_settled_training_history(bets_dir: Path | None = None) -> pd.DataFrame:
     for the target/anti-leakage rules. Returns an empty frame with
     ``TRAINING_COLS`` when there are no settled bets."""
     bets_dir = bets_dir or (ROOT / "data" / "bets")
-    return _project_training(load_all_settled(bets_dir))[TRAINING_COLS]
+    return _project_training(drop_pre_fix_quarter_lines(load_all_settled(bets_dir)))[TRAINING_COLS]
 
 
 def _load_graded_served(cal_dir: Path | None = None) -> pd.DataFrame:
@@ -190,6 +191,9 @@ def _load_graded_served(cal_dir: Path | None = None) -> pd.DataFrame:
     df = pd.concat(frames, ignore_index=True)
     if "data_label" in df.columns:
         df = df[df["data_label"].astype(str) == "real"]
+    # AUD-008 (ronda audit-2026-10-18): las lineas de cuarto graduadas win/loss
+    # antes del arreglo entrenaban el calibrador con un objetivo falso.
+    df = drop_pre_fix_quarter_lines(df)
     return df.reset_index(drop=True)
 
 
@@ -211,7 +215,8 @@ def load_calibration_training_history(bets_dir: Path | None = None,
     model probability -- the choice is cosmetic). Degrades gracefully to the
     settled-only history while the stream has no graded rows yet."""
     bets_dir = bets_dir or (ROOT / "data" / "bets")
-    settled = _project_training(load_all_settled(bets_dir), with_key=True)
+    settled = _project_training(drop_pre_fix_quarter_lines(load_all_settled(bets_dir)),
+                                with_key=True)
     served = _project_training(_load_graded_served(cal_dir), with_key=True)
     both = pd.concat([settled, served], ignore_index=True)
     # NaN keys (incomplete: old-schema rows) must not dedup against each other

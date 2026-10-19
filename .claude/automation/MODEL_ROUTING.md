@@ -95,7 +95,7 @@ Consecuencias vinculantes:
 - Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
 - Jerarquía de capacidad **de Anthropic** (hecho, no política):
-  `claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5` > `claude-haiku-4-5`.
+  `claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`.
   La documentación oficial lo dice explícitamente: *"start with Claude Opus 5.5
   for most workloads"*, y se sube a Fable 5.1 *"for demanding reasoning and
   long-horizon agentic work, or when your evals on Claude Opus 5.5 at higher
@@ -331,6 +331,18 @@ Reglas de despacho, en orden de precedencia:
    ruta (los escalados de la regla 1).
 3. **Sin ruta aplicable ni disparador**: `sonnet` (la ruta `default`). La tabla
    sigue siendo el suelo, nunca el techo.
+
+**Los forks no admiten modelo** (auditoría audit-2026-10-18, AUD-013). Un
+despacho con `subagent_type: "fork"` hereda el contexto y el modelo de la sesión,
+y la herramienta `Agent` ignora `model` para él. `require-dispatch-model.sh` lo
+deja pasar con un aviso, en vez de exigir un `model` que no tendría efecto y
+haría creer que el despacho cumplía la política. Si la pieza necesita otro
+escalón, se despacha un subagente normal con `model`, no un fork.
+
+IDs de Sonnet y Haiku **verificados en vivo el 2026-10-18** contra
+`platform.claude.com/docs/en/about-claude/models/overview`: los vigentes son
+`claude-sonnet-5-5` y `claude-haiku-5-5`; `claude-sonnet-5` y `claude-haiku-4-5`
+figuran como legacy (AUD-014).
 
 Estado de los otros dos artefactos, dicho sin ambigüedad para que no vuelvan a
 leerse como reglas paralelas:

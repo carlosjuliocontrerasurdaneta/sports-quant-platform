@@ -84,6 +84,7 @@ from scipy.stats import binomtest
 
 from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.logging_config import get_logger
+from sqp.settlement.quarter_line_fix import drop_pre_fix_quarter_lines
 from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
                                 read_json_retrying)
 from sqp.storage.lock import locked
@@ -199,6 +200,9 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
             return df.iloc[0:0].assign(y=pd.Series(dtype=int))
     fecha = df["game_date"].astype(str)
     df = _drop_invalid_market_rows(df[fecha > validation_start])
+    # Lineas de cuarto graduadas win/loss antes del arreglo de su liquidacion
+    # (auditoria audit-2026-10-18, AUD-008): ver `sqp.settlement.quarter_line_fix`.
+    df = drop_pre_fix_quarter_lines(df)
     for col in _REQUIRED:
         if col not in df.columns:
             return df.iloc[0:0].assign(y=pd.Series(dtype=int))

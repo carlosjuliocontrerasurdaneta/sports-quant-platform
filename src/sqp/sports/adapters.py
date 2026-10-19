@@ -10,6 +10,9 @@ plugs in as adjustments to mu/lambda BEFORE the distribution step - see each
 sport skill in skills/ for the full feature spec.
 """
 from __future__ import annotations
+from contextlib import contextmanager
+from typing import Iterator
+
 from sqp.domain.models import Event, EstimatedProbabilities
 from sqp.models import distributions as dist
 from sqp.models.park import ParkFactors
@@ -47,6 +50,12 @@ class NormalMarginAdapter(SportAdapter):
                             r.get("date"))
         self.rest.observe(r["home"], r["away"], r.get("date"))
 
+    def schedule(self, events) -> None:
+        """Upcoming events of the run, so rest counts games scheduled before
+        each one and not only those already played (AUD-002, audit-2026-10-18)."""
+        for ev in events:
+            self.rest.schedule(ev.home, ev.away, str(ev.start_time)[:10])
+
     def estimate(self, event, spread_line, total_line) -> EstimatedProbabilities:
         diff = self.elo.rating_diff(event.home, event.away)
         mu_margin = dist.elo_diff_to_margin(diff, self.params["points_per_elo"])
@@ -80,6 +89,10 @@ class PoissonAdapter(SportAdapter):
     through the baseball pitcher adjustment. Toggle with `scoring_totals`
     (default on); off reproduces the old league-constant scale.
     """
+    # AUD-001 (audit-2026-10-18): a regulation tie always ends with one more goal
+    # (see `poisson_match_probs`). Only hockey; baseball extras can add several
+    # runs and its stored totals do not show the parity bias.
+    TIE_ADDS_GOAL = False
 
     def __init__(self, league: str, params: dict):
         super().__init__(league, params)
@@ -103,6 +116,11 @@ class PoissonAdapter(SportAdapter):
         self.scoring.update(r["home"], r["away"], r["home_score"], r["away_score"],
                             r.get("date"))
         self.rest.observe(r["home"], r["away"], r.get("date"))
+
+    def schedule(self, events) -> None:
+        """Same as `NormalMarginAdapter.schedule` (AUD-002)."""
+        for ev in events:
+            self.rest.schedule(ev.home, ev.away, str(ev.start_time)[:10])
 
     def _rates(self, event) -> tuple[float, float]:
         # Same two quantities `EloRatings.expected_home_win` computes
@@ -130,7 +148,8 @@ class PoissonAdapter(SportAdapter):
                                          max_goals=self.params.get("max_score", 15),
                                          dc_rho=self.params.get("dc_rho", 0.0),
                                          dispersion_k=self.params.get("dispersion_k"),
-                                         score_rho=self.params.get("score_rho", 0.0))
+                                         score_rho=self.params.get("score_rho", 0.0),
+                                         tie_adds_goal=self.TIE_ADDS_GOAL)
         return EstimatedProbabilities(
             home_win_estimated_probability=probs["home_win"],
             away_win_estimated_probability=probs["away_win"],
@@ -255,6 +274,7 @@ class BaseballAdapter(PoissonAdapter):
 
 class HockeyAdapter(PoissonAdapter):
     family = "hockey"
+    TIE_ADDS_GOAL = True
 
 class SoccerAdapter(PoissonAdapter):
     family = "soccer"
@@ -281,3 +301,22 @@ class TennisAdapter(SportAdapter):
             home_win_estimated_probability=p,
             away_win_estimated_probability=1 - p,
             spread_line=spread_line, total_line=total_line)
+
+
+@contextmanager
+def regulation_tie_without_goal() -> Iterator[None]:
+    """Pricing NHL ANTERIOR a AUD-001 (ronda audit-2026-10-18) mientras dura el
+    bloque: el empate reglamentario no suma el gol de la prorroga.
+
+    Solo para las mediciones de investigacion PRE-REGISTRADAS con ese pricing,
+    cuya paridad compara contra el motor de produccion (`walk_forward_backtest`
+    construye su propio adaptador): `measure_tilt_nhl.py` y
+    `measure_totals_recency.py`, por sus addenda del 2026-10-18. Restaura el
+    valor al salir, tambien ante una excepcion. Nunca en el pipeline diario.
+    """
+    previo = HockeyAdapter.TIE_ADDS_GOAL
+    HockeyAdapter.TIE_ADDS_GOAL = False
+    try:
+        yield
+    finally:
+        HockeyAdapter.TIE_ADDS_GOAL = previo

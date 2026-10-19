@@ -13,6 +13,8 @@
 # Ocultaba justo la pata que valida la maquina que opera.
 # Regenerate after any deliberate dependency upgrade:
 #   pip list --format=freeze | (filter to the names below) > requirements.lock
+# The names below must be the FULL transitive closure of runtime + dev
+# (tests/test_requirements_lock.py checks it against the installed metadata).
 
 # --- runtime ---
 numpy==2.4.4
@@ -40,6 +42,10 @@ python-dateutil==2.9.0.post0
 tzdata==2026.1
 threadpoolctl==3.6.0
 six==1.17.0
+# narwhals: dependencia de RUNTIME de scikit-learn 1.9 que este fichero no fijaba
+# (auditoria audit-2026-10-18, AUD-016). Sin pin, el CI instalaba la ultima y
+# pip-audit, que solo audita este fichero, no la miraba nunca.
+narwhals==2.20.0
 
 # --- dev ---
 pytest==9.0.3
@@ -59,3 +65,11 @@ iniconfig==2.3.0
 packaging==26.2
 pluggy==1.6.0
 colorama==0.4.6
+# --- dev transitive (AUD-016, cierre completo calculado el 2026-10-18 desde el
+# entorno de produccion con importlib.metadata, marcadores linux + win32) ---
+pygments==2.20.0
+ast-serialize==0.5.0
+librt==0.11.0
+mypy-extensions==1.1.0
+pathspec==1.1.1
+typing-extensions==4.15.0

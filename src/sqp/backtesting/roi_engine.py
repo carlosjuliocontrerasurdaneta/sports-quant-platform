@@ -71,7 +71,9 @@ def discover_leagues_with_odds(root: Path) -> list[str]:
 
 
 def load_closing_odds(root: Path, league: str,
-                      max_age_min: float | None = None) -> dict[str, EventOdds]:
+                      max_age_min: float | None = None,
+                      captured_out: dict[str, pd.Timestamp] | None = None,
+                      ) -> dict[str, EventOdds]:
     """event_id -> EventOdds built from the last snapshot strictly before each
     event's commence_time (the captured proxy for closing odds).
 
@@ -79,7 +81,11 @@ def load_closing_odds(root: Path, league: str,
     that many minutes before commence: a morning snapshot is a valid *entry*
     proxy for the ROI backtest (default, None) but not a *closing* proxy for
     CLV — when entry and "close" come from the same snapshot, CLV is 0 by
-    construction and dilutes the median toward zero."""
+    construction and dilutes the median toward zero.
+
+    ``captured_out``, if given, receives event_id -> capture instant (UTC) of
+    the snapshot used as close, so a caller can reject a "close" captured at or
+    before its own entry (audit-2026-10-18, AUD-009)."""
     odds_dir = root / "data" / "odds"
     files = sorted(odds_dir.glob(f"odds_{league}_*.csv"))
     if not files:
@@ -118,6 +124,8 @@ def load_closing_odds(root: Path, league: str,
                    home=str(snap["home"].iloc[0]), away=str(snap["away"].iloc[0]),
                    start_time=commence, data_label="real")
         out[str(eid)] = EventOdds(event=ev, lines=lines)
+        if captured_out is not None:
+            captured_out[str(eid)] = last
     return out
 
 

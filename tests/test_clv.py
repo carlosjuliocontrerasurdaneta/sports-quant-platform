@@ -260,3 +260,22 @@ def test_daily_clv_shadow_exit_met_with_enough_positive_median(tmp_path):
     assert s["n_matched"] == SHADOW_EXIT_MIN_N
     assert s["shadow_clv_ok"] is True
     assert "CUMPLE la parte CLV" in Path(s["path"]).read_text(encoding="utf-8")
+
+
+# AUD-009 (ronda audit-2026-10-18): un "cierre" capturado en la entrada o antes
+# es el precio de la propia entrada; el CLV salia 0 por construccion.
+def test_aud009_close_captured_at_or_before_entry_is_sin_cierre(tmp_path):
+    _write_odds(tmp_path, [_odds_row(captured_at="2026-07-01T22:00:00Z")])
+    _write_settled(tmp_path, [
+        _settled_row(generated_at="2026-07-01T22:00:00+00:00"),   # igual
+        _settled_row(event_id="e1", selection="A", generated_at="2026-07-01T22:05:00Z"),
+    ])
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
+    assert df.empty and unmatched == 2
+
+
+def test_aud009_close_captured_after_entry_still_counts(tmp_path):
+    _write_odds(tmp_path, [_odds_row(captured_at="2026-07-01T22:00:00Z")])
+    _write_settled(tmp_path, [_settled_row(generated_at="2026-07-01T15:00:00Z")])
+    df, unmatched = compute_clv(tmp_path / "data" / "bets", tmp_path)
+    assert unmatched == 0 and len(df) == 1
