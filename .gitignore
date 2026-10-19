@@ -10,6 +10,10 @@ data/historical/*
 data/odds/*
 data/calibration/*
 data/cache/
+# Copias de seguridad de reparaciones de datos (2026-10-19): son datos
+# operativos como los de data/bets y data/calibration. `git add -A` llego a
+# publicarlas en el repositorio PUBLICO (commit 18826e2) porque no estaban aqui.
+data/backups/
 !data/**/.gitkeep
 logs/*
 !logs/.gitkeep
