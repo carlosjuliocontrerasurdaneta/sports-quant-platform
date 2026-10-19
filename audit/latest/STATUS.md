@@ -20,8 +20,8 @@
 | AUD-012 | P3 | Corregido; pendiente de verificación |
 | AUD-013 | P3 | Corregido; pendiente de verificación |
 | AUD-014 | P3 | Corregido (IDs verificados en vivo el 2026-10-18) |
-| AUD-015 | P3 | Corregido: #4 cerrado; el job `cierre-ci-verde` se comprobará en el primer run de main |
-| AUD-016 | P3 | Corregido en local; falta confirmar el CI en Linux y en 3.11–3.14 tras el push |
+| AUD-015 | P3 | Corregido y comprobado en CI: `alerta-ci-rojo` abrió el #5 con el rojo de `ba6f3e3` y `cierre-ci-verde` lo cerró solo con el verde de `777b429` |
+| AUD-016 | P3 | Corregido y comprobado en CI: `777b429` en verde en Linux 3.11–3.14, Windows y `dependency-audit` con el lock ampliado |
 | AUD-017 | P3 | Mitigado (`_git_decide`); la causa sigue sin reproducirse sin carga |
 
 ## Autorización del operador (2026-10-19, «Te autorizo») y lo que se hizo
@@ -38,5 +38,4 @@
 ## Pendientes
 
 1. Que el operador ejecute `scripts/set_daily_retry.ps1` (UAC) y `scripts/repair_audit_20261018.py` (dry-run y después `--apply`, fuera de las ventanas de SETTLE y DIARIO).
-2. Confirmar el CI en verde tras el arreglo del test (AUD-015/016).
-3. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).
+2. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).
