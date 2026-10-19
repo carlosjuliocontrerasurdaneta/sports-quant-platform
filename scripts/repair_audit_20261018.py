@@ -42,6 +42,7 @@ import hashlib
 import json
 import shutil
 import sys
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,6 +60,14 @@ from sqp.storage.results_store import ResultsStore  # noqa: E402
 
 BACKUP = ROOT / "data" / "backups" / "repair-audit-20261018"
 ESPERADO_KI071 = {"epl": 5, "mls": 1, "ncaaf": 3}       # identidades duplicadas
+# AUD-008: filas re-graduadas por fichero (dry-run de Fable, 2026-10-19). El
+# ledger (`settled_*`) no tiene `start_time` y no empareja: 0 cambios. Un
+# historico ausente o distinto da otro recuento y aborta ANTES de escribir nada
+# (revision cruzada de Codex, 2026-10-19: antes se aplicaba KI-071 y AUD-008 se
+# quedaba a medias sin poder reintentarse).
+ESPERADO_AUD008 = {"graded_brasileirao": 12, "graded_chile": 52, "graded_epl": 2,
+                   "graded_laliga": 28, "graded_ligamx": 12, "graded_mls": 8,
+                   "graded_seriea": 10}
 FLAG = "regrade_aud008"
 
 
@@ -151,7 +160,49 @@ def plan_aud008(base: dict[Path, pd.DataFrame]) -> tuple[dict[Path, pd.DataFrame
                 resumen[str(p.relative_to(ROOT))] = info
             if info["cambiadas"]:
                 out[p] = nuevo
+    vistos = {p.stem: resumen[str(p.relative_to(ROOT))]["cambiadas"] for p in out}
+    if vistos != ESPERADO_AUD008:
+        raise SystemExit(f"AUD-008: re-graduadas {vistos} != esperado {ESPERADO_AUD008}. "
+                         "Aborta sin escribir nada.")
     return out, resumen
+
+
+def aplicar(cambios: dict[Path, pd.DataFrame], destino: Path, informe: dict) -> dict:
+    """Todo o nada frente a cambios concurrentes (revision cruzada de Codex,
+    2026-10-19): toma el lock de TODOS los ficheros, comprueba TODOS los SHA
+    planificados y hace TODAS las copias antes de la primera escritura. Antes
+    se comprobaba fichero a fichero, y un cambio en el segundo dejaba el
+    primero ya reparado, sin manifiesto y sin poder reintentar. El manifiesto
+    se escribe antes de reemplazar nada, para que las copias sean localizables
+    aunque una escritura falle."""
+    manifiesto: dict = {"creado": destino.name, "estado": "en_curso", "informe": informe,
+                        "ficheros": {}}
+    with ExitStack() as pila:
+        for p in cambios:
+            pila.enter_context(locked(p))
+        for p in cambios:
+            if _sha(p) != SHA_PLAN[p]:
+                raise SystemExit(f"{p.relative_to(ROOT)} cambio desde que se planifico la "
+                                 "reparacion (liquidacion en curso?). Aborta sin escribir nada.")
+        for p in cambios:
+            rel = p.relative_to(ROOT)
+            copia = destino / rel
+            copia.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, copia)
+            if _sha(copia) != SHA_PLAN[p]:
+                raise SystemExit(f"La copia de {rel} no reproduce el SHA planificado. "
+                                 "Aborta sin escribir nada.")
+            manifiesto["ficheros"][str(rel)] = {"sha256_antes": SHA_PLAN[p],
+                                                "copia": str(copia.relative_to(ROOT))}
+        (destino / "MANIFEST.json").write_text(
+            json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
+        for p, df in cambios.items():
+            atomic_write_csv(df, p)
+            manifiesto["ficheros"][str(p.relative_to(ROOT))]["sha256_despues"] = _sha(p)
+    manifiesto["estado"] = "aplicado"
+    (destino / "MANIFEST.json").write_text(
+        json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
+    return manifiesto
 
 
 def main() -> int:
@@ -174,24 +225,7 @@ def main() -> int:
         return 0
     marca = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     destino = BACKUP / marca
-    manifiesto: dict = {"creado": marca, "informe": informe, "ficheros": {}}
-    for p, df in cambios.items():
-        rel = p.relative_to(ROOT)
-        copia = destino / rel
-        copia.parent.mkdir(parents=True, exist_ok=True)
-        antes = SHA_PLAN[p]
-        with locked(p):
-            if _sha(p) != antes:
-                raise SystemExit(f"{rel} cambio desde que se planifico la reparacion "
-                                 "(liquidacion en curso?). Aborta sin escribir.")
-            shutil.copy2(p, copia)
-            if _sha(copia) != antes:
-                raise SystemExit(f"La copia de {rel} no reproduce el SHA planificado. Aborta.")
-            atomic_write_csv(df, p)
-        manifiesto["ficheros"][str(rel)] = {"sha256_antes": antes, "sha256_despues": _sha(p),
-                                            "copia": str(copia.relative_to(ROOT))}
-    (destino / "MANIFEST.json").write_text(json.dumps(manifiesto, indent=2, ensure_ascii=False),
-                                           encoding="utf-8")
+    aplicar(cambios, destino, informe)
     print(f"Aplicado. Copias y manifiesto en {destino.relative_to(ROOT)}")
     return 0
 
