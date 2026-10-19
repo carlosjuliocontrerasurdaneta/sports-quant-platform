@@ -8,12 +8,12 @@
 |---|---|---|
 | AUD-001 | P1 | Corregido; pendiente de verificación |
 | AUD-002 | P2 | Corregido; pendiente de verificación |
-| AUD-003 | P2 | Código corregido; pendiente de verificación. **Datos en disco sin reparar** (148 filas crudas; se deduplican al leer): falta autorización expresa |
+| AUD-003 | P2 | Corregido en la lectura; pendiente de verificación. Las 148 filas crudas se conservan a propósito (Enmiendas 3(c) y 2; revisión Fable 19-10) |
 | AUD-004 | P2 | Corregido; pendiente de verificación |
 | AUD-005 | P2 | Parcial: vigilante independiente activo. El reintento del Programador (`RestartCount`) queda como decisión del operador |
 | AUD-006 | P2 | Corregido: GitHub con secret scanning y push protection activados, job `secret-scan`, el hook escanea `audit/` |
 | AUD-007 | P2 | Corregido; pendiente de verificación |
-| AUD-008 | P3 | Exclusión aplicada en el gate y la calibración, con addenda en cinco pre-registros. **Re-graduar el stream** queda fuera: falta autorización expresa |
+| AUD-008 | P3 | Exclusión aplicada en el gate y la calibración, con addenda en cinco pre-registros. Re-graduación del stream autorizada el 19-10: script listo, lo ejecuta el operador |
 | AUD-009 | P3 | Corregido; pendiente de verificación |
 | AUD-010 | P3 | Corregido; pendiente de verificación |
 | AUD-011 | P3 | Corregido; pendiente de verificación |
