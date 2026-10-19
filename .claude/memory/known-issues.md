@@ -611,7 +611,7 @@ Format:
   - Una fila excluida por (B) sale del escaneo a los 14 días (`SUPERSEDED_LOOKBACK_DAYS`) sin veredicto, avisada solo con un warning.
   - Opcional: basar la exclusión solo en `away`, el único campo que lee `_grade`.
 - **Pendiente con autorización del operador:** reparar las 18 filas ya duplicadas del ledger (acción sobre datos).
-- Status: CORREGIDO en código (2026-10-11); reparación del ledger PENDIENTE.
+- Status: CORREGIDO en código (2026-10-11). Ledger REPARADO el 2026-10-19, con autorización del operador: `scripts/repair_audit_20261018.py --apply` quitó 9 filas (epl 5, mls 1, ncaaf 3; stake 0) y conservó la generación más reciente de cada identidad. Copia y manifiesto en `data/backups/repair-audit-20261018/20261019T210602Z/`. Quedan 0 identidades duplicadas.
 
 - ID: KI-072
 - Severity: Baja (P3)

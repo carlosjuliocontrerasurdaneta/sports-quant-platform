@@ -10,10 +10,10 @@
 | AUD-002 | P2 | Corregido; pendiente de verificación |
 | AUD-003 | P2 | Corregido en la lectura; pendiente de verificación. Las 148 filas crudas se conservan a propósito (Enmiendas 3(c) y 2; revisión Fable 19-10) |
 | AUD-004 | P2 | Corregido; pendiente de verificación |
-| AUD-005 | P2 | Parcial: vigilante independiente activo. El reintento del Programador (`RestartCount`) queda como decisión del operador |
+| AUD-005 | P2 | Corregido: vigilante independiente activo y `SQP_Diario_Completo_Cdev` con RestartCount=3 cada 15 min (aplicado por el operador el 19-10 con `scripts/set_daily_retry.ps1`) |
 | AUD-006 | P2 | Corregido: GitHub con secret scanning y push protection activados, job `secret-scan`, el hook escanea `audit/` |
 | AUD-007 | P2 | Corregido; pendiente de verificación |
-| AUD-008 | P3 | Exclusión aplicada en el gate y la calibración, con addenda en cinco pre-registros. Re-graduación del stream autorizada el 19-10: script listo, lo ejecuta el operador |
+| AUD-008 | P3 | Exclusión aplicada en el gate y la calibración, con addenda en cinco pre-registros. Stream re-graduado el 19-10: 124 filas pasan a medias (`regrade_aud008`; copia y manifiesto en `data/backups/repair-audit-20261018/20261019T210602Z/`). Las filas siguen excluidas de la decisión |
 | AUD-009 | P3 | Corregido; pendiente de verificación |
 | AUD-010 | P3 | Corregido; pendiente de verificación |
 | AUD-011 | P3 | Corregido; pendiente de verificación |
@@ -35,7 +35,11 @@
    - **AUD-008:** 124 filas del stream re-graduadas a medias (pnl 0). El ledger tiene 0 filas emparejables y no cambia.
    - El clasificador del modo automático no permite ejecutarlo a Claude, así que lo ejecuta el operador.
 
+## Ejecutado por el operador (2026-10-19)
+
+- `set_daily_retry.ps1`: RestartCount=3, RestartInterval=PT15M (código 0).
+- `repair_audit_20261018.py`: el dry-run coincidió con lo esperado; `--apply` dejó el manifiesto en `aplicado`, 10 ficheros con su copia SHA-verificada, KI-071 con 0 duplicados y AUD-008 con 124 filas re-graduadas. Verificado por Claude en solo lectura.
+
 ## Pendientes
 
-1. Que el operador ejecute `scripts/set_daily_retry.ps1` (UAC) y `scripts/repair_audit_20261018.py` (dry-run y después `--apply`, fuera de las ventanas de SETTLE y DIARIO).
-2. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).
+1. Verificación independiente de la ronda (`audits/prompts/verificar-remediacion.md`).

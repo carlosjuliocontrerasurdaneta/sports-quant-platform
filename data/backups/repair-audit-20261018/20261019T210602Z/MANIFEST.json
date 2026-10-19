@@ -1,0 +1,199 @@
+{
+  "creado": "20261019T210602Z",
+  "estado": "aplicado",
+  "informe": {
+    "aud003": "resuelto en la lectura (ResultsStore.load); el CSV crudo no se toca",
+    "ki071_filas_quitadas": {
+      "settled_epl": 5,
+      "settled_mls": 1,
+      "settled_ncaaf": 3
+    },
+    "aud008": {
+      "data\\calibration\\graded_brasileirao.csv": {
+        "filas_cuarto_pre": 118,
+        "emparejadas": 118,
+        "cambiadas": 12,
+        "transiciones": {
+          "loss->half_loss": 6,
+          "win->half_win": 6
+        }
+      },
+      "data\\calibration\\graded_bundesliga.csv": {
+        "filas_cuarto_pre": 10,
+        "emparejadas": 10,
+        "cambiadas": 0
+      },
+      "data\\calibration\\graded_chile.csv": {
+        "filas_cuarto_pre": 212,
+        "emparejadas": 212,
+        "cambiadas": 52,
+        "transiciones": {
+          "loss->half_loss": 26,
+          "win->half_win": 26
+        }
+      },
+      "data\\calibration\\graded_epl.csv": {
+        "filas_cuarto_pre": 14,
+        "emparejadas": 14,
+        "cambiadas": 2,
+        "transiciones": {
+          "win->half_win": 1,
+          "loss->half_loss": 1
+        }
+      },
+      "data\\calibration\\graded_laliga.csv": {
+        "filas_cuarto_pre": 100,
+        "emparejadas": 100,
+        "cambiadas": 28,
+        "transiciones": {
+          "loss->half_loss": 14,
+          "win->half_win": 14
+        }
+      },
+      "data\\calibration\\graded_ligamx.csv": {
+        "filas_cuarto_pre": 46,
+        "emparejadas": 46,
+        "cambiadas": 12,
+        "transiciones": {
+          "loss->half_loss": 6,
+          "win->half_win": 6
+        }
+      },
+      "data\\calibration\\graded_ligue1.csv": {
+        "filas_cuarto_pre": 4,
+        "emparejadas": 4,
+        "cambiadas": 0
+      },
+      "data\\calibration\\graded_mls.csv": {
+        "filas_cuarto_pre": 22,
+        "emparejadas": 22,
+        "cambiadas": 8,
+        "transiciones": {
+          "win->half_win": 4,
+          "loss->half_loss": 4
+        }
+      },
+      "data\\calibration\\graded_seriea.csv": {
+        "filas_cuarto_pre": 26,
+        "emparejadas": 26,
+        "cambiadas": 10,
+        "transiciones": {
+          "loss->half_loss": 5,
+          "win->half_win": 5
+        }
+      },
+      "data\\bets\\settled_brasileirao.csv": {
+        "filas_cuarto_pre": 5,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_bundesliga.csv": {
+        "filas_cuarto_pre": 1,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_chile.csv": {
+        "filas_cuarto_pre": 9,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_epl.csv": {
+        "filas_cuarto_pre": 2,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_laliga.csv": {
+        "filas_cuarto_pre": 3,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_ligamx.csv": {
+        "filas_cuarto_pre": 1,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_ligue1.csv": {
+        "filas_cuarto_pre": 1,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      },
+      "data\\bets\\settled_seriea.csv": {
+        "filas_cuarto_pre": 5,
+        "emparejadas": 0,
+        "cambiadas": 0,
+        "nota": "ledger sin `start_time`: 0 emparejables; las filas siguen excluidas por la mascara y no se tocan"
+      }
+    },
+    "ficheros": [
+      "data\\bets\\settled_epl.csv",
+      "data\\bets\\settled_mls.csv",
+      "data\\bets\\settled_ncaaf.csv",
+      "data\\calibration\\graded_brasileirao.csv",
+      "data\\calibration\\graded_chile.csv",
+      "data\\calibration\\graded_epl.csv",
+      "data\\calibration\\graded_laliga.csv",
+      "data\\calibration\\graded_ligamx.csv",
+      "data\\calibration\\graded_mls.csv",
+      "data\\calibration\\graded_seriea.csv"
+    ]
+  },
+  "ficheros": {
+    "data\\bets\\settled_epl.csv": {
+      "sha256_antes": "8b7f0a1cb797bf1bfedb4dc11ffc6a42d284ca726d9df6ee1e52d62848d6095a",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\bets\\settled_epl.csv",
+      "sha256_despues": "6bd092d4daec10f1c96c9ab5ee826fe89803a1cbb59e989c2239305d70c51b38"
+    },
+    "data\\bets\\settled_mls.csv": {
+      "sha256_antes": "f1c47f3e47ab48618d4c236f02457d21f354dd6f43af730bed5883666e93368d",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\bets\\settled_mls.csv",
+      "sha256_despues": "a9d5792d6ae8c0416a85b66e4d09460ab802b3e692098fcf3ffb4092ddc193ef"
+    },
+    "data\\bets\\settled_ncaaf.csv": {
+      "sha256_antes": "f834ee316f05661890a8a35440e52057110de6f8d79b34ba5a30973858fc7d85",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\bets\\settled_ncaaf.csv",
+      "sha256_despues": "0f5646b365599a0d6ee5bbc6fa6bcd5ffd57ab8b27d4438ba10ad61fa39828e5"
+    },
+    "data\\calibration\\graded_brasileirao.csv": {
+      "sha256_antes": "c654ab147dda18f9fea209aeecc012caed8aa64421c1571c99796f1cee3c5911",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_brasileirao.csv",
+      "sha256_despues": "2a795644558e3905558512331c214d86c99713a863bd271be4ac29165508e941"
+    },
+    "data\\calibration\\graded_chile.csv": {
+      "sha256_antes": "bee0bc716c709e9121e952deeed9b11d4d6a5bbd3ae6dadedd723cdb66c24f9c",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_chile.csv",
+      "sha256_despues": "fa53db875a914141edeede59c4150f9faec81e8d2b95441cca81f065f7937e04"
+    },
+    "data\\calibration\\graded_epl.csv": {
+      "sha256_antes": "c29fc6d0fb675a3a0658738caa95d6034186bdb89a2bd89d4c25b7c2b93e4540",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_epl.csv",
+      "sha256_despues": "30a56a9fa8da2689d6d213dd57e4227bfbcdf63359fd55d3552680cd2c1c0720"
+    },
+    "data\\calibration\\graded_laliga.csv": {
+      "sha256_antes": "73fcec74c86c9f9f3531b8023a67a566891cf8b36c6c45bba38fcce9b94bb671",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_laliga.csv",
+      "sha256_despues": "4c1023fdb560d90fdb00ade6f0851c95e069991085afe5c4ab82f16ae33c5f57"
+    },
+    "data\\calibration\\graded_ligamx.csv": {
+      "sha256_antes": "4ae9ab0be5bf8f8992cb4b6ff4a7251fd04669e3d3ed67fadcc3913bf1e78546",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_ligamx.csv",
+      "sha256_despues": "e009b1b3eeb69412aad75ae64e77403e6ee8e6aa876632d5a5123d73cd4955fd"
+    },
+    "data\\calibration\\graded_mls.csv": {
+      "sha256_antes": "3d1f6d840cfa5a411881ca51b3686fca2758a6ed70ba01b1449740063a8a8c92",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_mls.csv",
+      "sha256_despues": "56859eedd9cbf6aa2a5e9356da9a52faf7dddd350f7c4f2e92c116e53aa79b21"
+    },
+    "data\\calibration\\graded_seriea.csv": {
+      "sha256_antes": "260be63a615ae42b7014df399555eab2681299342bdb1fc024c132be626e3162",
+      "copia": "data\\backups\\repair-audit-20261018\\20261019T210602Z\\data\\calibration\\graded_seriea.csv",
+      "sha256_despues": "afd733e6cad2fefe87104281de7ff5fa991d115a87735e119ae536b8e68f6c11"
+    }
+  }
+}
