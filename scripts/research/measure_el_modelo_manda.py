@@ -146,6 +146,22 @@ INVALID_BEFORE: dict[tuple[str, str], str] = {
 # coincide con `sqp.settlement.quarter_line_fix.QUARTER_LINE_GRADING_FIXED_AT`.
 QUARTER_LINE_INVALID_BEFORE = "2026-09-13T12:36:34+00:00"
 _QUARTER_LINE_MARKETS = ("totals", "spreads")
+
+# Addendum 2026-10-20 (`execution.books: [pinnacle]`): desde este instante (commit
+# f92e8e1) `execution_price` es el precio de Pinnacle cuando cotiza la linea;
+# antes repetia la mediana. Las metricas DESCRIPTIVAS de `execution_price` se
+# informan tambien partidas por este corte (por `generated_at`). Literal
+# CONGELADO. No toca seleccion, decision ni ningun criterio.
+EXECUTION_REGIME_FROM = "2026-10-20T13:31:09+00:00"
+EXECUTION_REGIMES = ("mediana_hasta_2026-10-20", "pinnacle_desde_2026-10-20", "sin_fecha")
+
+
+def execution_regime(gen: pd.Series) -> np.ndarray:
+    """Etiqueta de regimen de `execution_price` por fila (Addendum 2026-10-20)."""
+    ts = pd.to_datetime(gen, errors="coerce", utc=True, format="mixed")
+    corte = pd.Timestamp(EXECUTION_REGIME_FROM)
+    return np.where(ts.isna(), EXECUTION_REGIMES[2],
+                    np.where(ts >= corte, EXECUTION_REGIMES[1], EXECUTION_REGIMES[0]))
 _SEGMENT_COLS = ["league", "market"]
 _REQUIRED_COLS = ("result", "calibrated_probability", "implied_probability_novig",
                   "event_id", "selection", "market", "generated_at", "league")
@@ -709,6 +725,15 @@ def roi_comparison(unit: pd.DataFrame, seed: int, n_boot: int,
                     "n_con_execution_price": int(ok.sum()),
                     "roi_realizado": (float(np.where(win[ok], ex[ok] - 1.0, -1.0).mean())
                                       if ok.any() else None)}
+                reg = execution_regime(unit["generated_at"] if "generated_at" in unit.columns
+                                       else pd.Series(pd.NaT, index=unit.index))
+                d_pol["execution_price_informativo"]["por_regimen"] = {
+                    lab: {"n_con_execution_price": int((ok & (reg == lab)).sum()),
+                          "roi_realizado": (float(np.where(win[ok & (reg == lab)],
+                                                           ex[ok & (reg == lab)] - 1.0,
+                                                           -1.0).mean())
+                                            if (ok & (reg == lab)).any() else None)}
+                    for lab in EXECUTION_REGIMES}
         desc[name] = d_pol
     out: dict[str, Any] = {"regla": rule, "politicas": desc}
     n0, n5 = float(cnts["s_0"].sum()), float(cnts["s_0_5"].sum())

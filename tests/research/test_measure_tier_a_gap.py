@@ -1312,3 +1312,24 @@ def test_tz_cluster_invalida_falla_antes_de_medir(monkeypatch):
     with pytest.raises(SystemExit):
         mod.main()
     assert llamado == []
+
+
+def test_s6_execution_price_is_split_at_the_pinnacle_regime(mod):
+    """Addendum 2026-10-20 (revision cruzada de Codex): S6 informa las metricas
+    de execution_price partidas por el corte de `execution.books: [pinnacle]`."""
+    import pandas as pd
+    a = pd.DataFrame({
+        "_resultado": ["win", "loss", "win", "loss"], "_p": [0.55] * 4,
+        "_price": [2.0] * 4, "_edge_pp": [0.05] * 4, "_ev": [0.10] * 4,
+        "execution_price": [2.0, 2.0, 1.9, 1.9],
+        "generated_at": ["2026-10-19T10:00:00Z", "2026-10-19T11:00:00Z",
+                         "2026-10-21T10:00:00Z", "2026-10-21T11:00:00Z"]})
+    out = mod.betting_metrics(a)
+    por = out["execution_price_por_regimen"]
+    antes, desde, nf = (por[k] for k in mod.EXECUTION_REGIMES)
+    assert antes["n_con_execution_price"] == 2 and desde["n_con_execution_price"] == 2
+    assert nf["n_con_execution_price"] == 0
+    assert antes["roi_esperado_execution_price"] == pytest.approx(0.55 * 2.0 - 1)
+    assert desde["roi_esperado_execution_price"] == pytest.approx(0.55 * 1.9 - 1)
+    assert desde["roi_realizado_execution_price"] == pytest.approx((0.9 - 1) / 2)
+    assert mod.EXECUTION_REGIME_FROM == "2026-10-20T13:31:09+00:00"

@@ -622,3 +622,30 @@ def test_aud008_pre_fix_quarter_line_first_serve_excludes_whole_pick(mod: Any) -
 def test_aud008_literal_matches_quarter_line_fix(mod: Any) -> None:
     from sqp.settlement.quarter_line_fix import QUARTER_LINE_GRADING_FIXED_AT
     assert mod.QUARTER_LINE_INVALID_BEFORE == QUARTER_LINE_GRADING_FIXED_AT
+
+
+def test_execution_price_descriptives_are_split_at_the_pinnacle_regime(mod: Any) -> None:
+    """Addendum 2026-10-20: las metricas descriptivas de execution_price se
+    informan partidas por el corte de `execution.books: [pinnacle]`; las
+    decisiones no cambian (revision cruzada de Codex)."""
+    unit = _roi_unit(80, ganador_selectivo=True)
+    unit["execution_price"] = 2.0
+    unit["generated_at"] = ["2026-10-19T12:00:00Z"] * 40 + ["2026-10-21T12:00:00Z"] * 39 + ["x"]
+    unit.loc[40:78, "execution_price"] = 1.9
+    out = mod.roi_comparison(unit, 42, 400)
+    sin = mod.roi_comparison(unit.drop(columns=["execution_price", "generated_at"]), 42, 400)
+    assert out["delta"] == sin["delta"] and out["decision"] == sin["decision"]
+    por = out["politicas"]["s_0"]["execution_price_informativo"]["por_regimen"]
+    antes, desde, nf = (por[k] for k in mod.EXECUTION_REGIMES)
+    assert antes["n_con_execution_price"] + desde["n_con_execution_price"] + nf["n_con_execution_price"] \
+        == sum(v["n_con_execution_price"] for v in por.values())
+    assert desde["n_con_execution_price"] > 0 and antes["n_con_execution_price"] > 0
+    # Todas las apuestas de s_0 ganan: ROI realizado = precio - 1 en cada regimen.
+    assert antes["roi_realizado"] == pytest.approx(1.0)
+    assert desde["roi_realizado"] == pytest.approx(0.9)
+
+
+def test_execution_regime_literal_is_the_activation_commit_instant(mod: Any) -> None:
+    assert mod.EXECUTION_REGIME_FROM == "2026-10-20T13:31:09+00:00"
+    lab = mod.execution_regime(pd.Series(["2026-10-20T13:31:08Z", "2026-10-20T13:31:09Z", ""]))
+    assert list(lab) == list(mod.EXECUTION_REGIMES)

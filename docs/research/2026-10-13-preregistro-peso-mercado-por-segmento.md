@@ -408,3 +408,7 @@ Desde el commit de la remediación de la ronda `audit-2026-10-18` (2026-10-18): 
 Las filas de (3) se excluyen también de este test: literal congelado `QUARTER_LINE_INVALID_BEFORE` en el script y un test de igualdad con `sqp.settlement.quarter_line_fix`. Código: `scripts/research/measure_segment_market_weight.py` (`quarter_line_mask` en `prepare_picks`, recuento `linea_cuarto_aud008`).
 
 (1) y (2) son cambios del modelo anteriores a T0 y se listan aquí a efectos de §10; `_REGIME_CHANGES_PRE_T0` queda intacto, porque S3 es descriptivo. Cambio de implementación sin efecto sobre la población: `_git_decide` (AUD-017) distingue un fallo o timeout de git de «T0 no existe».
+
+### Addendum 2026-10-20 (5) — `execution.books: [pinnacle]` (antes de T0)
+
+Desde el commit que declara `execution.books: [pinnacle]` (2026-10-20), `execution_price`/`execution_book` dejan de repetir la mediana y toman el precio de Pinnacle cuando cotiza la línea (si no, la mediana). `price_decimal`, edge, selección, stake y liquidación no cambian. Solo afecta a las métricas descriptivas de `execution_price`, que se informarán partidas antes/después de esta fecha. Redactado por Fable (rol de pre-registro de `.claude/automation/MODEL_ROUTING.md`). Corte: `generated_at` ≥ 2026-10-20T13:31:09Z (instante de f92e8e1); sin fecha legible, `sin_fecha`. Desglose en `execution_price_por_regimen` de cada política; el agregado se conserva. No altera ningún criterio y queda prohibido usarlo para recortar o re-segmentar la ventana.

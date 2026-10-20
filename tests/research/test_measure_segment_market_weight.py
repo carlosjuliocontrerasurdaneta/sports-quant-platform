@@ -919,3 +919,31 @@ def test_aud008_pre_fix_quarter_line_rows_are_excluded(mod):
 def test_aud008_literal_matches_quarter_line_fix(mod):
     from sqp.settlement.quarter_line_fix import QUARTER_LINE_GRADING_FIXED_AT
     assert mod.QUARTER_LINE_INVALID_BEFORE == QUARTER_LINE_GRADING_FIXED_AT
+
+
+def test_execution_price_descriptives_are_split_at_the_pinnacle_regime(mod):
+    """Addendum 2026-10-20 (revision cruzada de Codex): sin la particion, un
+    ROI de +10 % antes y de -1 % despues salia mezclado en +4,5 %."""
+    ev = pd.DataFrame({
+        "price_decimal": [2.0] * 4, "_y": [1.0, 0.0, 1.0, 0.0], "_fair": [0.5] * 4,
+        "execution_price": [2.2, 2.2, 1.98, 1.98],
+        "_gen": pd.to_datetime(["2026-10-19T10:00:00Z", "2026-10-19T11:00:00Z",
+                                "2026-10-21T10:00:00Z", "2026-10-21T11:00:00Z"], utc=True)})
+    p = np.full(4, 0.52)
+    out = mod.policy_stats(ev, p)
+    sin = mod.policy_stats(ev.drop(columns=["execution_price"]), p)
+    assert out["roi_realizado"] == sin["roi_realizado"]       # la politica no cambia
+    antes, desde, nf = (out["execution_price_por_regimen"][k] for k in mod.EXECUTION_REGIMES)
+    assert antes["n_con_execution_price"] == 2 and desde["n_con_execution_price"] == 2
+    assert nf["n_con_execution_price"] == 0
+    assert antes["roi_esperado_execution_price"] == pytest.approx(0.52 * 2.2 - 1)
+    assert desde["roi_esperado_execution_price"] == pytest.approx(0.52 * 1.98 - 1)
+
+
+def test_execution_regime_literal_matches_the_other_preregistrations(mod):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "mm", ROOT / "scripts" / "research" / "measure_el_modelo_manda.py")
+    mm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mm)
+    assert mod.EXECUTION_REGIME_FROM == mm.EXECUTION_REGIME_FROM == "2026-10-20T13:31:09+00:00"

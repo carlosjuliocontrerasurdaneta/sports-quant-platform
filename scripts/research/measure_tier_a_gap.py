@@ -1112,6 +1112,23 @@ def calibration_bands(a: pd.DataFrame) -> dict:
            "por_regimen": "ningun addendum de regimen registrado todavia (seccion 8, A2)"}
 
 
+# Addendum 2026-10-20 (`execution.books: [pinnacle]`): desde este instante (commit
+# f92e8e1) `execution_price` es el precio de Pinnacle cuando cotiza la linea;
+# antes repetia la mediana. Las metricas DESCRIPTIVAS de `execution_price` se
+# informan tambien partidas por este corte (por `generated_at`). Literal
+# CONGELADO. No toca seleccion, decision ni ningun criterio.
+EXECUTION_REGIME_FROM = "2026-10-20T13:31:09+00:00"
+EXECUTION_REGIMES = ("mediana_hasta_2026-10-20", "pinnacle_desde_2026-10-20", "sin_fecha")
+
+
+def execution_regime(gen: pd.Series) -> np.ndarray:
+    """Etiqueta de regimen de `execution_price` por fila (Addendum 2026-10-20)."""
+    ts = pd.to_datetime(gen, errors="coerce", utc=True, format="mixed")
+    corte = pd.Timestamp(EXECUTION_REGIME_FROM)
+    return np.where(ts.isna(), EXECUTION_REGIMES[2],
+                    np.where(ts >= corte, EXECUTION_REGIMES[1], EXECUTION_REGIMES[0]))
+
+
 def betting_metrics(a: pd.DataFrame) -> dict:
     """S6 (seccion 5): metricas de apuesta SEPARADAS, ninguna es promesa."""
     if a.empty:
@@ -1138,6 +1155,20 @@ def betting_metrics(a: pd.DataFrame) -> dict:
                 (sub["_p"].to_numpy() * exp.to_numpy() - 1.0).mean())
             out["roi_realizado_execution_price"] = float(np.mean(
                 np.where(sub["_resultado"] == "win", exp.to_numpy() - 1.0, -1.0)))
+        reg = execution_regime(a["generated_at"] if "generated_at" in a.columns
+                               else pd.Series(pd.NaT, index=a.index))
+        por: dict = {}
+        for lab in EXECUTION_REGIMES:
+            m = con_ex.to_numpy() & (reg == lab)
+            d: dict = {"n_con_execution_price": int(m.sum())}
+            if m.any():
+                sub_r, ex_r = a[m], ex[m].to_numpy()
+                d["roi_esperado_execution_price"] = float(
+                    (sub_r["_p"].to_numpy() * ex_r - 1.0).mean())
+                d["roi_realizado_execution_price"] = float(np.mean(
+                    np.where(sub_r["_resultado"] == "win", ex_r - 1.0, -1.0)))
+            por[lab] = d
+        out["execution_price_por_regimen"] = por
     return out
 
 

@@ -139,6 +139,22 @@ INVALID_BEFORE: dict[tuple[str, str], str] = {
 # coincide con `sqp.settlement.quarter_line_fix.QUARTER_LINE_GRADING_FIXED_AT`.
 QUARTER_LINE_INVALID_BEFORE = "2026-09-13T12:36:34+00:00"
 _QUARTER_LINE_MARKETS = ("totals", "spreads")
+
+# Addendum 2026-10-20 (`execution.books: [pinnacle]`): desde este instante (commit
+# f92e8e1) `execution_price` es el precio de Pinnacle cuando cotiza la linea;
+# antes repetia la mediana. Las metricas DESCRIPTIVAS de `execution_price` se
+# informan tambien partidas por este corte (por `generated_at`). Literal
+# CONGELADO. No toca seleccion, decision ni ningun criterio.
+EXECUTION_REGIME_FROM = "2026-10-20T13:31:09+00:00"
+EXECUTION_REGIMES = ("mediana_hasta_2026-10-20", "pinnacle_desde_2026-10-20", "sin_fecha")
+
+
+def execution_regime(gen: pd.Series) -> np.ndarray:
+    """Etiqueta de regimen de `execution_price` por fila (Addendum 2026-10-20)."""
+    ts = pd.to_datetime(gen, errors="coerce", utc=True, format="mixed")
+    corte = pd.Timestamp(EXECUTION_REGIME_FROM)
+    return np.where(ts.isna(), EXECUTION_REGIMES[2],
+                    np.where(ts >= corte, EXECUTION_REGIMES[1], EXECUTION_REGIMES[0]))
 # Campos permitidos en la linea de `--contar` (11): nada que dependa de y/p/s_k.
 CONTAR_CAMPOS = frozenset({
     "instante_ejecucion_utc", "head", "h", "t0", "t1_candidato",
@@ -860,6 +876,18 @@ def policy_stats(ev: pd.DataFrame, p: np.ndarray) -> dict:
                 out["roi_esperado_execution_price"] = float((p[con] * ex[con] - 1.0).mean())
                 out["roi_realizado_execution_price"] = float(
                     np.where(win[con], ex[con] - 1.0, -1.0).mean())
+            reg = execution_regime(ev["_gen"] if "_gen" in ev.columns
+                                   else ev.get("generated_at", pd.Series(pd.NaT, index=ev.index)))
+            por: dict[str, Any] = {}
+            for lab in EXECUTION_REGIMES:
+                m = con & (reg == lab)
+                d: dict[str, Any] = {"n_con_execution_price": int(m.sum())}
+                if m.any():
+                    d["roi_esperado_execution_price"] = float((p[m] * ex[m] - 1.0).mean())
+                    d["roi_realizado_execution_price"] = float(
+                        np.where(win[m], ex[m] - 1.0, -1.0).mean())
+                por[lab] = d
+            out["execution_price_por_regimen"] = por
     return out
 
 
