@@ -144,9 +144,12 @@ def test_produccion_declara_el_bloque_execution():
     assert "execution" in cfg, (
         "configs/default.yaml no declara el bloque `execution`: la ejecucion de "
         "los picks quedaria descrita solo por el default del dataclass")
-    assert cfg["execution"].get("books") in ([], None), (
-        "line shopping ACTIVADO en el yaml versionado: es una decision del "
-        "operador sobre donde puede transaccionar, no un default")
+    # Decision del operador del 2026-10-20 (apuesta desde Chile con cuenta en
+    # Pinnacle; PokerStars no la cubre The Odds API). Cambiar la lista es otra
+    # decision del operador: este test obliga a que sea deliberada.
+    assert cfg["execution"].get("books") == ["pinnacle"], (
+        "execution.books distinto de lo declarado por el operador el "
+        "2026-10-20: es una decision suya sobre donde puede transaccionar")
     assert Settings.load().execution.max_uplift == pytest.approx(
         float(cfg["execution"]["max_uplift"]))
 
@@ -230,10 +233,9 @@ def _run_live(tmp_path, monkeypatch, books, seed_book="better_book", uplift=1.06
     monkeypatch.setattr(daily, "OddsAPIClient", lambda *a, **k: _Cliente())
     monkeypatch.setattr(daily, "_fetch_recent_scores", lambda *a, **k: [])
     monkeypatch.setattr(daily, "ResultsStore", _Resultados)
-    if books:
-        monkeypatch.setenv("EXECUTION_BOOKS", ",".join(books))
-    else:
-        monkeypatch.delenv("EXECUTION_BOOKS", raising=False)
+    # Explicito tambien sin casas: desde el 2026-10-20 el yaml declara
+    # `pinnacle`, asi que "sin casas" ya no puede heredarse del yaml.
+    monkeypatch.setenv("EXECUTION_BOOKS", ",".join(books))
     ajustes = Settings.load()
     assert ajustes.execution.books == tuple(books)
     daily.run_league("nba", ajustes, mode="live")

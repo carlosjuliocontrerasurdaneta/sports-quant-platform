@@ -163,8 +163,13 @@ bankroll:
 # ADITIVA: price_decimal, edge, seleccion, stake y liquidacion siguen sobre
 # consensus_median. Con `books` vacio las dos columnas repiten la mediana.
 # Cobrar de verdad al precio de ejecucion es una decision aparte.
+# Declarado por el operador el 2026-10-20 (apuesta desde Chile; cuenta en
+# Pinnacle). PokerStars, su otra casa, no la cubre The Odds API y no puede
+# figurar aqui. Cobertura medida sobre las capturas de 2026: futbol y tenis
+# >90 % de eventos, ncaaf 85 %, mlb 55 %, wnba 62 %, nhl 32 %, nfl 31 %,
+# nba 5 %; sin Pinnacle en la linea, la ejecucion vuelve a la mediana.
 execution:
-  books: []
+  books: [pinnacle]
   max_uplift: 0.15
 # Modo de seleccion de picks. ACTIVO: "edge" -- seleccion clasica por valor
 # esperado (Kelly fraccional sobre min_edge, los tres mercados).

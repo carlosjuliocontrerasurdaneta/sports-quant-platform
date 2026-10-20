@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-10-18
+actualizada: 2026-10-20
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-10-20]] — line shopping activado con Pinnacle (operador en Chile; PokerStars no la cubre el proveedor); Fable APTO y addenda de régimen de `execution_price`.
 - [[Bitácora/2026-10-18]] — auditoría integral `audit-2026-10-18` (17 hallazgos, 1 HIGH: NHL totals con el empate reglamentario como 2k) y remediación completa autorizada; Fable APTO CON CAMBIOS; secret scanning y push protection activados en GitHub; addenda de régimen en cinco pre-registros.
 - [[Bitácora/2026-10-11]] — KI-071 corregido en código (`ed81aaa`): picks desplazados que se liquidaban dos veces y `void` fabricado por falta de local y visitante; 18 filas duplicadas pendientes de reparar con autorización. KI-066 verificado; KI-072 abierto (postemporada MLB con ratings congelados).
 - [[Bitácora/2026-10-10]] — recencia del adaptador de totales: pre-registro (`027c019`), script (`f315f4c`) y fase H única (`e3f5469`): NBA y NFL ACEPTA, NHL RECHAZA por H5; Fable APTO; nada activado hasta la fase M (2027-01-31). NBA pretemporada: no hay calibradores NBA que recalibrar; `margin_sigma` medido (12,86 histórico, se queda en 13,0; deriva de época 14,4–14,8 pendiente de pre-registro).
