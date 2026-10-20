@@ -587,3 +587,54 @@ class TestProbabilidadDeDecision:
         assert list(out["seleccion"]) == ["B"]
         todos = daily_picks.rank_picks(self._frame())
         assert list(todos["seleccion"])[0] == "B"
+
+
+class TestPrecioDeEjecucion:
+    """Line shopping (execution.books = [pinnacle], 2026-10-20): la lista
+    muestra la cuota de la casa donde se cobraria y su ROI esperado, sin
+    tocar el ranking ni el ROI sobre la mediana."""
+
+    def test_muestra_cuota_y_roi_en_la_casa(self):
+        out = daily_picks.rank_picks(_served([
+            {"estimated_probability": 0.60, "price_decimal": 2.0,
+             "execution_price": 2.1, "execution_book": "pinnacle"}]))
+        fila = out.iloc[0]
+        assert fila["precio_ejec"] == pytest.approx(2.1)
+        assert fila["roi_ejec"] == pytest.approx(0.26)     # 0.6*2.1 - 1
+        assert fila["roi_esp"] == pytest.approx(0.20)      # sigue sobre la mediana
+        assert fila["ejecucion"] == "pinnacle mejor que la mediana"
+
+    def test_avisa_cuando_la_casa_paga_peor_que_la_mediana(self):
+        out = daily_picks.rank_picks(_served([
+            {"price_decimal": 2.0, "execution_price": 1.9,
+             "execution_book": "pinnacle"}]))
+        assert out.iloc[0]["ejecucion"] == "pinnacle peor que la mediana"
+
+    def test_sin_cuota_en_la_casa_no_finge_un_precio(self):
+        out = daily_picks.rank_picks(_served([
+            {"price_decimal": 2.0, "execution_price": 2.0,
+             "execution_book": "consensus_median"}]))
+        fila = out.iloc[0]
+        assert pd.isna(fila["precio_ejec"]) and pd.isna(fila["roi_ejec"])
+        assert fila["ejecucion"] == "sin cuota en casa (mediana)"
+
+    def test_stream_anterior_sin_columnas_no_revienta(self):
+        out = daily_picks.rank_picks(_served([{"selection": "A"}]))
+        assert out.iloc[0]["ejecucion"] == "sin cuota en casa (mediana)"
+
+    def test_no_cambia_el_orden(self):
+        df = _served([
+            {"selection": "ALTA", "estimated_probability": 0.7,
+             "execution_price": 1.5, "execution_book": "pinnacle"},
+            {"selection": "BAJA", "estimated_probability": 0.4,
+             "execution_price": 3.0, "execution_book": "pinnacle"}])
+        assert list(daily_picks.rank_picks(df)["seleccion"]) == ["ALTA", "BAJA"]
+
+    def test_el_informe_cuenta_las_filas_con_cuota_en_casa(self):
+        out = daily_picks.rank_picks(_served([
+            {"estimated_probability": 0.6, "execution_price": 2.1,
+             "execution_book": "pinnacle"},
+            {"selection": "B", "execution_book": "consensus_median"}]))
+        rep = daily_picks.build_report(out, top=0, source_day="x")
+        assert "Con cuota en la casa de ejecucion: **1**" in rep
+        assert "precio_ejec" in rep

@@ -67,8 +67,37 @@ from sqp.logging_config import consola_utf8
 # vigencia la lista puede MEZCLAR runs, y una cuota de hace tres dias no debe
 # leerse como fresca.
 COLS = ["#", "liga", "partido", "mercado", "seleccion", "linea", "precio", "prob_est",
-        "breakeven", "margen", "roi_esp", "prob_mercado", "casas", "estado",
-        "generado"]
+        "breakeven", "margen", "roi_esp", "precio_ejec", "roi_ejec", "ejecucion",
+        "prob_mercado", "casas", "estado", "generado"]
+
+# Origen que `_execution_prices` (pipeline/probabilities.py) escribe cuando
+# ninguna casa de `execution.books` cotiza la linea: el precio es la mediana,
+# que no es una casa donde se pueda apostar.
+_SIN_CASA = "consensus_median"
+
+
+def _ejecucion(d: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """(precio en la casa de ejecucion, etiqueta) por fila.
+
+    Precio NaN cuando la fila no trae casa real (`execution_book` vacio o
+    `consensus_median`): mostrar ahi la mediana como si fuera cobrable seria
+    el engano que esta columna existe para evitar. Solo VISTA: seleccion,
+    edge, stake y liquidacion siguen sobre `price_decimal` (la mediana).
+    """
+    book = (d["execution_book"] if "execution_book" in d.columns
+            else pd.Series("", index=d.index)).fillna("").astype(str).str.strip()
+    ex = pd.to_numeric(d.get("execution_price"), errors="coerce")
+    if not isinstance(ex, pd.Series):
+        ex = pd.Series(float("nan"), index=d.index)
+    real = book.ne("") & book.str.lower().ne(_SIN_CASA) & (ex > 1.0)
+    ex = ex.where(real)
+    med = d["_price"]
+    etiqueta = [
+        "sin cuota en casa (mediana)" if not r
+        else (f"{b} peor que la mediana" if e < m
+              else (f"{b} mejor que la mediana" if e > m else b))
+        for r, b, e, m in zip(real, book, ex, med)]
+    return ex, pd.Series(etiqueta, index=d.index)
 
 
 def load_served(cal_dir: Path, *, solo_vigentes: bool = True) -> pd.DataFrame:
@@ -162,6 +191,7 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
     # se puede colocar --, asi que anunciarlo seria el mismo engano en otra
     # celda. `.get` con default por si llega un frame que no paso por el helper.
     en_juego = d.get(EN_JUEGO, pd.Series(False, index=d.index)).fillna(False)
+    ex, ejec = _ejecucion(d)
     out = pd.DataFrame({
         "#": range(1, len(d) + 1),
         "liga": d["league"],
@@ -182,6 +212,13 @@ def rank_picks(df: pd.DataFrame, *, min_prob: float = 0.0,
         # ROI esperado por unidad apostada = p*cuota - 1. Es el `estimated_edge`
         # de siempre, llamado por su nombre (encargo del operador 2026-08-26).
         "roi_esp": (d["_p"] * d["_price"] - 1.0).round(4),
+        # Lo que se COBRARIA en la casa declarada en `execution.books`
+        # (Pinnacle desde 2026-10-20) y su ROI esperado p*precio_ejec - 1.
+        # Vacio si esa casa no cotiza la linea. Puede ser PEOR que la mediana:
+        # el stake se calculo sobre la mediana y no lo sabe.
+        "precio_ejec": ex.round(3),
+        "roi_ejec": (d["_p"] * ex - 1.0).round(4),
+        "ejecucion": ejec,
         "casas": d.get("books_count"),
         "estado": ["EN JUEGO - no apostable" if j
                    else (("STAKE %.2f" % s) if s > 0 else (f or "sin stake"))
@@ -206,6 +243,8 @@ def _md(df: pd.DataFrame) -> str:
 def build_report(ranked: pd.DataFrame, *, top: int, source_day: str) -> str:
     con_margen = int((ranked["margen"] > 0).sum()) if not ranked.empty else 0
     con_stake = int(ranked["estado"].str.startswith("STAKE").sum()) if not ranked.empty else 0
+    con_ejec = int(ranked["precio_ejec"].notna().sum()) if not ranked.empty else 0
+    roi_ejec_pos = int((ranked["roi_ejec"] > 0).sum()) if not ranked.empty else 0
     lines = [
         f"# Picks del dia - {source_day}",
         "",
@@ -217,6 +256,15 @@ def build_report(ranked: pd.DataFrame, *, top: int, source_day: str) -> str:
         "",
         f"- Con margen positivo sobre el breakeven: **{con_margen}**",
         f"- Con stake real asignado: **{con_stake}**",
+        f"- Con cuota en la casa de ejecucion: **{con_ejec}** "
+        f"(ROI esperado positivo a esa cuota: **{roi_ejec_pos}**)",
+        "",
+        "`precio` es la MEDIANA del consenso: con ella se estiman el edge y el "
+        "stake, pero no es una casa donde se pueda apostar. `precio_ejec` es la "
+        "cuota de la casa de ejecucion (`execution.books`) y `roi_ejec = "
+        "prob_est * precio_ejec - 1` su ROI esperado; vacios si esa casa no "
+        "cotiza la linea. Si `ejecucion` dice \"peor que la mediana\", el "
+        "stake se calculo sobre una cuota mejor que la que se cobraria.",
         "",
         "`breakeven = 1/precio` es el acierto que la CUOTA exige para no perder "
         "dinero. `margen = prob_est - breakeven`. Un margen negativo significa "

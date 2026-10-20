@@ -1010,4 +1010,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 
 ## 2026-10-20 — Line shopping activado con Pinnacle
 
-- `execution.books: [pinnacle]`: el operador apuesta desde Chile y PokerStars no la cubre The Odds API. Fable APTO; addenda de regimen de execution_price en MM, tier A y segmento. Suite rapida 2596 passed. Pendiente: aviso visible del EV al precio de ejecucion en la vista de picks.
+- `execution.books: [pinnacle]`: el operador apuesta desde Chile y PokerStars no la cubre The Odds API. Fable APTO; addenda de regimen de execution_price en MM, tier A y segmento. Suite rapida 2596 passed. Hecho despues: `daily_picks.py` muestra `precio_ejec`, `roi_ejec` y `ejecucion` (mejor/peor que la mediana o sin cuota en casa); solo vista. Ver [[Bitácora/2026-10-20]].
