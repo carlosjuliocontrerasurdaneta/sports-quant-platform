@@ -1011,3 +1011,10 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 ## 2026-10-20 — Line shopping activado con Pinnacle
 
 - `execution.books: [pinnacle]`: el operador apuesta desde Chile y PokerStars no la cubre The Odds API. Fable APTO; addenda de regimen de execution_price en MM, tier A y segmento. Suite rapida 2596 passed. Hecho despues: `daily_picks.py` muestra `precio_ejec`, `roi_ejec` y `ejecucion` (mejor/peor que la mediana o sin cuota en casa); solo vista. Ver [[Bitácora/2026-10-20]].
+
+## 2026-10-22 — Verificacion independiente de audit-2026-10-18: APTO CON PENDIENTES; certifi 2026.10.19
+
+- Verificador: `independent-code-reviewer` con Fable, solo lectura sobre 2985c3d (la sesion no implemento la remediacion). 15 verificados-corregidos (P1 AUD-001 reproducido: error P(Over) < 2 pp), AUD-005 y AUD-017 mitigados, 0 regresiones. Entregables en `audit/latest/VERIFICATION.md`, STATUS y manifest (previos en `history/verificacion-20261022T131053Z/`).
+- NEW-001 resuelto: `requirements.lock` certifi 2026.4.22 -> 2026.10.19 (GHSA-6q48-6c7w-9gw2), commit 06b1116; CI verde y issue #6 cerrado solo. Tambien instalado en el Python de produccion.
+- Tests: suite completa 3377 passed + 4 fallos de entorno (MAX_PATH con basetemp largo; pasan con basetemp corto); ruff y mypy limpios.
+- Pendiente del operador: KI-076 (liquidacion del 21-10 fallida, sin picks; lectura de logs/ denegada). Opcional P3: `_git_decide` en `git_show_or_none`/`git_status_porcelain`. Efecto lateral: una sonda del verificador anadio lineas WARNING a `logs/sqp.log`. Ver [[Bitácora/2026-10-22]].

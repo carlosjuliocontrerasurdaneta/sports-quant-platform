@@ -643,3 +643,10 @@ Format:
 - Affected files: docs/research/2026-10-09-preregistro-recencia-totales.md (fase M); docs/research/2026-10-10-resultado-recencia-totales-H.md (linea 250)
 - Fix: (a) el operador busca una copia de seguridad del directorio de instantaneas y la valida con el SHA. (b) Si no aparece antes de la fase M, una enmienda especifica, escrita antes de mirar nada de M y revisada por Fable, declara la fase M inejecutable o define el sustituto. Re-ejecutar la fase H NO vale sin enmienda: seria una segunda ejecucion con datos distintos.
 - Status: RESUELTO (2026-10-19, autorizado por el operador): la carpeta estaba en la papelera de reciclaje (`$Recycle.Bin\...\$RCGHHHP`). Se COPIO de vuelta a `C:\dev\snapshotsateria-ajustes-20261008` (360 MB) sin vaciarla de la papelera. `H_f315f4c.json` reproduce el SHA `32a0e9e3…5348b1ac`, y su `codigo_sha256` coincide con el `codigo_sha256_H` del registro `.codigo-M.json`. La fase M vuelve a ser ejecutable. Leccion: la instantanea de un pre-registro vive fuera del repositorio sin copia; no borrar `C:\dev\snapshots`.
+
+- ID: KI-076
+- Severity: Alta (dia sin picks)
+- Description: el run diario del 2026-10-21 (`SQP_Diario_Completo_Cdev`, LastTaskResult=1) aborto en la liquidacion: centinela `stage=settle, exit_code=1, failed_at=2026-10-21T15:40:27Z`; 0 filas servidas ese dia (18-10 1.091, 19-10 1.280, 20-10 1.324). Hallado por la verificacion independiente de audit-2026-10-18 (NEW-002). El reintento del Programador no actua ante exit != 0 y el vigilante solo detecta un no-lanzamiento: un fallo de liquidacion solo lo marca el centinela (AUD-005 queda mitigado, no cerrado).
+- Affected files: SETTLE_ALL.bat / RUN_DIARIO_ALL.bat (flujo diario); logs del 21-10 (no leidos: lectura de logs/ denegada a Claude)
+- Fix: el operador lee el log de la liquidacion del 21-10 y confirma que el run del 2026-10-22 12:00 termina con 0x0. No hay pruebas de que la remediacion sea la causa (19-10 y 20-10 corrieron con ella).
+- Status: ABIERTO (2026-10-22)
