@@ -401,3 +401,21 @@ Decision del operador: apuesta desde Chile, cuenta en Pinnacle (PokerStars no la
 FABLE-REVIEW: 2026-10-20 | veredicto: APTO (solo cambian execution_price/execution_book; ningun consumidor de decision los lee; recomendado: addendum de regimen en MM/tier A/segmento, aplicado, y aviso visible de EV al precio de ejecucion, pendiente) | rutas: configs/default.yaml
 Revision cruzada de Codex (2026-10-20, P2 REPRODUCIDO, aceptado): los addenda prometian metricas de execution_price partidas por regimen y los scripts las mezclaban. Particion implementada en MM (roi_comparison), segmento (policy_stats) y tier A (betting_metrics, S6), con el literal congelado EXECUTION_REGIME_FROM = instante de f92e8e1; el agregado se conserva y las decisiones no cambian. Tests nuevos.
 FABLE-REVIEW: 2026-10-20 | veredicto: APTO (addenda de execution.books=[pinnacle] solo aditivos y sin romper la tabla de regimen de segmento; particion por regimen correcta, sin hash ni procedencia que aborte; frase de corte y claves anadida a cada addendum) | rutas: docs/research/2026-08-26-preregistro-el-modelo-manda.md, docs/research/2026-10-02-preregistro-brecha-tier-a.md, docs/research/2026-10-13-preregistro-peso-mercado-por-segmento.md
+
+## Registro — run diario manual + auditoria diaria (2026-10-22)
+
+Status: closed · Result: DEGRADED · Skill: `daily-audit` · Owner: sesion principal `claude-opus-5-5` (sin escalado: ejecucion del flujo diario existente y medicion de solo lectura; ningun parametro tocado).
+
+Comandos: `SQP_Diario_Completo_Cdev` 12:00:01 LastTaskResult=1 (KI-076, segundo dia). Relanzado `DIARIO_COMPLETO.bat` 14:08:28 → rc=0 (liquidacion 14:11, run 14:14, vistas 14:22). Calculo propio `scratchpad/cohorte.py` rc=0 (definiciones del ledger: `estimated_probability`, `implied_probability_novig`, breakeven = 1/`price_decimal`).
+
+Artefactos leidos (hoy 14:12–14:22): `data/bets/audit_20261022.md`, `segment_diagnostics_latest.csv`, `settled_*.csv` (39), `data/predictions/picks_{ranked_20261022,seleccion,tipster}.md`.
+
+Cohorte congelada: `settled_at` 2026-10-22 → 82 filas (game_date 20-10: 27, 21-10: 30, 22-10: 25), 43 win / 36 loss / 3 push, 0 void, 0 con stake > 0, sin duplicados por (event_id, market, selection, line). Global n=79: hit 0,544 vs breakeven medio 0,485, p_est media 0,536 (gap +0,009), Brier 0,238 vs mercado sin vig 0,246, log loss 0,669, ECE 0,094, ROI plano (stake 1, hipotetico) +14,4 %. Unico segmento con n>=15: nba|totals n=18 hit 0,722 vs breakeven 0,526. Banda 0,5–0,6 n=51: hit 0,608 vs p_est 0,559 (gap +0,049); resto de bandas n<15.
+
+Limitacion (DEGRADED): todos los segmentos liga|mercado salvo nba|totals y todas las bandas salvo 0,5–0,6 por debajo de `n >= 15` (`segments.py`); no se compararon ventanas moviles; `logs/` ilegible (causa del fallo de las 12:00 no verificada). Un dia de n=79 no es evidencia de ventaja.
+
+Lista de hoy: 150 caras servidas en 4 ligas (nba, nhl, ncaaf, nfl) con partido aun no jugado, 54 con margen > 0, 0 con stake; seleccion (p>=0,60 y ROI>0) 8 lineas, 7 nhl spreads +1,5; tipster A 22 / B 17 / NO BET 111, todos los A con `correlacionado=True`.
+
+Next decision: ninguna accion de gate, pausa ni calibrador.
+
+KI-076 (orden del operador «te doy permiso para todo, solucionalo»): causa = sin red a las 12:00 (Wi-Fi caido 21-10 08:42–19:10, 22-10 11:17–13:36; logs extraidos con script de agregados, porque `Read(./logs/**)` esta denegado en settings.json, que no se toco). Correccion de orquestacion (fuera de fable-gate.json a proposito; no es clase de escalado): espera de red [0c] en `DIARIO_COMPLETO.bat` + `scripts/wait_for_network.ps1`. Pruebas: sonda rc=0/rc=1, aborto del BAT rc=1 antes de [0.5/3] (centinela de la prueba limpiado), pytest 116 passed. Efecto lateral: la prueba anadio unas lineas a logs\diario_completo.log.

@@ -164,6 +164,27 @@ call :log "[AVISO] Revisar con: git log --oneline HEAD..%SQP_UPSTREAM%"
 call :log "[AVISO] Se CONTINUA: esto avisa, no aborta."
 :tree_ok
 
+REM [0c] ESPERA DE RED (KI-076, 2026-10-22). El 21-10 y el 22-10 la tarea de
+REM las 12:00 arranco con el Wi-Fi caido: todas las ligas agotaron sus
+REM reintentos contra The Odds API (~40 min), la liquidacion aborto y el dia
+REM quedo sin picks. Aqui se espera a tener salida (sonda TCP, sin gastar
+REM creditos) antes de tocar nada. Si la red no vuelve dentro del plazo se
+REM aborta por la misma ruta que una liquidacion fallida: no se ha tocado
+REM ningun dato y el centinela queda en ROJO.
+REM Ajustes:  SQP_NET_WAIT_MAX_MIN (480)  SQP_NET_WAIT_INTERVAL_S (120)
+REM           SQP_NET_WAIT_HOST (api.the-odds-api.com; para probar el aborto)
+REM Escape:   set SQP_SKIP_NET_WAIT=1
+if defined SQP_SKIP_NET_WAIT (
+    call :log "[AVISO] SQP_SKIP_NET_WAIT activo: se OMITE la espera de red."
+    goto :net_ok
+)
+if not defined SQP_NET_WAIT_MAX_MIN set "SQP_NET_WAIT_MAX_MIN=480"
+if not defined SQP_NET_WAIT_INTERVAL_S set "SQP_NET_WAIT_INTERVAL_S=120"
+if not defined SQP_NET_WAIT_HOST set "SQP_NET_WAIT_HOST=api.the-odds-api.com"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\wait_for_network.ps1" -MaxMinutes %SQP_NET_WAIT_MAX_MIN% -IntervalSeconds %SQP_NET_WAIT_INTERVAL_S% -HostName %SQP_NET_WAIT_HOST% >> logs\diario_completo.log 2>&1
+if %ERRORLEVEL% neq 0 goto :error_red
+:net_ok
+
 REM [0.5/3] HISTORICO FRESCO ANTES DE LIQUIDAR (2026-09-25, AUD-003/KI-059).
 REM La liquidacion solo gradua desde data\historical\ lo que ya este ahi, y un
 REM pick sin marcador expira como void IRREVERSIBLE a los 3 dias
@@ -331,6 +352,14 @@ call :log "***     set SQP_SKIP_TREE_GUARD=1                                    
 git status --porcelain -- src scripts configs *.bat >> logs\diario_completo.log 2>&1
 git status --porcelain -- src scripts configs *.bat
 "%SQP_PYTHON%" scripts\run_status.py --fail --stage guard_arbol --exit-code 1 >> logs\diario_completo.log 2>&1
+call :salud
+endlocal
+exit /b 1
+
+:error_red
+call :log "*** SIN RED tras %SQP_NET_WAIT_MAX_MIN% min: se ABORTA ANTES de liquidar.  ***"
+call :log "*** No se ha tocado ningun dato. Con red, vuelve a lanzar este bat.     ***"
+"%SQP_PYTHON%" scripts\run_status.py --fail --stage settle --exit-code 1 >> logs\diario_completo.log 2>&1
 call :salud
 endlocal
 exit /b 1
