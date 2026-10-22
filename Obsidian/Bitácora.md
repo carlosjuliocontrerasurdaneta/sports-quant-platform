@@ -1,7 +1,7 @@
 ---
 tags: [bitacora, moc, sqp]
 creada: 2026-07-08
-actualizada: 2026-10-20
+actualizada: 2026-10-22
 ---
 
 # Bitácora — índice
@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-10-22]] — verificación independiente de `audit-2026-10-18`: APTO CON PENDIENTES (Fable); `certifi` a 2026.10.19 por GHSA-6q48-6c7w-9gw2; liquidación del 21-10 fallida, pendiente del operador.
 - [[Bitácora/2026-10-20]] — line shopping activado con Pinnacle (operador en Chile; PokerStars no la cubre el proveedor); Fable APTO y addenda de régimen de `execution_price`.
 - [[Bitácora/2026-10-18]] — auditoría integral `audit-2026-10-18` (17 hallazgos, 1 HIGH: NHL totals con el empate reglamentario como 2k) y remediación completa autorizada; Fable APTO CON CAMBIOS; secret scanning y push protection activados en GitHub; addenda de régimen en cinco pre-registros.
 - [[Bitácora/2026-10-11]] — KI-071 corregido en código (`ed81aaa`): picks desplazados que se liquidaban dos veces y `void` fabricado por falta de local y visitante; 18 filas duplicadas pendientes de reparar con autorización. KI-066 verificado; KI-072 abierto (postemporada MLB con ratings congelados).

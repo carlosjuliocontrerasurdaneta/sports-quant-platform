@@ -88,10 +88,11 @@
     "audit/latest/* (entregables de la ronda)",
     "audit/audit-2026-10-15/ (preservacion de la ronda anterior)",
     ".claude/automation/runtime/current-task.md (registro de enrutamiento)",
-    "logs/sqp.log (efecto colateral de pytest y sondas; ver AUD-011)"
+    "logs/sqp.log (efecto colateral de pytest y sondas; ver AUD-011)",
+    "audit/latest/VERIFICATION.md, STATUS.md, MANIFEST.json, history/verificacion-20261022T131053Z/ (verificacion 2026-10-22)"
   ],
-  "final_result": "REMEDIACION_APLICADA_PENDIENTE_DE_VERIFICACION",
-  "final_result_rationale": "Todas las areas inventariadas tienen disposicion; 1 P1 abierto (AUD-001); sin segunda opinion de OpenAI; .env y logs no verificables; no es un veredicto de verificacion ni PASS",
+  "final_result": "APTO_CON_PENDIENTES",
+  "final_result_rationale": "Verificacion independiente 2026-10-22 (Fable, solo lectura, 2985c3d): 15 verificados-corregidos, 2 verificados-mitigados (AUD-005, AUD-017), 0 regresiones, 0 P0/P1 abiertos. Pendientes: NEW-001 (CI rojo por certifi, P2) y NEW-002 (liquidacion del 21-10 fallida, causa no verificable). No es una afirmacion de ventaja predictiva ni de rentabilidad.",
   "source_reports": {
     "claude/REPORT.md": "d19866c6114b48d0d3172df0266d6a56eeb02c6391b8c18a1fa6f86377a846b3",
     "claude/EVIDENCE.json": "a8f86f7619844d8da246018148c2865fe864fc3e37a88edb3b1aaca39aca2697"
@@ -167,5 +168,75 @@
     ],
     "status": "REMEDIACION_APLICADA_PENDIENTE_DE_VERIFICACION",
     "date_utc": "2026-10-19T05:15:21.890329+00:00"
+  },
+  "verification": {
+    "date_utc": "2026-10-22T13:12:49.438361+00:00",
+    "verifier": "independent-code-reviewer, model fable (claude-fable-5-1), solo lectura; despachado por claude-opus-5-5, que no implemento la remediacion",
+    "procedure": "audits/prompts/verificar-remediacion.md",
+    "base_commit": "2985c3db8cc2ac95259db998eba7fcaa82de8472",
+    "commits_reviewed": {
+      "remediation": [
+        "ba6f3e3",
+        "777b429",
+        "0b7c640"
+      ],
+      "post_remediation": [
+        "e939c22",
+        "3ab71e9",
+        "18826e2",
+        "f4537f5",
+        "f92e8e1",
+        "e2b1391",
+        "2985c3d"
+      ]
+    },
+    "verdict": "APTO_CON_PENDIENTES",
+    "per_id": {
+      "AUD-001": "verificado-corregido",
+      "AUD-002": "verificado-corregido",
+      "AUD-003": "verificado-corregido (en la lectura)",
+      "AUD-004": "verificado-corregido",
+      "AUD-005": "verificado-mitigado",
+      "AUD-006": "verificado-corregido",
+      "AUD-007": "verificado-corregido",
+      "AUD-008": "verificado-corregido",
+      "AUD-009": "verificado-corregido",
+      "AUD-010": "verificado-corregido",
+      "AUD-011": "verificado-corregido (codigo y test)",
+      "AUD-012": "verificado-corregido",
+      "AUD-013": "verificado-corregido",
+      "AUD-014": "verificado-corregido (estatico)",
+      "AUD-015": "verificado-corregido",
+      "AUD-016": "verificado-corregido",
+      "AUD-017": "verificado-mitigado"
+    },
+    "regressions": [],
+    "new_findings": {
+      "NEW-001": "P2 preexistente: dependency-audit rojo en 2985c3d por certifi 2026.4.22 (GHSA-6q48-6c7w-9gw2, fix 2026.10.19); issue #6 abierto",
+      "NEW-002": "operativo NOT_VERIFIABLE: run diario del 21-10 abortado en settle (exit 1, 15:40Z), 0 filas servidas ese dia"
+    },
+    "tests": {
+      "targeted_19_files": "532 passed, rc=0",
+      "pytest_full": "4 failed, 3377 passed, 1 skipped, rc=1; los 4 son ENVIRONMENTAL_FAILURE (MAX_PATH por basetemp largo) en test_measure_segment_market_weight::test_medir_*; 58 passed x5 con basetemp corto",
+      "ruff": "rc=0",
+      "mypy": "rc=0 (114 ficheros)",
+      "scan_tracked_secrets": "rc=0",
+      "sync_agent_instructions --check": "rc=0",
+      "ci_head": "run 39502785011: test Linux x4, test-windows y secret-scan verdes; dependency-audit rojo"
+    },
+    "limitations": [
+      "sin lectura de logs/** ni .env (NEW-002 y AUD-011 no contrastados en el log)",
+      "AUD-014 sin contraste con la documentacion viva",
+      "efecto lateral: lineas WARNING AUD-003 anadidas a logs/sqp.log por una sonda sin SQP_LOG_DIR"
+    ],
+    "history_preserved": {
+      "path": "history/verificacion-20261022T131053Z/",
+      "STATUS.md": "cde9ff89c16220a3acbba162d73e28c4bcf8b77f1effd85609f7fe81c68e8c5b",
+      "MANIFEST.json": "06a622f86af59694857860291fb6e64642e7eb5f1b48bafccf887fb5f2b74121"
+    },
+    "deliverables": {
+      "VERIFICATION.md": "dc74f898a3153c04dd4a225aa2926a71427cc77958edf4a5fa2d02d949a59b19",
+      "STATUS.md": "40f986dc515b303abd4f89a84cd9daac21c70d81c114f2c7af474813b73c64ee"
+    }
   }
 }

@@ -1,0 +1,171 @@
+{
+  "round_id": "audit-2026-10-18",
+  "date_utc": "2026-10-18T13:25:12.429945+00:00",
+  "scope": "Auditoria integral (full-audit) del repositorio completo: src, scripts, tests, configs, BAT, .claude, CI, docs; datos solo por agregados",
+  "base_commit": "3e8bbac7b6643e5a136dfbb5187a41eea8924e7c",
+  "working_tree": "limpio al inicio (git status vacio); HEAD 2 commits por delante de origin/main",
+  "previous_round": {
+    "round_id": "audit-2026-10-15",
+    "archived_to": "audit/audit-2026-10-15/",
+    "files": 57,
+    "verification": "sha256 identico archivo a archivo antes de reemplazar latest",
+    "sha256": {
+      "BACKLOG.md": "4dbefa5ac2dbd6fbe994f81d369e2ca6ed5e8fb927e62121a8d7c773dda9c764",
+      "CHANGES.md": "16f8747ca024973b04424962f039af5fd4a2d786bd14e2b0274f839216d3bc00",
+      "claude/EVIDENCE.json": "1ade1970d91a4439f36f84a0bc573fad4b15cfbca07af565e36ab65a7697040c",
+      "claude/pending-20261015T130712Z-claude/EVIDENCE.json": "1ade1970d91a4439f36f84a0bc573fad4b15cfbca07af565e36ab65a7697040c",
+      "claude/pending-20261015T130712Z-claude/REPORT.md": "7e550acc5e99bbba13f255cf177e445a9ab72fa63e2f5987183a0fa6e3ed8373",
+      "claude/REPORT.md": "7e550acc5e99bbba13f255cf177e445a9ab72fa63e2f5987183a0fa6e3ed8373",
+      "FINDINGS.md": "bd55dc53fa9e58b6ecaeaa39e4e653e4afbfb021817ba8051cbdf53d973b953d",
+      "history/consolidacion-20260923T184804Z/MANIFEST.json": "848389a844c989eec8babf20e487cf4005b9435232787245cabc9904efe794a5",
+      "history/consolidacion-20261015T212335Z/CONSOLIDATION_REPRODUCTIONS.json": "095bc1cee44f4346e9d062678964f16c3a62ad78b4fc8ec4c507cf7ee87da2e5",
+      "history/consolidacion-20261015T212335Z/MANIFEST.json": "dd08cce36b6b4f94a57df27c784c4ce37a1a7aa3fdf32b191444d9d0de739e87",
+      "history/consolidacion-claude-20261016T104941Z/BACKLOG.md": "a4ca0d8286b1b3be655749f4857266d8d280b946ff601a6e76cc46f69a97d64c",
+      "history/consolidacion-claude-20261016T104941Z/FINDINGS.md": "1d9f8f811dd7e37eb9b8c2582db7dbe82ecd60e7e2b25016f149d0767cd574f6",
+      "history/consolidacion-claude-20261016T104941Z/MANIFEST.json": "017217c33cb70dc297e6789ad1ea94b2283911a0a0e43195fe95453374b32063",
+      "history/manifest-20260918T121551Z/MANIFEST.json": "99487cb2b471d555d63bb068d234263b98d2608e5eaadae7a26c31c957e06a6d",
+      "history/remediacion-20260923T210514Z/MANIFEST.json": "ce9911f8fc96ed4ed3673cb5a68d565a4d77019c1c23afc04cebfe56bf7f005e",
+      "history/remediacion-20261016T120517Z/CHANGES.md": "d014357dfc9bec499040043152a52d2eb431d9be7c97d3a0dc42c4f4ac4a9b23",
+      "history/remediacion-20261016T120517Z/MANIFEST.json": "1cdd77d5095e9972ba1844fd7f5de943c052b4df0250f264c6fd7c562093d31b",
+      "history/remediacion-20261016T120517Z/STATUS.md": "6c8d0e5dcce9151d5c796450d58b5d912de27f809cdcdd3a0e027b811a8928d1",
+      "history/remediacion-20261016T120517Z/VALIDATION.md": "2d42bd6695479688edf7e0df45988d4b82bad5ffbb3a705c86ff7a695806bf8e",
+      "history/remediacion-20261016T120517Z/VERIFICATION.md": "27d00ff0af2afabfc0e54557818ec34482adfb86c9aa435d602fec4cc96e8a38",
+      "history/remediacion2-20260924T204629Z/CHANGES.md": "1a53d4219e445210b7f01b57ee0c9e66b073191baf31168ac2e5457813e99edf",
+      "history/remediacion2-20260924T204629Z/MANIFEST.json": "32eed7313e6d026a75ca39c44ff524612edee3db1d1b05ae89f91f41ca2a2831",
+      "history/remediacion2-20260924T204629Z/STATUS.md": "1db2f4a111925397800c93fb662a0cbb38b7e3b54aa69faf557520f5e063e124",
+      "history/remediacion2-20260924T204629Z/VALIDATION.md": "41c6cbf3ce551b71357a4fca712cee107e50db4e55f3752e66471aa15b856502",
+      "history/remediacion3-20260924T234113Z/CHANGES.md": "10e068b614c165d4c0b6677422269189dbd57a509445917657c6ae80f1023695",
+      "history/remediacion3-20260924T234113Z/MANIFEST.json": "1f1adb36748a6b2c61ea8e96327da199f1af353830d31f579af2cb8f9f483043",
+      "history/remediacion3-20260924T234113Z/STATUS.md": "e9293baaa136330b3a45f79086005abf392d1ac2a91aa2f55433919474decc7f",
+      "history/remediacion3-20260924T234113Z/VALIDATION.md": "5b29cd45c15d7578602c2705c92d8db0e9ec222545ae6a85c893078136a59cde",
+      "history/remediacion4-20260925T023732Z/CHANGES.md": "c0c35762e18716743a2cc216e663720e411816a826b3387d0df56b8428f02b4f",
+      "history/remediacion4-20260925T023732Z/MANIFEST.json": "9af3a73d64f2acfab0d0153772dff8cc5e9f1e42393fc7b4448cf873a73098cb",
+      "history/remediacion4-20260925T023732Z/STATUS.md": "5b51728a69cd111ed13f40d14dc0a3ab52ea47110ca3e895c99b2815c5a2f72f",
+      "history/remediacion4-20260925T023732Z/VALIDATION.md": "67c58e8de17f6c1b26904b3f4b361046a9d57ad1d235af86d67fe291fd81a21d",
+      "history/remediacion4-20260925T023732Z/VERIFICATION.md": "231dd152e348695099ce951732a4b1dda91bc458723335ecd7ab7fcf23417d5d",
+      "history/verificacion-20260924T125203Z/MANIFEST.json": "90400da1c813f26731d4c8dc858b81677f9cb824427f5d0f5a1d61c760dcc7e4",
+      "history/verificacion-20260924T125203Z/STATUS.md": "7151e8e4d5801b11dfc284ea09447da5e8d85751a505195d4bd2e32c8e71f1e7",
+      "history/verificacion-20261016T143210Z/MANIFEST.json": "1cdd77d5095e9972ba1844fd7f5de943c052b4df0250f264c6fd7c562093d31b",
+      "history/verificacion-20261016T143210Z/STATUS.md": "a1c6926244b3455a27ce830b42e9ce49fcf5bd9a1b611f7192c4a9da6e3c2a2b",
+      "history/verificacion-20261016T143210Z/VERIFICATION.md": "27d00ff0af2afabfc0e54557818ec34482adfb86c9aa435d602fec4cc96e8a38",
+      "history/verificacion2-20260924T230500Z/MANIFEST.json": "1f1adb36748a6b2c61ea8e96327da199f1af353830d31f579af2cb8f9f483043",
+      "history/verificacion2-20260924T230500Z/STATUS.md": "e9293baaa136330b3a45f79086005abf392d1ac2a91aa2f55433919474decc7f",
+      "history/verificacion2-20260924T230500Z/VERIFICATION.md": "43822bd3497b0ae0ad9620128f9fd3233c74c2d263a0de606cf7a98aed329344",
+      "history/verificacion3-20260925T014248Z/MANIFEST.json": "9af3a73d64f2acfab0d0153772dff8cc5e9f1e42393fc7b4448cf873a73098cb",
+      "history/verificacion3-20260925T014248Z/STATUS.md": "5b51728a69cd111ed13f40d14dc0a3ab52ea47110ca3e895c99b2815c5a2f72f",
+      "history/verificacion3-20260925T014248Z/VERIFICATION.md": "247185bbfdfaf7e656fe748928f5cd2bbd76a69880b5859f2cd80e5b79d96be3",
+      "MANIFEST.json": "abbffc7346cb404f538ecbfc2e29df30c807ad460919c07e8fdc9ac9dc3e8309",
+      "openai/CONSOLIDATION.json": "83ef4f5744671ddf57a036a7e2512dc7205175c15a0c42bd4dcd0824e99d40d1",
+      "openai/CONSOLIDATION_REPRODUCTIONS.json": "afeca3022d99c0386676c2d54f314a1e1b448e38dd03c6db95c14ccf7fa720ec",
+      "openai/EVIDENCE.json": "abf922f3161d2b5206c5790ba01e8856b0fdf8eb1a31c66db7c9b90eb1d74fc4",
+      "openai/pending-20261015T124425Z-openai/EVIDENCE.json": "2eb132b7e5969581eb1611c7157b7d2466f9974607de7fc5cbad58596a020dd0",
+      "openai/pending-20261015T124425Z-openai/history/diagnostico-20261015T125433Z/EVIDENCE.json": "19f3f09d9963ff44b2e64713011587d19f306cb276c28cb9465d0439cbe1eedb",
+      "openai/pending-20261015T124425Z-openai/history/diagnostico-20261015T125433Z/REPORT.md": "2af832f651f6a33526d16c14cd5d704f0e0b969445c5cc10f02e45346bdc7c73",
+      "openai/pending-20261015T124425Z-openai/REPORT.md": "9599910544acf3626f71ed2908c0efa012f167acbe1e0ba2261dfc3647b41704",
+      "openai/REPORT.md": "f9a08cbcce2f471e6f55b84817a04868e2606a1f1fca5894abe07bd5abbf20f8",
+      "openai/REPRODUCTION-OPENAI-001.json": "7be79840c6d85e0ce2501de58f0b32f2ce0dd0b9996140edae887dfb0dd37f5c",
+      "STATUS.md": "bd4d3850441adbb81dc2f81101e27a0fa5af2409bb329d3c43464cddf54a74f1",
+      "VALIDATION.md": "febd27a70da4809f9beca75f4ce73c0c64624f0da4121260e1bdab67034619df",
+      "VERIFICATION.md": "16f04c44d2dbf2a4748e607164c52ceac54034e41caf604c3a7d097be3b56d0e"
+    }
+  },
+  "auditors_available": [
+    "claude"
+  ],
+  "auditors_absent": {
+    "openai": "MCP codex CONNECTION_CLOSED en esta sesion; no se invento informe"
+  },
+  "tests_initial": {
+    "ruff check src scripts tests": "rc=0",
+    "mypy src": "rc=0 (113 ficheros)",
+    "pytest -x run1": "rc=1: FAILED tests/research/test_measure_segment_market_weight.py::test_medir_aborts_with_different_t1 (SystemExit \"--medir exige T0 y no existe\" en lugar de \"no coincide\")",
+    "pytest fichero aislado": "52 passed (8m23s, host cargado)",
+    "pytest suite completa run2 (sin -x)": "rc=0",
+    "clasificacion": "fallo intermitente (no reproducido en 2 ejecuciones posteriores); causa NOT_VERIFIABLE por ahora"
+  },
+  "tests_final": "NOT_VERIFIABLE (fase de diagnostico)",
+  "files_modified": [
+    "audit/latest/* (entregables de la ronda)",
+    "audit/audit-2026-10-15/ (preservacion de la ronda anterior)",
+    ".claude/automation/runtime/current-task.md (registro de enrutamiento)",
+    "logs/sqp.log (efecto colateral de pytest y sondas; ver AUD-011)"
+  ],
+  "final_result": "REMEDIACION_APLICADA_PENDIENTE_DE_VERIFICACION",
+  "final_result_rationale": "Todas las areas inventariadas tienen disposicion; 1 P1 abierto (AUD-001); sin segunda opinion de OpenAI; .env y logs no verificables; no es un veredicto de verificacion ni PASS",
+  "source_reports": {
+    "claude/REPORT.md": "d19866c6114b48d0d3172df0266d6a56eeb02c6391b8c18a1fa6f86377a846b3",
+    "claude/EVIDENCE.json": "a8f86f7619844d8da246018148c2865fe864fc3e37a88edb3b1aaca39aca2697"
+  },
+  "deliverables": {
+    "FINDINGS.md": "ab5790d5c9aa2133f4c14b77b25999ecb58e67beac796eb085823038a2fd448c",
+    "BACKLOG.md": "bc1106c58d41f24fec69b00a01fba598c0f2d61587cfd7e0393fbc4e435cc4a7"
+  },
+  "finding_counts": {
+    "CRITICAL": 0,
+    "HIGH": 1,
+    "MEDIUM": 6,
+    "LOW": 10,
+    "inferred_or_not_verifiable": 14,
+    "dismissed": 24,
+    "P0": 0,
+    "P1": 1,
+    "P2": 6,
+    "P3": 10
+  },
+  "id_aliases": {
+    "AUD-001": "CLAUDE-001",
+    "AUD-002": "CLAUDE-002",
+    "AUD-003": "CLAUDE-003",
+    "AUD-004": "CLAUDE-004",
+    "AUD-005": "CLAUDE-005",
+    "AUD-006": "CLAUDE-006",
+    "AUD-007": "CLAUDE-007",
+    "AUD-008": "CLAUDE-008",
+    "AUD-009": "CLAUDE-009",
+    "AUD-010": "CLAUDE-010",
+    "AUD-011": "CLAUDE-011",
+    "AUD-012": "CLAUDE-012",
+    "AUD-013": "CLAUDE-013",
+    "AUD-014": "CLAUDE-014",
+    "AUD-015": "CLAUDE-015",
+    "AUD-016": "CLAUDE-016",
+    "AUD-017": "CLAUDE-017"
+  },
+  "second_opinion": "ausente (OpenAI/Codex no disponible); validacion adversarial de AUD-001/002/008/009 por Fable",
+  "date_utc_closed": "2026-10-18T19:03:00.371410+00:00",
+  "remediation": {
+    "authorized_by": "operador 2026-10-18: «Sí, házlo. corregílos todos» (AUD-001..017)",
+    "base_commit": "3e8bbac7b6643e5a136dfbb5187a41eea8924e7c",
+    "deliverables": {
+      "CHANGES.md": "69be5edfba6feb531822d208f1b6ab54a54ac42b58890d681897cced389114e2",
+      "VALIDATION.md": "6d70275fe7824b5a3ff2c8130e6aaaa20f06433daeea4e181e931e69eb6703ab",
+      "STATUS.md": "b18dea352e15fdde7349850dd301b9f6cbb713bc3bc752612b235890909c8ea6"
+    },
+    "fable_reviews": [
+      "2026-10-18 APTO CON CAMBIOS (ronda 1)",
+      "2026-10-18 APTO (ronda 2)",
+      "2026-10-18 APTO CON CAMBIOS (ronda 3, aplicado)",
+      "2026-10-19 APTO (codigo-M)",
+      "2026-10-19 APTO (diff final)"
+    ],
+    "tests_final": {
+      "pytest_full": "3367 passed, 1 skipped, rc=0",
+      "ruff": 0,
+      "mypy": 0
+    },
+    "external_actions": [
+      "GitHub secret scanning + push protection enabled",
+      "issue #4 closed"
+    ],
+    "out_of_scope_pending_authorization": [
+      "AUD-003 reparacion en disco",
+      "AUD-008 re-graduacion",
+      "KI-071"
+    ],
+    "new_known_issues": [
+      "KI-075 instantanea H de recencia perdida: fase M bloqueada"
+    ],
+    "status": "REMEDIACION_APLICADA_PENDIENTE_DE_VERIFICACION",
+    "date_utc": "2026-10-19T05:15:21.890329+00:00"
+  }
+}
