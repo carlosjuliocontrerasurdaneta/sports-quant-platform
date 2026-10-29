@@ -220,11 +220,21 @@ class MLBStatsProvider(ResultsProvider):
         for d in r.json().get("dates", []):
             for g in d.get("games", []):
                 t = g["teams"]
+                st = g.get("status") or {}
+                hp = t["home"].get("probablePitcher") or {}
+                ap = t["away"].get("probablePitcher") or {}
                 out.append({
                     "date": d["date"],          # official MLB game date
                     "commence": g.get("gameDate"),  # UTC start; disambiguates a series
                     "home": t["home"]["team"]["name"], "away": t["away"]["team"]["name"],
-                    "home_pitcher": t["home"].get("probablePitcher", {}).get("fullName"),
-                    "away_pitcher": t["away"].get("probablePitcher", {}).get("fullName"),
+                    "home_pitcher": hp.get("fullName"),
+                    "away_pitcher": ap.get("fullName"),
+                    # Aditivo (captura prospectiva de abridores, 2026-10-29): identidad
+                    # del partido, id del lanzador y estado. Ningun consumidor actual lee estas claves nuevas
+                    # (daily.py, revalidation.py y capture_closing_odds.py leen las otras).
+                    "game_pk": g.get("gamePk"),
+                    "home_pitcher_id": hp.get("id"),
+                    "away_pitcher_id": ap.get("id"),
+                    "status": st.get("detailedState") or st.get("abstractGameState"),
                 })
         return out
