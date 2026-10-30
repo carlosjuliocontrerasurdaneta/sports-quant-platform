@@ -6,9 +6,13 @@ event being estimated (temporal correctness is the caller's responsibility;
 `update` is sequential by design).
 """
 from __future__ import annotations
+import logging
 import math
+from datetime import date as _date
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +37,19 @@ class EloRatings:
     ratings_home: dict[str, float] = field(default_factory=dict)
     ratings_away: dict[str, float] = field(default_factory=dict)
     games_played: dict[str, int] = field(default_factory=dict)
+    # Season-boundary mean reversion (pre-registro 2026-10-29, §4 y §12.1).
+    # 0.0 = disabled: identical behaviour to the engine without the feature.
+    season_regression: float = 0.0
+    season_gap_days: int = 30
+    # Internal state: last observed UTC date (YYYY-MM-DD) and the first date of
+    # the season already regressed (idempotence per boundary, Enmienda E3).
+    _last_date: Optional[str] = field(default=None, repr=False, compare=False)
+    _regressed_for: Optional[str] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.season_regression <= 1.0:
+            raise ValueError(
+                f"season_regression must be in [0, 1], got {self.season_regression}")
 
     def _key(self, team: str) -> str:
         return self.normalize(team) if self.normalize else team
@@ -60,8 +77,43 @@ class EloRatings:
         ha = 0.0 if neutral else self.home_advantage
         return self.get(home) + ha - self.get(away)
 
+    def advance_to(self, date: object) -> bool:
+        """Apply the season-boundary regression if `date` starts a new season.
+
+        A boundary exists when `date` (UTC, first 10 chars) is >= season_gap_days
+        after the last observed date. One regression per boundary (idempotent
+        on the boundary date). Events on or before the last date never regress.
+        No-op when season_regression == 0. Returns True if a regression ran.
+        """
+        if self.season_regression == 0.0:
+            return False
+        d = str(date)[:10]
+        if self._last_date is None or self._regressed_for == d:
+            return False
+        # Boundary already regressed since the last observation: estimating
+        # several unobserved post-boundary dates (the daily run's horizon) must
+        # not regress once per date (revision Fable 2026-10-30).
+        if self._regressed_for is not None and self._regressed_for > self._last_date:
+            return False
+        gap = (_date.fromisoformat(d) - _date.fromisoformat(self._last_date)).days
+        if gap < self.season_gap_days:
+            return False
+        keep = 1.0 - self.season_regression
+        for table in (self.ratings, self.ratings_home, self.ratings_away):
+            for t, r in table.items():
+                table[t] = self.base + keep * (r - self.base)
+        self._regressed_for = d
+        month = int(d[5:7])
+        if not 6 <= month <= 10:
+            log.warning("Elo season boundary detected on %s (month outside "
+                        "June-October; gap %d days): check for an ingestion gap",
+                        d, gap)
+        return True
+
     def update(self, home: str, away: str, home_score: float, away_score: float,
-               neutral: bool = False) -> None:
+               neutral: bool = False, date: object = None) -> None:
+        if date is not None:
+            self.advance_to(date)
         exp = self.expected_home_win(home, away, neutral)
         if home_score > away_score:
             actual = 1.0
@@ -83,6 +135,10 @@ class EloRatings:
             self.ratings_away[ak] = self.get_away_rating(away) - delta
         self.games_played[hk] = self.games_played.get(hk, 0) + 1
         self.games_played[ak] = self.games_played.get(ak, 0) + 1
+        if date is not None:
+            d = str(date)[:10]
+            if self._last_date is None or d > self._last_date:
+                self._last_date = d
 
     def is_reliable(self, team: str, min_games: int = 10) -> bool:
         return self.games_played.get(self._key(team), 0) >= min_games
