@@ -3,7 +3,8 @@
 **Fecha:** 2026-09-04.
 **Estado:** **VIGENTE**, salvo el valor de K y el techo de §3.1: **re-pre-registrados
 el 2026-09-25 a K = 52 y techo 63** en
-`docs/research/2026-09-25-repreregistro-gate-k52.md`. Aprobado por el operador el
+`docs/research/2026-09-25-repreregistro-gate-k52.md`, y **de nuevo el 2026-11-02 a
+K = 69 y techo 84** en `docs/research/2026-11-02-repreregistro-gate-k69.md` (vigente). Aprobado por el operador el
 2026-09-04 e implementado el mismo día en `src/sqp/risk/prediction_gate.py`.
 **Modifica:** `docs/research/2026-08-16-preregistro-regla-de-salida.md`, sección
 «Criterios de descarte» → «Comparaciones múltiples».

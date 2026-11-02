@@ -55,9 +55,11 @@ Dos reglas, ambas fijadas por test:
 
 1. **Bonferroni**: `alpha_corte = 0,05 / K`. K=41 el 2026-09-04 (0,00122);
    re-pre-registrado a K=52 el 2026-09-25 (0,000962) al superar el universo el
-   techo de 50 cortes (docs/research/2026-09-25-repreregistro-gate-k52.md).
-   Precio, dicho sin adornos: a n=300 el liston sube del 55,0% al 59,3% de
-   aciertos pareados.
+   techo de 50 cortes (docs/research/2026-09-25-repreregistro-gate-k52.md) y a
+   K=69 el 2026-11-02 (0,05/69 = 0,000725) al superar el techo de 63
+   (docs/research/2026-11-02-repreregistro-gate-k69.md).
+   Precio, dicho sin adornos: a n=300 el liston sube del 55,0% (K=41) al 59,3%
+   (K=52) y al 59,7% (K=69) de aciertos pareados.
 2. **Un solo test de ENTRADA por corte**, en la primera evaluacion con
    `n >= min_n`. Elimina la parada opcional. La SALIDA sigue siendo diaria: una
    oportunidad de entrar, vigilancia continua para salir. Un corte que gasta su
@@ -116,16 +118,23 @@ PREDICTION_GATE_FAMILY_ALPHA = 0.05
 # a ninguno. No se re-divide sobre la marcha: eso volveria el umbral dependiente
 # del calendario de temporadas. RE-PRE-REGISTRADO el 2026-09-25 por orden del
 # operador: 52 cortes > techo 50, los 52 en `muestra_insuficiente` y ningun test
-# gastado (docs/research/2026-09-25-repreregistro-gate-k52.md).
-PREDICTION_GATE_K = 52
+# gastado (docs/research/2026-09-25-repreregistro-gate-k52.md). RE-PRE-REGISTRADO
+# de nuevo el 2026-11-02 bajo la autorizacion del operador: 68 cortes en el
+# registro mas `mlb|team_totals` (pre-registro de derivados) = 69 > techo 63;
+# alpha_corte = 0,05/69 = 0,000725. Los seis tests ya gastados bajo K=52 no se
+# recalculan (docs/research/2026-11-02-repreregistro-gate-k69.md). Historia:
+# 41 -> 52 -> 69.
+PREDICTION_GATE_K = 69
 PREDICTION_GATE_ALPHA = PREDICTION_GATE_FAMILY_ALPHA / PREDICTION_GATE_K
 # Si el universo crece por encima de esto (+22% sobre K), el criterio se
 # RE-PRE-REGISTRA antes de que ningun corte nuevo sea elegible. No se corrige
 # solo: se avisa, que es lo que este repositorio sabe hacer con los candados.
-# 63 = floor(52 * 50/41): la misma tolerancia relativa aprobada el 2026-09-04,
-# que mantiene la cota maxima tolerada en ~0,061 (63 * 0,05/52 = 0,0606).
-# Confirmado por el operador el 2026-09-25.
-PREDICTION_GATE_K_REPREGISTRO = 63
+# 84 = floor(69 * 50/41): la misma tolerancia relativa aprobada el 2026-09-04,
+# que mantiene la cota maxima tolerada en ~0,061 (84 * 0,05/69 = 0,0609).
+# Valor DERIVADO el 2026-11-02 bajo la autorizacion del operador (pendiente de
+# confirmacion expresa, no bloqueante). Antes: 63 = floor(52 * 50/41), cota
+# 63 * 0,05/52 = 0,0606, confirmado por el operador el 2026-09-25.
+PREDICTION_GATE_K_REPREGISTRO = 84
 
 
 def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
@@ -134,7 +143,8 @@ def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
     El reparto se hizo entre ``PREDICTION_GATE_K`` cortes. Si el universo crece,
     el alpha por corte no se mueve y la cota sube: con K=41 y 49 cortes,
     ``49 * 0,05/41 = 0,0598``, un 19,5 % por encima del 0,05 declarado (K
-    vale 52 desde el re-pre-registro del 2026-09-25).
+    vale 52 desde el re-pre-registro del 2026-09-25 y 69 desde el del
+    2026-11-02).
 
     Existe porque el registro publicaba ``family_alpha: 0.05`` y
     ``n_cortes_evaluados: 49`` uno al lado del otro sin que nada los comparara
@@ -230,7 +240,7 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
 
     Reproducido con 150 partidos identicos y probabilidades complementarias,
     con los valores canonicos de entonces (min 300, alpha 0,05/41; K=52 desde
-    el 2026-09-25):
+    el 2026-09-25 y K=69 desde el 2026-11-02):
 
         1 linea por evento  -> n=150, allowed=False, muestra_insuficiente
         2 lineas por evento -> n=300, allowed=True
@@ -576,9 +586,10 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
                     "reentra sin liberacion humana (release_prediction_gate_latch).",
                     t["league"], t["market"], t["reason"])
     # Candado del pre-registro 2026-09-04 (§3.1), re-pre-registrado el
-    # 2026-09-25 con K=52: el reparto de alpha depende de K. El MISMO
-    # pre-registro fijo de antemano cuanto puede crecer el universo: hasta
-    # K_REPREGISTRO cortes (+22 %, hoy 63) el criterio se aplica tal cual y solo
+    # 2026-09-25 con K=52 y de nuevo el 2026-11-02 con K=69: el reparto de alpha
+    # depende de K. El MISMO pre-registro fijo de antemano cuanto puede crecer
+    # el universo: hasta K_REPREGISTRO cortes (+22 %, hoy 84 = floor(69*50/41),
+    # cota 84*0,05/69 = 0,0609) el criterio se aplica tal cual y solo
     # POR ENCIMA se re-pre-registra. Tres franjas, pues:
     #   n <= K              : el reparto cuadra, nada que decir.
     #   K < n <= REPREGISTRO: TOLERANCIA PRE-REGISTRADA. Se informa la cota real
@@ -607,7 +618,7 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
     payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
                # Trazabilidad del reparto: sin esto, leyendo el registro no se
-               # puede reconstruir de donde sale un alpha de 0,000962.
+               # puede reconstruir de donde sale un alpha de 0,000725 (0,05/69).
                "family_alpha": float(PREDICTION_GATE_FAMILY_ALPHA),
                "k_bonferroni": int(PREDICTION_GATE_K),
                "n_cortes_evaluados": len(markets),

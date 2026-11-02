@@ -1,7 +1,7 @@
 # Re-pre-registro: el prediction gate pasa a K = 52
 
 **Fecha:** 2026-09-25.
-**Estado:** **VIGENTE.** Ordenado por el operador el 2026-09-25 («Re-pre-registra el gate para K=52») e implementado el mismo día en `src/sqp/risk/prediction_gate.py`.
+**Estado:** **VIGENTE salvo §3 (K y techo), SUPERADO el 2026-11-02 por `docs/research/2026-11-02-repreregistro-gate-k69.md` (K = 69, techo 84).** Sus addenda siguen vigentes. Ordenado por el operador el 2026-09-25 («Re-pre-registra el gate para K=52») e implementado el mismo día en `src/sqp/risk/prediction_gate.py`.
 **Modifica:** `docs/research/2026-09-04-preregistro-multiplicidad-del-gate.md`, §3.1 (el valor de K y el techo de re-pre-registro). El resto de ese documento sigue vigente sin cambios.
 
 ---
