@@ -81,7 +81,13 @@ def test_accuracy_selected_helper():
     assert not _accuracy_selected("h2h", 0.90, 0.70, True)       # sin ancla no-vig valida
 
 
-def test_accuracy_mode_demo_pipeline_selects_by_probability():
+def test_accuracy_mode_demo_pipeline_selects_by_probability(monkeypatch):
+    # Seleccion y stake PLANO del modo accuracy. La guarda de EV en la casa de
+    # ejecucion (AUD-005, audit-2026-11-03) se aisla aqui: en demo todas las
+    # caras tienen EV <= 0 y la guarda las dejaria a 0; su efecto lo fija
+    # test_accuracy_mode_guarda_de_ev_en_ejecucion_anula_el_stake_plano.
+    import sqp.pipeline.daily as daily
+    monkeypatch.setattr(daily, "_ev_ejecucion_no_positivo", lambda *a, **k: False)
     from sqp.pipeline.daily import run_league
     settings = Settings.load()
     settings.pick_mode = "accuracy"
@@ -103,6 +109,27 @@ def test_accuracy_mode_demo_pipeline_selects_by_probability():
     zeroed = c[flags != "accuracy_mode"]
     assert (zeroed["stake"] == 0).all()
 
+
+
+def test_accuracy_mode_guarda_de_ev_en_ejecucion_anula_el_stake_plano():
+    """AUD-005: en modo accuracy, un stake plano con EV <= 0 en la casa de
+    ejecucion pasa a 0 con el flag ev_ejecucion_no_positivo; la fila se
+    conserva (generar no es apostar)."""
+    import numpy as np
+    from sqp.pipeline.daily import run_league
+    settings = Settings.load()
+    settings.pick_mode = "accuracy"
+    settings.accuracy_threshold = 0.51
+    settings.shadow_mode = False
+    run_league("nba", settings, mode="demo")
+    c = pd.read_csv(ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv")
+    assert not c.empty
+    flags = c["flags"].fillna("")
+    ev_ejec = c["estimated_probability"] * c["settle_price"] - 1
+    guardadas = flags.str.contains("ev_ejecucion_no_positivo")
+    assert (c.loc[guardadas, "stake"] == 0).all()
+    # Ningun stake positivo con EV <= 0 en ejecucion.
+    assert not ((c["stake"] > 0) & (ev_ejec <= 0) & np.isfinite(ev_ejec)).any()
 
 def test_accuracy_mode_under_shadow_records_zero_stake():
     from sqp.pipeline.daily import run_league
