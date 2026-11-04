@@ -71,7 +71,28 @@ if %ERRORLEVEL% neq 0 (
     goto :tree_ok
 )
 for /f "delims=" %%i in ('git status --porcelain -- src scripts configs *.bat 2^>nul') do set "SQP_TREE_DIRTY=1"
-if defined SQP_TREE_DIRTY goto :error_arbol
+if not defined SQP_TREE_DIRTY goto :tree_clean
+
+REM [0a] ESPERA DE ARBOL LIMPIO (AUD-002, audit-2026-11-03). Abortar al instante
+REM perdia el dia entero: el 2026-11-03 una sesion de desarrollo dejo codigo sin
+REM commitear a las 12:00 y no hubo run. Crear una tarea de reintento exige
+REM proceso elevado (las SQP_* corren en S4U), asi que se ESPERA aqui, con el
+REM patron de [0c], re-evaluando el guard cada intervalo. Solo al agotar el plazo
+REM se aborta por :error_arbol (centinela ROJO, data\ intacto). El guard sigue
+REM sin dejar correr codigo sin commitear: si el arbol sigue sucio, no hay run.
+REM Ajustes:  SQP_TREE_WAIT_MAX_MIN (180)  SQP_TREE_WAIT_INTERVAL_S (900)
+REM Escape:   set SQP_SKIP_TREE_WAIT=1  (aborta al instante, como antes)
+if defined SQP_SKIP_TREE_WAIT (
+    call :log "[AVISO] SQP_SKIP_TREE_WAIT activo: se aborta sin esperar al arbol."
+    goto :error_arbol
+)
+if not defined SQP_TREE_WAIT_MAX_MIN set "SQP_TREE_WAIT_MAX_MIN=180"
+if not defined SQP_TREE_WAIT_INTERVAL_S set "SQP_TREE_WAIT_INTERVAL_S=900"
+call :log "[0a] Arbol con cambios sin commitear: se espera hasta %SQP_TREE_WAIT_MAX_MIN% min a que quede limpio."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\wait_for_clean_tree.ps1" -MaxMinutes %SQP_TREE_WAIT_MAX_MIN% -IntervalSeconds %SQP_TREE_WAIT_INTERVAL_S% >> logs\diario_completo.log 2>&1
+if %ERRORLEVEL% neq 0 goto :error_arbol
+call :log "[0a] Arbol limpio tras la espera: se continua."
+:tree_clean
 
 REM [0b] ARBOL ATRASADO (AUD-MED-004, auditoria integral 2026-09-08).
 REM
@@ -346,6 +367,7 @@ goto :eof
 :error_arbol
 call :log "*** ABORTADO ANTES DE LIQUIDAR: hay cambios SIN COMMITEAR en codigo que  ***"
 call :log "*** produccion ejecuta (src\, scripts\, configs\ o *.bat).               ***"
+call :log "*** Plazo de espera de arbol: SQP_TREE_WAIT_MAX_MIN=%SQP_TREE_WAIT_MAX_MIN% (vacio=sin espera). ***"
 call :log "*** No se ha tocado ningun dato. Commitea los cambios y vuelve a lanzar. ***"
 call :log "*** Si de verdad hace falta correr sobre el arbol sucio (recuperacion):  ***"
 call :log "***     set SQP_SKIP_TREE_GUARD=1                                        ***"

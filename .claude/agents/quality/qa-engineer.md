@@ -2,6 +2,7 @@
 name: qa-engineer
 description: Use this agent before final delivery to review test coverage, test quality, and regression risk.
 model: opus
+tools: Read, Glob, Grep
 ---
 
 # QA Engineer

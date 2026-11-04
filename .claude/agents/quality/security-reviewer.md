@@ -2,6 +2,7 @@
 name: security-reviewer
 description: Use this agent to review secrets handling, credentials, .env protection, request timeouts, and dependency risk.
 model: opus
+tools: Read, Glob, Grep
 ---
 
 # Security Reviewer

@@ -78,3 +78,31 @@ def test_un_solo_objeto_en_tasks_se_acepta():
                                 "LastResult": 0, "Missed": 0}})
     out = scheduled_tasks_status(raw, now=NOW)
     assert DAILY_TASK in out["tasks"]
+
+
+def test_consulta_del_programador_usa_plazo_amplio_y_tolera_timeout(monkeypatch):
+    """AUD-007: el plazo por defecto es 120 s (30 s expiraba) y un timeout
+    degrada a ``None`` (-> aviso 'no se pudo consultar'), sin lanzar."""
+    import subprocess
+
+    from sqp.monitoring import health
+
+    vistos: list[float] = []
+
+    def _expira(*_a, **kw):
+        vistos.append(kw["timeout"])
+        raise subprocess.TimeoutExpired(cmd="powershell", timeout=kw["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", _expira)
+    assert health._scheduled_tasks_raw() is None
+    assert vistos == [120.0]
+    out = scheduled_tasks_status(None, now=NOW)
+    assert out["available"] is False and out["warnings"]
+
+    class _Ok:
+        returncode = 0
+        stdout = '{"history_enabled": true, "tasks": []}'
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _Ok())
+    assert health._scheduled_tasks_raw() == _Ok.stdout

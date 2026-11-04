@@ -288,9 +288,15 @@ _TASKS_PS = (
 )
 
 
-def _scheduled_tasks_raw(timeout_s: float = 30.0) -> str | None:
+SCHEDULED_TASKS_TIMEOUT_S = 120.0
+
+
+def _scheduled_tasks_raw(timeout_s: float = SCHEDULED_TASKS_TIMEOUT_S) -> str | None:
     """JSON con el estado de las tareas SQP_* segun el Programador (solo
-    lectura). ``None`` si no hay PowerShell, no hay acceso o expira."""
+    lectura). ``None`` si no hay PowerShell, no hay acceso o expira.
+
+    AUD-007 (audit-2026-11-03): con 30 s la consulta (arranque de PowerShell +
+    una ``Get-ScheduledTaskInfo`` por tarea) expiraba en esta maquina; 120 s."""
     import subprocess
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",

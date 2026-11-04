@@ -2,6 +2,7 @@
 name: backtest-reviewer
 description: "Use this agent to review betting evaluation methodology: walk-forward validation, odds timestamps, bet availability, selection/lookahead/survivorship bias, and ROI formulas."
 model: opus
+tools: Read, Glob, Grep
 ---
 
 # Backtest Reviewer
