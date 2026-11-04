@@ -1308,7 +1308,8 @@ def test_el_test_consumido_hoy_guarda_su_alpha(tmp_path):
     e = json.loads(ruta.read_text(encoding="utf-8"))["markets"]["brasileirao|totals"]
     assert e["n"] == 300 and e["entry_test_at"]
     assert e["entry_test_alpha"] == pytest.approx(PREDICTION_GATE_ALPHA)
-    ruta = write_prediction_gate(graded, tmp_path / "b", alpha=0.001)
+    ruta = write_prediction_gate(graded, tmp_path / "b", alpha=0.001,
+                                 umbrales_de_prueba=True)
     e = json.loads(ruta.read_text(encoding="utf-8"))["markets"]["brasileirao|totals"]
     assert e["entry_test_alpha"] == pytest.approx(0.001)
 
@@ -1394,3 +1395,240 @@ def test_a_k_cortes_con_heredados_la_cota_es_exactamente_el_alpha_de_familia(tmp
     assert payload["n_cortes_evaluados"] == PREDICTION_GATE_K
     assert payload["fwer_bound"] == pytest.approx(PREDICTION_GATE_FAMILY_ALPHA, abs=1e-9)
     assert not any("cota real de error de familia" in r.message for r in caplog.records)
+
+
+# --- Re-pre-registro 2026-11-03: condicion 2 (AUD-001), medias liquidaciones
+# (AUD-021), universo fuera de lo pre-registrado (AUD-009), umbrales (AUD-003) ---
+
+def _dos_caras(n_eventos, gana_A, p_A, precio, exec_price=None,
+               generated_at="2026-09-01T12:00:00+00:00", market="totals",
+               league="brasileirao"):
+    """2 filas por evento (A y B, novig 0,5, resultados complementarios)."""
+    recs = []
+    for i in range(n_eventos):
+        a_gana = i < gana_A
+        for sel, p, gana in (("A", p_A, a_gana), ("B", 1.0 - p_A, not a_gana)):
+            recs.append({"league": league, "market": market,
+                         "event_id": f"{league}-{i}", "selection": sel, "line": 2.5,
+                         "model_probability": p, "implied_probability_novig": 0.5,
+                         "price_decimal": precio,
+                         "execution_price": exec_price if exec_price else float("nan"),
+                         "result": "win" if gana else "loss",
+                         "game_date": "2026-09-01", "generated_at": generated_at})
+    return pd.DataFrame(recs)
+
+
+def _una(df):
+    out = evaluate_markets(df)
+    assert len(out) == 1
+    return out.iloc[0]
+
+
+def test_T1_modelo_que_acierta_pasa_y_ev_flat_no_lo_distingue():
+    r = _una(_dos_caras(400, 400, 0.9, 1.909))
+    assert r.n == 400 and r.wins == 400
+    assert r.p_value == pytest.approx(3.87e-121, rel=0.01)
+    assert r.ev_flat == pytest.approx(-0.0455, abs=1e-3)
+    assert r.ev_lado_modelo == pytest.approx(0.909, abs=1e-9)
+    assert r.n_ev == 400 and bool(r.allowed) and r.reason == ""
+
+
+def test_T2_modelo_sin_edge_no_apuesta_nunca():
+    from sqp.risk.prediction_gate import _ev_lado_del_modelo
+    df = _dos_caras(400, 200, 0.5, 1.909)
+    r = _una(df)
+    assert r.n == 0 and r.reason == "muestra_insuficiente"
+    ev, n = _ev_lado_del_modelo(df)
+    assert n == 0 and ev != ev
+
+
+def test_T3_modelo_que_apuesta_al_perdedor_no_bate_al_mercado():
+    r = _una(_dos_caras(400, 200, 0.6, 1.909))
+    assert r.reason == "no_bate_al_mercado"
+    assert r.ev_lado_modelo == pytest.approx(-0.0455, abs=1e-9)
+    assert r.n_ev == 400
+
+
+def test_T4_bate_al_mercado_pero_pierde_dinero():
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA
+    r = _una(_dos_caras(2000, 1100, 0.6, 1.80))
+    assert r.p_value == pytest.approx(4.23e-6, rel=0.02)
+    assert r.p_value < PREDICTION_GATE_ALPHA
+    assert r.ev_lado_modelo == pytest.approx(-0.0100, abs=1e-9)
+    assert r.reason == "ev_no_positivo" and not bool(r.allowed)
+
+
+def test_T5_bate_al_mercado_con_ev_positivo():
+    r = _una(_dos_caras(400, 240, 0.6, 1.909))
+    assert r.p_value == pytest.approx(3.71e-5, rel=0.02)
+    assert r.ev_lado_modelo == pytest.approx(0.1454, abs=1e-4)
+    assert bool(r.allowed)
+
+
+def test_el_precio_de_ejecucion_mas_bajo_manda_en_la_condicion_2():
+    from sqp.risk.prediction_gate import _ev_lado_del_modelo
+    assert _ev_lado_del_modelo(_dos_caras(400, 400, 0.9, 1.909, exec_price=1.85))[0] \
+        == pytest.approx(0.85, abs=1e-9)
+    assert _ev_lado_del_modelo(_dos_caras(400, 400, 0.9, 1.909, exec_price=2.50))[0] \
+        == pytest.approx(0.909, abs=1e-9)
+
+
+def _fila(ev, run, sel, p, price, result, market="h2h", line=0.0, **extra):
+    return {"league": "x", "market": market, "event_id": ev, "selection": sel,
+            "line": line, "model_probability": p,
+            "implied_probability_novig": 0.5, "price_decimal": price,
+            "result": result, "game_date": "2026-09-01", "generated_at": run,
+            **extra}
+
+
+def test_cada_run_elige_con_su_informacion_y_la_unidad_promedia_los_runs():
+    from sqp.risk.prediction_gate import _ev_lado_del_modelo
+    # Gana A. Run 1 apuesta A a 2,0 (+1); run 2 apuesta B (0,55*2,0-1>0) y pierde (-1).
+    df = pd.DataFrame([
+        _fila("e", "2026-09-01T10:00:00+00:00", "A", 0.6, 2.0, "win"),
+        _fila("e", "2026-09-01T10:00:00+00:00", "B", 0.4, 2.0, "loss"),
+        _fila("e", "2026-09-01T11:00:00+00:00", "A", 0.45, 2.0, "win"),
+        _fila("e", "2026-09-01T11:00:00+00:00", "B", 0.55, 2.0, "loss"),
+    ])
+    assert _ev_lado_del_modelo(df) == (0.0, 1)
+
+
+def test_un_push_cuenta_en_la_eleccion_con_retorno_cero():
+    from sqp.risk.prediction_gate import _ev_lado_del_modelo
+    run = "2026-09-01T10:00:00+00:00"
+    df = pd.DataFrame([
+        _fila("e", run, "Over", 0.7, 2.0, "push", market="totals", line=3.0),
+        _fila("e", run, "Over", 0.6, 2.0, "win", market="totals", line=2.5),
+    ])
+    assert _ev_lado_del_modelo(df) == (0.0, 1)
+
+
+def test_unidad_mixta_de_medias_liquidaciones_pesa_la_fraccion_resuelta():
+    run = "2026-10-01T10:00:00+00:00"   # posterior a QUARTER_LINE_GRADING_FIXED_AT
+    df = pd.DataFrame([
+        _fila("e", run, "Over", 0.6, 2.5, "win", market="totals", line=2.5),
+        _fila("e", run, "Over", 0.6, 2.75, "half_loss", market="totals", line=2.75),
+    ])
+    from sqp.risk.prediction_gate import (VALIDATION_START, _independent_units,
+                                          _usable)
+    r = _una(df)
+    assert r.n == 1 and r.wins == 1
+    # Revision Fable: la d de la unidad sale DEL CODIGO, ponderada por la
+    # fraccion resuelta (win w=1: +0,09; half_loss w=0,5: -0,11).
+    unidades = _independent_units(_usable(df, VALIDATION_START))
+    assert len(unidades) == 1
+    assert float(unidades["d"].iloc[0]) == pytest.approx(0.023333, abs=1e-6)
+
+
+def test_una_unidad_solo_con_media_liquidacion_entra_en_la_condicion_1():
+    """Discriminante frente al codigo previo, que descartaba half_*: una
+    unidad con solo un half_win cuenta (n 1, victoria)."""
+    run = "2026-10-01T10:00:00+00:00"
+    df = pd.DataFrame([
+        _fila("e", run, "Over", 0.6, 2.25, "half_win", market="totals", line=2.25),
+    ])
+    r = _una(df)
+    assert r.n == 1 and r.wins == 1
+
+
+def test_tres_eventos_half_win_half_loss_y_push():
+    run = "2026-10-01T10:00:00+00:00"
+    df = pd.DataFrame([
+        _fila("a", run, "Over", 0.6, 2.0, "half_win", market="totals", line=2.25),
+        _fila("b", run, "Over", 0.6, 2.0, "half_loss", market="totals", line=2.25),
+        _fila("c", run, "Over", 0.6, 2.0, "push", market="totals", line=3.0),
+    ])
+    r = _una(df)
+    assert r.n == 2 and r.wins == 1
+    assert r.ev_lado_modelo == pytest.approx(0.0) and r.n_ev == 3
+
+
+def test_un_segmento_solo_con_push_no_crece_el_universo_de_cortes():
+    run = "2026-10-01T10:00:00+00:00"
+    df = pd.DataFrame([_fila("a", run, "Over", 0.6, 2.0, "push",
+                             market="totals", line=3.0)])
+    assert evaluate_markets(df).empty
+
+
+def test_techo_de_cortes_no_consume_el_test_y_se_recupera(tmp_path):
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          PREDICTION_GATE_K_REPREGISTRO)
+    fuerte = _rows(400, 0, p_model=0.6, p_market=0.5, price=2.0, league="fuerte")
+    grande = pd.concat([_muchos_cortes(PREDICTION_GATE_K_REPREGISTRO), fuerte],
+                       ignore_index=True)
+    ruta = write_prediction_gate(grande, tmp_path)
+    p = json.loads(ruta.read_text(encoding="utf-8"))
+    e = p["markets"]["fuerte|totals"]
+    assert p["n_cortes_evaluados"] == PREDICTION_GATE_K_REPREGISTRO + 1
+    assert e["n"] == 400 and e["allowed"] is False
+    assert e["reason"] == "fuera_de_preregistro"
+    assert e["entry_test_at"] is None and e["entry_test_alpha"] is None
+    assert p["entradas_bloqueadas"] is True
+    assert p["fwer_bound"] == pytest.approx(0.061233, abs=1e-6)
+    from sqp.risk.prediction_gate import CRITERIO_CONDICION2
+    assert p["criterio_condicion2"] == CRITERIO_CONDICION2
+    ok = pd.concat([_muchos_cortes(PREDICTION_GATE_K_REPREGISTRO - 1), fuerte],
+                   ignore_index=True)
+    p = json.loads(write_prediction_gate(ok, tmp_path).read_text(encoding="utf-8"))
+    e = p["markets"]["fuerte|totals"]
+    assert p["entradas_bloqueadas"] is False
+    assert e["entry_test_at"] and e["entry_test_alpha"] == PREDICTION_GATE_ALPHA
+    assert e["allowed"] is True
+    assert p["fwer_bound"] == pytest.approx(0.060531, abs=1e-6)
+
+
+def test_techo_de_alpha_bloquea_la_entrada_sin_consumir_el_test(tmp_path):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_FILENAME
+    previo = {"x|totals": {"n": 0, "wins": 0, "p_value": None, "ev_flat": None,
+                           "allowed": False, "reason": "liberado_pendiente_reevaluacion",
+                           "latched": False, "latched_at": None,
+                           "entry_test_at": None, "entry_test_alpha": None,
+                           "alpha_gastado_previo": 0.06}}
+    (tmp_path / PREDICTION_GATE_FILENAME).write_text(
+        json.dumps({"markets": previo}), encoding="utf-8")
+    graded = _rows(400, 0, p_model=0.6, p_market=0.5, price=2.0)
+    p = json.loads(write_prediction_gate(graded, tmp_path).read_text(encoding="utf-8"))
+    e = p["markets"]["brasileirao|totals"]
+    assert p["fwer_bound"] == pytest.approx(0.06 + 2 * 0.000702, abs=1e-6)
+    assert p["entradas_bloqueadas"] is True
+    assert e["reason"] == "fuera_de_preregistro" and e["allowed"] is False
+    assert e["entry_test_at"] is None and e["entry_test_alpha"] is None
+
+
+def test_validation_start_no_canonico_no_escribe(tmp_path):
+    graded = _rows(10, 0, p_model=0.6, p_market=0.5, price=2.0)
+    with pytest.raises(ValueError):
+        write_prediction_gate(graded, tmp_path, validation_start="2026-01-01")
+    assert not any(tmp_path.iterdir())
+
+
+def test_umbrales_no_canonicos_en_el_script_devuelven_2_y_no_escriben(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    ruta = Path(__file__).resolve().parents[1] / "scripts" / "update_prediction_gate.py"
+    spec = importlib.util.spec_from_file_location("upg_g1", ruta)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    for extra in (["--min-n", "50"], ["--alpha", "0.05"]):
+        monkeypatch.setattr(sys, "argv", ["update_prediction_gate.py", *extra])
+        assert mod.main() == 2
+        assert not (tmp_path / "data" / "bets" / "prediction_gate.json").exists()
+
+
+def test_write_prediction_gate_rechaza_umbrales_no_canonicos(tmp_path):
+    graded = _rows(160, 140, p_model=0.6, p_market=0.5, price=2.0)
+    with pytest.raises(ValueError):
+        write_prediction_gate(graded, tmp_path, alpha=0.05)
+    with pytest.raises(ValueError):
+        write_prediction_gate(graded, tmp_path, min_n=50)
+    assert not list(tmp_path.iterdir())
+
+
+def test_ningun_codigo_de_produccion_pasa_umbrales_de_prueba():
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parents[1]
+    for sub in ("src", "scripts"):
+        for f in (raiz / sub).rglob("*.py"):
+            assert "umbrales_de_prueba=True" not in f.read_text(encoding="utf-8"), f

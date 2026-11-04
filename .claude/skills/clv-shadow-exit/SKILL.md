@@ -48,7 +48,10 @@ stake real.
   (solo `game_date` posterior al pre-registro): (1) su modelo puro bate al
   mercado evento a evento — test de signo pareado, unilateral, empates
   excluidos, `n >= PREDICTION_GATE_MIN_N` (300) y `p < PREDICTION_GATE_ALPHA`;
-  y (2) su EV a stake plano es positivo. **`PREDICTION_GATE_ALPHA` NO es 0,05**:
+  y (2) su EV realizado, a stake plano, en la cara que elige el modelo puro
+  (`ev_lado_modelo`, re-pre-registro 2026-11-03:
+  `docs/research/2026-11-03-repreregistro-condicion2-gate.md`) es positivo
+  (`ev_flat` es una metrica retirada, sin efecto en la decision). **`PREDICTION_GATE_ALPHA` NO es 0,05**:
   desde el pre-registro del 2026-09-04 el alpha de FAMILIA (0,05) se reparte por
   Bonferroni sobre `PREDICTION_GATE_K` cortes: 69 desde el re-pre-registro del
   2026-11-02 (antes 52 y 41), asi que el umbral POR MERCADO es `0,000702` = (0,05 − 6·0,05/52)/63 (enmienda 2026-11-03).

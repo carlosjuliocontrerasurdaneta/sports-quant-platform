@@ -239,7 +239,8 @@ paused_markets: {}
 # `allowed: true` para el (modelo puro que bate al mercado en test de signo
 # pareado fuera de muestra, n >= 300 y p < 0,000702 --- que es el umbral POR
 # MERCADO, el de familia 0,05 repartido por Bonferroni sobre K = 69 cortes ---,
-# Y EV a stake plano positivo).
+# Y EV realizado de la cara que elige el modelo positivo: ev_lado_modelo,
+# docs/research/2026-11-03-repreregistro-condicion2-gate.md).
 # No hace falta una aprobacion humana adicional en ese punto. Para mantener la
 # aprobacion manual: `prediction_gate.enabled: false` y curar el registro a mano,
 # o volver a poner shadow_mode en true.
@@ -267,7 +268,10 @@ clv_gate:
 #      K cortes: K = 69 desde el re-pre-registro del 2026-11-02 (antes 52 y 41), asi
 #      que el umbral POR MERCADO es (0,05 - 6*0,05/52)/63 = 0,000702 (enmienda 2026-11-03, KI-078; antes 0,05/69, 0,05/52 y 0,05/41).
 #      Este comentario decia 0.05 desde antes de aquel reparto.
-#   2. Su EV a stake plano es positivo (acertar mas que el precio no basta si el
+#   2. Su EV realizado, a stake plano, de la cara que elige el modelo puro
+#      (ev_lado_modelo; re-pre-registro 2026-11-03, docs/research/
+#      2026-11-03-repreregistro-condicion2-gate.md) es positivo; ev_flat es una
+#      metrica retirada, sin efecto en la decision (acertar mas que el precio no basta si el
 #      margen no cubre el vig -- leccion de pick_mode accuracy a cuotas 1.07).
 # FUERA DE MUESTRA: solo cuentan filas con game_date posterior al pre-registro
 # (2026-08-16). Lo anterior ya fue observado por el analisis que descubrio los

@@ -17,8 +17,16 @@ Un (liga, mercado) lleva stake real solo si cumple LAS DOS condiciones:
    ``_independent_units``. Hasta el 2026-09-06 la unidad incluia la LINEA, y dos
    totales del mismo encuentro contaban como dos ensayos pese a depender del
    mismo marcador (AUD-20260906-03).
-2. Su EV a stake plano es positivo. Acertar mas que el precio no basta si el
-   margen no cubre el vig (leccion de pick_mode accuracy, favoritos a 1.07).
+2. Su EV REALIZADO, a stake plano, en la cara que elige el modelo PURO es
+   positivo (``ev_lado_modelo``; re-pre-registro del 2026-11-03,
+   docs/research/2026-11-03-repreregistro-condicion2-gate.md). Acertar mas que
+   el precio no basta si el margen no cubre el vig (leccion de pick_mode
+   accuracy, favoritos a 1.07). ``ev_flat`` -- el EV medio de TODAS las filas
+   con la probabilidad del modelo, que en dos caras complementarias se compensa
+   y no distingue un modelo que pierde dinero -- es una metrica retirada
+   (2026-11-03), sin efecto en la decision; se sigue publicando.
+   Las medias liquidaciones de la condicion 1 pesan la fraccion de stake
+   resuelta (``_PESO_RESUELTO``), no se descartan (AUD-021).
 
 FUERA DE MUESTRA: solo cuentan las filas posteriores a ``VALIDATION_START``, la
 fecha del pre-registro. Lo anterior ya fue observado por el analisis que
@@ -81,10 +89,12 @@ docs/research/2026-08-16-preregistro-regla-de-salida.md.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from scipy.stats import binomtest
 
@@ -252,6 +262,15 @@ INVALID_BEFORE: dict[tuple[str, str], str] = {
 
 _REQUIRED = ("model_probability", "implied_probability_novig", "price_decimal")
 
+# Re-pre-registro 2026-11-03 (AUD-001, AUD-021): condicion 2 = EV realizado de la
+# cara que elige el modelo; las medias liquidaciones pesan la fraccion resuelta.
+_RESULTADOS_C1 = ("win", "loss", "half_win", "half_loss")
+_RESULTADOS_C2 = _RESULTADOS_C1 + ("push",)
+_PESO_RESUELTO = {"win": 1.0, "loss": 1.0, "half_win": 0.5, "half_loss": 0.5,
+                  "push": 0.0}
+_Y_RESUELTO = {"win": 1, "half_win": 1, "loss": 0, "half_loss": 0}  # push -> NaN
+CRITERIO_CONDICION2 = "ev_realizado_lado_modelo_2026-11-03"
+
 
 def _drop_invalid_market_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Quita las filas de ``INVALID_BEFORE`` generadas antes de su instante."""
@@ -268,17 +287,19 @@ def _drop_invalid_market_rows(df: pd.DataFrame) -> pd.DataFrame:
         keep &= ~seg | valid.fillna(False).astype(bool)
     return df[keep]
 _TABLE_COLS = ["league", "market", "n", "wins", "p_value", "ev_flat",
-               "allowed", "reason"]
+               "ev_lado_modelo", "n_ev", "allowed", "reason"]
 
 
-def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
-    """Filas resueltas win/loss, posteriores al pre-registro y con las tres
-    columnas numericas presentes."""
+def _graded_rows(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
+    """Filas resueltas (con medias liquidaciones y push), posteriores al
+    pre-registro y con las tres columnas numericas presentes. Anade ``y`` (NaN
+    en push) y ``w``, la fraccion de stake resuelta (re-pre-registro
+    2026-11-03)."""
     if graded.empty or "result" not in graded.columns:
-        return pd.DataFrame(columns=list(graded.columns) + ["y"])
-    df = graded[graded["result"].isin(["win", "loss"])].copy()
+        return pd.DataFrame(columns=list(graded.columns) + ["y", "w"])
+    df = graded[graded["result"].isin(_RESULTADOS_C2)].copy()
     if df.empty:
-        return df.assign(y=pd.Series(dtype=int))
+        return df.assign(y=pd.Series(dtype=float), w=pd.Series(dtype=float))
     for col in ("game_date", "event_id"):
         if col not in df.columns:
             # `event_id` es tan obligatorio como `game_date`: sin identidad de
@@ -287,7 +308,8 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
             # Default-deny antes que un p-valor que no significa nada.
             log.warning("prediction_gate: columna '%s' ausente — todas las "
                         "filas filtradas (default-deny).", col)
-            return df.iloc[0:0].assign(y=pd.Series(dtype=int))
+            return df.iloc[0:0].assign(y=pd.Series(dtype=float),
+                                       w=pd.Series(dtype=float))
     fecha = df["game_date"].astype(str)
     df = _drop_invalid_market_rows(df[fecha > validation_start])
     # Lineas de cuarto graduadas win/loss antes del arreglo de su liquidacion
@@ -295,10 +317,22 @@ def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
     df = drop_pre_fix_quarter_lines(df)
     for col in _REQUIRED:
         if col not in df.columns:
-            return df.iloc[0:0].assign(y=pd.Series(dtype=int))
+            return df.iloc[0:0].assign(y=pd.Series(dtype=float),
+                                       w=pd.Series(dtype=float))
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=list(_REQUIRED))
-    df["y"] = (df["result"] == "win").astype(int)
+    df["y"] = df["result"].map(_Y_RESUELTO)
+    df["w"] = df["result"].map(_PESO_RESUELTO)
+    return df
+
+
+def _usable(graded: pd.DataFrame, validation_start: str) -> pd.DataFrame:
+    """Filas de la condicion 1 (resueltas, sin push), con ``y`` entero."""
+    df = _graded_rows(graded, validation_start)
+    if df.empty:
+        return df
+    df = df[df["result"].isin(_RESULTADOS_C1)].copy()
+    df["y"] = df["y"].astype(int)
     return df
 
 
@@ -380,6 +414,7 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
          - (g["model_probability"] - g["y"]) ** 2)
     ev = (g["model_probability"] * (g["price_decimal"] - 1.0)
           - (1.0 - g["model_probability"]))
+    w = g["w"] if "w" in g.columns else pd.Series(1.0, index=g.index)
     units = pd.DataFrame({"d": d, "ev": ev})
     # SIN `line`: la unidad es el partido. Ver el docstring.
     keys = [c for c in ("event_id", "market") if c in g.columns]
@@ -390,28 +425,93 @@ def _independent_units(g: pd.DataFrame) -> pd.DataFrame:
         return units
     for k in keys:
         units[k] = g[k]
-    return units.groupby(keys, dropna=False, sort=False)[["d", "ev"]].mean().reset_index()
+    # `d` de la unidad = sum(d*w)/sum(w): las medias liquidaciones pesan la
+    # fraccion de stake resuelta (AUD-021, re-pre-registro 2026-11-03). `ev`
+    # (metrica legada) se promedia sin pesos.
+    units["dw"] = d * w
+    units["w"] = w
+    grp = units.groupby(keys, dropna=False, sort=False)
+    suma = grp[["dw", "w"]].sum()
+    out = pd.DataFrame({"d": suma["dw"] / suma["w"], "ev": grp["ev"].mean()})
+    return out.reset_index()
 
 
-def _decide(g: pd.DataFrame, min_n: int, alpha: float) -> dict:
+def _ev_lado_del_modelo(g: pd.DataFrame) -> tuple[float, int]:
+    """Condicion 2 (re-pre-registro 2026-11-03, §2.1): EV realizado, a stake
+    plano, de la cara que elige el modelo PURO.
+
+    Por (evento, mercado, run) apuesta la fila de mayor ``e_m = p_modelo *
+    precio - 1`` si ``e_m > 0``; el precio es ``min(price_decimal,
+    execution_price)`` cuando este es finito y > 1. Promedia por (evento,
+    mercado) y despues globalmente. Devuelve ``(media, n_unidades)``;
+    ``(nan, 0)`` si el modelo se abstiene siempre."""
+    if g.empty or "event_id" not in g.columns:
+        return float("nan"), 0
+    df = g.copy()
+    price = pd.to_numeric(df["price_decimal"], errors="coerce").to_numpy(dtype=float)
+    if "execution_price" in df.columns:
+        ej = pd.to_numeric(df["execution_price"], errors="coerce").to_numpy(dtype=float)
+        ok = np.isfinite(ej) & (ej > 1.0)
+        price = np.where(ok, np.minimum(price, np.where(ok, ej, price)), price)
+    df["_d"] = price
+    df["_e"] = df["model_probability"].to_numpy(dtype=float) * price - 1.0
+    df = df[df["_e"] > 0].copy()
+    if df.empty:
+        return float("nan"), 0
+    # Celda a celda: con pandas 3 `astype(str)` deja NaN y la clave sale NaN.
+    n = len(df)
+    df["_run"] = ([("" if pd.isna(v) else str(v)) for v in df["generated_at"]]
+                  if "generated_at" in df.columns else [""] * n)
+    df["_ev"] = [str(v) for v in df["event_id"]]
+    df["_mk"] = ([("" if pd.isna(v) else str(v)) for v in df["market"]]
+                 if "market" in df.columns else [""] * n)
+    df["_sel"] = ([("" if pd.isna(v) else str(v)) for v in df["selection"]]
+                  if "selection" in df.columns else [""] * n)
+    df["_ln"] = (pd.to_numeric(df["line"], errors="coerce").fillna(0.0)
+                 if "line" in df.columns else 0.0)
+    df["_neg"] = -df["_e"]
+    df = df.sort_values(["_ev", "_mk", "_run", "_neg", "_sel", "_ln"],
+                        kind="mergesort")
+    pick = df.groupby(["_ev", "_mk", "_run"], sort=False).head(1).copy()
+    d = pick["_d"]
+    r = pick["result"]
+    pick["_ret"] = 0.0
+    pick.loc[r == "win", "_ret"] = d[r == "win"] - 1.0
+    pick.loc[r == "loss", "_ret"] = -1.0
+    pick.loc[r == "half_win", "_ret"] = (d[r == "half_win"] - 1.0) / 2.0
+    pick.loc[r == "half_loss", "_ret"] = -0.5
+    por_unidad = pick.groupby(["_ev", "_mk"], sort=False)["_ret"].mean()
+    if por_unidad.empty:
+        return float("nan"), 0
+    return float(por_unidad.mean()), int(len(por_unidad))
+
+
+def _decide(g: pd.DataFrame, min_n: int, alpha: float,
+            g_ev: pd.DataFrame | None = None) -> dict:
     """Evalua un (liga, mercado) ya filtrado. Orden de las razones: la muestra
-    manda sobre el signo, y el signo sobre el EV."""
+    manda sobre el signo, y el signo sobre el EV. ``g`` son las filas de la
+    condicion 1; ``g_ev`` (por defecto ``g``) las de la condicion 2, que
+    incluyen los push."""
+    if g_ev is None:
+        g_ev = g
     units = _independent_units(g)
     d = units["d"]
     n = int((d != 0).sum())
     wins = int((d > 0).sum())
     ev = float(units["ev"].mean())
+    ev_modelo, n_ev = _ev_lado_del_modelo(g_ev)
     p = (float(binomtest(wins, n, 0.5, alternative="greater").pvalue)
          if n > 0 else float("nan"))
     if n < min_n:
         reason = "muestra_insuficiente"
     elif not (p < alpha):
         reason = "no_bate_al_mercado"
-    elif not (ev > 0):
+    elif not (n_ev > 0 and ev_modelo > 0):
         reason = "ev_no_positivo"
     else:
         reason = ""
     return {"n": n, "wins": wins, "p_value": p, "ev_flat": ev,
+            "ev_lado_modelo": ev_modelo, "n_ev": n_ev,
             "allowed": reason == "", "reason": reason}
 
 
@@ -420,21 +520,26 @@ def evaluate_markets(graded: pd.DataFrame, *,
                      alpha: float = PREDICTION_GATE_ALPHA,
                      validation_start: str = VALIDATION_START) -> pd.DataFrame:
     """Una fila por (league, market) con la decision y su evidencia."""
-    df = _usable(graded, validation_start)
+    df = _graded_rows(graded, validation_start)
     if df.empty:
         return pd.DataFrame(columns=_TABLE_COLS)
     rows = []
     for (lg, mk), g in df.groupby(["league", "market"]):
+        g1 = g[g["result"].isin(_RESULTADOS_C1)]
+        if g1.empty:
+            continue  # solo push: el universo de cortes no crece por ellos
+        g1 = g1.assign(y=g1["y"].astype(int))
         rows.append({"league": str(lg), "market": str(mk),
-                     **_decide(g, min_n, alpha)})
+                     **_decide(g1, min_n, alpha, g_ev=g)})
     return pd.DataFrame(rows, columns=_TABLE_COLS)
 
 
 def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
                  now: str, *,
                  min_n: int = PREDICTION_GATE_MIN_N,
-                 alpha: float = PREDICTION_GATE_ALPHA) -> tuple[dict[str, dict],
-                                                              list[dict]]:
+                 alpha: float = PREDICTION_GATE_ALPHA,
+                 bloquear_entradas: bool = False) -> tuple[dict[str, dict],
+                                                         list[dict]]:
     """Fusiona la decision estadistica del dia con el estado previo del pestillo.
 
     Reglas (pre-registro 2026-08-16, criterios de descarte):
@@ -466,6 +571,7 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
                 "action": "latch", "reason": reason, "released_by": "",
                 "note": "", "n": entry["n"], "p_value": entry["p_value"],
                 "ev_flat": entry["ev_flat"],
+                "ev_lado_modelo": entry["ev_lado_modelo"],
             })
 
     seen: set[str] = set()
@@ -491,6 +597,11 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
             # Aun no elegible: el test NO se consume. Un corte sin muestra no ha
             # gastado su unica bala.
             nuevo_entry_at, permitido, razon = entry_at, False, stat_reason
+        elif entry_at is None and bloquear_entradas:
+            # Universo fuera de lo pre-registrado (AUD-009, re-pre-registro
+            # 2026-11-03 §2.3): el test NO se consume, ni se cobra alpha, ni se
+            # arma el pestillo. Se re-evalua cuando el universo vuelva a caber.
+            nuevo_entry_at, permitido, razon = None, False, "fuera_de_preregistro"
         elif entry_at is None:
             # ESTE es el test de entrada. Se consume ahora, pase o no pase.
             nuevo_entry_at, permitido = now, stat_allowed
@@ -516,6 +627,8 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         entry = {
             "n": int(r.n), "wins": int(r.wins), "p_value": float(r.p_value),
             "ev_flat": float(r.ev_flat),
+            "ev_lado_modelo": float(r.ev_lado_modelo),
+            "n_ev": int(r.n_ev),
             "allowed": permitido and not latched, "reason": reason,
             "latched": latched,
             "latched_at": (prev.get("latched_at") if was_latched
@@ -551,6 +664,7 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         latched = was_latched or was_allowed
         entry = {
             "n": 0, "wins": 0, "p_value": None, "ev_flat": None,
+            "ev_lado_modelo": None, "n_ev": 0,
             "allowed": False, "reason": "sin_evaluacion", "latched": latched,
             "latched_at": (prev.get("latched_at") or now) if latched else None,
             "entry_test_at": prev.get("entry_test_at"),
@@ -600,13 +714,31 @@ def _write_payload(payload: dict, bets_dir: Path) -> Path:
 def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
                           min_n: int = PREDICTION_GATE_MIN_N,
                           alpha: float = PREDICTION_GATE_ALPHA,
-                          validation_start: str = VALIDATION_START) -> Path:
+                          validation_start: str = VALIDATION_START,
+                          umbrales_de_prueba: bool = False) -> Path:
     """Persiste el registro (reemplazo atomico). Escribe SIEMPRE, incluso sin
     mercados: un ``markets`` vacio hace explicito el default-deny.
+
+    Umbrales NO canonicos (``min_n``, ``alpha`` o ``validation_start`` distintos
+    de los pre-registrados)
+    lanzan ``ValueError`` antes de tomar el lock y sin escribir nada (AUD-003,
+    audit-2026-11-03): consumirian el test unico de entrada y arrastrarian a
+    produccion un registro con otro criterio. Solo los tests pasan
+    ``umbrales_de_prueba`` verdadero.
 
     Lee el registro previo del MISMO ``bets_dir`` para aplicar el pestillo del
     pre-registro (ver ``_apply_latch``): la evaluacion estadistica se rehace de
     cero, pero el estado dentro/fuera NO se olvida entre dias."""
+    if not umbrales_de_prueba and (
+            int(min_n) != PREDICTION_GATE_MIN_N
+            or not math.isclose(float(alpha), PREDICTION_GATE_ALPHA,
+                                rel_tol=1e-12, abs_tol=0.0)
+            or str(validation_start) != VALIDATION_START):
+        raise ValueError(
+            f"write_prediction_gate: umbrales no canonicos (min_n={min_n}, "
+            f"alpha={alpha}, validation_start={validation_start}; canonicos "
+            f"{PREDICTION_GATE_MIN_N}, {PREDICTION_GATE_ALPHA}, "
+            f"{VALIDATION_START}). No se escribe nada.")
     decided = evaluate_markets(graded, min_n=min_n, alpha=alpha,
                                validation_start=validation_start)
     bets_dir = Path(bets_dir)
@@ -672,9 +804,23 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
             forzadas.append({"timestamp": now, "league": lg, "market": mk,
                              "action": "latch", "reason": "bloqueo_de_lectura",
                              "released_by": "", "note": "", "n": e.get("n"),
-                             "p_value": e.get("p_value"), "ev_flat": e.get("ev_flat")})
+                             "p_value": e.get("p_value"), "ev_flat": e.get("ev_flat"),
+                             "ev_lado_modelo": e.get("ev_lado_modelo")})
     markets, transitions = _apply_latch(decided, previous, now, min_n=min_n,
                                          alpha=alpha)
+    # Universo fuera de lo pre-registrado (AUD-009, re-pre-registro 2026-11-03
+    # §2.3): se recalcula SIN consumir ningun test de entrada nuevo.
+    n_cortes = len(markets)
+    cota = max(fwer_bound_registro(markets, alpha), fwer_bound(n_cortes, alpha))
+    fuera = (n_cortes > PREDICTION_GATE_K_REPREGISTRO
+             or cota > PREDICTION_GATE_FWER_MAX_TOLERADA + _FWER_EPS)
+    if fuera:
+        markets, transitions = _apply_latch(decided, previous, now, min_n=min_n,
+                                             alpha=alpha, bloquear_entradas=True)
+        if len(markets) != n_cortes:
+            raise RuntimeError("prediction_gate: el bloqueo de entradas cambio "
+                               "el numero de cortes; no se escribe.")
+        cota = max(fwer_bound_registro(markets, alpha), fwer_bound(n_cortes, alpha))
     transitions = forzadas + transitions
     for t in transitions:
         log.warning("prediction_gate: pestillo ARMADO para %s|%s (%s); no "
@@ -698,16 +844,14 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
     # Enmienda 2026-11-03 (KI-078): la cota se calcula con el alpha CONSUMIDO
     # (tests heredados a 0,05/52, liberaciones incluidas), y la segunda
     # condicion compara contra la maxima tolerada 50*0,05/41.
-    n_cortes = len(markets)
-    cota = max(fwer_bound_registro(markets, alpha), fwer_bound(n_cortes, alpha))
-    if (n_cortes > PREDICTION_GATE_K_REPREGISTRO
-            or cota > PREDICTION_GATE_FWER_MAX_TOLERADA + _FWER_EPS):
+    # (n_cortes, cota y `fuera` se calcularon arriba, antes de escribir.)
+    if fuera:
         log.error("prediction_gate: %d cortes evaluados (limite %d del "
                   "pre-registro, K=%d) o cota real de error de familia "
                   "%.4f frente al %.2f declarado por encima de la maxima "
                   "tolerada %.4f. "
                   "RE-PRE-REGISTRAR el criterio antes de que un corte nuevo "
-                  "alcance n>=%d.",
+                  "alcance n>=%d (test de entrada NO consumido).",
                   n_cortes, PREDICTION_GATE_K_REPREGISTRO, PREDICTION_GATE_K,
                   cota, PREDICTION_GATE_FAMILY_ALPHA,
                   PREDICTION_GATE_FWER_MAX_TOLERADA, min_n)
@@ -730,6 +874,8 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
                "alpha_heredado": round(PREDICTION_GATE_ALPHA_HEREDADO, 9),
                "alpha_regla": ("(family_alpha - tests_heredados*family_alpha/"
                                "k_heredado)/(k_bonferroni - tests_heredados)"),
+               "criterio_condicion2": CRITERIO_CONDICION2,
+               "entradas_bloqueadas": bool(fuera),
                "n_cortes_evaluados": len(markets),
                # Cota REAL, no la declarada: `family_alpha` dice entre cuanto se
                # repartio y este campo dice cuanto se esta gastando de verdad.
@@ -832,6 +978,7 @@ def _release_under_lock(bets_dir: Path, league: str, market: str, *,
         "released_by": released_by.strip(), "note": str(note),
         "n": entry.get("n"), "p_value": entry.get("p_value"),
         "ev_flat": entry.get("ev_flat"),
+        "ev_lado_modelo": entry.get("ev_lado_modelo"),
     }], bets_dir)
     log.info("prediction_gate: pestillo LIBERADO para %s por %s; la reentrada "
              "la decide la proxima evaluacion.", key, released_by.strip())

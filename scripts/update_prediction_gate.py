@@ -2,7 +2,8 @@
 
 Un (liga, mercado) queda aprobado para stake real solo si su modelo PURO bate al
 mercado en test de signo pareado FUERA DE MUESTRA (n >= 300 no empatadas,
-p < 0.05) y su EV a stake plano es positivo. Default-deny: lo que no aparece o no
+p < PREDICTION_GATE_ALPHA) y su EV realizado de la cara que elige el modelo
+(ev_lado_modelo) es positivo. Default-deny: lo que no aparece o no
 pasa, va a stake 0.
 
 Fuente: el stream servido graduado (todos los lados priceados, sin sesgo de
@@ -27,6 +28,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 
 
@@ -77,10 +79,20 @@ def main() -> int:
     if args.release:
         return _release(args.release, args.by, args.note)
 
+    no_canon = (args.min_n != PREDICTION_GATE_MIN_N
+                or not math.isclose(args.alpha, PREDICTION_GATE_ALPHA,
+                                    rel_tol=1e-12, abs_tol=0.0))
+    if no_canon and not args.dry_run:
+        print(f"Umbrales no canonicos (--min-n {args.min_n}, --alpha {args.alpha}; "
+              f"canonicos {PREDICTION_GATE_MIN_N} y {PREDICTION_GATE_ALPHA}): "
+              "escribir el registro con ellos consumiria el test unico de entrada "
+              "bajo otro criterio. Solo se admiten con --dry-run. Nada escrito.")
+        return 2
+
     graded = ServedStore(ROOT).load_all_graded()
     print(f"Stream servido graduado: {len(graded)} filas")
     print(f"Ventana de validacion: partidos POSTERIORES a {VALIDATION_START}")
-    print(f"Criterio: n >= {args.min_n} no empatadas, p < {args.alpha}, EV > 0\n")
+    print(f"Criterio: n >= {args.min_n} no empatadas, p < {args.alpha}, EV lado modelo > 0\n")
 
     decided = evaluate_markets(graded, min_n=args.min_n, alpha=args.alpha)
     if decided.empty:
@@ -93,7 +105,8 @@ def main() -> int:
         print(f"\nCumplen los criterios estadisticos: {len(ok)} de {len(decided)}")
         for r in ok.itertuples():
             print(f"  {r.league}/{r.market}: {r.wins}/{r.n} "
-                  f"(p={r.p_value:.4f}, EV={r.ev_flat:+.4f})")
+                  f"(p={r.p_value:.4f}, EV lado modelo={r.ev_lado_modelo:+.4f}, "
+                  f"n_ev={r.n_ev})")
         print("La decision FINAL (con el pestillo aplicado) es la del registro "
               "escrito, no esta tabla.")
 

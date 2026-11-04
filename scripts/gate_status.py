@@ -88,7 +88,7 @@ def render(gate: dict[str, dict], graded: pd.DataFrame, *,
            min_n_display: int = 0, block: dict | None = None) -> str:
     out: list[str] = []
     out.append(f"=== PREDICTION GATE — umbral: n>={MIN_N_GATE} unidades "
-               f"independientes, p<{ALPHA:.5f}, EV plano>0; partidos "
+               f"independientes, p<{ALPHA:.5f}, EV lado modelo>0; partidos "
                f"posteriores a {VALIDATION_START} ===")
     out.append("")
     out.append("[1] VEREDICTO PERSISTIDO (lo que aplica el run diario):")
@@ -124,7 +124,7 @@ def render(gate: dict[str, dict], graded: pd.DataFrame, *,
         out.append("  ningun corte con filas dentro de la ventana de validacion"
                    + (f" y n >= {min_n_display}" if min_n_display else "") + ".")
     else:
-        cols = ["mercado", "n", "wins", "p_value", "ev_flat", "n_falta",
+        cols = ["mercado", "n", "wins", "p_value", "ev_lado_modelo", "n_ev", "n_falta",
                 "allowed", "reason"]
         out.append(progress[cols].rename(columns={"allowed": "cumple_criterios"})
                    .to_string(index=False, float_format=lambda v: f"{v:.4f}"))
