@@ -2,7 +2,7 @@
   "round_id": "audit-2026-11-03",
   "date_utc": "2026-11-03T11:40:00Z",
   "date_utc_closed": "2026-11-03T13:50:00Z",
-  "status": "REMEDIACION_IMPLEMENTADA_PENDIENTE_DE_VERIFICACION",
+  "status": "VERIFICACION_COMPLETADA_APTO_CON_PENDIENTES",
   "scope": "Auditoria integral (full-audit) pedida por el operador el 2026-11-03: arquitectura, codigo, seguridad, dependencias/integraciones, integridad de datos, modelos, simulacion/numerico, calibracion, backtesting/OOS, fugas temporales, probabilidad/edge/EV, riesgo y controles operativos, automatizaciones/agentes/skills/hooks, pruebas/CI/recuperacion. Datos solo por agregados. Solo diagnostico y consolidacion.",
   "base_commit": "a5d186084e7bc5a42c055b420adcfa7a9a9b1ffe",
   "working_tree": "Cambios preexistentes NO del auditor: trabajo sin revisar del portero NHL (M src/sqp/backtesting/engine.py, M src/sqp/domain/models.py, M src/sqp/sports/adapters.py, ?? src/sqp/models/goalies.py, ?? scripts/research/measure_goalie_nhl.py, ?? tests/test_measure_goalie_nhl.py). Preservados intactos; auditado HEAD con git show. ?? audit/audit-2026-10-18/ es la preservacion de la ronda anterior.",
@@ -38,7 +38,7 @@
   "tests_final": "ver VALIDATION.md (suite completa sobre 4d10703)",
   "files_modified": [],
   "final_result": "APTO_CON_PENDIENTES",
-  "final_result_rationale": "0 CRITICAL y 0 HIGH; 7 MEDIUM confirmados, uno P1 operativo (AUD-002: el run de las 12:00 del 2026-11-03 abortara si no se aparta el trabajo sin commit) y seis P2 (gate: condicion 2 estructuralmente inalcanzable en 2 vias y overrides que gastan el test unico; validate_oos; precio de ejecucion latente; perdida de log ante CSV corrupto; health ciego a las tareas). Suite completa verde. No se demuestra ventaja predictiva ni rentabilidad.",
+  "final_result_rationale": "Verificacion independiente 2026-11-04: P1 AUD-002 verificado-corregido; 19 corregidos, 4 mitigados, AUD-022 bloqueado (operador), AUD-023 no aplicable; REG-001 y REG-002 LOW/P4 y NEW-001 MEDIUM/P3 preexistente pendientes. No se demuestra ventaja predictiva ni rentabilidad.",
   "finding_counts": {
     "confirmed": {
       "CRITICAL": 0,
@@ -103,10 +103,8 @@
     "BACKLOG.md": "d07b1b29fd8b8c06edf36ad75aff469d8d824c6eff4a841b99c171d960094101",
     "claude/REPORT.md": "bc25776f51f338c045f41f94f2847868173d43adf38848ae6d47c69c2a8c324f"
   },
-  "stale_files_from_previous_round": [
-    "history/verificacion-20261022T131053Z/ (copia verificada en audit/audit-2026-10-18/)"
-  ],
-  "note": "Los ficheros de stale_files_from_previous_round pertenecen a audit-2026-10-18 (copia verificada en audit/audit-2026-10-18/); no son de esta ronda y se reemplazaran si hay remediacion/verificacion. Esta consolidacion no autoriza correcciones.",
+  "stale_files_from_previous_round": [],
+  "note": "history/verificacion-20261022T131053Z/ pertenece a audit-2026-10-18 (copia verificada en audit/audit-2026-10-18/). history/verificacion-20261104T120104Z/ guarda las versiones previas de esta ronda antes de la verificacion.",
   "remediation": {
     "authorized_by": "operador 2026-11-03: «Lo autorizo. Te doy una autorizacion total y plenipotenciaria» (BACKLOG completo)",
     "base_commit": "aa8db2f",
@@ -147,5 +145,130 @@
       "STATUS.md"
     ]
   },
-  "verification": null
+  "verification": {
+    "date_utc": "2026-11-04T12:01:04Z",
+    "verifier": "subagente independiente Fable 5.1 (claude-fable-5-1), solo lectura; no implemento la remediacion",
+    "procedure": "audits/prompts/verificar-remediacion.md (.claude/automation/audit-workflow.md, Verificacion independiente)",
+    "base_commit": "786daeb26bdd6dfcd3e5994005ed8ef9fc46bac6",
+    "working_tree": "limpio al empezar",
+    "commits_evaluated": [
+      "ead24b2",
+      "77110b4",
+      "df015bf",
+      "1e50400",
+      "914707c",
+      "1832272",
+      "4d10703",
+      "786daeb (solo docs)"
+    ],
+    "secondary_evidence": "10 candidatos de una revision de codigo previa recibidos por mensaje de la sesion principal (el fichero tasks/ae2fea1f2f1cf3035.output tenia 0 bytes): 3 confirmados (REG-001, REG-002, NEW-001), 7 descartados",
+    "verdict": "APTO_CON_PENDIENTES",
+    "verdict_rule": "Regla 3: sin P0/P1 abiertos (AUD-002 verificado-corregido), sin regresion grave, evidencia suficiente por ID; quedan REG-001/REG-002 (LOW/P4), NEW-001 (MEDIUM/P3, preexistente), AUD-022 bloqueado (P4) y residuales de AUD-014/016/018/019",
+    "status_counts": {
+      "verificado_corregido": 19,
+      "verificado_mitigado": 4,
+      "abierto_bloqueado": 1,
+      "no_aplicable": 1,
+      "reabierto": 0,
+      "regresion": 0
+    },
+    "by_id": {
+      "AUD-001": "verificado-corregido",
+      "AUD-002": "verificado-corregido",
+      "AUD-003": "verificado-corregido",
+      "AUD-004": "verificado-corregido",
+      "AUD-005": "verificado-corregido",
+      "AUD-006": "verificado-corregido",
+      "AUD-007": "verificado-corregido (codigo; historial del Programador: operador)",
+      "AUD-008": "verificado-corregido",
+      "AUD-009": "verificado-corregido",
+      "AUD-010": "verificado-corregido (modo edge; ver REG-001)",
+      "AUD-011": "verificado-corregido (documentacion)",
+      "AUD-012": "verificado-corregido (documentacion)",
+      "AUD-013": "verificado-corregido",
+      "AUD-014": "verificado-mitigado",
+      "AUD-015": "verificado-corregido (parseo)",
+      "AUD-016": "verificado-mitigado",
+      "AUD-017": "verificado-corregido",
+      "AUD-018": "verificado-mitigado",
+      "AUD-019": "verificado-mitigado",
+      "AUD-020": "verificado-corregido (diagnostico)",
+      "AUD-021": "verificado-corregido",
+      "AUD-022": "abierto-bloqueado (decision del operador; exclusion, no cierre)",
+      "AUD-023": "no aplicable",
+      "AUD-024": "verificado-corregido",
+      "AUD-025": "verificado-corregido",
+      "AUD-026": "verificado-corregido"
+    },
+    "regressions": [
+      {
+        "id": "REG-001",
+        "severity": "LOW",
+        "priority": "P4",
+        "evidence": "REPRODUCED+STATICALLY_VERIFIED",
+        "related": "AUD-010 (1e50400)",
+        "file": "src/sqp/evaluation/tipster.py:91",
+        "summary": "en pick_mode=accuracy el tipster marca NO BET 'descartado por el motor de riesgo' picks que el motor apuesta; latente (produccion en modo edge; .env NOT_VERIFIABLE)"
+      },
+      {
+        "id": "REG-002",
+        "severity": "LOW",
+        "priority": "P4",
+        "evidence": "REPRODUCED",
+        "related": "AUD-002 (ead24b2)",
+        "file": "scripts/wait_for_clean_tree.ps1:26",
+        "summary": "return @() se desenrolla a $null: arbol limpiado durante la espera se registra como 'git no pudo comprobar'; rc correcto"
+      }
+    ],
+    "new_findings": [
+      {
+        "id": "NEW-001",
+        "severity": "MEDIUM",
+        "priority": "P3",
+        "evidence": "REPRODUCED+STATICALLY_VERIFIED",
+        "related": "misma causa raiz que AUD-006, preexistente en a5d1860 (no es regresion)",
+        "file": "src/sqp/risk/prediction_gate.py:686-689; src/sqp/calibration/calibrator.py (promotion_log.csv x3)",
+        "summary": "ParserError tratado como vacio: latch log de 50 filas + 1 malformada queda con 1 fila"
+      }
+    ],
+    "dismissed_candidates": {
+      "1": "regla de precio disenada (AUD-005/§2.1); observacion",
+      "3": "conforme a §2.2 del re-pre-registro",
+      "5": "diseno preexistente; secciones criticas cortas; residual de AUD-018",
+      "7": "conforme a §2.1 paso 5 del re-pre-registro",
+      "8": "calidad sin consecuencia",
+      "9": "el script no tiene --validation-start; defensa en profundidad",
+      "10": "cierto en modo edge, defensa en profundidad; no es defecto"
+    },
+    "tests": {
+      "pytest verif-a (16 ficheros de la remediacion + tipster, tier_a_gap, gate_status_cli, validate_oos_exit_code)": "rc=0: 398 passed en 270,74 s",
+      "pytest verif-b (llamadores: settlement/, bat, calibrator, contrato, closing_capture, config_yaml, espn, feature_*, gate_block, health, reports, html_report, intraday_scan, kelly, requirements_lock, served_market_shrink, settle_*, storage)": "rc=0: 429 passed en 683,38 s",
+      "ruff check src scripts tests": "rc=0",
+      "mypy src": "rc=0 (116 ficheros)",
+      "gh run view 41786550657 (CI 786daeb)": "success",
+      "suite completa": "no re-ejecutada; secundaria: implementador 3502 passed, 1 skipped sobre 4d10703; CI 786daeb verde",
+      "clasificacion": "sin NEW_REGRESSION, PRE_EXISTING_FAILURE ni ENVIRONMENTAL_FAILURE en tests"
+    },
+    "not_verifiable": [
+      ".env (PICK_MODE efectivo): lectura denegada",
+      "suite completa local en esta fase (sustituida por CI 786daeb + la del implementador)",
+      "13 tests de G1 que fallan sobre la base (afirmacion de Fable; sustituida por reproduccion propia)",
+      "validate_oos main(), BAT de produccion e intraday_gate_analysis.py: excluidos por la fase"
+    ],
+    "side_effects": "ninguno en el proyecto; simulacion del gate en un directorio temporal borrado; logs de scripts en SQP_LOG_DIR del scratchpad; tests en .codex-tmp/verif-a y verif-b",
+    "history_preserved": {
+      "path": "audit/latest/history/verificacion-20261104T120104Z/",
+      "files": {
+        "STATUS.md": "6e677563761b3af55f36c6f530e7c87b2f77ab22b00556346d1b3186d4070000",
+        "MANIFEST.json": "f0842b3502cefe14a292a5443d5d9f5620cbdb30f1608ebd6ef702977dbb2f44",
+        "VERIFICATION.md": "dc74f898a3153c04dd4a225aa2926a71427cc77958edf4a5fa2d02d949a59b19 (era la de audit-2026-10-18; identica a audit/audit-2026-10-18/VERIFICATION.md)"
+      },
+      "verified": "cmp byte a byte OK antes de sobrescribir"
+    },
+    "deliverables": {
+      "VERIFICATION.md": "30e9ff5e91857c519ee49e70da8df36708a7345e6ad87601645293fce8a9ee4b",
+      "STATUS.md": "2fa8b22c8251a9b9eab9bde8a73a3810f02df11442a91f7ccda4da5e8f24ee29"
+    },
+    "next_action": "autorizar remediacion acotada de NEW-001, REG-001 y REG-002; operador: AUD-022 y historial del Programador (AUD-007); confirmar el registro del gate tras el run de las 12:00 del 2026-11-04"
+  }
 }
