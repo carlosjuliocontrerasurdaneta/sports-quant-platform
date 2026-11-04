@@ -154,3 +154,13 @@ def test_served_store_reconcilia_cabecera_vieja_una_sola_vez(tmp_path, monkeypat
     assert writes["n"] == 1
     assert header == list(ss.COLUMNS) and header[-1] == "market_shrink"
     assert len(pd.read_csv(p)) == 4
+
+
+def test_classify_sin_ev_riesgo_conserva_el_motivo_de_siempre():
+    """Las llamadas antiguas (sin ev_riesgo) no cambian: el clasificador
+    congelado del pre-registro tier A depende del motivo exacto."""
+    from sqp.evaluation.tipster import classify
+    assert classify(0.05, 0.03, 20, 0.55, 0.075) == ("A", "edge solido con consenso profundo")
+    tier, motivo = classify(0.05, 0.03, 20, 0.55, 0.075, ev_riesgo=float("nan"))
+    assert tier == "A" and motivo.endswith("(pre-penalización)")
+

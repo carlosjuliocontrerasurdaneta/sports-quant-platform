@@ -93,8 +93,11 @@ def classify(ev: float, edge_pp: float, casas: float, prob: float,
         return ("NO BET", "descartado por el motor de riesgo "
                 "(EV ajustado en ejecución < min_edge)")
     # Fila legada (sin `adjusted_edge`): el EV es el bruto, sin penalizacion.
+    # Solo quien PASA `ev_riesgo` (tipster_table) marca las filas legadas; una
+    # llamada sin el argumento conserva el motivo exacto de siempre, que fija
+    # el clasificador congelado del pre-registro tier A.
     legado = (" (pre-penalización)"
-              if ev_riesgo is None or not np.isfinite(ev_riesgo) else "")
+              if ev_riesgo is not None and not np.isfinite(ev_riesgo) else "")
     if not np.isfinite(casas) or casas < TIER_B["casas"]:
         return "C", (f"consenso fino ({int(casas) if np.isfinite(casas) else 0} casas)"
                      + legado)
