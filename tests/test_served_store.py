@@ -195,7 +195,7 @@ def test_corrupt_served_csv_is_quarantined_not_read_as_empty_forever(tmp_path):
     assert store.append_served("wnba", [_row(event_id="ev1")]) == 1
     p = store.served_path("wnba")
     with p.open("a", encoding="utf-8") as f:
-        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z\n")
+        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,a2,b2,c2\n")
 
     # First read trips the parser, quarantines and starts clean.
     assert store._load(p).empty
@@ -216,7 +216,7 @@ def test_quarantine_failure_does_not_raise(tmp_path, monkeypatch):
     store.append_served("wnba", [_row()])
     p = store.served_path("wnba")
     with p.open("a", encoding="utf-8") as f:
-        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z\n")
+        f.write("a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,a2,b2,c2\n")
 
     def _boom(self, target):
         raise OSError("locked by another process")

@@ -39,6 +39,11 @@ COLUMNS = ["league", "event_id", "home", "away", "start_time", "game_date",
            # `price_decimal` sigue siendo la mediana del consenso. Ficheros
            # anteriores se reconcilian por union de columnas (guard de abajo).
            "execution_price", "execution_book",
+           # EV tras la penalizacion del motor de riesgo (AUD-010, 2026-11-03):
+           # el tipster lo usa para no contradecir al motor. Vacio en filas
+           # historicas (se reconcilian por union de columnas). Va ANTES de
+           # market_shrink, que sigue siendo la ultima columna.
+           "adjusted_edge",
            # Peso del mercado EFECTIVO con el que se calculo la fila (2026-10-13):
            # p_decision = (1-s)*cal(p_adj) + s*fair. 0.0 si no hubo no-vig (la
            # fila no se mezclo). Vacio en filas historicas: no se rellena
@@ -178,7 +183,10 @@ class ServedStore:
             # matches COLUMNS gets reconciled by column union and rewritten aligned;
             # the normal case stays a cheap append.
             if p.exists() and _header(p) != COLUMNS:
-                cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
+                # Orden canonico primero (revision Fable AUD-010): asi la cabecera
+                # reescrita IGUALA a COLUMNS y la reconciliacion ocurre una sola vez;
+                # las columnas ajenas del fichero viejo se conservan al final.
+                cols = list(COLUMNS) + [c for c in prior.columns if c not in COLUMNS]
                 combined = pd.concat([prior.reindex(columns=cols), df.reindex(columns=cols)],
                                      ignore_index=True)
                 _atomic_write_csv(combined, p)

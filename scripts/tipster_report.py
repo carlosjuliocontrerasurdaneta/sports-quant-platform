@@ -86,8 +86,9 @@ def main() -> int:
     # Ya NO se sobrescribe `game_date`: `tipster_table` hace ella misma la
     # conversion a hora local, asi que el resultado no depende de este llamador.
 
-    cap = Settings.load().risk.max_plausible_edge
-    tab = tipster_table(df, max_plausible_ev=cap)
+    _risk = Settings.load().risk
+    cap = _risk.max_plausible_edge
+    tab = tipster_table(df, max_plausible_ev=cap, min_edge=_risk.min_edge)
     resumen = tipster_summary(tab)
     if args.tier:
         tab = tab[tab["tier"] == args.tier]

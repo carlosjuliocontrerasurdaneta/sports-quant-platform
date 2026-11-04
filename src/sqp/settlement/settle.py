@@ -146,6 +146,14 @@ def _combinar_medias(r_lo: str, r_hi: str) -> str:
     return _COMBINACION_MEDIAS.get((r_lo, r_hi), "void")
 
 
+def _settle_px(row: pd.Series) -> float:
+    """Precio de liquidacion: `settle_price` si es finito y > 1; si no, `price_decimal`."""
+    sp = pd.to_numeric(row.get("settle_price"), errors="coerce")
+    if pd.notna(sp) and math.isfinite(float(sp)) and sp > 1.0:
+        return float(sp)
+    return row["price_decimal"]
+
+
 def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int, str]],
                       three_way: bool = False) -> pd.DataFrame:
     """scores: event_id -> (home_score, away_score, home_team_name).
@@ -158,9 +166,14 @@ def settle_candidates(candidates: pd.DataFrame, scores: dict[str, tuple[int, int
             continue
         hs, as_, home = sc
         result = _grade(row, hs, as_, home, three_way)
-        pnl = {"win": row["stake"] * (row["price_decimal"] - 1),
+        # Precio de cobro (AUD-005, audit-2026-11-03): `settle_price` es el de
+        # ejecucion. Las filas antiguas no tienen la columna (o la tienen NaN) y
+        # liquidan a `price_decimal` exactamente como antes. `price_decimal`
+        # sigue siendo la mediana del consenso (CLV y auditoria).
+        px = _settle_px(row)
+        pnl = {"win": row["stake"] * (px - 1),
                "loss": -row["stake"], "push": 0.0, "void": 0.0,
-               "half_win": 0.5 * row["stake"] * (row["price_decimal"] - 1),
+               "half_win": 0.5 * row["stake"] * (px - 1),
                "half_loss": -0.5 * row["stake"]}[result]
         rows.append({**row.to_dict(), "result": result, "pnl": round(pnl, 2),
                      "settled_at": datetime.now(timezone.utc).isoformat()})

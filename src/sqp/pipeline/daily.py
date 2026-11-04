@@ -4,6 +4,7 @@ Single bankroll, single risk engine, every league flows through here.
 """
 from __future__ import annotations
 import filecmp
+import math
 import re
 import shutil
 from collections import defaultdict
@@ -31,7 +32,7 @@ from sqp.risk.prediction_gate import (load_prediction_gate,
                                       market_allowed as prediction_allowed)
 from sqp.storage.atomic import atomic_write_csv
 from sqp.storage.lock import locked
-from sqp.risk.kelly import kelly_fraction_stake, edge
+from sqp.risk.kelly import kelly_fraction_stake, edge, stake_price
 from sqp.sports.registry import get_adapter
 from sqp.storage.odds_store import OddsStore
 from sqp.storage.results_store import ResultsStore
@@ -573,6 +574,20 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
     return None
 
 
+def _ev_ejecucion_no_positivo(stake: float, p_eff: float,
+                              exec_price: float) -> bool:
+    """Guarda de AUD-005 (audit-2026-11-03): True si el pick lleva stake pero su
+    EV al precio de EJECUCION (p_eff * exec_price - 1) no es positivo. Sin
+    ejecucion valida (NaN, infinita o <= 1) no aplica. El llamador pone el stake
+    a 0 con el flag `ev_ejecucion_no_positivo`; la fila se conserva."""
+    if not stake > 0:
+        return False
+    if not (math.isfinite(exec_price) and exec_price > 1.0
+            and math.isfinite(p_eff)):
+        return False
+    return p_eff * exec_price - 1.0 <= 0.0
+
+
 def _accuracy_selected(market: str, p_decision: float, threshold: float,
                        incomplete_market: bool,
                        price_decimal: float | None = None) -> bool:
@@ -884,12 +899,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
         cons_spread = _consensus_spread(eo, three_way=three_way)
         # Capa de EJECUCION (cableada el 2026-09-19 por decision del operador;
         # cierra AUD-005): donde se COBRARIA cada linea entre las casas
-        # accesibles declaradas en `execution.books`. Es ADITIVA: la
-        # estimacion, el no-vig, el edge, la seleccion, el stake y `price_decimal`
-        # siguen sobre la mediana del consenso, asi que con `books` vacio la
-        # salida es identica al historico salvo las dos columnas nuevas
-        # (`execution_price`, `execution_book`). Cobrar de verdad a ese precio
-        # (Kelly y liquidacion sobre el) es una decision aparte del operador.
+        # accesibles declaradas en `execution.books`. La estimacion, el no-vig,
+        # el edge, la seleccion y `price_decimal` siguen sobre la mediana del
+        # consenso. Desde AUD-005 (audit-2026-11-03) el stake se dimensiona a
+        # min(mediana, ejecucion), la guarda de EV en ejecucion anula stakes con
+        # EV <= 0 en la casa, y se liquida a `settle_price` (= ejecucion). Con
+        # `books` vacio la ejecucion repite la mediana y nada cambia.
         exec_px = _execution_prices(eo, cons, settings.execution.books,
                                     max_uplift=settings.execution.max_uplift,
                                     three_way=three_way)
@@ -953,6 +968,9 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 _adj_ctx, settings.risk, settings.weather)
             p_used, p_decision = _decision_probability(
                 _p_adj, fair, settings.risk.market_shrink, league, key[0], settings)
+            # `edge` es EV por unidad RESUELTA (condicionado a no-push): con
+            # p = pW/(pW+pL) vale EV_incondicional/(1 - P(push)). Mismo signo;
+            # en lineas enteras el filtro `min_edge` es algo mas laxo (AUD-011).
             e = edge(p_decision, price)
             # Deflate the EV by the model-vs-market disagreement (and thin markets)
             # and stake on the resulting effective probability, so an overconfident
@@ -976,7 +994,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                                 books_spread=cons_spread.get(key),
                                 books_spread_penalty=settings.risk.books_spread_penalty,
                                 books_spread_threshold=settings.risk.books_spread_threshold)
-            stake, pct = kelly_fraction_stake(adj.effective_probability, price,
+            # Stake al MENOR entre la mediana y la ejecucion (AUD-005): Kelly y
+            # el edge crecen con el precio, asi que exige min_edge en ambos y
+            # nunca sube el stake por la cuota de una sola casa. `suspect` sigue
+            # sobre `e` a la mediana.
+            _px_stake = stake_price(price, exec_price)
+            stake, pct = kelly_fraction_stake(adj.effective_probability, _px_stake,
                                               settings.bankroll,
                                               settings.risk.kelly_fraction,
                                               settings.risk.max_stake_pct,
@@ -988,7 +1011,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
             # elegibilidad se decide con la fraccion de Kelly, que no depende de
             # la banca; con banca positiva la seleccion no cambia.
             sin_banca = not settings.bankroll > 0
-            elegible = kelly_fraction_stake(adj.effective_probability, price, 1.0,
+            elegible = kelly_fraction_stake(adj.effective_probability, _px_stake, 1.0,
                                             settings.risk.kelly_fraction,
                                             settings.risk.max_stake_pct,
                                             settings.risk.min_edge)[1] > 0
@@ -1004,6 +1027,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 "market": key[0], "selection": key[1], "line": key[2],
                 "price_decimal": price, "bookmaker": "consensus_median",
                 "execution_price": exec_price, "execution_book": exec_book,
+                "adjusted_edge": round(adj.adjusted_edge, 4),
                 "model_probability": round(p_model, 4),
                 "adjusted_probability": round(_p_adj, 4),
                 "estimated_probability": round(p_used, 4),
@@ -1071,6 +1095,14 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 flag = f"{flag};bankroll_zero" if flag else "bankroll_zero"
             if flag:
                 stake, pct = 0.0, 0.0
+            # Guarda universal (tambien en modo precision): el dinero se cobra a
+            # `exec_price`; con EV <= 0 ahi no se apuesta (AUD-005). Se quita el
+            # stake, nunca la fila.
+            if _ev_ejecucion_no_positivo(stake, adj.effective_probability,
+                                         exec_price):
+                stake, pct = 0.0, 0.0
+                flag = (f"{flag};ev_ejecucion_no_positivo" if flag
+                        else "ev_ejecucion_no_positivo")
             if accuracy:
                 # Marca de origen para el KPI (hit rate por liga y banda) y para
                 # que la revocacion por edge del segundo pase salte estos picks.
@@ -1080,6 +1112,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 selection=key[1], line=key[2], price_decimal=price,
                 bookmaker="consensus_median",
                 execution_price=exec_price, execution_book=exec_book,
+                settle_price=exec_price,
                 # Sin estas dos, la guarda anti-fabricacion de `settle._grade`
                 # no se activa nunca en la ruta del dinero (AUD-MED-001).
                 home=eo.event.home, away=eo.event.away,

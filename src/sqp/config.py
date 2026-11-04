@@ -209,10 +209,12 @@ class ExecutionConfig:
     CABLEADO el 2026-09-19 por decision del operador (cierra AUD-005, que
     registraba que `9dfb4cc` dejo `_execution_prices` sin llamadores): cada
     linea servida y cada candidato llevan `execution_price` y `execution_book`.
-    Es una capa ADITIVA: `price_decimal` sigue siendo la mediana del consenso y
-    es lo que estima, selecciona, dimensiona el stake y liquida. Con `books`
-    vacio las dos columnas repiten la mediana. Cobrar de verdad al precio de
-    ejecucion (Kelly y liquidacion sobre el) sigue siendo decision aparte.
+    `price_decimal` sigue siendo la mediana del consenso: es lo que estima y
+    selecciona. Desde la remediacion audit-2026-11-03 (AUD-005) el stake se
+    dimensiona a min(mediana, execution_price), un stake con EV <= 0 en la casa
+    de ejecucion pasa a 0, y la liquidacion usa `settle_price` (= execution_price)
+    cuando existe; las filas sin el liquidan a la mediana como antes. Con `books`
+    vacio las columnas repiten la mediana y nada cambia.
     """
     books: tuple[str, ...] = ()
     max_uplift: float = 0.15
@@ -507,8 +509,8 @@ class Settings:
             from sqp.logging_config import get_logger
             get_logger("sqp.config").info(
                 "execution.books=%s: line shopping activo como capa de ejecucion "
-                "(execution_price/execution_book); price_decimal, stake y "
-                "liquidacion siguen sobre consensus_median.",
+                "(execution_price/execution_book); stake a min(mediana, ejecucion) "
+                "y liquidacion a settle_price (AUD-005).",
                 ",".join(s.execution.books))
         s.paused_markets = {str(lg): [str(m) for m in (mk or [])]
                             for lg, mk in (cfg.get("paused_markets") or {}).items()}

@@ -9,8 +9,27 @@ import math
 
 
 def edge(estimated_probability: float, price_decimal: float) -> float:
-    """Estimated edge = p * price - 1 (expected value per unit staked)."""
+    """Estimated edge = p * price - 1.
+
+    EV por unidad RESUELTA: con p = pW/(pW+pL) (condicionada a no-push) es
+    EV_incondicional/(1 - P(push)). Mismo signo; en lineas enteras el filtro
+    `min_edge` es algo mas laxo (AUD-011, audit-2026-11-03).
+    """
     return estimated_probability * price_decimal - 1.0
+
+
+def stake_price(price_decimal: float, execution_price: float | None) -> float:
+    """Precio con el que se DIMENSIONA el stake: el menor entre la mediana del
+    consenso y el de ejecucion (AUD-005, audit-2026-11-03).
+
+    Kelly, el edge y el tope son monotonos crecientes en el precio, asi que el
+    minimo exige `min_edge` en ambos precios y nunca sube el stake por la cuota
+    de una sola casa (que puede estar obsoleta). Sin ejecucion valida (NaN,
+    infinita o <= 1) devuelve la mediana, como antes."""
+    if (execution_price is not None and math.isfinite(execution_price)
+            and execution_price > 1.0):
+        return min(price_decimal, execution_price)
+    return price_decimal
 
 
 def kelly_fraction_stake(estimated_probability: float, price_decimal: float,

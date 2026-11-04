@@ -376,10 +376,20 @@ def _history_tier(df: pd.DataFrame, max_plausible_ev: float | None) -> pd.Series
     vacio = pd.Series("", index=df.index, dtype=str)
     try:
         from sqp.evaluation.tipster import tipster_table
-        if max_plausible_ev is None:
-            from sqp.config import Settings
-            max_plausible_ev = Settings.load().risk.max_plausible_edge
-        tt = tipster_table(df, max_plausible_ev=max_plausible_ev)
+        from sqp.config import Settings
+        min_edge = None
+        try:
+            _risk = Settings.load().risk
+            min_edge = _risk.min_edge
+            if max_plausible_ev is None:
+                max_plausible_ev = _risk.max_plausible_edge
+        except Exception:
+            # Sin Settings el tier se calcula igual que antes de AUD-010 (sin el
+            # descarte del motor de riesgo); solo falla si tampoco hay techo.
+            if max_plausible_ev is None:
+                raise
+        tt = tipster_table(df, max_plausible_ev=max_plausible_ev,
+                           min_edge=min_edge)
     except Exception:
         log.warning("Historial: no se pudo clasificar el tier; la columna "
                     "queda vacia y el resto del historial sigue.", exc_info=True)

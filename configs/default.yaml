@@ -1,7 +1,7 @@
 # Global defaults. Per-sport parameters live in each adapter; per-league soccer configs in configs/leagues/.
 risk:
   kelly_fraction: 0.08  # .env production value (2026-08-23); yaml aligned to silence divergence warning
-  min_edge: 0.02
+  min_edge: 0.02  # EV por unidad RESUELTA: con p=pW/(pW+pL) (sin push) es EV_incondicional/(1-P(push)); mismo signo, en lineas enteras algo mas laxo (AUD-011)
   max_stake_pct: 0.02
   max_daily_exposure_pct: 0.10   # per-league cap, applied inside each run_league
   # Global cross-league cap: the WHOLE day's staked exposure across every league

@@ -99,6 +99,8 @@ class BetCandidate:
     # Default NaN/"" para leer `candidates_*.csv` anteriores sin romper.
     execution_price: float = float("nan")
     execution_book: str = ""
+    # Precio al que se LIQUIDA (el de ejecucion); NaN = liquidar a price_decimal.
+    settle_price: float = float("nan")
     edge_penalty: float = 0.0
     books_count: int = 0
     flags: str = ""  # e.g. "edge_exceeds_max_plausible": flagged, not staked

@@ -121,7 +121,8 @@ def prepare(df: pd.DataFrame, *,
     d["_edge"] = edge
     # ROI flat: unidad apostada, se recupera precio-1 al ganar y se pierde 1 al
     # perder; las medias, la mitad de cada cosa (mismo P&L que
-    # `settle.settle_candidates`). Es el P&L de la politica, independiente del
+    # `settle.settle_candidates` a la mediana del consenso; el ledger liquida a
+    # `settle_price` cuando existe desde AUD-005). Es el P&L de la politica, independiente del
     # sizing de Kelly, que solo escalaria el mismo signo.
     d["_roi"] = np.select([res == "win", res == "half_win", res == "half_loss"],
                           [price - 1.0, 0.5 * (price - 1.0), -0.5], default=-1.0)

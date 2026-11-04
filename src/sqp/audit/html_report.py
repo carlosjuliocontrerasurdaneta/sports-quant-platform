@@ -843,7 +843,9 @@ def _todos_records(cal_dir: Path | None = None) -> list[dict]:
     try:
         from sqp.config import Settings
         from sqp.evaluation.tipster import tipster_table
-        tt = tipster_table(df, max_plausible_ev=Settings.load().risk.max_plausible_edge)
+        _risk = Settings.load().risk
+        tt = tipster_table(df, max_plausible_ev=_risk.max_plausible_edge,
+                           min_edge=_risk.min_edge)
         # Alineado por INDICE, no por (liga, mercado, seleccion, cuota): esa
         # tupla no identifica una fila -- el 2026-08-27, 541 filas producian 512
         # claves y 4 de ellas tenian tiers EN CONFLICTO, asi que el dashboard

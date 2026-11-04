@@ -46,6 +46,7 @@ import numpy as np
 import pandas as pd
 
 from sqp.evaluation.labels import decision_prob, game_date_local, match_label
+from sqp.risk.kelly import stake_price
 
 # Minimos por nivel. Son PROXIES de lo que el documento pide y estan calibrados
 # con lo medido en este proyecto, no elegidos a ojo:
@@ -64,13 +65,18 @@ def fair_odds(prob: pd.Series | float) -> pd.Series | float:
 
 
 def expected_value(prob, price):
-    """EV = prob * cuota - 1 (documento, seccion 2). Es el retorno esperado por
-    unidad apostada; coincide con `estimated_edge` del pipeline."""
+    """EV = prob * cuota - 1 (documento, seccion 2). Coincide con
+    `estimated_edge` del pipeline.
+
+    EV por unidad RESUELTA: con p = pW/(pW+pL) (condicionada a no-push) es
+    EV_incondicional/(1 - P(push)). Mismo signo; en lineas enteras el filtro
+    `min_edge` es algo mas laxo (AUD-011, audit-2026-11-03)."""
     return prob * price - 1.0
 
 
 def classify(ev: float, edge_pp: float, casas: float, prob: float,
-             max_plausible_ev: float) -> tuple[str, str]:
+             max_plausible_ev: float, ev_riesgo: float | None = None,
+             min_edge: float | None = None) -> tuple[str, str]:
     """Devuelve (tier, motivo). El motivo va SIEMPRE: una etiqueta sin razon no
     es auditable, y el documento exige poder explicar cada decision."""
     if not np.isfinite(ev) or ev <= 0:
@@ -79,18 +85,30 @@ def classify(ev: float, edge_pp: float, casas: float, prob: float,
         # Medido: lo que el cap corta rinde -22,6% frente al -5,6% de lo que
         # pasa. Un EV asi es error de estimacion, no oportunidad.
         return "NO BET", f"EV implausible (>{max_plausible_ev:.3f})"
+    # EV del motor de riesgo (AUD-010): el tipster no puede recomendar lo que el
+    # motor descarta. Solo aplica con `min_edge` y `ev_riesgo` finitos.
+    if (ev_riesgo is not None and min_edge is not None
+            and np.isfinite(ev_riesgo) and np.isfinite(min_edge)
+            and ev_riesgo < min_edge):
+        return ("NO BET", "descartado por el motor de riesgo "
+                "(EV ajustado en ejecución < min_edge)")
+    # Fila legada (sin `adjusted_edge`): el EV es el bruto, sin penalizacion.
+    legado = (" (pre-penalización)"
+              if ev_riesgo is None or not np.isfinite(ev_riesgo) else "")
     if not np.isfinite(casas) or casas < TIER_B["casas"]:
-        return "C", f"consenso fino ({int(casas) if np.isfinite(casas) else 0} casas)"
+        return "C", (f"consenso fino ({int(casas) if np.isfinite(casas) else 0} casas)"
+                     + legado)
     if not np.isfinite(edge_pp) or edge_pp < TIER_B["edge_pp"]:
-        return "C", "edge sobre el mercado marginal"
+        return "C", "edge sobre el mercado marginal" + legado
     if (casas >= TIER_A["casas"] and edge_pp >= TIER_A["edge_pp"]
             and prob >= TIER_A["prob"]):
-        return "A", "edge solido con consenso profundo"
-    return "B", "ventaja positiva, incertidumbre moderada"
+        return "A", "edge solido con consenso profundo" + legado
+    return "B", "ventaja positiva, incertidumbre moderada" + legado
 
 
 def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
-                  prob_col: str | None = None) -> pd.DataFrame:
+                  prob_col: str | None = None,
+                  min_edge: float | None = None) -> pd.DataFrame:
     """Tabla del tipster: una fila por seleccion, con tier, motivo y correlacion.
 
     `df` es el stream servido. `max_plausible_ev` debe venir de
@@ -103,6 +121,12 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
     los tiers, el EV y la cuota justa se calculaban sobre una probabilidad
     descartada por el sistema (auditoria 2026-08-31, A-01). Se admite un nombre
     de columna explicito para diagnostico.
+
+    `min_edge` (de `Settings.risk.min_edge`) activa el descarte por el motor de
+    riesgo (AUD-010): `ev_riesgo = (adjusted_edge + 1) / cuota * precio_efectivo
+    - 1`, con `precio_efectivo = stake_price(cuota, execution_price)`. Con None
+    (por defecto) no se descarta nada. Sin `adjusted_edge` (filas legadas)
+    `ev_riesgo` es NaN y el motivo lleva el sufijo "(pre-penalización)".
     """
     if df.empty:
         return pd.DataFrame()
@@ -112,6 +136,16 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
     price = pd.to_numeric(d.get("price_decimal"), errors="coerce")
     novig = pd.to_numeric(d.get("implied_probability_novig"), errors="coerce")
     casas = pd.to_numeric(d.get("books_count"), errors="coerce")
+    adj_edge = pd.to_numeric(d.get("adjusted_edge"), errors="coerce")
+    if adj_edge is None or not isinstance(adj_edge, pd.Series):
+        adj_edge = pd.Series(np.nan, index=d.index)
+    exec_px = pd.to_numeric(d.get("execution_price"), errors="coerce")
+    if exec_px is None or not isinstance(exec_px, pd.Series):
+        exec_px = pd.Series(np.nan, index=d.index)
+    price_eff = pd.Series(
+        [stake_price(float(a), float(b)) if pd.notna(a) else np.nan
+         for a, b in zip(price, exec_px)], index=d.index, dtype=float)
+    ev_riesgo = (adj_edge + 1.0) / price * price_eff - 1.0
 
     out = pd.DataFrame({
         # Hora LOCAL, calculada aqui. Antes se leia `game_date` en crudo (UTC) y
@@ -128,13 +162,15 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
         "prob_mercado": novig, "cuota_justa": fair_odds(p),
         "edge_pp": p - novig, "ev": expected_value(p, price),
         "casas": casas, "event_id": d.get("event_id"),
+        "ev_riesgo": ev_riesgo,
     })
     out = out[out["prob_est"].notna() & out["cuota"].notna()
               & (out["cuota"] > 1.0)]
     if out.empty:
         return out
 
-    tiers = [classify(r.ev, r.edge_pp, r.casas, r.prob_est, max_plausible_ev)
+    tiers = [classify(r.ev, r.edge_pp, r.casas, r.prob_est, max_plausible_ev,
+                      r.ev_riesgo, min_edge)
              for r in out.itertuples()]
     out["tier"] = [t for t, _ in tiers]
     out["motivo"] = [m for _, m in tiers]
