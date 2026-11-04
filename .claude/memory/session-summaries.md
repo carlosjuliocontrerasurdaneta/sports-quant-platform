@@ -1047,3 +1047,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Leccion: el hook fable_gate inspecciona el comando ANTES de ejecutarlo; la linea FABLE-REVIEW se escribe en un comando aparte y con la fecha del dia (a medianoche cambia).
 - Pendiente: verificacion independiente; CI tras el push; decisiones del operador en AUD-022/023 y el historial del Programador (AUD-007).
 
+- Tarde 2026-11-04: verificacion independiente APTO CON PENDIENTES (`b6b8000`). REG-001, REG-002 y NEW-001 corregidos en `f5b80e2` con revision Fable previa. Leccion: mover una escritura a un helper compartido traslada el punto de monkeypatch de los tests de concurrencia (`test_audit_log_concurrency`). Pendiente: verificar `f5b80e2`.

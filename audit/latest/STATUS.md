@@ -39,12 +39,12 @@ Las columnas «Estado (remediación)» y «Commit» se conservan tal como las de
 
 | ID | Sev. | Prio. | Relación | Estado | Próxima acción |
 |---|---|---|---|---|---|
-| REG-001 | LOW | P4 | Introducida por AUD-010 (`1e50400`): el tipster marca NO BET picks que el motor apuesta en `pick_mode=accuracy` | abierto (latente: producción en modo edge, `.env` no verificable) | Condicionar el descarte por `min_edge` al modo (escalado: contrato del informe) |
-| REG-002 | LOW | P4 | Introducida por AUD-002 (`ead24b2`): `wait_for_clean_tree.ps1` registra «git no pudo comprobar» cuando el árbol se limpió | abierto | `return ,@(...)` + aserción en el test |
-| NEW-001 | MEDIUM | P3 | Preexistente (base `a5d1860`), misma causa raíz que AUD-006 no extendida: `_append_latch_log` y los escritores de `promotion_log.csv` reescriben perdiendo filas ante `ParserError` | abierto | Cuarentena como AUD-006 (rutas del candado Fable) |
+| REG-001 | LOW | P4 | Introducida por AUD-010 (`1e50400`): el tipster marca NO BET picks que el motor apuesta en `pick_mode=accuracy` | corregido en `f5b80e2`, pendiente de verificación (marca `accuracy_mode` por fila, también en el stream servido) | Condicionar el descarte por `min_edge` al modo (escalado: contrato del informe) |
+| REG-002 | LOW | P4 | Introducida por AUD-002 (`ead24b2`): `wait_for_clean_tree.ps1` registra «git no pudo comprobar» cuando el árbol se limpió | corregido en `f5b80e2`, pendiente de verificación | `return ,@(...)` + aserción en el test |
+| NEW-001 | MEDIUM | P3 | Preexistente (base `a5d1860`), misma causa raíz que AUD-006 no extendida: `_append_latch_log` y los escritores de `promotion_log.csv` reescriben perdiendo filas ante `ParserError` | corregido en `f5b80e2`, pendiente de verificación (helper `append_csv_log`) | Cuarentena como AUD-006 (rutas del candado Fable) |
 
 Recuento de verificación: 19 verificado-corregido, 4 verificado-mitigado, 1 abierto-bloqueado, 1 no aplicable; 2 regresiones LOW/P4 y 1 hallazgo preexistente P3. Ningún P0/P1 abierto.
 
 Además, KI-078 (cuenta del α consumido) se corrigió antes de esta remediación, en `aa8db2f`, y quedó fuera del alcance de esta verificación.
 
-**Siguiente paso:** pedir autorización para corregir NEW-001, REG-001 y REG-002 (nueva remediación acotada), y que el operador decida AUD-022 y habilite el historial del Programador.
+**Siguiente paso:** NEW-001, REG-001 y REG-002 se corrigieron el 2026-11-04 en `f5b80e2`, con revisión Fable previa al commit (APTO CON CAMBIOS, cambio aplicado) y autorización del operador («Házlo»). Falta la verificación independiente de ese commit. El operador decide AUD-022 y habilita el historial del Programador.
