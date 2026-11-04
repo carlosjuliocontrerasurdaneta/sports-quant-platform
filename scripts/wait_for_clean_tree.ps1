@@ -23,7 +23,9 @@ function Get-ArbolSucio {
     # Devuelve las lineas sucias, o $null si git no pudo responder.
     $lineas = & git status --porcelain -- src scripts configs '*.bat' 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
-    return @($lineas | Where-Object { $_ })
+    # Coma unaria (REG-002): sin ella PowerShell desenrolla el array vacio a
+    # $null y un arbol limpio se confundia con un fallo de git en el log.
+    return ,@($lineas | Where-Object { $_ })
 }
 
 function Write-Log([string]$msg) {

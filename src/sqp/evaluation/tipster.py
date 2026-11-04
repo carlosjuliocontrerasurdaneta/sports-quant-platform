@@ -109,6 +109,17 @@ def classify(ev: float, edge_pp: float, casas: float, prob: float,
     return "B", "ventaja positiva, incertidumbre moderada" + legado
 
 
+def _marca_accuracy(d: pd.DataFrame) -> pd.Series:
+    """True en las filas que el motor genero en modo precision (marca
+    `accuracy_mode` en `flags`). Celda a celda: `astype(str)` deja NaN en
+    pandas 3."""
+    flags = d.get("flags")
+    if not isinstance(flags, pd.Series):
+        return pd.Series(False, index=d.index)
+    return flags.map(lambda v: isinstance(v, str)
+                     and "accuracy_mode" in v.split(";")).astype(bool)
+
+
 def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
                   prob_col: str | None = None,
                   min_edge: float | None = None) -> pd.DataFrame:
@@ -128,7 +139,9 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
     `min_edge` (de `Settings.risk.min_edge`) activa el descarte por el motor de
     riesgo (AUD-010): `ev_riesgo = (adjusted_edge + 1) / cuota * precio_efectivo
     - 1`, con `precio_efectivo = stake_price(cuota, execution_price)`. Con None
-    (por defecto) no se descarta nada. Sin `adjusted_edge` (filas legadas)
+    (por defecto) no se descarta nada; tampoco en filas marcadas
+    `accuracy_mode`, donde el motor no aplica `min_edge` (REG-001). Sin
+    `adjusted_edge` (filas legadas)
     `ev_riesgo` es NaN y el motivo lleva el sufijo "(pre-penalización)".
     """
     if df.empty:
@@ -166,15 +179,22 @@ def tipster_table(df: pd.DataFrame, *, max_plausible_ev: float = 0.075,
         "edge_pp": p - novig, "ev": expected_value(p, price),
         "casas": casas, "event_id": d.get("event_id"),
         "ev_riesgo": ev_riesgo,
+        "_accuracy_mode": _marca_accuracy(d),
     })
     out = out[out["prob_est"].notna() & out["cuota"].notna()
-              & (out["cuota"] > 1.0)]
+              & (out["cuota"] > 1.0)].copy()
+    acc_mode = out.pop("_accuracy_mode")
     if out.empty:
         return out
 
+    # REG-001 (verificacion audit-2026-11-03): en modo precision el motor NO
+    # filtra por `min_edge` (stake plano por probabilidad), asi que decir
+    # "descartado por el motor de riesgo" de esas filas era falso. Se decide
+    # por fila con la marca que el motor deja (`accuracy_mode` en `flags`), no
+    # por la configuracion actual: el historial mezcla runs de ambos modos.
     tiers = [classify(r.ev, r.edge_pp, r.casas, r.prob_est, max_plausible_ev,
-                      r.ev_riesgo, min_edge)
-             for r in out.itertuples()]
+                      r.ev_riesgo, None if acc_ok else min_edge)
+             for r, acc_ok in zip(out.itertuples(), acc_mode)]
     out["tier"] = [t for t, _ in tiers]
     out["motivo"] = [m for _, m in tiers]
 

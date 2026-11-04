@@ -101,7 +101,7 @@ from scipy.stats import binomtest
 from sqp.exceptions import RegistroEstadoIlegibleError
 from sqp.logging_config import get_logger
 from sqp.settlement.quarter_line_fix import drop_pre_fix_quarter_lines
-from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
+from sqp.storage.atomic import (append_csv_log, atomic_write_json,
                                 read_json_retrying)
 from sqp.storage.lock import locked
 
@@ -681,22 +681,10 @@ def _append_latch_log(rows: list[dict], bets_dir: Path) -> Path | None:
         return None
     bets_dir.mkdir(parents=True, exist_ok=True)
     path = bets_dir / PREDICTION_GATE_LATCH_LOG
-    new = pd.DataFrame(rows)
-    if path.exists():
-        try:
-            prior = pd.read_csv(path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            prior = pd.DataFrame()
-        if not prior.empty:
-            cols = list(prior.columns) + [c for c in new.columns
-                                          if c not in prior.columns]
-            new = pd.concat([prior.reindex(columns=cols),
-                             new.reindex(columns=cols)], ignore_index=True)
-    # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
-    # integral 2026-09-08): temporal UNICO por proceso y fsync. Este modulo no
-    # participa en ningun lock, asi que dos escrituras solapadas del historial
-    # del gate podian renombrar el fichero a medio escribir de la otra.
-    atomic_write_csv(new, path)
+    # `append_csv_log` (NEW-001): un historial ilegible se aparta a cuarentena
+    # en vez de reescribirse solo con las filas nuevas. Escribe con
+    # `atomic_write_csv` (AUD-MED-003): temporal UNICO por proceso y fsync.
+    append_csv_log(pd.DataFrame(rows), path)
     return path
 
 

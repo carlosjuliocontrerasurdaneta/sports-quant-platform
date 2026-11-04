@@ -5,12 +5,15 @@ from threading import Event
 import pandas as pd
 
 from sqp.pipeline import revalidation as rv
+from sqp.storage import atomic
 
 
 def test_concurrent_appends_preserve_rows_and_schema(tmp_path, monkeypatch):
     rv._append_log([dict(event_id="initial")], tmp_path)
     snapshot_ready, release, second_started = Event(), Event(), Event()
-    original = rv.atomic_write_csv
+    # La escritura pasa por `append_csv_log` (NEW-001), que llama a
+    # `atomic.atomic_write_csv`: el punto de pausa vive ahi.
+    original = atomic.atomic_write_csv
 
     def paused_write(frame, path):
         if "first_only" in frame and "second_only" not in frame:
@@ -22,7 +25,7 @@ def test_concurrent_appends_preserve_rows_and_schema(tmp_path, monkeypatch):
         second_started.set()
         rv._append_log([dict(event_id="second", second_only=2)], tmp_path)
 
-    monkeypatch.setattr(rv, "atomic_write_csv", paused_write)
+    monkeypatch.setattr(atomic, "atomic_write_csv", paused_write)
     with ThreadPoolExecutor(2) as pool:
         first = pool.submit(rv._append_log, [dict(event_id="first", first_only=1)], tmp_path)
         try:

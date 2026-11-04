@@ -1041,7 +1041,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                                   if fair is not None and settings.risk.market_shrink > 0
                                   else 0.0),
                 "stake": 0.0, "data_label": eo.event.data_label,
-                "flags": "served_stream", "generated_at": served_at})
+                # REG-001: la marca de modo precision viaja tambien en el stream
+                # servido, del que leen el tipster y el tablero.
+                "flags": ("served_stream;accuracy_mode"
+                          if settings.pick_mode == "accuracy"
+                          else "served_stream"),
+                "generated_at": served_at})
             # An edge above the plausibility cap is almost certainly model
             # miscalibration, not market value: record it for the audit trail but
             # do not stake it.
@@ -1095,9 +1100,11 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 flag = f"{flag};bankroll_zero" if flag else "bankroll_zero"
             if flag:
                 stake, pct = 0.0, 0.0
-            # Guarda universal (tambien en modo precision): el dinero se cobra a
-            # `exec_price`; con EV <= 0 ahi no se apuesta (AUD-005). Se quita el
-            # stake, nunca la fila.
+            # Guarda de EV en ejecucion (AUD-005): el dinero se cobra a
+            # `exec_price`; con EV <= 0 ahi no se apuesta. Se quita el stake,
+            # nunca la fila. Solo puede dispararse en modo precision (stake
+            # plano): en modo edge Kelly ya exige edge >= min_edge > 0 sobre
+            # min(mediana, ejecucion), y aqui queda como defensa en profundidad.
             if _ev_ejecucion_no_positivo(stake, adj.effective_probability,
                                          exec_price):
                 stake, pct = 0.0, 0.0

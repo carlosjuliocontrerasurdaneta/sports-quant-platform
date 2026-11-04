@@ -28,7 +28,7 @@ from sklearn.isotonic import IsotonicRegression
 from sqp.calibration.metrics import (brier_score, calibration_report,
                                      expected_calibration_error)
 from sqp.config import ROOT
-from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
+from sqp.storage.atomic import (append_csv_log, atomic_write_json,
                                 read_json_retrying)
 from sqp.storage.lock import locked
 from sqp.logging_config import get_logger
@@ -994,20 +994,11 @@ def promote_calibrators(keys: list[str] | None = None,
                             "n_val_events": meta.get("n_val_events") if meta else None})
         log_path = MODELS_DIR / "promotion_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        new_df = pd.DataFrame(entries)
-        if log_path.exists():
-            try:
-                prior = pd.read_csv(log_path)
-            except (pd.errors.EmptyDataError, pd.errors.ParserError):
-                prior = pd.DataFrame()
-            cols = list(prior.columns) + [c for c in new_df.columns if c not in prior.columns]
-            new_df = pd.concat([prior.reindex(columns=cols),
-                                new_df.reindex(columns=cols)], ignore_index=True)
-        # `atomic_write_csv` y no un temporal a mano (AUD-MED-003, auditoria
-        # integral 2026-09-08): temporal UNICO por proceso y fsync. Este es el
-        # log de promocion de calibradores: la traza de que modelo entro en
-        # produccion y cuando.
-        atomic_write_csv(new_df, log_path)
+        # Log de promocion de calibradores: la traza de que modelo entro en
+        # produccion y cuando. `append_csv_log` (NEW-001) aparta a cuarentena
+        # un log ilegible en vez de reescribirlo vacio; escribe con
+        # `atomic_write_csv` (AUD-MED-003).
+        append_csv_log(pd.DataFrame(entries), log_path)
     return promoted
 
 
@@ -1018,16 +1009,7 @@ def _append_promotion_log(entries: list[dict]) -> None:
         return
     log_path = MODELS_DIR / "promotion_log.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    new = pd.DataFrame(entries)
-    if log_path.exists():
-        try:
-            prior = pd.read_csv(log_path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError):
-            prior = pd.DataFrame()
-        cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
-        new = pd.concat([prior.reindex(columns=cols), new.reindex(columns=cols)],
-                        ignore_index=True)
-    atomic_write_csv(new, log_path)
+    append_csv_log(pd.DataFrame(entries), log_path)  # NEW-001
 
 
 def demote_calibrators(keys: list[str], *, reason: str = "") -> list[str]:
@@ -1125,17 +1107,8 @@ def auto_promote_calibrators(results: list[dict], *,
     if entries:
         log_path = MODELS_DIR / "promotion_log.csv"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        new = pd.DataFrame(entries)
-        if log_path.exists():
-            try:
-                prior = pd.read_csv(log_path)
-            except (pd.errors.EmptyDataError, pd.errors.ParserError):
-                prior = pd.DataFrame()
-            cols = list(prior.columns) + [c for c in new.columns if c not in prior.columns]
-            new = pd.concat([prior.reindex(columns=cols),
-                             new.reindex(columns=cols)], ignore_index=True)
-        # Mismo helper que el otro escritor de este log (AUD-MED-003).
-        atomic_write_csv(new, log_path)
+        # Mismo helper que los otros escritores de este log (NEW-001).
+        append_csv_log(pd.DataFrame(entries), log_path)
     return {"promoted": promoted, "demoted": demoted,
             "skipped": [k for k, _ in skipped]}
 

@@ -108,6 +108,24 @@ def test_accuracy_mode_demo_pipeline_selects_by_probability(monkeypatch):
     assert (plain["stake"] == flat).all()                        # stake plano, no Kelly
     zeroed = c[flags != "accuracy_mode"]
     assert (zeroed["stake"] == 0).all()
+    # REG-001: la marca viaja tambien en el stream servido (tipster y tablero).
+    assert set(_flags_ultimo_servido()) == {"served_stream;accuracy_mode"}
+
+
+def _flags_ultimo_servido(league: str = "nba") -> list[str]:
+    from sqp.storage.served_store import ServedStore
+    s = pd.read_csv(ServedStore(ROOT, demo=True).served_path(league))
+    ultimo = s[s["generated_at"] == s["generated_at"].max()]
+    assert not ultimo.empty
+    return ultimo["flags"].tolist()
+
+
+def test_modo_edge_no_marca_el_stream_servido_como_accuracy():
+    from sqp.pipeline.daily import run_league
+    settings = Settings.load()
+    settings.pick_mode = "edge"
+    run_league("nba", settings, mode="demo")
+    assert set(_flags_ultimo_servido()) == {"served_stream"}
 
 
 

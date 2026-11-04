@@ -127,6 +127,10 @@ def test_si_el_arbol_se_limpia_durante_la_espera_el_flujo_continua(repo):
     log = _log(repo)
     assert "ABORTADO ANTES DE LIQUIDAR" not in log
     assert "Arbol limpio tras la espera" in log
+    # REG-002: el array vacio ya no se desenrolla a $null; un arbol limpio no
+    # se registra como fallo de git.
+    assert "arbol limpio; se continua." in log
+    assert "git no pudo comprobar" not in log
     assert (repo / "settle_llamado.txt").exists(), "debe seguir hasta liquidar"
     llamadas = (repo / "run_status_calls.txt").read_text(encoding="utf-8")
     assert "guard_arbol" not in llamadas

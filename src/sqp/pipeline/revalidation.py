@@ -46,7 +46,7 @@ from sqp.audit.clv_movement import (exclude_two_way_draw_books,
 from sqp.logging_config import get_logger
 from sqp.pipeline.closing_capture import _parse_utc
 from sqp.sports.team_names import normalize_key
-from sqp.storage.atomic import atomic_write_csv
+from sqp.storage.atomic import append_csv_log, atomic_write_csv
 from sqp.storage.lock import locked
 
 log = get_logger("sqp.revalidation")
@@ -71,34 +71,9 @@ def _append_log(rows: list[dict], root: Path,
     # Atomic replacement protects readers, not concurrent read/modify/write.
     # The log has its own lock, shared by all its append callers.
     with locked(path):
-        new = pd.DataFrame(rows)
-        if path.exists():
-            try:
-                prior = pd.read_csv(path)
-            except pd.errors.EmptyDataError:
-                prior = pd.DataFrame()
-            except pd.errors.ParserError as exc:
-                # AUD-006: un CSV con fila malformada NO es un log vacio;
-                # reescribirlo perderia el historial. Se aparta a cuarentena.
-                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                target = path.with_suffix(f"{path.suffix}.corrupt.{stamp}")
-                try:
-                    path.rename(target)
-                except OSError as rename_exc:
-                    log.error("%s no se pudo parsear (%s) ni apartar (%s); "
-                              "no se reescribe para no perder filas.",
-                              path, exc, rename_exc)
-                    raise
-                log.error("%s no se pudo parsear (%s); apartado a %s. "
-                          "Reimportar a mano si las filas importan.",
-                          path, exc, target.name)
-                prior = pd.DataFrame()
-            if not prior.empty:
-                cols = list(prior.columns) + [c for c in new.columns
-                                              if c not in prior.columns]
-                new = pd.concat([prior.reindex(columns=cols),
-                                 new.reindex(columns=cols)], ignore_index=True)
-        atomic_write_csv(new, path)
+        # AUD-006: un CSV con fila malformada NO es un log vacio; el helper
+        # compartido lo aparta a cuarentena en vez de perder el historial.
+        append_csv_log(pd.DataFrame(rows), path)
 
 
 def _revoke_row(df: pd.DataFrame, idx: int, flag: str, stamp: str) -> None:

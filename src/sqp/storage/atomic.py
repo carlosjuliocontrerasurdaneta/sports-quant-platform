@@ -161,3 +161,52 @@ def read_json_retrying(path: Path, *, seconds: float = REPLACE_RETRY_SECONDS,
             if time.monotonic() >= deadline:
                 raise
             time.sleep(wait)
+
+
+def append_csv_log(new: pd.DataFrame, path: Path) -> None:
+    """Append a un rastro CSV append-only reconciliando columnas (union).
+
+    Un fichero ilegible (fila malformada -> ``ParserError``, o columnas
+    desplazadas al indice, que pandas 3 produce sin error cuando TODAS las filas
+    traen un campo de mas) NO es un log vacio: tratarlo como tal y reescribirlo
+    perdia todo el historial. Se aparta a ``<nombre>.corrupt.<UTC>`` con sus
+    bytes intactos y se empieza un log nuevo; si no se puede apartar, se lanza
+    sin escribir. Mismo criterio que AUD-006 en ``revalidation._append_log``,
+    extendido a los demas escritores (NEW-001, verificacion audit-2026-11-03).
+    El llamador es responsable del lock si hay escritores concurrentes."""
+    import logging
+    from datetime import datetime, timezone
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        motivo: str | None = None
+        try:
+            prior = pd.read_csv(path)
+        except pd.errors.EmptyDataError:
+            prior = pd.DataFrame()  # 0 bytes: no hay historial que perder
+        except pd.errors.ParserError as exc:
+            prior, motivo = pd.DataFrame(), f"no parseable ({exc})"
+        else:
+            # Indice por defecto exacto: una primera columna entera y
+            # consecutiva desplazada al indice tambien es un RangeIndex.
+            if not prior.index.equals(pd.RangeIndex(len(prior))):
+                prior, motivo = pd.DataFrame(), "columnas desplazadas al indice"
+        if motivo is not None:
+            log = logging.getLogger("sqp.storage.atomic")
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            target = path.with_name(f"{path.name}.corrupt.{stamp}")
+            try:
+                path.rename(target)
+            except OSError as rename_exc:
+                log.error("%s %s y no se pudo apartar (%s); no se reescribe "
+                          "para no perder filas.", path, motivo, rename_exc)
+                raise
+            log.error("%s %s; apartado a %s. Reimportar a mano si las filas "
+                      "importan.", path, motivo, target.name)
+        if not prior.empty:
+            cols = list(prior.columns) + [c for c in new.columns
+                                          if c not in prior.columns]
+            new = pd.concat([prior.reindex(columns=cols),
+                             new.reindex(columns=cols)], ignore_index=True)
+    atomic_write_csv(new, path)
