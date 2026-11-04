@@ -167,6 +167,8 @@ def dataset_is_current(root: Path, league: str) -> bool:
         m = json.loads(man.read_text(encoding="utf-8"))
     except Exception:
         return False
+    if not isinstance(m, dict):   # AUD-017: raiz no objeto = caducado
+        return False
     # Un manifest anterior a D-10 no lleva huella: se trata como caducado en vez
     # de darlo por vigente, que es el lado seguro (reconstruir).
     if m.get("builder_fingerprint") != builder_fingerprint(league):

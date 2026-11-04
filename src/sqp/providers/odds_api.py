@@ -89,6 +89,7 @@ class OddsAPIClient:
         self.requests_remaining: int | None = None
         self.requests_used: int | None = None
         self.requests_last: int | None = None  # credit cost of the most recent call
+        self.last_parse_skipped = 0  # elementos malformados omitidos en el ultimo parseo
         # True when the most recent _get was served from the on-disk cache (no
         # network call, no credit spent). Lets callers skip side effects that must
         # happen once per real fetch (e.g. persisting an odds snapshot).
@@ -279,22 +280,42 @@ class OddsAPIClient:
         """
         out: list[EventOdds] = []
         degenerate = 0
+        # AUD-019: un elemento malformado (evento sin id/equipos, outcome sin
+        # price o no numerico) se OMITE y se cuenta; antes tiraba la liga entera
+        # DESPUES de haber pagado la peticion.
+        skipped_events = 0
+        skipped_outcomes = 0
+        self.last_parse_skipped = 0
         for ev in raw:
-            event = Event(event_id=ev["id"], sport_key=sport_key, league=league_id,
-                          home=ev["home_team"], away=ev["away_team"],
-                          start_time=ev["commence_time"], data_label="real")
+            try:
+                event = Event(event_id=ev["id"], sport_key=sport_key, league=league_id,
+                              home=ev["home_team"], away=ev["away_team"],
+                              start_time=ev["commence_time"], data_label="real")
+            except (KeyError, TypeError):
+                skipped_events += 1
+                continue
             lines: list[MarketLine] = []
             for bm in ev.get("bookmakers", []):
                 for mk in bm.get("markets", []):
                     for oc in mk.get("outcomes", []):
-                        price = float(oc["price"])
+                        try:
+                            price = float(oc["price"])
+                            line = MarketLine(
+                                market=mk["key"], bookmaker=bm["key"], outcome=oc["name"],
+                                price_decimal=price, point=oc.get("point"),
+                                description=oc.get("description"))
+                        except (KeyError, TypeError, ValueError, AttributeError):
+                            skipped_outcomes += 1
+                            continue
                         if not is_usable_price(price):
                             degenerate += 1
-                        lines.append(MarketLine(
-                            market=mk["key"], bookmaker=bm["key"], outcome=oc["name"],
-                            price_decimal=price, point=oc.get("point"),
-                            description=oc.get("description")))
+                        lines.append(line)
             out.append(EventOdds(event=event, lines=lines))
+        self.last_parse_skipped = skipped_events + skipped_outcomes
+        if self.last_parse_skipped:
+            log.warning("[%s] %d evento(s) y %d cotizacion(es) malformados del "
+                        "proveedor omitidos; el resto de la liga se conserva.",
+                        league_id, skipped_events, skipped_outcomes)
         if degenerate:
             # Agregado por llamada, no por linea: con 1.611 casos en el historico
             # un aviso por fila seria ruido que nadie lee.

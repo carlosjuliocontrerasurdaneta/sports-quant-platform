@@ -75,7 +75,23 @@ def _append_log(rows: list[dict], root: Path,
         if path.exists():
             try:
                 prior = pd.read_csv(path)
-            except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            except pd.errors.EmptyDataError:
+                prior = pd.DataFrame()
+            except pd.errors.ParserError as exc:
+                # AUD-006: un CSV con fila malformada NO es un log vacio;
+                # reescribirlo perderia el historial. Se aparta a cuarentena.
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                target = path.with_suffix(f"{path.suffix}.corrupt.{stamp}")
+                try:
+                    path.rename(target)
+                except OSError as rename_exc:
+                    log.error("%s no se pudo parsear (%s) ni apartar (%s); "
+                              "no se reescribe para no perder filas.",
+                              path, exc, rename_exc)
+                    raise
+                log.error("%s no se pudo parsear (%s); apartado a %s. "
+                          "Reimportar a mano si las filas importan.",
+                          path, exc, target.name)
                 prior = pd.DataFrame()
             if not prior.empty:
                 cols = list(prior.columns) + [c for c in new.columns

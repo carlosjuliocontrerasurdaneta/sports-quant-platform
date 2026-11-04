@@ -79,6 +79,8 @@ def _register(root: Path, entry: dict) -> None:
     if path.exists():
         try:
             reg = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(reg, list):   # AUD-017: raiz inesperada = ilegible
+                raise ValueError("registry.json: la raiz no es una lista")
         except Exception:
             # Never discard a corrupt registry silently: keep the bytes for
             # forensics and start a fresh list (data-integrity rule).

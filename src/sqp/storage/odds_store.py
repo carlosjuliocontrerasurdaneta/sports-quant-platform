@@ -7,6 +7,7 @@ out-of-sample dataset for realized-ROI and CLV validation (plan block A).
 """
 from __future__ import annotations
 import csv
+import io
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
@@ -48,7 +49,9 @@ class OddsStore:
                 for eo in events for ln in eo.lines]
         if not rows:
             return 0
-        df = pd.DataFrame(rows)[COLUMNS]
+        # AUD-016: filas exactamente iguales (todas las columnas) no aportan
+        # informacion; una misma captura repetida debe ser idempotente.
+        df = pd.DataFrame(rows)[COLUMNS].drop_duplicates()
         p = self.path(league, captured_at[:7].replace("-", ""))
         self.dir.mkdir(parents=True, exist_ok=True)
         # Guard de drift de esquema (mismo modo de corrupcion que KI-011 en
@@ -57,6 +60,9 @@ class OddsStore:
         # union de columnas y se reescribe alineado (atomico). El caso normal
         # (header identico) sigue siendo un append barato.
         with _locked(p):
+            df = _drop_already_stored(df, p, captured_at)
+            if df.empty:
+                return 0
             if p.exists() and _header(p) != COLUMNS:
                 prior = pd.read_csv(p)
                 cols = list(prior.columns) + [c for c in COLUMNS if c not in prior.columns]
@@ -70,6 +76,42 @@ class OddsStore:
             else:
                 df.to_csv(p, mode="a", header=not p.exists(), index=False)
         return len(df)
+
+
+_TAIL_BYTES = 262144
+
+
+def _drop_already_stored(df: pd.DataFrame, p: Path, captured_at: str) -> pd.DataFrame:
+    """Quita de ``df`` las filas ya presentes en ``p`` con el mismo
+    ``captured_at`` (idempotencia de ``append_snapshot``, AUD-016).
+
+    Los snapshots se anexan en orden, asi que una captura repetida deja su
+    ``captured_at`` en la cola del fichero: se mira solo la cola (barato) y solo
+    si aparece se lee el fichero por bloques para comparar. Comparacion exacta
+    sobre el texto de las columnas (sin parsear numeros)."""
+    if df.empty or not p.exists():
+        return df
+    with p.open("rb") as fh:
+        fh.seek(0, 2)
+        size = fh.tell()
+        fh.seek(max(0, size - _TAIL_BYTES))
+        tail = fh.read().decode("utf-8", errors="ignore")
+    if captured_at not in tail:
+        return df
+    texto = pd.read_csv(io.StringIO(df.to_csv(index=False)), dtype=str,
+                        keep_default_na=False)
+    vistos: set[tuple[str, ...]] = set()
+    for chunk in pd.read_csv(p, dtype=str, keep_default_na=False,
+                             chunksize=200_000):
+        if "captured_at" not in chunk.columns:
+            continue
+        mismo = chunk[chunk["captured_at"] == captured_at].reindex(columns=COLUMNS,
+                                                                    fill_value="")
+        vistos.update(map(tuple, mismo.fillna("").to_numpy()))
+    if not vistos:
+        return df
+    nuevas = [tuple(r) not in vistos for r in texto.to_numpy()]
+    return df[nuevas]
 
 
 def _header(p: Path) -> list[str]:

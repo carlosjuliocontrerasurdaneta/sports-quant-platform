@@ -28,7 +28,9 @@ from sklearn.isotonic import IsotonicRegression
 from sqp.calibration.metrics import (brier_score, calibration_report,
                                      expected_calibration_error)
 from sqp.config import ROOT
-from sqp.storage.atomic import atomic_write_csv, atomic_write_json
+from sqp.storage.atomic import (atomic_write_csv, atomic_write_json,
+                                read_json_retrying)
+from sqp.storage.lock import locked
 from sqp.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -210,6 +212,25 @@ def structural_defect(predict) -> str | None:
     return None
 
 
+# AUD-020: tolerancia SOLO diagnostica para f(p)+f(1-p)=1. No gobierna ninguna
+# aceptacion, promocion ni probabilidad servida: unicamente decide si se emite
+# un warning. Medido en la auditoria: wnba_spreads 1,0019, mlb_spreads 1,0001.
+COMPLEMENTARITY_TOL = 0.01
+
+
+def complementarity_gap(predict, lo: float = 0.05, hi: float = 0.95,
+                        n: int = 19) -> float:
+    """max |f(p) + f(1-p) - 1| sobre una rejilla simetrica de [lo, hi].
+
+    Un mercado de dos caras calibrado por cara sin renormalizar solo suma 1 si el
+    mapa es complementario. Es una metrica DIAGNOSTICA: no cambia ninguna
+    probabilidad servida."""
+    grid = np.linspace(lo, hi, n)
+    f = np.asarray(predict(grid), dtype=float)
+    f_rev = np.asarray(predict(1.0 - grid), dtype=float)
+    return float(np.max(np.abs(f + f_rev - 1.0)))
+
+
 def calibrator_defect(key: str, method: str, *,
                       staging: bool) -> str | None:
     """`structural_defect` sobre el artefacto persistido de `key`, o el motivo
@@ -227,6 +248,15 @@ def calibrator_defect(key: str, method: str, *,
         return "sin modelo legible"
     if modelo is None:
         return "sin modelo legible"
+    try:
+        gap = complementarity_gap(modelo.predict)
+    except Exception as exc:  # diagnostico: nunca puede romper la evaluacion
+        log.debug("[%s] complementariedad no evaluable (%s)", key, exc)
+    else:
+        if gap > COMPLEMENTARITY_TOL:
+            log.warning("[%s] calibrador no complementario: max|f(p)+f(1-p)-1|"
+                        "=%.4f > %.4f (diagnostico; no cambia probabilidades)",
+                        key, gap, COMPLEMENTARITY_TOL)
     return structural_defect(modelo.predict)
 
 
@@ -316,9 +346,10 @@ def _load_method_registry(*, staging: bool = False) -> dict:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _staging_meta_path(key: str):
@@ -397,13 +428,36 @@ def _set_best_method(key: str, method: str | None, *, staging: bool = False) -> 
         # ni un uso interactivo -- puede registrar una clave sandbox en live.
         raise ValueError(f"{key!r} es una clave sandbox ({', '.join(SANDBOX_SUFFIXES)}): "
                          "solo puede vivir en staging; produccion no la resuelve.")
-    reg = _load_method_registry(staging=staging)
-    if method is None:
-        reg.pop(key, None)
-    else:
-        reg[key] = method
     path = _method_registry_path(staging=staging)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # AUD-008: el read-modify-write va bajo lock y una lectura FALLIDA de un
+    # fichero existente aborta en vez de tratarse como {} (reescribirlo con una
+    # sola clave borraria entradas live y serviria probabilidades sin calibrar).
+    with locked(path):
+        reg = _read_registry_strict(path)
+        if method is None:
+            reg.pop(key, None)
+        else:
+            reg[key] = method
+        _write_method_registry(reg, path)
+
+
+def _read_registry_strict(path: Path) -> dict:
+    """Registro para modificar y reescribir: {} solo si el fichero NO existe.
+    OSError (tras reintentos), JSON corrupto, bytes no UTF-8 o una raiz que no
+    es un objeto propagan: quien reescribe no debe reducir un registro que no
+    pudo leer."""
+    if not path.exists():
+        return {}
+    data = read_json_retrying(path)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path.name}: la raiz del registro de calibracion no "
+                         f"es un objeto JSON ({type(data).__name__}); no se "
+                         "reescribe.")
+    return data
+
+
+def _write_method_registry(reg: dict, path: Path) -> None:
     # Escritura atomica (AUD-2026-09-08b): este es el registro VIVO que respalda
     # `method="auto"`. Truncado, `_load_method_registry` devuelve {} y el
     # pipeline pasa a servir probabilidades SIN CALIBRAR, en silencio y en la

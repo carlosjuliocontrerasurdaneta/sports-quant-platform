@@ -287,6 +287,24 @@ def test_price_revoke_logs_reason(tmp_path):
     assert log.iloc[0]["reason"] == "edge_below_min"
 
 
+def test_append_log_parser_error_quarantines_instead_of_losing_rows(tmp_path):
+    """AUD-006: un CSV con fila malformada se aparta a .corrupt.*, no se pierde."""
+    from sqp.pipeline.revalidation import _append_log
+
+    bets = tmp_path / "data" / "bets"
+    bets.mkdir(parents=True)
+    log_path = bets / "revalidation_log.csv"
+    body = "a,b\n" + "".join(f"{i},{i}\n" for i in range(100)) + "1,2,3,4,5\n"
+    log_path.write_text(body, encoding="utf-8")
+
+    _append_log([{"a": 9, "b": 9}], tmp_path)
+
+    corrupt = list(bets.glob("revalidation_log.csv.corrupt.*"))
+    assert len(corrupt) == 1
+    assert corrupt[0].read_text(encoding="utf-8") == body
+    assert len(pd.read_csv(log_path)) == 1
+
+
 def test_settings_revalidation_defaults_and_validation():
     s = Settings()                          # directo: apagado (tests/demo)
     assert s.revalidation_enabled is False

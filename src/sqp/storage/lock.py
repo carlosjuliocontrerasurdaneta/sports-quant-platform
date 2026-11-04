@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -37,6 +38,14 @@ LOCK_TIMEOUT_S = 120.0  # espera maxima antes de ABORTAR (ya no se degrada)
 LOCK_STALE_S = 300.0    # un .lock mas viejo que esto es de un proceso muerto
 
 
+def _read_token(lock: Path) -> str | None:
+    """Identidad (pid:uuid) escrita por el dueño del lock; None si no se lee."""
+    try:
+        return lock.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 @contextmanager
 def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
            stale_s: float = LOCK_STALE_S) -> Iterator[None]:
@@ -55,9 +64,16 @@ def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
     lock = target.with_suffix(target.suffix + ".lock")
     deadline = time.monotonic() + timeout_s
     fd: int | None = None
+    # AUD-018: identidad del dueño. Sin ella, romper un lock caducado o limpiar
+    # en el `finally` podia borrar el lock NUEVO de otro proceso.
+    token = f"{os.getpid()}:{uuid.uuid4().hex}"
     while True:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, token.encode("utf-8"))
+            except OSError:   # el token es una salvaguarda, no una condicion
+                token = ""
             break
         except FileExistsError:
             try:
@@ -72,7 +88,16 @@ def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
                 stale = False
             if stale:
                 try:
-                    lock.unlink(missing_ok=True)
+                    # Releer identidad y caducidad justo antes de borrar: si el
+                    # lock cambio de dueño entre el `stat` y aqui, NO se toca.
+                    visto = _read_token(lock)
+                    sigue_caducado = (
+                        time.time() - lock.stat().st_mtime > stale_s
+                        and _read_token(lock) == visto)
+                    if sigue_caducado:
+                        lock.unlink(missing_ok=True)
+                except FileNotFoundError:
+                    pass
                 except OSError as exc:
                     # El `except OSError` de arriba solo envuelve el `stat`, no
                     # este `unlink`, y en Windows borrar un fichero cuyo titular
@@ -118,4 +143,7 @@ def locked(target: Path, timeout_s: float = LOCK_TIMEOUT_S,
     finally:
         if fd is not None:
             os.close(fd)
-            lock.unlink(missing_ok=True)
+            # Solo se borra el lock PROPIO: si caduco y otro proceso lo rompio y
+            # creo el suyo, este ya no es nuestro y no se toca (AUD-018).
+            if _read_token(lock) in (token, None):
+                lock.unlink(missing_ok=True)

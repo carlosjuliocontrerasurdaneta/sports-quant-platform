@@ -297,6 +297,11 @@ def captured_rows(experiment: Path) -> list[dict]:
     protocol_hash = digest(experiment / "protocol.json")
     for path in sorted((experiment / "captures").glob("batch_*/predictions.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
+        # AUD-017: raiz o campos inesperados -> fallo controlado y explicito.
+        if (not isinstance(payload, dict)
+                or not isinstance(payload.get("predictions"), list)
+                or "protocol_sha256" not in payload):
+            raise ValueError(f"malformed capture archive: {path}")
         if payload["protocol_sha256"] != protocol_hash:
             raise ValueError("capture belongs to a different protocol")
         rows.extend(payload["predictions"])

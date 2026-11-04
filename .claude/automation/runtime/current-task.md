@@ -442,3 +442,6 @@ FABLE-REVIEW: 2026-11-02 | veredicto: APTO CON CAMBIOS (revisor Fable independie
 
 ## 2026-11-03 — KI-078: alfa consumido real en el gate (enmienda K=69)
 FABLE-REVIEW: 2026-11-03 | veredicto: APTO CON CAMBIOS (revisor Fable independiente del autor Fable de la enmienda; 87 passed; produccion migra sin transiciones, seis heredados a 0,05/52, cota 74 cortes 0,053510; aplicados los 4 cambios: corte liberado sin partidos conserva alpha_gastado_previo + test, test de franja INFO solo por cota, texto del ERROR neutro, espacio en default.yaml) | rutas: src/sqp/risk/prediction_gate.py, configs/default.yaml, docs/research/2026-11-02-repreregistro-gate-k69.md, docs/research/2026-11-03-enmienda-gate-k69-alfa-consumido.md, scripts/gate_status.py, tests/test_prediction_gate.py, .claude/skills/clv-shadow-exit/SKILL.md
+
+## 2026-11-04 — Remediacion audit-2026-11-03 (autorizacion total del operador, 2026-11-03)
+FABLE-REVIEW: 2026-11-04 | veredicto: APTO (lote D; revisor Fable independiente; 177 passed; AUD-020 tolerancia 0,01 confirmada con los calibradores vivos: gap maximo 0,0019 wnba_spreads; tests de odds_store cambiados legitimos; 3 LOW opcionales registrados como residuales) | rutas: src/sqp/calibration/calibrator.py, src/sqp/models/ml_train.py, src/sqp/storage/feature_store.py, src/sqp/storage/lock.py, src/sqp/storage/odds_store.py

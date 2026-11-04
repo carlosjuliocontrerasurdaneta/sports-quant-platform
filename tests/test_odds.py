@@ -6,6 +6,18 @@ def test_american_to_decimal():
     assert american_to_decimal(-110) == pytest.approx(1.9090909, rel=1e-6)
     assert american_to_decimal(250) == 3.5
 
+@pytest.mark.parametrize("bad", [-50, -99.99, 50, 99.99, 0.5, -0.5])
+def test_american_to_decimal_rejects_abs_below_100(bad):
+    """AUD-026: (-100, 100) no es un precio americano valido."""
+    with pytest.raises(ValueError):
+        american_to_decimal(bad)
+
+
+@pytest.mark.parametrize("ok, dec", [(100, 2.0), (-100, 2.0), (101, 2.01)])
+def test_american_to_decimal_frontera_100_valida(ok, dec):
+    assert american_to_decimal(ok) == pytest.approx(dec)
+
+
 def test_round_trip():
     for a in (-300, -110, 120, 450):
         assert decimal_to_american(american_to_decimal(a)) == pytest.approx(a, rel=1e-9)

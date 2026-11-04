@@ -23,8 +23,12 @@ def _events() -> list[EventOdds]:
 
 def test_append_snapshot_schema_and_accumulation(tmp_path):
     store = OddsStore(tmp_path)
-    assert store.append_snapshot("wnba", _events()) == 3
-    assert store.append_snapshot("wnba", _events()) == 3  # second run accumulates
+    # AUD-016: misma captura (mismo captured_at) es idempotente, asi que los
+    # dos runs llevan instantes distintos, como en produccion.
+    assert store.append_snapshot("wnba", _events(),
+                                 captured_at="2026-06-12T10:00:00+00:00") == 3
+    assert store.append_snapshot("wnba", _events(),
+                                 captured_at="2026-06-12T10:30:00+00:00") == 3  # accumulates
     files = list((tmp_path / "data" / "odds").glob("odds_wnba_*.csv"))
     assert len(files) == 1
     df = pd.read_csv(files[0])
@@ -107,7 +111,10 @@ def test_concurrent_appends_do_not_interleave_rows(tmp_path):
     store = OddsStore(tmp_path)
     captured = "2026-06-13T01:00:00+00:00"
     assert store.append_snapshot("wnba", _events(), captured_at=captured) == 3
-    assert store.append_snapshot("wnba", _events(), captured_at=captured) == 3
+    # AUD-016: el mismo captured_at ya es idempotente; el segundo append lleva
+    # otro instante para seguir ejercitando el camino de anexado bajo lock.
+    assert store.append_snapshot("wnba", _events(),
+                                 captured_at="2026-06-13T01:00:01+00:00") == 3
     df = pd.read_csv(store.path("wnba", "202606"))
     assert len(df) == 6 and list(df.columns) == COLUMNS
     assert not store.path("wnba", "202606").with_suffix(".csv.lock").exists()
@@ -143,3 +150,25 @@ def test_locked_honours_timeout_when_stat_fails_persistently(tmp_path, monkeypat
     # modo de salida sino que SALGA: antes giraba al 100% de CPU sin llegar
     # nunca a esta linea.
     assert _time.monotonic() - t0 < 10.0
+
+
+def test_append_snapshot_es_idempotente_con_el_mismo_captured_at(tmp_path):
+    """AUD-016: repetir la misma captura no duplica filas."""
+    store = OddsStore(tmp_path)
+    ts = "2026-06-12T10:00:00+00:00"
+    assert store.append_snapshot("wnba", _events(), captured_at=ts) == 3
+    assert store.append_snapshot("wnba", _events(), captured_at=ts) == 0
+    f = next((tmp_path / "data" / "odds").glob("odds_wnba_*.csv"))
+    assert len(pd.read_csv(f)) == 3
+    # un instante distinto SI acumula
+    assert store.append_snapshot("wnba", _events(),
+                                 captured_at="2026-06-12T10:30:00+00:00") == 3
+    assert len(pd.read_csv(f)) == 6
+
+
+def test_append_snapshot_dedupe_dentro_de_la_misma_llamada(tmp_path):
+    store = OddsStore(tmp_path)
+    ev = _events()
+    ev[0].lines.append(ev[0].lines[0])           # fila exactamente repetida
+    assert store.append_snapshot("wnba", ev,
+                                 captured_at="2026-06-12T10:00:00+00:00") == 3

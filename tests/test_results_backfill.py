@@ -47,6 +47,46 @@ def test_parse_scoreboard_completed_only():
                        "home_score": 2, "away_score": 1, "neutral": True, "game_id": ""}]
 
 
+def _payload_00():
+    return {"events": [
+        {"id": "1", "date": "2003-01-10T01:00Z",
+         "competitions": [{"status": {"type": {"completed": True}},
+                           "competitors": [
+                               {"homeAway": "home", "score": "0", "team": {"displayName": "A"}},
+                               {"homeAway": "away", "score": "0", "team": {"displayName": "B"}}]}]}]}
+
+
+def test_parse_scoreboard_descarta_00_en_deporte_sin_empate():
+    """AUD-015: 0-0 de relleno (NHL/NFL/NBA antiguos) no entra."""
+    assert parse_scoreboard(_payload_00(), allow_draws=False) == []
+
+
+def test_parse_scoreboard_conserva_00_de_futbol():
+    assert len(parse_scoreboard(_payload_00())) == 1
+    assert len(parse_scoreboard(_payload_00(), allow_draws=True)) == 1
+
+
+def test_fetch_pasa_allow_draws_segun_el_deporte():
+    from sqp.providers.espn_results import ESPNResultsProvider
+
+    class _Ok:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return _payload_00()
+
+    class _Sess:
+        def get(self, *a, **k):
+            return _Ok()
+
+    p = ESPNResultsProvider(session=_Sess())
+    assert p._fetch({"path": "hockey/nhl"}, "20030110") == []
+    assert len(p._fetch({"path": "soccer/eng.1"}, "20030110")) == 1
+
+
 def test_espn_offseason_404_chunk_is_empty_not_fatal():
     from sqp.providers.espn_results import ESPNResultsProvider
 

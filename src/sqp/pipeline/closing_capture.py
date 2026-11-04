@@ -170,14 +170,19 @@ def capture_closing(predictions_dir: Path, settings, *, window_min: int = 120,
                          "(%d gastados); se omite", league, est, max_credits,
                          already + spent)
                 continue
-            events = client.fetch_odds(league, meta["sport_key"], markets)
-            # Reconciliar con el coste real reportado por la API.
-            delta = client.requests_last or 0
-            if delta:
-                # Persistencia incremental por liga: un crash a mitad del loop
-                # ya no pierde el gasto acumulado (auditoria 2026-07-24, M-23).
-                add_spent(odds_dir, day, delta)
-            spent += delta
+            try:
+                events = client.fetch_odds(league, meta["sport_key"], markets)
+            finally:
+                # AUD-019: el credito se paga al recibir la respuesta; se
+                # descuenta aunque el parseo posterior falle. Reconciliar con el
+                # coste real reportado por la API.
+                delta = client.requests_last or 0
+                if delta:
+                    # Persistencia incremental por liga: un crash a mitad del
+                    # loop ya no pierde el gasto acumulado (auditoria
+                    # 2026-07-24, M-23).
+                    add_spent(odds_dir, day, delta)
+                spent += delta
             if events:
                 # El fetch ya se pago para TODA la liga: persistir el snapshot
                 # completo (eventos no-pick incluidos) da trayectorias de linea

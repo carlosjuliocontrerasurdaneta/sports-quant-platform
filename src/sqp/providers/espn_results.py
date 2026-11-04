@@ -183,7 +183,9 @@ class ESPNResultsProvider(ResultsProvider):
                     last_error = f"{r.status_code} {r.reason}"
                 else:
                     r.raise_for_status()
-                    return parse_scoreboard(r.json())
+                    return parse_scoreboard(
+                        r.json(),
+                        allow_draws=str(cfg["path"]).startswith("soccer/"))
             # `RequestException` y `ValueError` ademas de los dos de red: el
             # docstring promete SALTAR la ventana, pero un cuerpo no-JSON
             # (`r.json()` -> ValueError) o cualquier otra RequestException
@@ -200,8 +202,13 @@ class ESPNResultsProvider(ResultsProvider):
         return []
 
 
-def parse_scoreboard(payload: dict) -> list[dict]:
-    """Completed events only, in ResultsProvider dict format."""
+def parse_scoreboard(payload: dict, *, allow_draws: bool = True) -> list[dict]:
+    """Completed events only, in ResultsProvider dict format.
+
+    ``allow_draws=False`` (deportes sin empate: baloncesto, beisbol, hockey,
+    futbol americano) descarta los 0-0: ESPN publica 0-0 de relleno en partidos
+    antiguos "completed" sin marcador real (AUD-015). Un 0-0 en futbol es un
+    empate legitimo y se conserva (``allow_draws=True``, por defecto)."""
     out: list[dict] = []
     for ev in payload.get("events", []):
         comp = (ev.get("competitions") or [{}])[0]
@@ -220,6 +227,10 @@ def parse_scoreboard(payload: dict) -> list[dict]:
             home_score = int(float(home["score"]))
             away_score = int(float(away["score"]))
         except (KeyError, TypeError, ValueError):
+            continue
+        if not allow_draws and home_score == 0 and away_score == 0:
+            log.warning("descartado 0-0 de relleno en deporte sin empate: %s",
+                        ev.get("id", ""))
             continue
         out.append({"date": str(ev.get("date", ""))[:10],
                     "home": home["team"]["displayName"],

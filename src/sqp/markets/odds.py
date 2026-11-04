@@ -24,6 +24,10 @@ def american_to_decimal(american: float) -> float:
         raise ValueError(f"American odds must be finite, got {american}")
     if american == 0:
         raise ValueError("American odds cannot be 0")
+    if abs(american) < 100:
+        # AUD-026: el formato americano solo existe para |x| >= 100 (+100 es
+        # "even"); -50 daria 3.0 en vez de ser una cuota invalida.
+        raise ValueError(f"American odds must satisfy abs(x) >= 100, got {american}")
     return 1 + (american / 100.0 if american > 0 else 100.0 / abs(american))
 
 
