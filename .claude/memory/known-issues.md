@@ -654,3 +654,18 @@ Format:
 - Causa raiz (verificada 2026-10-22 con logs\settle_all.log y el registro NetworkProfile/WLAN de Windows): SIN RED a las 12:00. El Wi-Fi (hotspot del movil) estuvo desconectado el 21-10 de 08:42 a 19:10 y el 22-10 de 11:17 a 13:36; todas las ligas dieron `could not reach api.the-odds-api.com ... after 5 attempts (ConnectionError)` y ESPN igual, y la liquidacion aborto por picks ya comenzados sin liquidar (guarda correcta). No es un defecto del codigo.
 - Mitigacion: `DIARIO_COMPLETO.bat` [0c] espera la red con `scripts/wait_for_network.ps1` (TCP a api.the-odds-api.com:443, cada 120 s hasta 480 min; `SQP_NET_WAIT_MAX_MIN`, `SQP_NET_WAIT_INTERVAL_S`, `SQP_NET_WAIT_HOST`; escape `SQP_SKIP_NET_WAIT=1`). Sin red al agotar el plazo aborta ANTES de liquidar por `:error_red` (centinela settle). Probado: con red rc=0 en 2 s; host inexistente rc=1 sin pasar de [0c].
 - Status: RESUELTO (2026-10-22). Residual: si la red falta mas de 8 h el dia sigue sin picks (ahora con aviso y sin gastar 40 min).
+
+- ID: KI-077
+- Severity: Alta (dias sin picks)
+- Description: el guard de arbol sucio de `DIARIO_COMPLETO.bat` (KI-036) aborto los runs de las 12:00 del 2026-11-02 y del 2026-11-03 porque el trabajo sin revisar del portero NHL estaba sin commit en `src/` y `scripts/`. El guard funciona bien: no toca datos. El problema es que produccion y desarrollo comparten carpeta y el aborto no se reintenta. Es AUD-002 (P1) de la ronda audit-2026-11-03.
+- Affected files: DIARIO_COMPLETO.bat (`:error_arbol`); tarea SQP_Diario_Completo_Cdev
+- Fix inmediato (2026-11-03): el operador aparto el trabajo con `git stash push -u -m "wip portero NHL sin revisar" -- ...` (stash@{0}) y relanzo la tarea con `schtasks /run` a las 20:40. Resultado: `DIARIO_COMPLETO: OK` a las 21:03, health WARN (0 errores); liquido el atraso y genero los picks.
+- Pendiente estructural (AUD-002, sin autorizar): reintento diferido del guard o desarrollo en un worktree aislado. El trabajo del portero se recupera con `git stash pop` y necesita revision de Fable y commit antes de las 12:00.
+- Status: MITIGADO (2026-11-03)
+
+- ID: KI-078
+- Severity: Media (contabilidad del gate; ningun corte elegible aun)
+- Description: revision cruzada de Codex del 2026-11-03, verificada a mano. `fwer_bound` (`src/sqp/risk/prediction_gate.py:140`) reparte el alfa de los seis tests ya consumidos a 0,05/69, aunque se gastaron a 0,05/52. Cota real: 68 cortes = 0,050697 (el codigo da 0,049275); 69 = 0,051421; techo 84 = 0,062291, por encima del invariante 0,060976 del re-pre-registro K=69 §3.4. Con el presupuesto mixto, el techo correcto es 82.
+- Affected files: src/sqp/risk/prediction_gate.py; docs/research/2026-11-02-repreregistro-gate-k69.md §3.4
+- Fix: pendiente de diseno Fable y decision del operador. Opcion A: mantener 0,05/69, aceptar FWER 5,14 % y bajar el techo a 82. Opcion B: alfa = (0,05 - 0,005769)/63 = 0,000702 para los 63 cortes vivos. En ambas, `fwer_bound` debe contar el alfa consumido real. Anadir tests con entradas consumidas a K=52. Coordinar con AUD-001 y AUD-009. Debe estar resuelto antes de que nhl spreads/totals lleguen a n=300 (219 el 2026-11-01).
+- Status: ABIERTO (candidato AUD-027 de la ronda audit-2026-11-03, aun no anadido a los entregables)
