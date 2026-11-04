@@ -1,46 +1,275 @@
-# CHANGES — remediación de la ronda `audit-2026-10-18`
+# CHANGES — remediación de la ronda `audit-2026-11-03`
 
-- **Autorización:** Carlos, 2026-10-18, «Sí, házlo. corregílos todos». Alcance: AUD-001..AUD-017 de `BACKLOG.md`.
-- **Base:** `3e8bbac`. `FINDINGS.md` se conserva como línea base; el progreso está en `STATUS.md` y la evidencia en `VALIDATION.md`.
-- **Fuera de alcance:** reparar en disco las filas duplicadas de AUD-003, re-graduar las filas de AUD-008 y el residuo KI-071. Los datos crudos no se mutan; cada una de esas acciones necesita autorización expresa aparte.
-- **Estado final de todos los IDs:** pendiente de verificación independiente.
+- **Autorización.** El operador, el 2026-11-03: «Lo autorizo. Te doy una autorización total y plenipotenciaria», sobre todo el BACKLOG.
+- **Base.** `aa8db2f` (incluye la corrección KI-078 previa, `aa8db2f`).
+- **Cómo se trabajó.**
+  - Seis lotes, cada uno implementado por Sonnet en un worktree aislado.
+  - Los lotes con rutas de escalado los diseñó y revisó Fable antes del commit: D, G1 y G2 (AUD-001, 003, 005, 009, 010, 011 y 021).
+  - Integración en `main` en estos commits:
 
-| ID | Estado inicial | Causa | Archivos | Cambio | Prueba discriminante (falla antes / pasa después) | Riesgo residual |
-|---|---|---|---|---|---|---|
-| AUD-001 | Confirmado HIGH | La celda de empate reglamentario (k,k) contaba como total 2k en una liga a dos vías | `src/sqp/models/distributions.py`, `src/sqp/sports/adapters.py` | `tie_adds_goal`: la celda (k,k) pasa a (k+1,k)/(k,k+1) con p/2. Los ritmos, ajustados sobre marcadores finales, se escalan por un factor común para que E[total final] = λh+λa. Solo `HockeyAdapter` | `tests/test_distributions.py::test_aud001_*`: error < 2 pp en 4,5–7,5 contra `results_nhl.csv` (n=4.658); paridad eliminada; media final preservada; tres vías sin cambios | h2h NHL −0,1 pp y puck line −1,5 −0,4 pp en el punto medido. MLB queda fuera: sus extras pueden sumar varias carreras y su histórico no muestra el patrón |
-| AUD-002 | Confirmado MEDIUM | El descanso solo conocía partidos jugados, no los programados | `src/sqp/models/rest.py`, `src/sqp/sports/adapters.py`, `src/sqp/pipeline/daily.py` | `RestModel.schedule` y `adapter.schedule(events)` antes de estimar. `rest_days` toma el último partido, jugado o programado, estrictamente anterior | `tests/test_rest.py::test_aud002_*`, incluida la paridad con el estado del walk-forward | Solo se conocen los partidos con cuotas en el feed |
-| AUD-003 | Confirmado MEDIUM | La identidad del partido incluía fecha y nombres, no solo el `game_id` del proveedor | `src/sqp/storage/results_store.py`, `src/sqp/providers/mlb_statsapi.py` | Una fila por `game_id` no vacío: en `load` (primera cronológica, sin tocar el CSV) y en `upsert` (la existente gana, con aviso). MLB deduplica el `gamePk` quedándose la última fecha | `tests/test_results_backfill.py::test_aud003_*`: 5 fallan antes y pasan después | Al leer se descartan mlb 15, ncaab 31, wncaab 95, atp 2, wta 3, ligamx 1 y ucl 1 (agregado del 2026-10-18). El CSV crudo conserva las filas |
-| AUD-004 | Confirmado MEDIUM | `shlex` POSIX se comía la `\`, las rutas se resolvían contra la raíz y `stage` no se reconocía | `.claude/hooks/fable_gate.py`, `tests/test_fable_gate.py` | Contrabarra entre caracteres de ruta → `/` antes de tokenizar; directorio efectivo desde `payload.cwd`, `cd`/`Set-Location`/`pushd` y `git -C`; `stage` ≡ `add`; `ls-files --full-name` | `test_aud004_escapes_are_blocked`: 9 casos, los 9 fallan antes y pasan después. Fichero completo: 104 passed | La ofuscación deliberada sigue fuera del alcance del candado |
-| AUD-005 | Confirmado MEDIUM | Sin reintento, y la detección vivía dentro del run que faltaba | `src/sqp/monitoring/health.py`, `scripts/check_daily_launch.py`, `scripts/run_status.py`, `CAPTURE_CLOSE.bat` | Vigilante en otra tarea (captura de cierre, cada 30 min): si la tarea de las 12:00 no se lanzó o devolvió un HRESULT de lanzamiento, registra el centinela `diario_no_lanzado`, que muestran el tablero y `health_check`, y lo retira cuando se lanza | `tests/test_run_status.py::test_aud005_*`; ejecución en vivo: «El run diario se lanzo en su disparador» | No relanza el run. El reintento automático del Programador (`RestartCount`) queda como decisión del operador: requiere un proceso elevado y su semántica ante un exit ≠ 0 no está documentada con claridad (relanzaría llamadas de pago) |
-| AUD-006 | Confirmado MEDIUM | Ninguna barrera antes de publicar; el hook excluía `audit/` | GitHub; `.github/workflows/ci.yml`; `scripts/scan_tracked_secrets.py`; `.claude/hooks/check-secrets.sh`; `.claude/hooks/_secret_literals.py` | Secret scanning y push protection **activados** (`gh api`). Nuevo job de CI `secret-scan`. El hook escanea `audit/` y `audits/`; `_symbolic` descarta identificadores en minúsculas y patrones con `[]{}` | `tests/test_scan_tracked_secrets.py`; `test_audit_reports_are_scanned_too`; el escaneo del repo da 0 hallazgos fuera de los fixtures del detector | `tests/test_audit_hooks.py` queda exento por ruta exacta (fixtures deliberados) |
-| AUD-007 | Confirmado MEDIUM | `codex review` sin presupuesto, frente a 600 s de hook | `.claude/hooks/crossreview-on-stop.sh` | `timeout ${SQP_CROSSREVIEW_TIMEOUT_S:-540}`; rc 124 cae en la rama de fallo de entorno, que restaura el centinela y avisa | `test_crossreview_lento_se_corta_avisa_y_conserva_el_marcador`: falla antes, pasa después | Sin `timeout` en el PATH se ejecuta como antes |
-| AUD-008 | Confirmado LOW | Las filas de cuarto graduadas win/loss antes del arreglo seguían contando | `src/sqp/settlement/quarter_line_fix.py` (nuevo), `src/sqp/risk/prediction_gate.py`, `src/sqp/calibration/data.py` | Las filas totals/spreads de cuarto con `generated_at` anterior a `c578f52` (2026-09-13T12:36:34Z), o sin fecha, dejan de contar en el gate y en la calibración | `tests/test_quarter_line_fix.py` | Conservador: también excluye filas de cuarto bien graduadas antes del corte (572 filas; antes del corte solo hay 8 medias liquidaciones, después 80 de 284). Ver la decisión de Fable sobre los pre-registros en `STATUS.md` |
-| AUD-009 | Confirmado LOW | Se aceptaba como cierre un snapshot capturado en la entrada o antes | `src/sqp/audit/clv.py`, `src/sqp/backtesting/roi_engine.py` | `load_closing_odds(captured_out=…)`; con `captured_at ≤ generated_at` la fila cuenta como sin cierre | `tests/test_clv.py::test_aud009_*` | Sin `generated_at` legible se conserva el comportamiento anterior |
-| AUD-010 | Confirmado LOW | El edge estimado y el ROI realizado se calculaban sobre poblaciones distintas | `src/sqp/audit/report.py`, `src/sqp/audit/html_report.py` | Nueva columna `est_edge_staked`, ponderada por stake y sobre las filas con stake, que es la que se compara con `realized_roi`. El texto ya no compara `mean_est_edge` con el ROI | `tests/test_breakeven.py::test_aud010_*` | — |
-| AUD-011 | Confirmado LOW | Los tests escribían en `logs/sqp.log` de producción | `src/sqp/logging_config.py`, `tests/conftest.py` | La variable `SQP_LOG_DIR` redirige el fichero; la suite la fija a un temporal al importar `conftest` | `test_la_suite_no_escribe_en_el_log_de_produccion`: falla antes, pasa después | Las líneas que dejaron los tests anteriores siguen en el log |
-| AUD-012 | Confirmado LOW | El detector no reconocía `key=`, `x-api-key`, `ghp_` ni `github_pat_` | `.claude/hooks/_secret_literals.py` | Patrón `KEYED` (valor alfanumérico seguido de ≥20 caracteres con letra y dígito) y prefijos de GitHub | `test_aud012_*`: 10 fallan antes; los negativos de código corriente pasan | Un hex suelto sin nombre sigue sin detectarse: a propósito, por los SHA |
-| AUD-013 | Confirmado LOW | Se exigía `model` en forks, donde no tiene efecto | `.claude/hooks/require-dispatch-model.sh`, `MODEL_ROUTING.md` | Un fork sin `model` pasa con aviso; documentado | `test_un_fork_sin_modelo_*`, `test_dispatch_guard_lets_fork_*` | — |
-| AUD-014 | Confirmado LOW | IDs obsoletos de Sonnet y Haiku | `.claude/automation/MODEL_ROUTING.md`, `docs/MODEL-ROUTING.md`, `tests/test_claude_model_routing.py` | `claude-sonnet-5-5` / `claude-haiku-5-5`, verificados en vivo el 2026-10-18 en platform.claude.com/docs/en/about-claude/models/overview | Fichero de test de routing en verde | — |
-| AUD-015 | Confirmado LOW | El issue #4 seguía abierto con el CI en verde | GitHub; `.github/workflows/ci.yml` | #4 **cerrado** con comentario. Nuevo job `cierre-ci-verde` que cierra los `ci-rojo` en cada verde de main | Verificación: `gh issue list --label ci-rojo --state open` → `[]` | El job se comprobará en el primer run de main tras el push |
-| AUD-016 | Confirmado LOW | El lock no fijaba el cierre transitivo | `requirements.lock`, `tests/test_requirements_lock.py` | Fijados narwhals 2.20.0, pygments, ast-serialize, librt, mypy-extensions, pathspec y typing-extensions | `test_the_lock_pins_the_whole_installed_closure`: falla con el lock anterior; `pip-audit` sin vulnerabilidades | Validación en CI con Linux y 3.11–3.14 tras el push |
-| AUD-017 | Confirmado LOW | `_git` convertía un timeout o un fallo de git en «T0 no existe» | `scripts/research/measure_segment_market_weight.py`, test | `_git_decide`: reintenta con 60 y 180 s; un fallo de entorno aborta diciendo que fue git; `returncode ≠ 0` vale `None` | `test_resolve_t0_git_timeout_*`, `test_resolve_t0_retries_*`; el bucle de 8 ejecuciones de los tests de `--medir` sale en verde | La causa sigue sin reproducirse sin carga. El mismo patrón aparece en `measure_el_modelo_manda.py`, `measure_tier_a_gap.py` y `measure_tilt_nhl.py`: se registra, no se tocó |
-
-## Segunda ronda: cambios pedidos por la revisión Fable (APTO CON CAMBIOS, 2026-10-18)
-
-| ID | Cambio | Prueba |
+| Commit | Lote | IDs |
 |---|---|---|
-| AUD-001 | Docstring corregido: el reescalado sí mueve h2h (hasta −0,22 pp) y spreads (−0,3 a −0,6 pp), y el total depende un poco del reparto. `_regulation_rates` lanza `ValueError` si el factor se satura en 0,5 o 1,0. `tests/test_nhl_tilt_activation.py`: con el gol de empate el total ya no es invariante al tilt (5,5: 0,5464 frente a 0,5536), así que la tolerancia pasa a 0,01 y la invariancia exacta se conserva en un test nuevo sin el gol | `test_nhl_tilt_activation.py` (6 passed) |
-| AUD-003 | `load` se queda con la ÚLTIMA fila por (`date`, `ingested_at`): la primera fecha de un MLB reanudado es la de la suspensión, y con ella el marcador entraba en el ajuste antes de existir. `upsert` acepta un `game_id` repetido solo con una fecha posterior | `test_aud003_resumed_game_is_read_once_on_its_final_date`, `test_aud003_same_day_rename_keeps_the_latest_ingestion_on_read` |
-| AUD-004 | `:` en la regex (`C:\dev` → `C:/dev`); pila para `pushd`/`popd` y `Push-`/`Pop-Location`; `cd -` y los destinos con `$` o `%` vuelven a la raíz; `add`/`stage` y los pathspecs se resuelven contra el directorio efectivo y contra la raíz a la vez (solo puede bloquear de más) | `test_aud004_fable_followup_escapes_are_blocked` (6 casos) |
-| AUD-006 | `check-secrets.sh` exime `tests/test_audit_hooks.py` por ruta exacta, igual que el escáner del CI; un test fija que ambas listas coinciden | `test_hook_and_ci_scanner_exempt_the_same_fixture_files` |
-| AUD-008 | Addenda de régimen, escritos antes de mirar ningún resultado, en cinco pre-registros: K52, «el modelo manda», brecha tier A, peso del mercado por segmento y portero NHL (Enmienda 4). En MM y segmento, la exclusión de cuarto se aplica también al test: literal congelado `QUARTER_LINE_INVALID_BEFORE` y test de igualdad con `sqp.settlement.quarter_line_fix` | `tests/research/*` (170 passed) |
+| `ead24b2` | O | AUD-002, 007, 014, 024, 025 |
+| `77110b4` | Q | AUD-004, 012, 013 |
+| `df015bf` | D | AUD-006, 008, 015, 016, 017, 018, 019, 020, 026 |
+| `1e50400` | G2 | AUD-005, 010, 011 |
+| `914707c` | G1 | AUD-001, 003, 009, 021 |
 
-## Tercera ronda: efectos sobre las mediciones congeladas (suite completa: 17 fallos de 3.361)
+`FINDINGS.md` se conserva como línea base. El estado de cada ID está en `STATUS.md` y la evidencia, en `VALIDATION.md`.
 
-| Causa | Cambio | Revisión |
-|---|---|---|
-| La guarda de saturación de AUD-001 saltaba con ritmos bajos legítimos (`test_market_tuning`, total 1,1) | Intervalo de la bisección (1e-6, 1], que tiene solución para cualquier total > 1. Con un total ≤ 1, imposible si cada empate suma un gol, `RuntimeWarning` y ritmos sin escalar, en vez de una excepción que tumbaría el run diario | Fable APTO (monotonía demostrada) |
-| `measure_tilt_nhl.py` (ya medido) y `measure_totals_recency.py` (fase M pendiente) comprueban la paridad contra el motor de producción, cuyo pricing NHL cambió | `sqp.sports.adapters.regulation_tie_without_goal()`: gestor de contexto que restaura el valor al salir y solo se usa en el `__main__` de esos dos scripts y en fixtures de sus tests | Fable APTO (no se filtra fuera de esos dos bloques) |
-| La batería (Enmienda 3(c): exactamente 15 descartes MLB) y la recencia aplican su propia deduplicación por `game_id` | `ResultsStore.load(league, dedupe_game_id=True)`; esos dos scripts leen con `False` | Fable APTO |
-| La recencia fija por hash el código de los dos scripts (Enmienda 1(e)) | Enmienda 2 en `docs/research/2026-10-09-preregistro-recencia-totales.md`; `codigo_autorizado()` y registro versionado `…recencia-totales.codigo-M.json` (`codigo_sha256_H` reconstruido desde git en `f315f4c`, porque la instantánea H no existe en esta máquina); test candado | Fable APTO CON CAMBIOS: mecanismo implementado tal como lo especificó |
-| `test_nhl_tilt_activation` | Con el gol de empate, el total depende un poco del reparto; tolerancia de 0,01 y test con la invariancia exacta sin el gol | Fable APTO |
+---
+
+## AUD-001 (MEDIUM, P2): la condición 2 del gate no podía cumplirse
+
+- **Inicial:** confirmado (REPRODUCED).
+- **Causa:** el EV plano promediaba las dos caras de cada mercado; con cuotas simétricas salía −vig fuera cual fuera el modelo.
+- **Archivos:** `docs/research/2026-11-03-repreregistro-condicion2-gate.md` (re-pre-registro nuevo de Fable), `src/sqp/risk/prediction_gate.py`, `scripts/update_prediction_gate.py`, `scripts/gate_status.py`, `configs/default.yaml` (comentarios) y `.claude/skills/clv-shadow-exit/SKILL.md`.
+- **Cambio:**
+  - La condición 2 pasa a ser `ev_lado_modelo`: el EV realizado a stake plano de la cara de mayor edge positivo del modelo puro.
+  - Se calcula por run, en la unidad (evento, mercado), al precio min(mediana, ejecución) y con los push dentro.
+  - Deniega si `n_ev = 0`.
+  - `ev_flat` se sigue publicando como métrica retirada.
+  - La condición 1 y la cota de Bonferroni no cambian.
+- **Prueba:** casos sintéticos T1–T5 del documento: el modelo bueno pasa, el que iguala al mercado no pasa y el vig se come el margen. También precio de ejecución, varios runs y push. Fable comprobó que 13 tests nuevos fallan sobre la base.
+- **Aceptación:** sí. El criterio discrimina la calidad del modelo y queda commiteado antes de que ningún corte llegue a n ≥ 300 (máximo n = 224).
+- **Residual:** la métrica no se ha calculado nunca sobre datos reales; está prohibido antes del commit (§1.2). Pasar el gate no promete rentabilidad.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-002 (MEDIUM, P1): el guard de árbol sucio perdía el día
+
+- **Inicial:** confirmado (REPRODUCED, abortos del 02-11 y del 03-11).
+- **Causa:** el guard abortaba al primer vistazo y no había reintento.
+- **Archivos:** `DIARIO_COMPLETO.bat` (nueva sección [0a]), `scripts/wait_for_clean_tree.ps1` (nuevo) y `tests/test_diario_espera_arbol.py`.
+- **Cambio:**
+  - El BAT re-evalúa el guard cada 900 s durante 180 min (`SQP_TREE_WAIT_MAX_MIN`, `SQP_TREE_WAIT_INTERVAL_S`) y continúa si el árbol queda limpio.
+  - Si agota el plazo, aborta como antes: centinela y `data/` intacto.
+  - Escape: `SQP_SKIP_TREE_WAIT=1`.
+  - No se eligió una tarea de reintento porque crearla exige un proceso elevado.
+- **Prueba:** el BAT real, copiado a un repo temporal, se ejecutó con cuatro escenarios: plazo agotado, árbol limpiado durante la espera, escape y árbol limpio.
+- **Aceptación:** sí.
+- **Residual:**
+  - Con el árbol sucio, el run puede empezar hasta 3 h tarde.
+  - No se ejecutó el BAT de producción.
+  - El aislamiento en worktree es una práctica, ya registrada en la memoria.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-003 (MEDIUM, P2): los overrides gastaban el test único
+
+- **Inicial:** confirmado.
+- **Archivos:** `scripts/update_prediction_gate.py` y `src/sqp/risk/prediction_gate.py`.
+- **Cambio:**
+  - El script devuelve rc 2 sin escribir si `--min-n` o `--alpha` no son canónicos y no hay `--dry-run`.
+  - `write_prediction_gate` lanza `ValueError` antes del lock si `min_n`, `alpha` o `validation_start` no son canónicos.
+  - La única salida es `umbrales_de_prueba=True`, que un test de contrato prohíbe en `src/` y `scripts/`.
+- **Prueba:** rc 2 sin fichero, `ValueError` sin escritura, y el test de contrato.
+- **Aceptación:** sí.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-004 (MEDIUM, P2): `validate_oos` descartaba parámetros de liga
+
+- **Inicial:** confirmado.
+- **Archivos:** `scripts/validate_oos.py` y `tests/test_validate_oos_frozen_params.py`.
+- **Cambio:**
+  - `TUNED_KEYS` y `_family_default` (la configuración canónica sin las claves tuneadas).
+  - `frozen_train` sobrescribe solo las claves tuneadas.
+  - Se quitó el forzado de `pitcher_bound` a 0,0 y se corrigió el docstring.
+- **Prueba:** el `frozen` de mlb conserva `park_bound`/`pitcher_bound` y el de epl conserva `avg_total`.
+- **Aceptación:** sí.
+- **Residual:** `main()` no se ejecutó completo.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-005 (MEDIUM condicionado, P2): stake y liquidación a la mediana
+
+- **Inicial:** confirmado (STATICALLY_VERIFIED).
+- **Archivos:** `src/sqp/risk/kelly.py`, `src/sqp/pipeline/daily.py`, `src/sqp/domain/models.py`, `src/sqp/settlement/settle.py` y `src/sqp/config.py` (docstring).
+- **Cambio:**
+  - `stake_price = min(mediana, ejecución)`.
+  - Una guarda pone el stake a 0 si el EV en la casa de ejecución es ≤ 0 (flag `ev_ejecucion_no_positivo`).
+  - `BetCandidate.settle_price` toma el valor del precio de ejecución, y `settle` liquida con él solo cuando existe.
+  - Las filas históricas liquidan exactamente igual.
+- **Prueba:** stake 0 con 1,85 frente a 4,46 a la mediana; pnl 8,5 en win y 4,25 en half_win con `settle_price`; 9,5 sin él.
+- **Aceptación:** sí. Ningún stake real puede tener EV ≤ 0 en la casa de ejecución.
+- **Residual:** la deriva entre la cuota de Pinnacle en el pick y la realmente cobrada no se mide; el backtest sigue a la mediana.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-006 (MEDIUM, P2): un CSV corrupto borraba el log intradía
+
+- **Inicial:** confirmado.
+- **Archivo:** `src/sqp/pipeline/revalidation.py`.
+- **Cambio:**
+  - Solo `EmptyDataError` cuenta como log vacío.
+  - Un `ParserError` mueve el fichero a `.corrupt.<UTC>` y registra `log.error`.
+  - Si no puede moverlo, relanza la excepción.
+- **Prueba:** 100 filas buenas más 1 malformada: el original se conserva intacto en cuarentena.
+- **Aceptación:** sí.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-007 (MEDIUM, P2): el health no leía las tareas programadas
+
+- **Inicial:** confirmado.
+- **Causa:** una sola llamada a PowerShell con `Get-ScheduledTaskInfo` por tarea y un timeout de 30 s.
+- **Archivo:** `src/sqp/monitoring/health.py`.
+- **Cambio:** `SCHEDULED_TASKS_TIMEOUT_S = 120`. No se usó `schtasks /fo CSV` porque su salida depende del idioma de Windows.
+- **Prueba:** subprocess simulado: plazo de 120 s, y un timeout devuelve `None` con aviso.
+- **Aceptación:** parcial. Falta comprobarlo en la máquina real, y habilitar el historial del Programador es tarea del operador.
+- **Final:** parcial, pendiente de verificación.
+
+## AUD-008 (LOW, P3): registro de calibración sin lock
+
+- **Archivo:** `src/sqp/calibration/calibrator.py`.
+- **Cambio:**
+  - La lectura-modificación-escritura va bajo `locked(path)` con `read_json_retrying`.
+  - Si el registro existe y no se puede leer, se aborta sin reescribirlo.
+  - El lector de servicio sigue devolviendo `{}`.
+- **Prueba:** raíz que es una lista, bytes no UTF-8, JSON roto y `OSError`: el registro no se reduce.
+- **Residual:** un registro corrupto ya no se «auto-cura» al reentrenar; ahora da un error visible.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-009 (LOW, P3): el techo solo avisaba
+
+- **Archivo:** `src/sqp/risk/prediction_gate.py`.
+- **Cambio:** con más de 84 cortes o una cota > 5/82, ningún test de entrada se consume (`fuera_de_preregistro`, `entradas_bloqueadas`).
+- **Prueba:** con 85 cortes queda bloqueado sin consumir; con 84 se recupera. Un α previo de 0,06 también bloquea.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-010 (LOW, P3): tier del tipster frente al motor de riesgo
+
+- **Archivos:** `src/sqp/evaluation/tipster.py`, `src/sqp/pipeline/daily.py`, `src/sqp/storage/served_store.py`, `scripts/tipster_report.py`, `src/sqp/audit/report.py` y `src/sqp/audit/html_report.py`.
+- **Cambio:**
+  - `adjusted_edge` se añade al stream servido.
+  - `ev_riesgo` = EV ajustado al precio de stake.
+  - El tier pasa a NO BET si `ev_riesgo < min_edge`, y las filas legadas se marcan «(pre-penalización)».
+  - `served_store` reconcilia la cabecera vieja una sola vez.
+- **Prueba:** el caso de la auditoría da NO BET; la cabecera vieja provoca una sola reescritura.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-011 (LOW, P3): el edge es EV condicionado a no-push
+
+- **Cambio:** solo documentación en `kelly.edge`, `tipster.expected_value`, `daily.py` y el comentario de `min_edge` de `configs/default.yaml`. La fórmula no cambia.
+- **Prueba:** `SettlementProbabilities(0,45, 0,10, 0,45)` cumple `expected_value = edge × 0,9`.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-012 (LOW, P3): backtest MLB con el abridor almacenado
+
+- **Cambio:** limitación documentada en los docstrings de `walk_forward_backtest` y `realized_roi_backtest`. El comportamiento no cambia.
+- **Final:** corregido (documentación), pendiente de verificación.
+
+## AUD-013 (LOW, P3): gate intradía
+
+- **Archivos:** `src/sqp/audit/intraday_gate.py` y `scripts/research/intraday_gate_analysis.py`.
+- **Cambio:**
+  - Se excluyen los cierres capturados en el instante de entrada o antes (`captured_for`).
+  - Se colapsa a una unidad por evento (media del CLV) antes del binomtest.
+- **Prueba:** un cierre anterior a la entrada queda excluido, y dos líneas del mismo evento cuentan como una unidad.
+- **Residual:** usar la media por evento fue elección del implementador. El script de investigación no se ejecutó.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-014 (LOW, P3): permisos
+
+- **Archivo:** `.claude/settings.json`.
+- **Cambio:**
+  - Se retiró `Bash(gh pr merge *)` de la lista de permitidos.
+  - Se añadieron 12 deny para leer `.env*` por shell.
+  - No se añadió ningún permiso nuevo; se comparó por diff de conjuntos.
+- **Residual:** los patrones son de prefijo y no cubren todas las formas de leer un fichero.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-015 (LOW, P4): marcadores 0-0 de relleno
+
+- **Archivo:** `src/sqp/providers/espn_results.py`.
+- **Cambio:** el parseo descarta 0-0 solo fuera de las ligas `soccer/`. No se purgan datos ya almacenados; eso queda para el operador.
+- **Final:** corregido (parseo), pendiente de verificación.
+
+## AUD-016 (LOW, P4): snapshots duplicados
+
+- **Archivo:** `src/sqp/storage/odds_store.py`.
+- **Cambio:**
+  - Deduplica dentro de cada llamada.
+  - Antes de anexar, revisa la cola del fichero (256 KB) y, si encuentra el mismo `captured_at`, lee por bloques y descarta lo ya guardado.
+  - Se ajustaron dos tests que aseguraban el contrato viejo; Fable lo juzgó legítimo.
+- **Residual:** un backfill del mismo `captured_at` fuera de la cola no se detecta; si el texto de `point` difiere puede duplicar, pero nunca se pierden datos.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-017 (LOW, P4): raíz JSON
+
+- **Archivos:** `ml_train.py`, `feature_store.py` y `feature_shadow.py`.
+- **Cambio:** se valida la raíz y una raíz inválida falla de forma controlada.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-018 (LOW, P4): carrera del lock
+
+- **Archivo:** `src/sqp/storage/lock.py`.
+- **Cambio:**
+  - El lock lleva un token `pid:uuid`.
+  - Antes de romper un lock caducado se vuelven a comprobar el mtime y el token.
+  - El `finally` solo borra el lock propio.
+- **Residual:** queda una ventana TOCTOU mínima. Si falla la escritura del token, el `finally` podría borrar un lock ajeno recién creado (LOW de Fable, opcional).
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-019 (LOW, P4): `_parse_events` y créditos
+
+- **Archivos:** `src/sqp/providers/odds_api.py` y `src/sqp/pipeline/closing_capture.py`.
+- **Cambio:** los elementos malformados se omiten y se cuentan (`last_parse_skipped`), y los créditos se descuentan en `finally`.
+- **Residual:** un bookmaker o un market que no sea dict sigue tumbando la liga (LOW de Fable, opcional).
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-020 (LOW, P4): complementariedad del calibrador
+
+- **Archivo:** `src/sqp/calibration/calibrator.py`.
+- **Cambio:**
+  - `complementarity_gap` y un `log.warning` cuando el gap supera 0,01. Es solo diagnóstico: no cambia ninguna probabilidad servida ni ningún veredicto.
+  - La tolerancia 0,01 la eligió el implementador y Fable la confirmó. Gap máximo de los calibradores vivos: 0,0019 (`wnba_spreads`).
+- **Final:** corregido (diagnóstico), pendiente de verificación.
+
+## AUD-021 (LOW, P4): el gate excluía `half_*`
+
+- **Archivo:** `src/sqp/risk/prediction_gate.py`.
+- **Cambio:** `half_win`/`half_loss` entran con la y del lado resuelto y peso ½.
+- **Recuentos:** 0 líneas de cuarto en los seis cortes agotados y en `nhl|*`. Con las medias, solo ganan unidades los spreads de chile, epl, laliga y seriea (+1 a +4, todos con n < 300).
+- **Prueba:** un test discriminante con una unidad que solo tiene `half_win`.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-022 (LOW, P4): copias de `data/backups` en el historial público
+
+- **Estado:** **BLOQUEADO, requiere al operador.**
+- **Motivo:** retirarlas exige reescribir el historial (`git filter-repo`) y hacer un force-push. Las reglas del proyecto lo prohíben («Nunca utilices `git push --force`», `CLAUDE.md`), y la autorización general no las anula.
+- **Acción del operador si decide hacerlo:** desde una terminal propia, hacer una copia del repositorio, ejecutar `git filter-repo --path data/backups --invert-paths`, hacer un force-push coordinado a `main` y verificar que `git log --all -- data/backups` sale vacío.
+- **Si no lo hace:** el riesgo queda aceptado, porque el contenido ya es público desde `18826e2`.
+
+## AUD-023 (LOW, P4): `requirements.lock` sin hashes
+
+- **Estado:** **NO APLICABLE tal como está especificado.**
+- **Motivo:**
+  - `requirements.lock` es un fichero de restricciones de pip (`-c`), y el CI instala el proyecto en modo editable (`pip install -e ".[dev]" -c requirements.lock`).
+  - El modo de hashes de pip (`--require-hashes`) exige hash para todo lo que se instala, incluido el proyecto editable, que no puede tenerlo.
+  - Además, generarlo requiere instalar pip-tools, una dependencia nueva.
+- **Alternativa, si se quiere:** un lock completo de solo-runtime con hashes para producción (`pip-compile --generate-hashes`) separado del de CI. Es decisión del operador.
+
+## AUD-024 (LOW, P4): acciones de GitHub fijadas por tag
+
+- **Archivo:** `.github/workflows/ci.yml`.
+- **Cambio:** 8 `uses:` fijados por SHA de commit, con el tag en comentario. Los SHA se obtuvieron con `git ls-remote`.
+- **Residual:** el CI real se comprueba después del push.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-025 (LOW, P4): agentes sin `tools:`
+
+- **Cambio:** `tools: Read, Glob, Grep` en 9 agentes de solo lectura. Quedan fuera `independent-code-reviewer` y `review-adjudicator`, que necesitan escribir o ejecutar.
+- **Residual:** `qa-engineer` ya no puede ejecutar tests.
+- **Final:** corregido, pendiente de verificación.
+
+## AUD-026 (LOW, P4): `american_to_decimal`
+
+- **Archivo:** `src/sqp/markets/odds.py`.
+- **Cambio:** `ValueError` si `abs(x) < 100`. Sin llamadores en producción.
+- **Final:** corregido, pendiente de verificación.
+
+---
+
+## Observaciones opcionales registradas, sin corregir
+
+Son LOW de las revisiones de Fable:
+
+- `odds_api.py` ~297: un bookmaker o market que no sea dict tumba la liga.
+- `odds_store._drop_already_stored` compara texto (por ejemplo, "3.0" frente a "3").
+- `lock.py` ~74: token vacío si falla su escritura.

@@ -2,7 +2,7 @@
   "round_id": "audit-2026-11-03",
   "date_utc": "2026-11-03T11:40:00Z",
   "date_utc_closed": "2026-11-03T13:50:00Z",
-  "status": "DIAGNOSTICO_Y_CONSOLIDACION_CERRADOS",
+  "status": "REMEDIACION_IMPLEMENTADA_PENDIENTE_DE_VERIFICACION",
   "scope": "Auditoria integral (full-audit) pedida por el operador el 2026-11-03: arquitectura, codigo, seguridad, dependencias/integraciones, integridad de datos, modelos, simulacion/numerico, calibracion, backtesting/OOS, fugas temporales, probabilidad/edge/EV, riesgo y controles operativos, automatizaciones/agentes/skills/hooks, pruebas/CI/recuperacion. Datos solo por agregados. Solo diagnostico y consolidacion.",
   "base_commit": "a5d186084e7bc5a42c055b420adcfa7a9a9b1ffe",
   "working_tree": "Cambios preexistentes NO del auditor: trabajo sin revisar del portero NHL (M src/sqp/backtesting/engine.py, M src/sqp/domain/models.py, M src/sqp/sports/adapters.py, ?? src/sqp/models/goalies.py, ?? scripts/research/measure_goalie_nhl.py, ?? tests/test_measure_goalie_nhl.py). Preservados intactos; auditado HEAD con git show. ?? audit/audit-2026-10-18/ es la preservacion de la ronda anterior.",
@@ -13,8 +13,12 @@
     "hash_mismatches": 0,
     "final_result": "APTO_CON_PENDIENTES"
   },
-  "auditors_available": ["claude"],
-  "auditors_absent": ["openai (MCP codex CONNECTION_CLOSED en esta sesion)"],
+  "auditors_available": [
+    "claude"
+  ],
+  "auditors_absent": [
+    "openai (MCP codex CONNECTION_CLOSED en esta sesion)"
+  ],
   "second_opinion": false,
   "context_contamination": "El coordinador conoce conclusiones de rondas anteriores por la memoria del proyecto; el diagnostico lo hicieron seis subagentes con contexto limpio y prohibicion de leer conclusiones previas. La comparacion historica se hizo despues del diagnostico.",
   "tools": {
@@ -31,41 +35,117 @@
     "stop hook suite rapida": "rc=1: test_audit_hooks.py::test_crossreview_salida_vacia_con_rc0_no_es_un_veredicto TimeoutExpired 60 s bajo carga; aislado 1 passed en 48,67 s",
     "clasificacion": "ENVIRONMENTAL_FAILURE para el timeout del stop hook; sin NEW_REGRESSION ni PRE_EXISTING_FAILURE"
   },
-  "tests_final": null,
+  "tests_final": "ver VALIDATION.md (suite completa sobre 4d10703)",
   "files_modified": [],
   "final_result": "APTO_CON_PENDIENTES",
   "final_result_rationale": "0 CRITICAL y 0 HIGH; 7 MEDIUM confirmados, uno P1 operativo (AUD-002: el run de las 12:00 del 2026-11-03 abortara si no se aparta el trabajo sin commit) y seis P2 (gate: condicion 2 estructuralmente inalcanzable en 2 vias y overrides que gastan el test unico; validate_oos; precio de ejecucion latente; perdida de log ante CSV corrupto; health ciego a las tareas). Suite completa verde. No se demuestra ventaja predictiva ni rentabilidad.",
   "finding_counts": {
-    "confirmed": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 7, "LOW": 19, "total": 26},
+    "confirmed": {
+      "CRITICAL": 0,
+      "HIGH": 0,
+      "MEDIUM": 7,
+      "LOW": 19,
+      "total": 26
+    },
     "inferred": 2,
     "observations": 3,
     "candidates_received": 31,
     "merged_by_root_cause": 1,
-    "priority": {"P1": 1, "P2": 6, "P3": 7, "P4": 12}
+    "priority": {
+      "P1": 1,
+      "P2": 6,
+      "P3": 7,
+      "P4": 12
+    }
   },
   "id_aliases": {
-    "AUD-001": "CLAUDE-001 (ODDS-01)", "AUD-002": "CLAUDE-002 (OPS-01)", "AUD-003": "CLAUDE-003 (BT-02)",
-    "AUD-004": "CLAUDE-004 (BT-01)", "AUD-005": "CLAUDE-005 (ODDS-02)", "AUD-006": "CLAUDE-006 (ARCH-01)",
-    "AUD-007": "CLAUDE-007 (OPS-02)", "AUD-008": "CLAUDE-008 (ARCH-02)", "AUD-009": "CLAUDE-009 (BT-04)",
-    "AUD-010": "CLAUDE-010 (ODDS-04)", "AUD-011": "CLAUDE-011 (ODDS-03)", "AUD-012": "CLAUDE-012 (LEAK-01)",
-    "AUD-013": "CLAUDE-013 (BT-03)", "AUD-014": "CLAUDE-014 (SEC-02+OPS-05)", "AUD-015": "CLAUDE-015 (ARCH-08)",
-    "AUD-016": "CLAUDE-016 (ARCH-06)", "AUD-017": "CLAUDE-017 (ARCH-03)", "AUD-018": "CLAUDE-018 (ARCH-05)",
-    "AUD-019": "CLAUDE-019 (ARCH-07)", "AUD-020": "CLAUDE-020 (LEAK-02)", "AUD-021": "CLAUDE-021 (BT-05)",
-    "AUD-022": "CLAUDE-022 (SEC-01)", "AUD-023": "CLAUDE-023 (SEC-03)", "AUD-024": "CLAUDE-024 (SEC-04)",
-    "AUD-025": "CLAUDE-025 (OPS-04)", "AUD-026": "CLAUDE-026 (ODDS-06)",
-    "NV-001": "CLAUDE-I01 (ODDS-05)", "NV-002": "CLAUDE-I02 (ARCH-04)"
+    "AUD-001": "CLAUDE-001 (ODDS-01)",
+    "AUD-002": "CLAUDE-002 (OPS-01)",
+    "AUD-003": "CLAUDE-003 (BT-02)",
+    "AUD-004": "CLAUDE-004 (BT-01)",
+    "AUD-005": "CLAUDE-005 (ODDS-02)",
+    "AUD-006": "CLAUDE-006 (ARCH-01)",
+    "AUD-007": "CLAUDE-007 (OPS-02)",
+    "AUD-008": "CLAUDE-008 (ARCH-02)",
+    "AUD-009": "CLAUDE-009 (BT-04)",
+    "AUD-010": "CLAUDE-010 (ODDS-04)",
+    "AUD-011": "CLAUDE-011 (ODDS-03)",
+    "AUD-012": "CLAUDE-012 (LEAK-01)",
+    "AUD-013": "CLAUDE-013 (BT-03)",
+    "AUD-014": "CLAUDE-014 (SEC-02+OPS-05)",
+    "AUD-015": "CLAUDE-015 (ARCH-08)",
+    "AUD-016": "CLAUDE-016 (ARCH-06)",
+    "AUD-017": "CLAUDE-017 (ARCH-03)",
+    "AUD-018": "CLAUDE-018 (ARCH-05)",
+    "AUD-019": "CLAUDE-019 (ARCH-07)",
+    "AUD-020": "CLAUDE-020 (LEAK-02)",
+    "AUD-021": "CLAUDE-021 (BT-05)",
+    "AUD-022": "CLAUDE-022 (SEC-01)",
+    "AUD-023": "CLAUDE-023 (SEC-03)",
+    "AUD-024": "CLAUDE-024 (SEC-04)",
+    "AUD-025": "CLAUDE-025 (OPS-04)",
+    "AUD-026": "CLAUDE-026 (ODDS-06)",
+    "NV-001": "CLAUDE-I01 (ODDS-05)",
+    "NV-002": "CLAUDE-I02 (ARCH-04)"
   },
   "source_reports": [
-    {"path": "audit/latest/claude/REPORT.md", "sha256": "bc25776f51f338c045f41f94f2847868173d43adf38848ae6d47c69c2a8c324f"},
-    {"path": "audit/latest/claude/EVIDENCE.json", "sha256": "ver fichero (escrito despues del calculo de hashes)"}
+    {
+      "path": "audit/latest/claude/REPORT.md",
+      "sha256": "bc25776f51f338c045f41f94f2847868173d43adf38848ae6d47c69c2a8c324f"
+    },
+    {
+      "path": "audit/latest/claude/EVIDENCE.json",
+      "sha256": "ver fichero (escrito despues del calculo de hashes)"
+    }
   ],
   "deliverables": {
     "FINDINGS.md": "b47b29e987512c207cc23283b5cbf7e18f13eeadf75f4b784c01b6cd72cee275",
     "BACKLOG.md": "d07b1b29fd8b8c06edf36ad75aff469d8d824c6eff4a841b99c171d960094101",
     "claude/REPORT.md": "bc25776f51f338c045f41f94f2847868173d43adf38848ae6d47c69c2a8c324f"
   },
-  "stale_files_from_previous_round": ["STATUS.md", "CHANGES.md", "VALIDATION.md", "VERIFICATION.md", "history/verificacion-20261022T131053Z/"],
+  "stale_files_from_previous_round": [
+    "history/verificacion-20261022T131053Z/ (copia verificada en audit/audit-2026-10-18/)"
+  ],
   "note": "Los ficheros de stale_files_from_previous_round pertenecen a audit-2026-10-18 (copia verificada en audit/audit-2026-10-18/); no son de esta ronda y se reemplazaran si hay remediacion/verificacion. Esta consolidacion no autoriza correcciones.",
-  "remediation": null,
+  "remediation": {
+    "authorized_by": "operador 2026-11-03: «Lo autorizo. Te doy una autorizacion total y plenipotenciaria» (BACKLOG completo)",
+    "base_commit": "aa8db2f",
+    "commits": {
+      "O": "ead24b2",
+      "Q": "77110b4",
+      "D": "df015bf",
+      "G2": "1e50400",
+      "G1": "914707c",
+      "test_accuracy": "1832272",
+      "tipster_sufijo": "4d10703"
+    },
+    "fable_reviews": {
+      "D": "APTO",
+      "G2": "APTO CON CAMBIOS (aplicados)",
+      "G1": "APTO CON CAMBIOS (aplicados)",
+      "diseno": "Fable: G1 re-pre-registro y G2 regla de precio"
+    },
+    "new_preregistration": "docs/research/2026-11-03-repreregistro-condicion2-gate.md",
+    "status_counts": {
+      "corregido_pendiente_verificacion": 23,
+      "parcial": 1,
+      "bloqueado": 1,
+      "no_aplicable": 1
+    },
+    "partial": [
+      "AUD-007"
+    ],
+    "blocked": [
+      "AUD-022"
+    ],
+    "not_applicable": [
+      "AUD-023"
+    ],
+    "deliverables": [
+      "CHANGES.md",
+      "VALIDATION.md",
+      "STATUS.md"
+    ]
+  },
   "verification": null
 }

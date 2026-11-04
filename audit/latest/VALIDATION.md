@@ -1,58 +1,91 @@
-# VALIDATION — remediación de la ronda `audit-2026-10-18`
+# VALIDATION: remediación de la ronda `audit-2026-11-03`
 
-Evidencia real ejecutada por el implementador (Opus) entre el 2026-10-18 y el 2026-10-19. No sustituye a la verificación independiente.
+Aquí solo figura evidencia real: comandos ejecutados, su resultado y dónde se ejecutaron. Todos los pytest llevan `-p no:cacheprovider --basetemp=.codex-tmp/<x>`.
 
-## Global (sobre el árbol final del commit)
+## Línea base (diagnóstico, 2026-11-03)
 
-| Comando | Resultado |
-|---|---|
-| `PYTHONPATH=src python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/pytest-r1018-full3` (suite completa) | **3367 passed, 1 skipped, 6 warnings, rc=0** (47 min 49 s). Los 6 warnings son el `RuntimeWarning` esperado de `tie_adds_goal` con totales sintéticos de exactamente 1,0 en `tests/test_market_tuning.py` |
-| `ruff check src scripts tests` | All checks passed |
-| `mypy src` | Success: no issues found in 114 source files |
-| `python scripts/sync_agent_instructions.py --check` | synchronized |
-| `python scripts/scan_tracked_secrets.py` | Sin literales de credencial en los ficheros rastreados (rc 0) |
-| `pip-audit -r requirements.lock --no-deps --disable-pip` | No known vulnerabilities found |
+- Suite completa: 3434 passed y 1 skipped.
+- `ruff`: rc=0.
+- `mypy`: rc=0.
+- Detalle en `MANIFEST.json` → `tests_initial`.
 
-## Historial de ejecuciones intermedias (lo que falló y cómo se resolvió)
+## Por lote
 
-| Ejecución | Resultado | Clasificación |
-|---|---|---|
-| Suite completa n.º 1 (con `timeout 3000`) | Cortada en torno al 60 % por el timeout; host cargado por la revisión de Fable | ENVIRONMENTAL_FAILURE: sin veredicto |
-| Hook Stop (suite rápida) tras AUD-001 | `test_nhl_tilt_activation::test_lower_tilt_shrinks_the_favourite_without_moving_the_total`: 0,5464 frente a 0,5536 | NEW_REGRESSION, prevista por el modelo: con el gol de empate, el total depende del reparto. Test ajustado con revisión de Fable |
-| Suite completa n.º 2 | **17 failed, 3344 passed, 1 skipped** | NEW_REGRESSION: guarda de saturación (`test_market_tuning`, 7) y mediciones congeladas (`measure_totals_recency` 6, `measure_tilt_nhl` 3, `measure_adjustment_battery` 1). Resueltas en la tercera ronda (`CHANGES.md`) |
-| Ficheros afectados tras la tercera ronda | battery + recency + tilt + distributions + results_backfill: 236 passed | — |
-| Suite completa n.º 3 | 3367 passed, 1 skipped | PASS |
+### O (`ead24b2`), en el worktree del implementador
 
-## Pruebas discriminantes por ID (fallan antes y pasan después)
+- `tests/test_diario_espera_arbol.py`: 4 escenarios, con el BAT real copiado a un repo temporal.
+- Ese test junto con `test_bat_files_integrity`, `test_run_status` y `test_orchestrator_safety`: 100 passed.
+- `tests/test_health_scheduled_tasks.py`: 8 passed.
+- `test_claude_system_contract`, `test_agent_instruction_sync`, `test_claude_model_routing` y `test_hook_targets`: 114 passed.
+- `scripts/sync_agent_instructions.py --check`: rc=0.
+- `.claude/settings.json`: el coordinador comparó los conjuntos de permisos antes y después.
+  - Solo se quita `Bash(gh pr merge *)` del allow.
+  - Se añaden 12 deny.
+  - El resto de claves no cambia.
+- El coordinador revisó el diff del BAT.
 
-Comprobado cambiando temporalmente el fichero corregido por su versión de `HEAD` y restaurándolo después.
+### Q (`77110b4`)
 
-| ID | Antes (HEAD) | Después |
-|---|---|---|
-| AUD-004 | `test_aud004_escapes_are_blocked`: 9 de 9 fallan | 104 passed (fichero completo, primera ronda); 19 passed en `-k aud004` tras la segunda |
-| AUD-007 | `test_crossreview_lento_*` falla | 6 passed (`-k crossreview`) |
-| AUD-012 y AUD-006 (hook) | `-k "aud012 or scanned_too"`: 10 fallan | 78 passed (test_audit_hooks + test_hook_targets) |
-| AUD-011 | `test_la_suite_no_escribe_en_el_log_de_produccion` falla | 4 passed |
-| AUD-016 | `test_the_lock_pins_the_whole_installed_closure` falla con el lock anterior | 1 passed |
-| AUD-003 | `-k aud003`: 5 fallan | 21 passed en la primera ronda; 46 passed con distribuciones tras la segunda |
+- Primera pasada del implementador: 1 failed, el esperado antes del arreglo de AUD-013.
+- Después, `test_intraday_gate.py`: 11 passed.
+- Re-ejecución del coordinador en el worktree: `test_intraday_gate`, `test_intraday_scan`, `test_validate_oos_frozen_params` y `test_validate_oos_exit_code` dan **31 passed**.
 
-Otros:
-- **AUD-001:** error de P(Over) frente al histórico NHL (n=4.658) por debajo de 2 pp en 4,5/5,5/6,5/7,5: −0,017, −0,005, −0,001 y +0,011. Antes llegaba a 4,5 pp.
-- **AUD-002, 008, 009, 010, 013, 014, 005 y 017:** tests nuevos en verde. El vigilante de AUD-005 se ejecutó en vivo: «El run diario se lanzo en su disparador».
+### D (`df015bf`)
 
-## Mediciones sobre datos reales (solo agregados)
+- Implementador: 286 passed y 1 skipped en los tests del componente.
+- **Revisión Fable (APTO):** 177 passed. Cubre los 4 tests nuevos más `test_revalidation`, `test_odds`, `test_odds_store`, `test_results_backfill`, `test_calibrator` y `test_storage`.
+- Medición de AUD-020 sobre los calibradores vivos, solo lectura y solo agregados:
 
-- **AUD-003:** filas descartadas al leer: mlb 15, ncaab 31, wncaab 95, atp 2, wta 3, ligamx 1 y ucl 1. El partido 716404 queda en 2023-10-02, la fecha de la reanudación.
-- **AUD-008:** filas de línea de cuarto antes del corte: 572, con 8 medias liquidaciones. Después del corte: 284, con 80. En el ledger hay 58 filas de cuarto y se excluyen 27.
-- **AUD-001:** λ medio NHL 6,158; factor de ritmos reglamentarios c = 0,973.
+  | Calibrador | gap |
+  |---|---|
+  | wnba_spreads | 0,0019 |
+  | mlb_spreads | 0,0004 |
+  | mlb_totals | 0,0000 |
 
-## Acciones externas verificadas
+### G2 (`1e50400`)
 
-- `gh api … security_and_analysis`: `secret_scanning: enabled` y `secret_scanning_push_protection: enabled`.
-- `gh issue close 4` hecho; `gh issue list --label ci-rojo --state open` devuelve `[]`.
+- **Revisión Fable (APTO CON CAMBIOS):** 355 passed.
+- Tras aplicar los cambios:
+  - `test_audit_g2_precio`, `test_served_store`, `test_served_market_shrink`, `test_reports` y `test_html_report`: 72 passed.
+  - Test real de reconciliación de cabecera: 12 passed. La reproducción de Fable pasa de 3 reescrituras completas a 1.
 
-## No verificado
+### G1 (`914707c`)
 
-- CI en GitHub con el lock ampliado y los jobs nuevos: no hubo push.
-- `logs/` y `.env`: lectura denegada por permisos.
-- Instantánea H de recencia: inexistente (KI-075).
+- **Revisión Fable (APTO CON CAMBIOS):** 131 passed.
+- 13 tests nuevos fallan sobre la base `aa8db2f` (comprobado con `git archive`).
+- Producción migra sin transiciones.
+- Hay 0 líneas de cuarto en los seis cortes agotados y en `nhl|*`.
+- Tras los 4 LOW, en el worktree: `test_prediction_gate`, `test_gate_status_cli`, `test_claude_system_contract` y `test_config_yaml_keys` dan 139 passed.
+
+### Integración en `main` (coordinador)
+
+- Tests de gate, precio y contrato combinados, tras G1, G2 y D: **188 passed**.
+- `ruff check src scripts tests`: All checks passed.
+- `mypy src`: Success, 116 ficheros.
+
+## Suite completa sobre `main`
+
+1. **Primera ejecución (`1e50400`/`914707c`), con `-x`:** detenida por el hook de parada en `tests/test_accuracy_mode.py::test_accuracy_mode_demo_pipeline_selects_by_probability`.
+   - Causa: la guarda de AUD-005 anula el stake plano del modo accuracy cuando el EV en la casa de ejecución es ≤ 0. Ese es el criterio de aceptación de AUD-005.
+   - El test fijaba el contrato anterior. Producción usa el modo edge: accuracy se revirtió el 2026-07-31, y en modo edge la guarda no se activa.
+   - Arreglo (`1832272`): el test aísla la guarda, y un test nuevo fija su efecto.
+2. **Segunda ejecución (`1832272`), sin `-x`:** **1 failed, 3500 passed, 1 skipped** en 52 min.
+   - Falló `tests/research/test_measure_tier_a_gap.py::test_load_frozen_classifier_isolates_sources_when_hashes_diverge`.
+   - Causa: AUD-010 añadía «(pre-penalización)» también a las llamadas antiguas a `classify()` sin `ev_riesgo`. Esas llamadas incluyen el clasificador congelado del pre-registro tier A.
+   - Arreglo (`4d10703`): el sufijo solo aparece cuando se pasa `ev_riesgo` y es NaN. Test nuevo: `test_classify_sin_ev_riesgo_conserva_el_motivo_de_siempre`.
+   - Tras el arreglo, `test_audit_g2_precio`, `test_tipster`, `tests/research/test_measure_tier_a_gap`, `test_reports` y `test_html_report` dan **153 passed**.
+3. **Tercera ejecución (`4d10703`):** ver el anexo al final.
+
+## Fuera de la validación
+
+- No se ejecutaron el BAT de producción, `validate_oos` completo ni `scripts/research/intraday_gate_analysis.py`: leen o escriben `data/`.
+- Las pruebas de «falla antes» son razonadas en la mayoría de los IDs de O, Q, D y G2. G1 sí se comprobó contra la base.
+- El CI real se comprueba tras el push (AUD-024: acciones fijadas por SHA).
+- No hubo verificación independiente: es la siguiente fase.
+
+## Anexo: tercera ejecución de la suite completa (`4d10703`)
+
+- Comando: `python -m pytest -q -p no:cacheprovider --basetemp=.codex-tmp/full-rem3`, sin `-x`, sobre `main` en `4d10703`.
+- Resultado: **3502 passed, 1 skipped, 6 warnings** en 3438,61 s (57 min 18 s). Ningún fallo.
+- Respecto a la línea base (3434 passed): 68 tests más, que son los nuevos de esta remediación.
+- Los avisos son `RuntimeWarning` ya conocidos de `tie_adds_goal` en `adapters.py:146`, emitidos por `test_market_tuning`. No están relacionados con esta ronda.

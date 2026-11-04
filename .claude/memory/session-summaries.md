@@ -1039,3 +1039,11 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Pendiente del operador: autorizar IDs del BACKLOG; decidir AUD-001, KI-078, AUD-005 y AUD-009 (escalado: Fable); completar el OAuth de Context7; recuperar el stash del portero en un worktree.
 - Leccion: los subagentes que implementan en `src/` van con `isolation: "worktree"`. Si queda codigo sin commit, avisar antes de las 12:00 del mismo dia.
 - 2026-11-03 (noche): KI-078 corregido (orden «Sí, házlo»). Enmienda Fable opcion B: alfa_corte 0,000702, contabilidad del alfa consumido y liberaciones; techo 84. Run diario relanzado a las 20:40, OK a las 21:03.
+
+## 2026-11-04 — Remediacion completa de audit-2026-11-03 (autorizacion total y plenipotenciaria)
+
+- Seis lotes en worktrees aislados (Sonnet implementa; Fable diseña y revisa lo de escalado antes del commit): O `ead24b2`, Q `77110b4`, D `df015bf`, G2 `1e50400`, G1 `914707c`. 23 IDs corregidos y pendientes de verificacion; AUD-007 parcial; AUD-022 bloqueado (force-push prohibido); AUD-023 no aplicable (constraints + editable incompatibles con --require-hashes). Detalle en `audit/latest/CHANGES.md` y `STATUS.md`.
+- Cambios de criterio: re-pre-registro `docs/research/2026-11-03-repreregistro-condicion2-gate.md` (condicion 2 = `ev_lado_modelo`, half_* con peso 1/2, bloqueo fuera del techo). AUD-005: stake a min(mediana, ejecucion), guarda EV>0 en la casa de ejecucion y liquidacion a `settle_price`. AUD-002: el BAT espera hasta 3 h a que el arbol quede limpio antes de abortar.
+- Leccion: el hook fable_gate inspecciona el comando ANTES de ejecutarlo; la linea FABLE-REVIEW se escribe en un comando aparte y con la fecha del dia (a medianoche cambia).
+- Pendiente: verificacion independiente; CI tras el push; decisiones del operador en AUD-022/023 y el historial del Programador (AUD-007).
+
