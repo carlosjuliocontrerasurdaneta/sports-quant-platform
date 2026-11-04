@@ -22,8 +22,8 @@ equivalentes los procedimientos. Ahora no hay regla paralela: se reutiliza la
 canonica.
 
 Umbral por mercado: alpha de familia 0,05 repartido por Bonferroni sobre
-K=69 cortes = 0,05/69 = 0,000725 (`PREDICTION_GATE_ALPHA`; re-pre-registro del
-2026-11-02, antes K=52 y K=41). Leer la constante, no citarla de memoria.
+K=69, α = 0,000702 (enmienda del 2026-11-03 al re-pre-registro del 2026-11-02;
+`PREDICTION_GATE_ALPHA`, antes K=52 y K=41). Leer la constante, no citarla de memoria.
 
 Uso:
   python scripts/gate_status.py

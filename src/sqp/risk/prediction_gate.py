@@ -57,7 +57,10 @@ Dos reglas, ambas fijadas por test:
    re-pre-registrado a K=52 el 2026-09-25 (0,000962) al superar el universo el
    techo de 50 cortes (docs/research/2026-09-25-repreregistro-gate-k52.md) y a
    K=69 el 2026-11-02 (0,05/69 = 0,000725) al superar el techo de 63
-   (docs/research/2026-11-02-repreregistro-gate-k69.md).
+   (docs/research/2026-11-02-repreregistro-gate-k69.md). Enmendado el
+   2026-11-03: (0,05 - 6*0,05/52)/63 = 0,000702 (KI-078), porque los seis tests
+   ya gastados a 0,05/52 se cobran a su precio real
+   (docs/research/2026-11-03-enmienda-gate-k69-alfa-consumido.md).
    Precio, dicho sin adornos: a n=300 el liston sube del 55,0% (K=41) al 59,3%
    (K=52) y al 59,7% (K=69) de aciertos pareados.
 2. **Un solo test de ENTRADA por corte**, en la primera evaluacion con
@@ -78,6 +81,7 @@ docs/research/2026-08-16-preregistro-regla-de-salida.md.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -122,23 +126,84 @@ PREDICTION_GATE_FAMILY_ALPHA = 0.05
 # de nuevo el 2026-11-02 bajo la autorizacion del operador: 68 cortes en el
 # registro mas `mlb|team_totals` (pre-registro de derivados) = 69 > techo 63;
 # alpha_corte = 0,05/69 = 0,000725. Los seis tests ya gastados bajo K=52 no se
-# recalculan (docs/research/2026-11-02-repreregistro-gate-k69.md). Historia:
-# 41 -> 52 -> 69.
+# recalculan (docs/research/2026-11-02-repreregistro-gate-k69.md), pero ENMENDADO
+# el 2026-11-03 (KI-078) se cuentan a su alpha real: el alpha vivo es
+# (0,05 - 6*0,05/52)/63 = 0,000702. Historia: 41 -> 52 -> 69.
 PREDICTION_GATE_K = 69
-PREDICTION_GATE_ALPHA = PREDICTION_GATE_FAMILY_ALPHA / PREDICTION_GATE_K
+# Enmienda 2026-11-03 (KI-078): los seis tests gastados a 0,05/52 se cobran a su precio.
+PREDICTION_GATE_K_HEREDADO = 52
+PREDICTION_GATE_TESTS_HEREDADOS = 6
+PREDICTION_GATE_ALPHA_HEREDADO = (PREDICTION_GATE_TESTS_HEREDADOS
+                                  * PREDICTION_GATE_FAMILY_ALPHA
+                                  / PREDICTION_GATE_K_HEREDADO)  # 3/520
+PREDICTION_GATE_ALPHA = ((PREDICTION_GATE_FAMILY_ALPHA - PREDICTION_GATE_ALPHA_HEREDADO)
+                         / (PREDICTION_GATE_K - PREDICTION_GATE_TESTS_HEREDADOS))  # 23/32760 = 0,000702
 # Si el universo crece por encima de esto (+22% sobre K), el criterio se
 # RE-PRE-REGISTRA antes de que ningun corte nuevo sea elegible. No se corrige
 # solo: se avisa, que es lo que este repositorio sabe hacer con los candados.
 # 84 = floor(69 * 50/41): la misma tolerancia relativa aprobada el 2026-09-04,
-# que mantiene la cota maxima tolerada en ~0,061 (84 * 0,05/69 = 0,0609).
+# que mantiene la cota maxima tolerada en ~0,061 (cota mixta a 84 = 0,060531 <=
+# 5/82 = 0,060976 con el alpha de 0,000702).
 # Valor DERIVADO el 2026-11-02 bajo la autorizacion del operador (pendiente de
 # confirmacion expresa, no bloqueante). Antes: 63 = floor(52 * 50/41), cota
 # 63 * 0,05/52 = 0,0606, confirmado por el operador el 2026-09-25.
-PREDICTION_GATE_K_REPREGISTRO = 84
+PREDICTION_GATE_K_REPREGISTRO = 84          # sin cambios
+PREDICTION_GATE_FWER_MAX_TOLERADA = 50 * PREDICTION_GATE_FAMILY_ALPHA / 41   # 5/82
+_FWER_EPS = 1e-12
+# Instantes UTC desde los que rigio cada alpha (commits 4378638, 8609c07, a5d1860).
+_VIGENCIAS_ALPHA: tuple[tuple[datetime, float], ...] = (
+    (datetime(2026, 9, 5, 1, 23, 46, tzinfo=timezone.utc), 0.05 / 41),
+    (datetime(2026, 9, 25, 10, 37, 13, tzinfo=timezone.utc), 0.05 / 52),
+    (datetime(2026, 11, 2, 15, 13, 22, tzinfo=timezone.utc), 0.05 / 69),
+)
+
+
+def _alpha_valido(valor: object) -> bool:
+    return (isinstance(valor, (int, float)) and not isinstance(valor, bool)
+            and 0 < float(valor) <= PREDICTION_GATE_FAMILY_ALPHA
+            and float(valor) == float(valor) and float(valor) != float("inf"))
+
+
+def alpha_del_test(entry: Mapping[str, object]) -> float | None:
+    """α consumido por el test de entrada VIGENTE de la entrada; None si no hay test.
+
+    Prefiere ``entry_test_alpha`` guardado; si falta, lo infiere del instante
+    ``entry_test_at`` con las vigencias historicas del alpha; si el instante no
+    es interpretable, cobra el alpha de familia (direccion conservadora)."""
+    en = entry.get("entry_test_at")
+    if not en:
+        return None
+    guardado = entry.get("entry_test_alpha")
+    if _alpha_valido(guardado):
+        return float(guardado)  # type: ignore[arg-type]
+    try:
+        t = datetime.fromisoformat(str(en))
+    except ValueError:
+        return PREDICTION_GATE_FAMILY_ALPHA
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    vigente = PREDICTION_GATE_FAMILY_ALPHA
+    for inicio, a in _VIGENCIAS_ALPHA:
+        if inicio <= t:
+            vigente = a
+    return vigente
+
+
+def _alpha_previo(entry: Mapping[str, object]) -> float:
+    v = entry.get("alpha_gastado_previo")
+    if v is None:
+        return 0.0
+    if (isinstance(v, (int, float)) and not isinstance(v, bool)
+            and v == v and 0 <= v < float("inf")):
+        return float(v)
+    return PREDICTION_GATE_FAMILY_ALPHA
 
 
 def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
-    """Cota de Bonferroni del error de familia REAL: ``n_cortes * alpha``.
+    """Cota de DISEÑO: ALPHA_HEREDADO + max(0, n - TESTS_HEREDADOS) * alpha.
+
+    Supone que los seis tests heredados costaron 3/520 y que el resto se gasta
+    a ``alpha``. La cota real del registro es ``fwer_bound_registro``.
 
     El reparto se hizo entre ``PREDICTION_GATE_K`` cortes. Si el universo crece,
     el alpha por corte no se mueve y la cota sube: con K=41 y 49 cortes,
@@ -151,7 +216,22 @@ def fwer_bound(n_cortes: int, alpha: float = PREDICTION_GATE_ALPHA) -> float:
     (auditoria integral 2026-09-22, AUD-001). Un numero que contradice a su
     vecino en el mismo fichero no es trazabilidad.
     """
-    return max(0, int(n_cortes)) * float(alpha)
+    n = max(0, int(n_cortes))
+    return (PREDICTION_GATE_ALPHA_HEREDADO
+            + max(0, n - PREDICTION_GATE_TESTS_HEREDADOS) * float(alpha))
+
+
+def fwer_bound_registro(markets: Mapping[str, object],
+                        alpha: float = PREDICTION_GATE_ALPHA) -> float:
+    """Σ por entrada: alpha_gastado_previo + (alpha_del_test(e) si hay test, si no alpha)."""
+    total = 0.0
+    for e in markets.values():
+        if not isinstance(e, Mapping):
+            total += float(alpha)
+            continue
+        gastado = alpha_del_test(e)
+        total += _alpha_previo(e) + (gastado if gastado is not None else float(alpha))
+    return total
 
 # Segmentos cuyo ``implied_probability_novig`` servido es INVALIDO antes de un
 # instante: solo cuentan las filas generadas desde ese instante. AUD-003 (ronda
@@ -352,7 +432,8 @@ def evaluate_markets(graded: pd.DataFrame, *,
 
 def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
                  now: str, *,
-                 min_n: int = PREDICTION_GATE_MIN_N) -> tuple[dict[str, dict],
+                 min_n: int = PREDICTION_GATE_MIN_N,
+                 alpha: float = PREDICTION_GATE_ALPHA) -> tuple[dict[str, dict],
                                                               list[dict]]:
     """Fusiona la decision estadistica del dia con el estado previo del pestillo.
 
@@ -405,6 +486,7 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         # salga. La SALIDA sigue siendo diaria: una oportunidad de entrar,
         # vigilancia continua para salir.
         entry_at = prev.get("entry_test_at")
+        consume_test = False
         if int(r.n) < min_n:
             # Aun no elegible: el test NO se consume. Un corte sin muestra no ha
             # gastado su unica bala.
@@ -412,6 +494,7 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         elif entry_at is None:
             # ESTE es el test de entrada. Se consume ahora, pase o no pase.
             nuevo_entry_at, permitido = now, stat_allowed
+            consume_test = True
             razon = "" if stat_allowed else stat_reason
         elif was_allowed:
             # Ya dentro: se sigue vigilando a diario para poder echarlo.
@@ -438,6 +521,10 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
             "latched_at": (prev.get("latched_at") if was_latched
                            else (now if latched else None)),
             "entry_test_at": nuevo_entry_at,
+            "entry_test_alpha": (float(alpha) if consume_test
+                                 else (alpha_del_test(prev)
+                                       if nuevo_entry_at is not None else None)),
+            "alpha_gastado_previo": _alpha_previo(prev),
         }
         _latch_entry(key, entry, was_latched, reason or stat_reason)
     for key in sorted(set(previous) - seen):
@@ -450,7 +537,12 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
         # para volver a tirar el dado, que es exactamente la puerta trasera que
         # el pre-registro del 2026-09-04 cierra.
         gasto_test = bool(prev.get("entry_test_at"))
-        if not (was_latched or was_allowed or gasto_test):
+        # Enmienda 2026-11-03 (KI-078, revision Fable): un corte LIBERADO no
+        # tiene pestillo, ni allowed, ni entry_test_at, pero si alpha gastado;
+        # si se cayera del registro al quedarse sin partidos, ese alpha
+        # desapareceria de la cota y el nuevo test no se contaria.
+        gasto_alpha = _alpha_previo(prev) > 0
+        if not (was_latched or was_allowed or gasto_test or gasto_alpha):
             continue  # sin estado que preservar: ausente = deny, como siempre
         # Pestillo solo para quien ESTABA DENTRO (o ya lo tenia): no poder
         # verificar que sigue cumpliendo no es permiso. Quien solo gasto su test
@@ -462,6 +554,8 @@ def _apply_latch(decided: pd.DataFrame, previous: dict[str, dict],
             "allowed": False, "reason": "sin_evaluacion", "latched": latched,
             "latched_at": (prev.get("latched_at") or now) if latched else None,
             "entry_test_at": prev.get("entry_test_at"),
+            "entry_test_alpha": alpha_del_test(prev),
+            "alpha_gastado_previo": _alpha_previo(prev),
         }
         _latch_entry(key, entry, was_latched, "sin_evaluacion")
     return markets, transitions
@@ -579,7 +673,8 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
                              "action": "latch", "reason": "bloqueo_de_lectura",
                              "released_by": "", "note": "", "n": e.get("n"),
                              "p_value": e.get("p_value"), "ev_flat": e.get("ev_flat")})
-    markets, transitions = _apply_latch(decided, previous, now, min_n=min_n)
+    markets, transitions = _apply_latch(decided, previous, now, min_n=min_n,
+                                         alpha=alpha)
     transitions = forzadas + transitions
     for t in transitions:
         log.warning("prediction_gate: pestillo ARMADO para %s|%s (%s); no "
@@ -589,7 +684,7 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
     # 2026-09-25 con K=52 y de nuevo el 2026-11-02 con K=69: el reparto de alpha
     # depende de K. El MISMO pre-registro fijo de antemano cuanto puede crecer
     # el universo: hasta K_REPREGISTRO cortes (+22 %, hoy 84 = floor(69*50/41),
-    # cota 84*0,05/69 = 0,0609) el criterio se aplica tal cual y solo
+    # cota mixta a 84 = 0,060531 <= 0,060976) el criterio se aplica tal cual y solo
     # POR ENCIMA se re-pre-registra. Tres franjas, pues:
     #   n <= K              : el reparto cuadra, nada que decir.
     #   K < n <= REPREGISTRO: TOLERANCIA PRE-REGISTRADA. Se informa la cota real
@@ -600,33 +695,48 @@ def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,
     # la franja media, contra el propio documento; lo corrigio la ronda
     # audit-2026-09-22-r2 (AUD-003). Decidir otra cosa es cambiar el
     # pre-registro, decision del operador que se registra como tal.
-    cota = fwer_bound(len(markets), alpha)
-    if len(markets) > PREDICTION_GATE_K_REPREGISTRO:
-        log.error("prediction_gate: %d cortes evaluados, por encima del limite "
-                  "%d del pre-registro (K=%d). Cota real de error de familia "
-                  "%.4f frente al %.2f declarado. RE-PRE-REGISTRAR el criterio "
-                  "antes de que un corte nuevo alcance n>=%d.",
-                  len(markets), PREDICTION_GATE_K_REPREGISTRO, PREDICTION_GATE_K,
-                  cota, PREDICTION_GATE_FAMILY_ALPHA, min_n)
-    elif len(markets) > PREDICTION_GATE_K:
+    # Enmienda 2026-11-03 (KI-078): la cota se calcula con el alpha CONSUMIDO
+    # (tests heredados a 0,05/52, liberaciones incluidas), y la segunda
+    # condicion compara contra la maxima tolerada 50*0,05/41.
+    n_cortes = len(markets)
+    cota = max(fwer_bound_registro(markets, alpha), fwer_bound(n_cortes, alpha))
+    if (n_cortes > PREDICTION_GATE_K_REPREGISTRO
+            or cota > PREDICTION_GATE_FWER_MAX_TOLERADA + _FWER_EPS):
+        log.error("prediction_gate: %d cortes evaluados (limite %d del "
+                  "pre-registro, K=%d) o cota real de error de familia "
+                  "%.4f frente al %.2f declarado por encima de la maxima "
+                  "tolerada %.4f. "
+                  "RE-PRE-REGISTRAR el criterio antes de que un corte nuevo "
+                  "alcance n>=%d.",
+                  n_cortes, PREDICTION_GATE_K_REPREGISTRO, PREDICTION_GATE_K,
+                  cota, PREDICTION_GATE_FAMILY_ALPHA,
+                  PREDICTION_GATE_FWER_MAX_TOLERADA, min_n)
+    elif (n_cortes > PREDICTION_GATE_K
+          or cota > PREDICTION_GATE_FAMILY_ALPHA + _FWER_EPS):
         log.info("prediction_gate: %d cortes evaluados frente a K=%d; cota real "
                  "de error de familia %.4f (declarado %.2f). Dentro de la "
                  "tolerancia pre-registrada de %d cortes: el criterio se aplica "
                  "tal cual.",
-                 len(markets), PREDICTION_GATE_K, cota,
+                 n_cortes, PREDICTION_GATE_K, cota,
                  PREDICTION_GATE_FAMILY_ALPHA, PREDICTION_GATE_K_REPREGISTRO)
     payload = {"generated_at": now,
                "min_n": int(min_n), "alpha": float(alpha),
                # Trazabilidad del reparto: sin esto, leyendo el registro no se
-               # puede reconstruir de donde sale un alpha de 0,000725 (0,05/69).
+               # puede reconstruir de donde sale un alpha de 0,000702 ((0,05 - 6*0,05/52)/63).
                "family_alpha": float(PREDICTION_GATE_FAMILY_ALPHA),
                "k_bonferroni": int(PREDICTION_GATE_K),
+               "k_heredado": int(PREDICTION_GATE_K_HEREDADO),
+               "tests_heredados": int(PREDICTION_GATE_TESTS_HEREDADOS),
+               "alpha_heredado": round(PREDICTION_GATE_ALPHA_HEREDADO, 9),
+               "alpha_regla": ("(family_alpha - tests_heredados*family_alpha/"
+                               "k_heredado)/(k_bonferroni - tests_heredados)"),
                "n_cortes_evaluados": len(markets),
                # Cota REAL, no la declarada: `family_alpha` dice entre cuanto se
                # repartio y este campo dice cuanto se esta gastando de verdad.
                # Publicarlos juntos es lo que convierte la discrepancia en algo
                # que se lee, en vez de en algo que hay que calcular a mano.
                "fwer_bound": round(cota, 6),
+               "fwer_bound_max_tolerada": round(PREDICTION_GATE_FWER_MAX_TOLERADA, 6),
                "validation_start": str(validation_start), "markets": markets}
     path = _write_payload(payload, bets_dir)
     # El rastro ANTES de retirar el bloqueo: si el borrado fallara despues, la
@@ -707,6 +817,11 @@ def _release_under_lock(bets_dir: Path, league: str, market: str, *,
     # Devuelve el test de entrada: la siguiente evaluacion con n >= min_n vuelve
     # a ser SU test unico. La liberacion autoriza la RE-EVALUACION, no la
     # entrada -- quien decide sigue siendo el criterio pre-registrado.
+    # El alpha del test devuelto ya se gasto: se acumula para que el nuevo test
+    # cuente ADEMAS de el (KI-078).
+    gastado = alpha_del_test(entry)
+    entry["alpha_gastado_previo"] = _alpha_previo(entry) + (gastado or 0.0)
+    entry["entry_test_alpha"] = None
     entry["entry_test_at"] = None
     entry["allowed"] = False  # direccion segura: reabre la evaluacion, no la puerta
     entry["reason"] = "liberado_pendiente_reevaluacion"

@@ -1038,3 +1038,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Revision cruzada de Codex (Stop hook): `fwer_bound` ignora el alfa consumido a K=52, asi que el techo 84 incumple su invariante y el correcto es 82 (KI-078). Aceptado, no corregido.
 - Pendiente del operador: autorizar IDs del BACKLOG; decidir AUD-001, KI-078, AUD-005 y AUD-009 (escalado: Fable); completar el OAuth de Context7; recuperar el stash del portero en un worktree.
 - Leccion: los subagentes que implementan en `src/` van con `isolation: "worktree"`. Si queda codigo sin commit, avisar antes de las 12:00 del mismo dia.
+- 2026-11-03 (noche): KI-078 corregido (orden «Sí, házlo»). Enmienda Fable opcion B: alfa_corte 0,000702, contabilidad del alfa consumido y liberaciones; techo 84. Run diario relanzado a las 20:40, OK a las 21:03.

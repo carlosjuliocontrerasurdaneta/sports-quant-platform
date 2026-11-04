@@ -633,7 +633,12 @@ def test_alpha_is_the_family_alpha_split_by_bonferroni():
     # Re-pre-registro 2026-11-02 (docs/research/2026-11-02-repreregistro-gate-k69.md);
     # antes K=52 (2026-09-25) y K=41 (2026-09-04).
     assert PREDICTION_GATE_K == 69
-    assert PREDICTION_GATE_ALPHA == pytest.approx(0.05 / 69)
+    # Enmienda 2026-11-03 (KI-078): los seis tests gastados a 0,05/52 se cobran
+    # a su precio y el resto se reparte entre los 63 tests vivos.
+    assert PREDICTION_GATE_ALPHA == pytest.approx(23 / 32760)
+    assert PREDICTION_GATE_ALPHA == pytest.approx((0.05 - 6 * 0.05 / 52) / 63)
+    assert PREDICTION_GATE_ALPHA < 0.05 / 69
+    assert 6 * 0.05 / 52 + 63 * PREDICTION_GATE_ALPHA == pytest.approx(0.05, abs=1e-15)
     assert PREDICTION_GATE_ALPHA < 0.05, "Bonferroni solo puede ENDURECER"
 
 
@@ -714,14 +719,17 @@ def test_vanishing_from_the_stream_does_not_return_the_entry_test(tmp_path):
 
 def test_the_registry_records_how_alpha_was_split(tmp_path):
     """Sin esto, leyendo el registro no se puede reconstruir de donde sale un
-    alpha de 0,000725 -- y un umbral que no se puede auditar no es un candado."""
+    alpha de 0,000702 -- y un umbral que no se puede auditar no es un candado."""
     import json
     write_prediction_gate(_rows(60, 40, p_model=0.6, p_market=0.5, price=2.0),
                           tmp_path)
     payload = json.loads((tmp_path / "prediction_gate.json").read_text(encoding="utf-8"))
     assert payload["family_alpha"] == 0.05
     assert payload["k_bonferroni"] == 69
-    assert payload["alpha"] == pytest.approx(0.05 / 69)
+    assert payload["alpha"] == pytest.approx(23 / 32760)
+    assert payload["k_heredado"] == 52
+    assert payload["tests_heredados"] == 6
+    assert payload["fwer_bound_max_tolerada"] == pytest.approx(5 / 82, abs=1e-6)
 
 
 def test_el_registro_no_pisa_el_temporal_de_otro_proceso(tmp_path):
@@ -870,29 +878,28 @@ def test_ningun_documento_presenta_el_alpha_de_familia_como_umbral_por_mercado()
     from pathlib import Path
 
     from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
-                                          PREDICTION_GATE_FAMILY_ALPHA,
-                                          PREDICTION_GATE_K)
+                                          PREDICTION_GATE_FAMILY_ALPHA)
 
     raiz = Path(__file__).resolve().parents[1]
-    fraccion = f"{PREDICTION_GATE_FAMILY_ALPHA:g}/{PREDICTION_GATE_K}"
-    variantes = {fraccion, fraccion.replace(".", ",")}
-    # El umbral vigente, con la precision con la que se escribe en prosa.
-    variantes |= {f"{PREDICTION_GATE_ALPHA:.5f}".rstrip("0"),
-                  f"{PREDICTION_GATE_ALPHA:.5f}".rstrip("0").replace(".", ",")}
+    # El umbral vigente, con la precision con la que se escribe en prosa
+    # (0,000702; la fraccion 0,05/69 ya NO es el umbral desde KI-078).
+    vigente = f"{PREDICTION_GATE_ALPHA:.6f}".rstrip("0")
+    variantes = {vigente, vigente.replace(".", ",")}
+    fraccion = vigente
     prohibido = re.compile(r"\bp\s*<\s*0[.,]05\b", re.I)
 
     for rel in _DOCUMENTOS_QUE_CITAN_EL_UMBRAL:
         texto = (raiz / rel).read_text(encoding="utf-8")
         assert any(v in texto for v in variantes), (
             f"{rel} documenta el prediction gate pero no nombra el umbral por "
-            f"mercado vigente ({fraccion} = {PREDICTION_GATE_ALPHA:.5f}). Si el "
+            f"mercado vigente ({fraccion} = {PREDICTION_GATE_ALPHA:.6f}). Si el "
             f"alpha se re-reparte, el documento tiene que decirlo.")
         malo = prohibido.search(texto)
         assert malo is None, (
             f"{rel} presenta el alpha de FAMILIA como si fuera el umbral por "
             f"mercado: {malo.group(0)!r}. El de familia es "
             f"{PREDICTION_GATE_FAMILY_ALPHA}; el que decide un mercado es "
-            f"{PREDICTION_GATE_ALPHA:.5f}.")
+            f"{PREDICTION_GATE_ALPHA:.6f}.")
 
 
 def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
@@ -920,7 +927,7 @@ def test_un_mercado_entre_los_dos_umbrales_NO_es_elegible():
 # re-pre-registro del 2026-09-25; 84 con K=69 desde el del 2026-11-02) es tolerancia PRE-REGISTRADA (§3.1 del
 # pre-registro 2026-09-04): se informa, no se ordena (AUD-003, ronda r2).
 
-def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
+def test_fwer_bound_es_la_cota_de_diseno_con_los_heredados_a_su_precio():
     from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
                                           PREDICTION_GATE_FAMILY_ALPHA,
                                           PREDICTION_GATE_K, fwer_bound)
@@ -929,9 +936,9 @@ def test_fwer_bound_es_el_alpha_por_corte_multiplicado_por_los_cortes():
     # Con el universo por encima de K se lo come y lo pasa (el 2026-09-22 eran
     # 49 cortes frente a K=41).
     n = PREDICTION_GATE_K + 8
-    assert fwer_bound(n) == pytest.approx(n * PREDICTION_GATE_ALPHA)
+    assert fwer_bound(n) == pytest.approx(3 / 520 + (n - 6) * PREDICTION_GATE_ALPHA)
     assert fwer_bound(n) > PREDICTION_GATE_FAMILY_ALPHA
-    assert fwer_bound(0) == 0.0 and fwer_bound(-3) == 0.0
+    assert fwer_bound(0) == fwer_bound(-3) == pytest.approx(3 / 520)
 
 
 def test_el_techo_de_repregistro_conserva_la_tolerancia_del_2026_09_04():
@@ -941,7 +948,10 @@ def test_el_techo_de_repregistro_conserva_la_tolerancia_del_2026_09_04():
     from sqp.risk.prediction_gate import (PREDICTION_GATE_K,
                                           PREDICTION_GATE_K_REPREGISTRO, fwer_bound)
     assert PREDICTION_GATE_K_REPREGISTRO == PREDICTION_GATE_K * 50 // 41 == 84
-    assert fwer_bound(PREDICTION_GATE_K_REPREGISTRO) <= 50 * 0.05 / 41
+    assert fwer_bound(PREDICTION_GATE_K_REPREGISTRO) <= 5 / 82      # 0,060531
+    assert fwer_bound(PREDICTION_GATE_K_REPREGISTRO + 1) > 5 / 82   # 0,061233
+    maximo = max(n for n in range(1, 200) if fwer_bound(n) <= 5 / 82)
+    assert maximo == PREDICTION_GATE_K_REPREGISTRO == 84
 
 
 def test_en_los_bordes_K_y_techo_no_se_ordena_repregistro(tmp_path, caplog):
@@ -1190,3 +1200,197 @@ def test_con_centinela_borrar_el_registro_no_reinicia_el_estado(tmp_path, monkey
     (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).unlink()
     write_prediction_gate(_rows(2, 2, p_model=0.5, p_market=0.5, price=2.0), tmp_path)
     assert not (tmp_path / PREDICTION_GATE_BLOCK_FILENAME).exists()
+
+
+# --- enmienda 2026-11-03 (KI-078): el alpha consumido se cuenta a su precio ---
+# docs/research/2026-11-03-enmienda-gate-k69-alfa-consumido.md
+
+_SEIS_HEREDADOS = {
+    "mlb|h2h": "2026-09-25T15:04:13.036678+00:00",
+    "mlb|spreads": "2026-09-25T15:04:13.036678+00:00",
+    "mlb|totals": "2026-09-26T15:04:13.036678+00:00",
+    "ncaaf|h2h": "2026-10-11T15:04:16.000000+00:00",
+    "ncaaf|spreads": "2026-10-11T15:04:16.000000+00:00",
+    "ncaaf|totals": "2026-10-11T15:04:16.000000+00:00",
+}
+
+
+def _entrada_heredada(en: str) -> dict:
+    return {"n": 310, "wins": 150, "p_value": 0.9, "ev_flat": -0.1,
+            "allowed": False, "reason": "agotado_test_unico", "latched": False,
+            "latched_at": None, "entry_test_at": en}
+
+
+def _graded_para(pares) -> pd.DataFrame:
+    partes = [_rows(2, 2, p_model=0.5, p_market=0.5, price=2.0,
+                    league=lg, market=mk) for lg, mk in pares]
+    return pd.concat(partes, ignore_index=True)
+
+
+def _pares_vivos(n: int) -> list[tuple[str, str]]:
+    return [(f"liga{i}", "totals") for i in range(n)]
+
+
+def _escribir_previo(directorio, markets: dict) -> None:
+    directorio.mkdir(parents=True, exist_ok=True)
+    (directorio / "prediction_gate.json").write_text(
+        json.dumps({"markets": markets}), encoding="utf-8")
+
+
+def _previo_con_heredados() -> dict:
+    return {k: _entrada_heredada(v) for k, v in _SEIS_HEREDADOS.items()}
+
+
+def _pares_heredados() -> list[tuple[str, str]]:
+    return [tuple(k.split("|", 1)) for k in _SEIS_HEREDADOS]  # type: ignore[misc]
+
+
+def test_alpha_del_test_infiere_el_alpha_vigente_en_el_instante_del_test():
+    from sqp.risk.prediction_gate import alpha_del_test
+
+    def a(en, **extra):
+        return alpha_del_test({"entry_test_at": en, **extra})
+
+    assert a("2026-09-25T15:04:13.036678+00:00") == pytest.approx(0.05 / 52)
+    assert a("2026-09-25T10:37:12+00:00") == pytest.approx(0.05 / 41)
+    assert a("2026-11-02T15:13:21+00:00") == pytest.approx(0.05 / 52)
+    assert a("2026-11-02T15:13:22+00:00") == pytest.approx(0.05 / 69)
+    assert a("2026-09-01T00:00:00+00:00") == pytest.approx(0.05)
+    assert a("basura") == pytest.approx(0.05)
+    assert a("2026-10-11T15:04:16") == pytest.approx(0.05 / 52)  # naive -> UTC
+    assert a("2026-10-11T15:04:16", entry_test_alpha=0.001) == pytest.approx(0.001)
+    for malo in (float("nan"), -1, True, "x"):
+        assert a("2026-10-11T15:04:16", entry_test_alpha=malo) == pytest.approx(0.05 / 52)
+    assert alpha_del_test({}) is None
+    assert alpha_del_test({"entry_test_at": None, "entry_test_alpha": 0.001}) is None
+
+
+def test_migracion_con_los_seis_tests_consumidos_a_k52(tmp_path, caplog):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA
+    previo = _previo_con_heredados()
+    pares = _pares_heredados() + _pares_vivos(62)
+    for lg, mk in _pares_vivos(62):
+        previo[f"{lg}|{mk}"] = {"n": 4, "wins": 2, "p_value": 0.5, "ev_flat": 0.0,
+                                "allowed": False, "reason": "muestra_insuficiente",
+                                "latched": False, "latched_at": None,
+                                "entry_test_at": None}
+    _escribir_previo(tmp_path, previo)
+    with caplog.at_level("INFO"):
+        ruta = write_prediction_gate(_graded_para(pares), tmp_path)
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    assert payload["n_cortes_evaluados"] == 68
+    assert payload["fwer_bound"] == pytest.approx(3 / 520 + 62 * 23 / 32760, abs=1e-6)
+    assert payload["fwer_bound"] == pytest.approx(0.049298, abs=1e-6)
+    for k in _SEIS_HEREDADOS:
+        assert payload["markets"][k]["entry_test_alpha"] == pytest.approx(0.05 / 52)
+        assert payload["markets"][k]["entry_test_at"] == _SEIS_HEREDADOS[k]
+    assert payload["alpha"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    assert not any("cota real de error de familia" in r.message for r in caplog.records)
+    # Segunda escritura: el alpha migrado persiste.
+    ruta = write_prediction_gate(_graded_para(pares), tmp_path)
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    for k in _SEIS_HEREDADOS:
+        assert payload["markets"][k]["entry_test_alpha"] == pytest.approx(0.05 / 52)
+    # Uno de los seis ausente del `graded`: rama `sin_evaluacion`, conserva su alpha.
+    ausente = "ncaaf|totals"
+    pares_sin = [p for p in pares if "|".join(p) != ausente]
+    ruta = write_prediction_gate(_graded_para(pares_sin), tmp_path)
+    e = json.loads(ruta.read_text(encoding="utf-8"))["markets"][ausente]
+    assert e["reason"] == "sin_evaluacion"
+    assert e["entry_test_alpha"] == pytest.approx(0.05 / 52)
+    assert e["entry_test_at"] == _SEIS_HEREDADOS[ausente]
+
+
+def test_el_test_consumido_hoy_guarda_su_alpha(tmp_path):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA
+    graded = _rows(160, 140, p_model=0.6, p_market=0.5, price=2.0)
+    ruta = write_prediction_gate(graded, tmp_path / "a")
+    e = json.loads(ruta.read_text(encoding="utf-8"))["markets"]["brasileirao|totals"]
+    assert e["n"] == 300 and e["entry_test_at"]
+    assert e["entry_test_alpha"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    ruta = write_prediction_gate(graded, tmp_path / "b", alpha=0.001)
+    e = json.loads(ruta.read_text(encoding="utf-8"))["markets"]["brasileirao|totals"]
+    assert e["entry_test_alpha"] == pytest.approx(0.001)
+
+
+def test_liberar_conserva_el_alpha_gastado_y_el_nuevo_test_cuenta(tmp_path):
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          fwer_bound_registro,
+                                          release_prediction_gate_latch)
+    graded = _rows(160, 140, p_model=0.6, p_market=0.5, price=2.0)
+    ruta = write_prediction_gate(graded, tmp_path)
+    assert release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                         released_by="carlos") is True
+    mercados = json.loads(ruta.read_text(encoding="utf-8"))["markets"]
+    e = mercados["brasileirao|totals"]
+    assert e["entry_test_at"] is None and e["entry_test_alpha"] is None
+    assert e["alpha_gastado_previo"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    # Sin test vivo: lo gastado + el alpha que costaria el proximo.
+    assert fwer_bound_registro(mercados) == pytest.approx(2 * PREDICTION_GATE_ALPHA)
+    ruta = write_prediction_gate(graded, tmp_path)
+    mercados = json.loads(ruta.read_text(encoding="utf-8"))["markets"]
+    e = mercados["brasileirao|totals"]
+    assert e["entry_test_at"] and e["entry_test_alpha"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    assert e["alpha_gastado_previo"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    assert fwer_bound_registro(mercados) == pytest.approx(2 * PREDICTION_GATE_ALPHA)
+
+
+def test_frontera_del_techo_con_cota_mixta(tmp_path, caplog):
+    from sqp.risk.prediction_gate import PREDICTION_GATE_ALPHA
+
+    def corre(n, directorio, previo):
+        _escribir_previo(directorio, previo)
+        pares = _pares_heredados() + _pares_vivos(n - 6)
+        caplog.clear()
+        with caplog.at_level("INFO"):
+            write_prediction_gate(_graded_para(pares), directorio)
+        return {r.levelname for r in caplog.records
+                if "cota real de error de familia" in r.message
+                or "RE-PRE-REGISTRAR" in r.message}
+
+    assert corre(69, tmp_path / "n69", _previo_con_heredados()) == set()
+    assert corre(84, tmp_path / "n84", _previo_con_heredados()) == {"INFO"}
+    assert corre(85, tmp_path / "n85", _previo_con_heredados()) == {"ERROR"}
+    # 84 cortes (n <= techo) pero con un test ya gastado y liberado: la cota
+    # mixta 0,061233 supera la maxima tolerada 5/82 -> ERROR.
+    previo = _previo_con_heredados()
+    previo["liga0|totals"] = {"n": 4, "wins": 2, "p_value": 0.5, "ev_flat": 0.0,
+                              "allowed": False, "reason": "liberado_pendiente_reevaluacion",
+                              "latched": False, "latched_at": None,
+                              "entry_test_at": None,
+                              "alpha_gastado_previo": PREDICTION_GATE_ALPHA}
+    assert corre(84, tmp_path / "n84liberado", previo) == {"ERROR"}
+    # Franja INFO disparada SOLO por la cota: 69 cortes (n = K) con un test
+    # liberado -> 3/520 + 63*alpha + alpha = 0,050702 > 0,05 -> INFO.
+    assert corre(69, tmp_path / "n69liberado", previo) == {"INFO"}
+
+
+def test_un_corte_liberado_sin_partidos_conserva_su_alpha_gastado(tmp_path):
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_ALPHA,
+                                          fwer_bound_registro,
+                                          release_prediction_gate_latch)
+    graded = _rows(160, 140, p_model=0.6, p_market=0.5, price=2.0)
+    write_prediction_gate(graded, tmp_path)
+    assert release_prediction_gate_latch(tmp_path, "brasileirao", "totals",
+                                         released_by="carlos") is True
+    # Al dia siguiente el corte no tiene partidos: no aparece en el graded.
+    ruta = write_prediction_gate(graded.iloc[0:0], tmp_path)
+    mercados = json.loads(ruta.read_text(encoding="utf-8"))["markets"]
+    assert "brasileirao|totals" in mercados
+    e = mercados["brasileirao|totals"]
+    assert e["reason"] == "sin_evaluacion" and e["entry_test_at"] is None
+    assert e["alpha_gastado_previo"] == pytest.approx(PREDICTION_GATE_ALPHA)
+    assert fwer_bound_registro(mercados) == pytest.approx(2 * PREDICTION_GATE_ALPHA)
+
+
+def test_a_k_cortes_con_heredados_la_cota_es_exactamente_el_alpha_de_familia(tmp_path, caplog):
+    from sqp.risk.prediction_gate import (PREDICTION_GATE_FAMILY_ALPHA,
+                                          PREDICTION_GATE_K)
+    _escribir_previo(tmp_path, _previo_con_heredados())
+    pares = _pares_heredados() + _pares_vivos(PREDICTION_GATE_K - 6)
+    with caplog.at_level("INFO"):
+        ruta = write_prediction_gate(_graded_para(pares), tmp_path)
+    payload = json.loads(ruta.read_text(encoding="utf-8"))
+    assert payload["n_cortes_evaluados"] == PREDICTION_GATE_K
+    assert payload["fwer_bound"] == pytest.approx(PREDICTION_GATE_FAMILY_ALPHA, abs=1e-9)
+    assert not any("cota real de error de familia" in r.message for r in caplog.records)

@@ -51,7 +51,7 @@ stake real.
   y (2) su EV a stake plano es positivo. **`PREDICTION_GATE_ALPHA` NO es 0,05**:
   desde el pre-registro del 2026-09-04 el alpha de FAMILIA (0,05) se reparte por
   Bonferroni sobre `PREDICTION_GATE_K` cortes: 69 desde el re-pre-registro del
-  2026-11-02 (antes 52 y 41), asi que el umbral POR MERCADO es `0,05/69 = 0,000725`.
+  2026-11-02 (antes 52 y 41), asi que el umbral POR MERCADO es `0,000702` = (0,05 − 6·0,05/52)/63 (enmienda 2026-11-03).
   Con K=41 a 0,05 la probabilidad de al menos un falso
   positivo, si los 41 fueran nulos, seria del 87,8 %: una puerta que el ruido abre
   con esa probabilidad no es una puerta. **Leer la constante, no citarla de

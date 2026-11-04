@@ -2,6 +2,7 @@
 
 **Fecha:** 2026-11-02.
 **Estado:** **VIGENTE desde su commit.** Redactado por el escalón Fable (rol de pre-registro de `.claude/automation/MODEL_ROUTING.md`) bajo la autorización plena del operador del 2026-11-02 (§7). Implementado el mismo día (constantes y referencias de §7).
+**Enmendado el 2026-11-03** por `docs/research/2026-11-03-enmienda-gate-k69-alfa-consumido.md` (KI-078): los seis tests gastados a 0,05/52 se cuentan a su α real; α_corte pasa de 0,05/69 = 0,000725 a (0,05 − 6 × 0,05/52)/63 = 0,000702, y la cota de §3.4 se calcula con el α consumido. K = 69 y el techo de 84 no cambian. Las cifras de §3.1, §3.3.2 (punto 2), §3.4 y §4 se conservan como se escribieron y quedan superadas por la enmienda.
 **Modifica:** `docs/research/2026-09-25-repreregistro-gate-k52.md`, §3: el valor de K y el techo de re-pre-registro. A través de él modifica también `docs/research/2026-09-04-preregistro-multiplicidad-del-gate.md` §3.1, solo en esos dos números. Todo lo demás de ambos documentos sigue vigente sin cambios, incluidos sus addenda, en particular §3.2 del 2026-09-04: **un solo test de entrada por corte**.
 
 **Nota sobre el nombre del fichero.** El encargo se abrió como «K = 68», que es el número de cortes que evalúa hoy el registro. La decisión de §3.3 añade a K el corte derivado `mlb|team_totals`, cuya entrada en el gate ya estaba pre-registrada. El valor fijado aquí es **K = 69**. El fichero se renombró a `…-k69.md` antes de su commit para que el nombre coincida con el valor fijado.
