@@ -30,21 +30,27 @@ def main() -> int:
     df = pd.read_csv(log_path)
 
     cons_cache: dict[str, dict] = {}
+    cap_cache: dict[str, dict] = {}
 
     def close_for(league: str, event_id: str, market: str, selection: str,
                   line: float | None):
         if league not in cons_cache:
+            cap_cache[league] = {}
             cons_cache[league] = {
                 eid: _consensus_lines(eo) for eid, eo in
-                load_closing_odds(ROOT, league,
-                                  max_age_min=CLOSE_MAX_AGE_MIN).items()}
+                load_closing_odds(ROOT, league, max_age_min=CLOSE_MAX_AGE_MIN,
+                                  captured_out=cap_cache[league]).items()}
         cons = cons_cache[league].get(str(event_id))
         if not cons:
             return None
         # h2h sin linea; spreads/totals por linea EXACTA (v2 del observatorio).
         return cons.get((market, str(selection), line))
 
-    rep = evaluate_gate(df, close_for)
+    def captured_for(league: str, event_id: str):
+        return cap_cache.get(league, {}).get(str(event_id))
+
+    # close_for puebla cap_cache; captured_for se consulta justo despues.
+    rep = evaluate_gate(df, close_for, captured_for)
     print("# Gate fase ofensiva intradía (#4) — test de signo (KI-020, 2026-08-05)")
     print(f"Log: {len(df)} filas | intradía n={rep['n_intraday']} "
           f"({rep['n_intraday_nontied']} no empatadas, mín "

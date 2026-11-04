@@ -38,6 +38,32 @@ def test_first_detections_dedups_and_excludes_ever_candidates():
     assert len(cand) == 2
 
 
+def test_aud013_cierre_capturado_antes_de_la_entrada_se_excluye():
+    """Un 'cierre' con captura <= instante del primer aviso es la propia
+    entrada: se excluye en vez de contar como CLV 0 / positivo falso."""
+    rows = [_log_row(event_id="e1", ts="2026-07-20T15:00:00+00:00"),
+            _log_row(event_id="e2", ts="2026-07-20T15:00:00+00:00")]
+    closes = {("mlb", "e1", "h2h", "Yankees"): 1.80,
+              ("mlb", "e2", "h2h", "Yankees"): 1.80}
+    caps = {("mlb", "e1"): pd.Timestamp("2026-07-20T14:00:00+00:00"),   # anterior
+            ("mlb", "e2"): pd.Timestamp("2026-07-20T17:00:00+00:00")}   # valido
+    rep = evaluate_gate(pd.DataFrame(rows), _close_lookup(closes),
+                        lambda lg, eid: caps.get((lg, str(eid))))
+    assert rep["n_intraday"] == 1
+    # sin captured_for (comportamiento anterior) ambos contarian
+    assert evaluate_gate(pd.DataFrame(rows), _close_lookup(closes))["n_intraday"] == 2
+
+
+def test_aud013_dos_lineas_del_mismo_evento_son_una_unidad():
+    rows = [_log_row(event_id="e1", selection="Yankees", price_now=2.0),
+            _log_row(event_id="e1", selection="Red Sox", price_now=2.2)]
+    closes = {("mlb", "e1", "h2h", "Yankees"): 1.80,
+              ("mlb", "e1", "h2h", "Red Sox"): 2.0}
+    rep = evaluate_gate(pd.DataFrame(rows), _close_lookup(closes))
+    assert rep["n_intraday"] == 1
+    assert rep["n_intraday_nontied"] == 1
+
+
 def _close_lookup(closes):
     def lookup(league, event_id, market, selection, line=None):
         return closes.get((league, str(event_id), market, str(selection)))

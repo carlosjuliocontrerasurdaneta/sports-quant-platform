@@ -29,6 +29,12 @@ sin cierre fresco emparejable se excluyen (no cuentan como CLV 0). Mercados:
 h2h desde el v1 del observatorio; spreads/totals desde el v2 (2026-08-02),
 emparejados por línea EXACTA. Probabilidades estimadas, nunca certezas; un
 PASS habilita CONSTRUIR la fase, no apostar dinero real.
+
+Validez del CLV (audit-2026-11-03, AUD-013): (1) si se pasa ``captured_for``, un
+"cierre" capturado EN el instante de la entrada o antes se excluye (es el precio
+de la propia entrada, CLV 0 por construcción); (2) las líneas/selecciones del
+mismo evento no son independientes, así que se colapsan a UNA unidad por evento
+(media de su CLV) antes del test de signo. Por eso ``n_*`` cuenta eventos.
 """
 from __future__ import annotations
 
@@ -47,6 +53,8 @@ _KEY = ["league", "event_id", "market", "selection", "line"]
 
 # (league, event_id, market, selection, line) -> precio de cierre o None.
 CloseLookup = Callable[[str, str, str, str, "float | None"], "float | None"]
+# (league, event_id) -> instante UTC de la captura usada como cierre, o None.
+CapturedLookup = Callable[[str, str], "pd.Timestamp | None"]
 
 
 def _norm_line(market: str, line) -> float | None:
@@ -80,20 +88,32 @@ def first_detections(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return hyp, cand
 
 
-def _clv_frame(rows: pd.DataFrame, price_col: str,
-               close_for: CloseLookup) -> pd.DataFrame:
+def _clv_frame(rows: pd.DataFrame, price_col: str, close_for: CloseLookup,
+               captured_for: CapturedLookup | None = None) -> pd.DataFrame:
+    """CLV por EVENTO (media de sus filas válidas); ver AUD-013 en el módulo."""
     out = []
-    for r in rows.itertuples():
+    # itertuples renombra las columnas con guion bajo inicial: se leen aparte.
+    stamps = list(rows["_ts"]) if "_ts" in rows.columns else [pd.NaT] * len(rows)
+    for r, entry_ts in zip(rows.itertuples(), stamps):
         close = close_for(str(r.league), str(r.event_id), str(r.market),
                           str(r.selection), _norm_line(str(r.market), r.line))
         if close is None or close <= 1.0:
             continue
+        if captured_for is not None:
+            cap = captured_for(str(r.league), str(r.event_id))
+            if cap is not None and not pd.isna(entry_ts) and cap <= entry_ts:
+                continue  # el "cierre" es la propia entrada o anterior
         entry = pd.to_numeric(pd.Series([getattr(r, price_col)]),
                               errors="coerce").iloc[0]
         if pd.isna(entry) or entry <= 1.0:
             continue
-        out.append({"league": str(r.league), "clv": float(entry) / float(close) - 1.0})
-    return pd.DataFrame(out, columns=["league", "clv"])
+        out.append({"league": str(r.league), "event_id": str(r.event_id),
+                    "clv": float(entry) / float(close) - 1.0})
+    df = pd.DataFrame(out, columns=["league", "event_id", "clv"])
+    if df.empty:
+        return df[["league", "clv"]]
+    return (df.groupby(["league", "event_id"], as_index=False)["clv"].mean()
+            [["league", "clv"]])
 
 
 def _sign_stats(clv: pd.Series) -> tuple[int, int, float, float]:
@@ -109,14 +129,15 @@ def _sign_stats(clv: pd.Series) -> tuple[int, int, float, float]:
     return n, pos, pos / n, p
 
 
-def evaluate_gate(log_df: pd.DataFrame, close_for: CloseLookup) -> dict:
+def evaluate_gate(log_df: pd.DataFrame, close_for: CloseLookup,
+                  captured_for: CapturedLookup | None = None) -> dict:
     """Evalúa la regla del gate sobre el log intradía. Devuelve un dict con
     tamaños, medianas/medias/beat-rate por grupo, el test de signo sobre las
     filas no empatadas, desglose por liga del grupo intradía y ``verdict`` in
     {PASS, RECHAZO, INSUFICIENTE}."""
     hyp, cand = first_detections(log_df)
-    h = _clv_frame(hyp, "price_now", close_for)
-    c = _clv_frame(cand, "entry_price", close_for)
+    h = _clv_frame(hyp, "price_now", close_for, captured_for)
+    c = _clv_frame(cand, "entry_price", close_for, captured_for)
     nz_h, pos_h, rate_h, p_h = _sign_stats(h["clv"])
     nz_c, pos_c, rate_c, p_c = _sign_stats(c["clv"])
     rep: dict = {

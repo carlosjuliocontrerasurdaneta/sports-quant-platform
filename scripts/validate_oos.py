@@ -13,7 +13,9 @@ update walk-forward across the whole timeline (leak-free; they only ever see
 past games). For contrast it scores the same TEST window under two more configs:
 
   - full_history : the ratings.yaml values (tuned on everything, incl. test).
-  - family_default: no parameter tuning at all.
+  - family_default: the canonical league configuration WITHOUT the tuned keys
+                   (tilt_scale / elo_home_adv / dc_rho); every other canonical
+                   key (park_bound, pitcher_bound, avg_total, ...) is kept.
 
 If frozen_train ROI is far below full_history, the full-history tuning was
 optimistic; if frozen_train tracks family_default, the tuning adds little OOS.
@@ -22,9 +24,10 @@ optimistic; if frozen_train tracks family_default, the tuning adds little OOS.
   python scripts/validate_oos.py --leagues mlb --test-start 2026-05-01
 
 Single pre-game snapshot proxy for closing odds, limited coverage. This is a
-backtest and never a profit guarantee. pitcher_bound is held at 0.0 in every
-config (the v1 starter feature was rejected; see KI-006), so only genuinely
-tunable parameters are frozen here.
+backtest and never a profit guarantee. The three configs differ ONLY in the
+tuned keys: non-tuned canonical parameters (pitcher_bound, park_bound,
+avg_total, ...) come from the league configuration in every config (AUD-004;
+before, pitcher_bound was forced to 0.0 and the other keys were dropped).
 """
 from __future__ import annotations
 
@@ -73,12 +76,25 @@ def _tune_tilt(train: list[dict], league: str, family: str, base: dict,
     return (best_v if best_v is not None else base.get("tilt_scale", 0.5)), rows
 
 
+TUNED_KEYS = ("tilt_scale", "elo_home_adv", "dc_rho")
+
+
+def _family_default(league_params: dict | None) -> dict:
+    """Canonical league config without the keys this script tunes."""
+    return {k: v for k, v in dict(league_params or {}).items()
+            if k not in TUNED_KEYS}
+
+
 def _freeze_on_train(train: list[dict], league: str, family: str, three_way: bool,
-                     warmup: int, holdout_splits: int) -> dict:
-    """Select parameters using ONLY the train period."""
-    base: dict = {}
-    if family == "baseball":
-        base["pitcher_bound"] = 0.0  # v1 starter feature rejected (KI-006)
+                     warmup: int, holdout_splits: int,
+                     league_params: dict | None = None) -> dict:
+    """Select parameters using ONLY the train period.
+
+    The result is the canonical config (non-tuned keys kept) overridden with
+    the tuned keys only; the tuned keys of the canonical config are dropped
+    first so the search never starts from full-history values.
+    """
+    base: dict = _family_default(league_params)
     if family in TILT_FAMILIES:
         tilt, _ = _tune_tilt(train, league, family, base, warmup)
         base["tilt_scale"] = tilt
@@ -255,11 +271,12 @@ def _validar_liga(league: str, odds: dict, settings, args) -> bool:
              meta.get("league_params"), settings, args.warmup, cutoff)
         return True
 
-    frozen = _freeze_on_train(train, league, family, three_way, args.warmup, args.holdout_splits)
+    frozen = _freeze_on_train(train, league, family, three_way, args.warmup,
+                              args.holdout_splits, meta.get("league_params"))
     print(f"FROZEN params (selected on train only): {frozen}")
 
     # Same TEST window under three parameter configs.
-    base_default = {"pitcher_bound": 0.0} if family == "baseball" else None
+    base_default = _family_default(meta.get("league_params")) or None
     _run("frozen_train", results, odds, league, family, frozen, settings, args.warmup, cutoff)
     _run("full_history (ratings.yaml; optimistic)", results, odds, league, family,
          meta.get("league_params"), settings, args.warmup, cutoff)

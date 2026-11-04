@@ -373,7 +373,14 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     `bet_from_date` ('YYYY-MM-DD'): when set, only games on or after this date
     are bet and counted; earlier games still feed the walk-forward ratings.
     This is the out-of-sample evaluation window: parameters frozen on the train
-    period (date < bet_from_date) are scored only on later, unseen games."""
+    period (date < bet_from_date) are scored only on later, unseen games.
+
+    Limitation (AUD-012): for MLB the starters come from the stored result
+    (`home_starter`/`away_starter`, the pitcher who actually started), not the
+    probable starter that was available at the prediction cutoff. Starter-based
+    parameters (e.g. pitcher_bound) are therefore evaluated with information
+    the live pipeline may not have had; re-tuning them needs the pre-cutoff
+    probable-starter log instead."""
     if risk.line_movement_penalty != 0 or risk.line_velocity_penalty != 0:
         raise ValueError("ROI backtest cannot apply movement/velocity penalties without historical trajectories")
     adapter = get_adapter(league, family, league_params)

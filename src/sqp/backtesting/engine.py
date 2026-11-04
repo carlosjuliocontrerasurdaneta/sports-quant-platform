@@ -50,6 +50,10 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
     el desenlace sale del marcador, asi que no hace falta historico de cuotas.
     Los empujes (marcador exactamente en la linea) se excluyen, igual que los
     empates en las metricas binarias del moneyline.
+
+    Limitacion (AUD-012): en MLB el abridor sale de `home_starter`/`away_starter`
+    del resultado, es decir el abridor ALMACENADO (el que lanzo), no el probable
+    disponible al corte de prediccion; sobreestima la informacion de abridor.
     """
     adapter = get_adapter(league, family, league_params)
     probs, outcomes = [], []
