@@ -1,12 +1,22 @@
 ---
 tags: [tareas, sqp]
 creada: 2026-07-08
-actualizada: 2026-09-17
+actualizada: 2026-11-07
 ---
 
 # Tareas
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
+
+## Pendientes al cierre del 2026-11-07
+
+- [ ] **Operador**: `! python scripts/repair_ki079_20261107.py --apply` fuera de las ventanas de SETTLE y DIARIO (KI-079; Fable APTO; 12 filas de graded_ncaaf y 1 de settled_ncaaf, stake 0). Después, comprobar el MANIFEST en `data/backups/repair-ki079-20261107/` con estado `aplicado`.
+- [ ] **Operador**: dar acceso de lectura al stash (`! git stash show --stat --include-untracked stash@{0}`, o permitir `Bash(git stash list)` y `Bash(git stash show:*)`). Plan: aplicar el stash del portero NHL en un worktree, que Sonnet lo complete, revisión Fable y fusión antes de las 12:00.
+- [ ] **Operador**: AUD-022, aceptar el riesgo o reescribir el historial desde su terminal (force-push prohibido a Claude).
+- [ ] **Operador, consola elevada**: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` (AUD-007).
+- [ ] Sin autorizar, informados el 2026-11-07: paridad del run diario frente al backtest en `_decision_probability`; calibrador ausente sin aviso; `daily.py` descarta la fila con `reliability_warning` (contradice «un gate quita el stake, nunca la fila»).
+- [ ] Opcionales de la verificación: punto ciego del detector de desplazamiento en `append_csv_log`; lock entre procesos de `promotion_log.csv`.
+- [ ] Operador: decidir si borrar `.claude/settings.json.graphify-bak` y `.github/copilot-instructions.md` (sin seguimiento).
 
 ## Derivados MLB — Fase 1 en marcha (2026-09-19)
 

@@ -10,6 +10,7 @@ Diario cronológico del proyecto: una nota por día con trabajo relevante, en `B
 
 ## Entradas
 
+- [[Bitácora/2026-11-07]] — verificación independiente de `f5b80e2`: APTO CON PENDIENTES; KI-079 (NCAAF liquidado con 24-18, 13 filas con stake 0): script listo, `--apply` del operador.
 - [[Bitácora/2026-10-29]] — features: captura de abridores MLB cada 30 min con hora propia; pre-registro de regresión del Elo NBA entre temporadas (Fable APTO CON CAMBIOS, nada activado); acierto liquidado 42,0 % vs 50,0 % prometido.
 - [[Bitácora/2026-10-22]] — verificación independiente de `audit-2026-10-18`: APTO CON PENDIENTES (Fable); `certifi` a 2026.10.19 por GHSA-6q48-6c7w-9gw2; liquidación del 21-10 fallida, pendiente del operador.
 - [[Bitácora/2026-10-20]] — line shopping activado con Pinnacle (operador en Chile; PokerStars no la cubre el proveedor); Fable APTO y addenda de régimen de `execution_price`.

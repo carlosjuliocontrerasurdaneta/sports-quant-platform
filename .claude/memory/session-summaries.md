@@ -1057,3 +1057,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Commit de la integracion: seccion graphify en `CLAUDE.md` y `.claude/CLAUDE.md`, hook `graphify hook-guard read` en `.claude/settings.json` y la skill `.claude/skills/graphify/`.
 - Leccion: el hook check-secrets da falso positivo con el contador de tokens de graphify (`.graphify_extract.json`, `cost.json`); no es un secreto.
 - Pendiente del operador: decidir si borrar `.claude/settings.json.graphify-bak` (identico a HEAD), `.claude/skills/graphify/SKILL.md.bak` y `.github/copilot-instructions.md` (stub de claude-mem); no se commitearon.
+
+## 2026-11-07 — Verificacion de f5b80e2 y KI-079
+
+- Verificacion independiente de `f5b80e2` (Fable, solo lectura): REG-001, REG-002 y NEW-001 verificado-corregido, 0 regresiones; ronda audit-2026-11-03 APTO CON PENDIENTES (`060def7`). Detalle en [[Bitácora/2026-11-07]].
+- KI-079: UMass @ Buffalo (2026-10-17) liquidado con 24-18, real 25-18 OT; 12 filas de graded_ncaaf y 1 de settled_ncaaf, stake 0. Script `scripts/repair_ki079_20261107.py` (Sonnet, Fable APTO, `091a649`); el `--apply` lo bloquea el clasificador y lo ejecuta el operador.
+- Bloqueado: `git stash` denegado incluso en lectura (portero NHL); AUD-022 (force-push) y wevtutil (elevacion) del operador.
+- Pendientes completos en `Obsidian/Tareas.md`, seccion «Pendientes al cierre del 2026-11-07».
+- Leccion: sumar el desglose antes de congelar recuentos en la especificacion de un reparador.
+
