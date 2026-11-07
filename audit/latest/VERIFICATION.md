@@ -171,3 +171,34 @@ Ninguno. AUD-002 (P1) está verificado-corregido. Ninguna regresión ni hallazgo
 6. **AUD-015 (operador):** purgar los 0-0 de relleno ya almacenados, si se quiere.
 7. Residuales opcionales de AUD-014, AUD-016, AUD-018 y AUD-019 (§2).
 8. **Primera ejecución real del gate nuevo:** el run de las 12:00 del 2026-11-04 será la primera escritura del registro con `criterio_condicion2` (el vivo es del 2026-11-03 23:52 UTC, anterior a `914707c`). Conviene confirmar después que aparecen `criterio_condicion2` y `entradas_bloqueadas: false` y que no hay transiciones.
+
+## 7. Addendum: verificación independiente de `f5b80e2` (2026-11-07)
+
+**Alcance:** REG-001, REG-002 y NEW-001, corregidos en `f5b80e2` con revisión Fable previa al commit. **Verificador:** subagente nuevo Fable 5.1 (`claude-fable-5-1`), solo lectura, que no implementó nada. **Base:** `0c6fb9f` (HEAD; posterior a `f5b80e2`, solo docs y graphify). **Árbol:** solo los dos `??` preexistentes (`.claude/settings.json.graphify-bak`, `.github/copilot-instructions.md`).
+
+| ID | Estado de verificación | Evidencia |
+|---|---|---|
+| REG-001 | verificado-corregido | `tipster.py:112-120` (`_marca_accuracy`, celda a celda) y `:193-197` (`min_edge=None` solo en filas marcadas); `daily.py:1044-1048` escribe `served_stream;accuracy_mode` con la misma condición que `:1055`. Reproducido: las filas marcadas van a tier C; las no marcadas y `accuracy_mode_x` siguen en NO BET. Modo edge: 0 diferencias frente a `f5b80e2^` en 3.000 filas × 4 `min_edge` × 2 `prob_col` (`assert_frame_equal`). Tier A congelado intacto (`measure_tier_a_gap.py` carga el blob del tag). Ningún consumidor de `flags` compara por igualdad exacta. Discrepancia menor: `prediction_gate.py` no cambió para REG-001, solo para NEW-001. |
+| REG-002 | verificado-corregido | `wait_for_clean_tree.ps1:28` `return ,@(...)`. Reproducido en PowerShell 5.1: vacío → `Count=0` (antes `$null`); una línea → `Object[]`; si git falla sigue devolviendo `$null` (falla abierto como antes). El test exige «arbol limpio; se continua.». |
+| NEW-001 | verificado-corregido | `atomic.py:166-212` `append_csv_log`: cuarentena `.corrupt.<UTC µs>`, error sin escribir si no puede apartar, detección de columnas desplazadas, unión de columnas. Callers: `calibrator.py:1001,1012,1111`; `prediction_gate.py:687` (bajo `locked()`); `revalidation.py:76`. Reproducido: 50 filas + 1 malformada → `.corrupt` con sha256 idéntico y log nuevo de 1 fila; 0 bytes sin cuarentena. Otros escritores del patrón (`team_totals_capture.py:178`, `odds_store.py:68`, `goalies.py:223`, `pitchers_capture.py:87`, `starters.py:66`) propagan `ParserError` (fallan en alto, sin pérdida). Sin traslado. |
+
+**Regresiones nuevas:** ninguna (no se asigna REG-003).
+
+**Observaciones no bloqueantes:**
+1. Punto ciego del detector de desplazamiento: si todas las filas traen un campo de más y la primera columna son enteros 0..n-1, se pierde una columna sin aviso (reproducido en temporal). No alcanzable en los logs cubiertos (primera columna `timestamp`); el comentario del código lo reconoce.
+2. Los escritores de `promotion_log.csv` siguen sin lock entre procesos (preexistente; el docstring lo delega en el llamador). Residual de concurrencia, no regresión.
+3. Filas del stream servido generadas en modo accuracy antes de `f5b80e2` no llevan la marca. Producción usa `picks.mode: edge` (`configs/default.yaml:200`): impacto esperado nulo; NOT_VERIFIABLE sin escanear `data/`.
+
+**Validación (comando → rc):**
+
+| Comando | Resultado | rc |
+|---|---|---|
+| pytest `test_audit_verif_regresiones`, `test_accuracy_mode`, `test_audit_log_concurrency`, `test_diario_espera_arbol` | 25 passed | 0 |
+| pytest `test_tipster`, `test_prediction_gate`, `test_revalidation`, `test_auto_promote`, `test_calibrator`, `test_calibration_registry_robustness`, `test_audit_atomic_readers`, `research/test_measure_tier_a_gap` | 305 passed | 0 |
+| `pytest -q -p no:cacheprovider -x -m "not slow and not heavy"` | 2738 passed, 778 deselected (36 min) | 0 |
+| `ruff check src scripts tests` | All checks passed | 0 |
+| `mypy src` | sin errores (116 ficheros) | 0 |
+
+No ejecutado: la parte slow/heavy de la suite (queda para el CI). Sin `NEW_REGRESSION`, `PRE_EXISTING_FAILURE` ni `ENVIRONMENTAL_FAILURE`.
+
+**Dictamen de la ronda:** **APTO CON PENDIENTES** (regla 3). No hay P0/P1 abierto ni regresión, y la evidencia de los tres IDs es suficiente. Siguen abiertos AUD-022 (P4, decisión del operador), el historial del Programador (AUD-007, operador), los residuales de AUD-014/016/018/019 y las observaciones 1-3. Este dictamen solo califica la remediación evaluada; no garantiza ausencia de defectos ni rentabilidad.

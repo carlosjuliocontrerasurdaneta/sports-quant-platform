@@ -269,6 +269,46 @@
       "VERIFICATION.md": "30e9ff5e91857c519ee49e70da8df36708a7345e6ad87601645293fce8a9ee4b",
       "STATUS.md": "2fa8b22c8251a9b9eab9bde8a73a3810f02df11442a91f7ccda4da5e8f24ee29"
     },
-    "next_action": "autorizar remediacion acotada de NEW-001, REG-001 y REG-002; operador: AUD-022 y historial del Programador (AUD-007); confirmar el registro del gate tras el run de las 12:00 del 2026-11-04"
+    "next_action": "operador: AUD-022 e historial del Programador (AUD-007); REG-001/REG-002/NEW-001 verificados el 2026-11-07"
+  },
+  "verification_f5b80e2": {
+    "date_utc": "2026-11-07T12:50:21Z",
+    "verifier": "subagente independiente Fable 5.1 (claude-fable-5-1), solo lectura; no implemento f5b80e2",
+    "procedure": "audits/prompts/verificar-remediacion.md",
+    "head": "0c6fb9f",
+    "commit_evaluated": "f5b80e2",
+    "by_id": {
+      "REG-001": "verificado-corregido",
+      "REG-002": "verificado-corregido",
+      "NEW-001": "verificado-corregido"
+    },
+    "regressions": [],
+    "observations": [
+      "detector de desplazamiento: punto ciego con primera columna 0..n-1 (no alcanzable en logs cubiertos)",
+      "promotion_log.csv sin lock entre procesos (preexistente)",
+      "filas servidas en modo accuracy antes de f5b80e2 sin marca (produccion en modo edge; NOT_VERIFIABLE sin escanear data/)"
+    ],
+    "tests": {
+      "pytest focalizado (4 ficheros)": "rc=0: 25 passed",
+      "pytest relacionados (8 ficheros)": "rc=0: 305 passed",
+      "pytest -m 'not slow and not heavy' -x": "rc=0: 2738 passed, 778 deselected",
+      "ruff check src scripts tests": "rc=0",
+      "mypy src": "rc=0 (116 ficheros)",
+      "slow/heavy": "no ejecutado (CI)"
+    },
+    "verdict": "APTO_CON_PENDIENTES",
+    "history_preserved": {
+      "path": "audit/latest/history/verificacion-f5b80e2-20261107T125021Z/",
+      "files": {
+        "VERIFICATION.md": "30e9ff5e91857c519ee49e70da8df36708a7345e6ad87601645293fce8a9ee4b",
+        "STATUS.md": "87cd80aaedee009131a1aa0658569d54cc99cd16e3949eb98394d5d2f29a341f",
+        "MANIFEST.json": "cc27d73dfe9e113af759c7a61b2f77990296444a4c84a901ac4b6d55e0f9aefe"
+      },
+      "verified": "cmp byte a byte OK antes de sobrescribir"
+    },
+    "deliverables": {
+      "VERIFICATION.md": "edc3549644e0fb0eb18935584b7a286e34a23bdb7f84747a74772a0728715870",
+      "STATUS.md": "fac15159efb9a3348ea777ac55ba232bedee1c58715ae65b9e8164306eb47e5f"
+    }
   }
 }
