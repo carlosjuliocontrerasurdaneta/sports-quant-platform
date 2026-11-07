@@ -1048,3 +1048,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Pendiente: verificacion independiente; CI tras el push; decisiones del operador en AUD-022/023 y el historial del Programador (AUD-007).
 
 - Tarde 2026-11-04: verificacion independiente APTO CON PENDIENTES (`b6b8000`). REG-001, REG-002 y NEW-001 corregidos en `f5b80e2` con revision Fable previa. Leccion: mover una escritura a un helper compartido traslada el punto de monkeypatch de los tests de concurrencia (`test_audit_log_concurrency`). Pendiente: verificar `f5b80e2`.
+
+
+## 2026-11-06 - Grafo graphify completo e integracion de graphify en el repo
+
+- `/graphify .` completado: 253 .md pendientes extraidos en 14 lotes Sonnet con un maximo de 4 a la vez (sin bloqueos; la sesion anterior lanzo 17 y 12 murieron por watchdog). Los 350 .md estan en cache semantica. Grafo: 14.677 nodos, 28.485 aristas, 833 comunidades. `graphify-out/` sigue en .gitignore.
+- El rebuild exigio `force`: 2.921 nodos antiguos cambiaron de ID (`claude_*` a `_claude_*`) o eran de ficheros borrados; se comprobo que todo fichero presente tiene nodos nuevos. Salud: 2.502 aristas colgantes. Parciales que reintentara `--update`: `verification-gate.md` y `audit-2026-10-15/.../verificacion-20261016T143210Z/VERIFICATION.md`.
+- Commit de la integracion: seccion graphify en `CLAUDE.md` y `.claude/CLAUDE.md`, hook `graphify hook-guard read` en `.claude/settings.json` y la skill `.claude/skills/graphify/`.
+- Leccion: el hook check-secrets da falso positivo con el contador de tokens de graphify (`.graphify_extract.json`, `cost.json`); no es un secreto.
+- Pendiente del operador: decidir si borrar `.claude/settings.json.graphify-bak` (identico a HEAD), `.claude/skills/graphify/SKILL.md.bak` y `.github/copilot-instructions.md` (stub de claude-mem); no se commitearon.
