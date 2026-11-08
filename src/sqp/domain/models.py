@@ -15,6 +15,10 @@ class Event:
     data_label: str = "real"  # "real" | "demo_synthetic"
     home_pitcher: str | None = None  # baseball: probable/confirmed starter
     away_pitcher: str | None = None
+    # hockey: goalie id announced/confirmed for the game (None = use the adapter's
+    # proxy, the team's last observed starter). Pre-registro portero NHL, seccion 5.
+    home_goalie: str | None = None
+    away_goalie: str | None = None
 
 
 @dataclass

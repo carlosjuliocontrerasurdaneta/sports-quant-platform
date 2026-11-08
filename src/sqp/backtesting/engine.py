@@ -54,6 +54,10 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
     Limitacion (AUD-012): en MLB el abridor sale de `home_starter`/`away_starter`
     del resultado, es decir el abridor ALMACENADO (el que lanzo), no el probable
     disponible al corte de prediccion; sobreestima la informacion de abridor.
+    Lo mismo en NHL con `home_goalie_announced`/`away_goalie_announced`: si la
+    fila trae el titular REAL del partido (brazo M1 del pre-registro portero
+    NHL), es informacion que no existe al corte; es una cota superior, no un
+    modelo activable. Sin esas columnas (ResultsStore) el evento usa el proxy.
     """
     adapter = get_adapter(league, family, league_params)
     probs, outcomes = [], []
@@ -81,7 +85,9 @@ def walk_forward_backtest(results: list[dict], league: str, family: str,
                        home=r["home"], away=r["away"], start_time=str(r.get("date")),
                        data_label=r.get("data_label", "real"),
                        home_pitcher=r.get("home_starter"),
-                       away_pitcher=r.get("away_starter"))
+                       away_pitcher=r.get("away_starter"),
+                       home_goalie=r.get("home_goalie_announced"),
+                       away_goalie=r.get("away_goalie_announced"))
             est = adapter.estimate(ev, None, None)
             ph = est.home_win_estimated_probability
             if est.draw_estimated_probability is not None:

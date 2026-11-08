@@ -11,7 +11,14 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Pendientes al cierre del 2026-11-07
 
 - [x] **Operador**: `! python scripts/repair_ki079_20261107.py --apply` (KI-079). Aplicado el 2026-11-08 a las 14:05 UTC; MANIFEST `aplicado` y sha256 verificados. Ver [[Bitácora/2026-11-08]].
-- [ ] **Operador**: dar acceso de lectura al stash (`! git stash show --stat --include-untracked stash@{0}`, o permitir `Bash(git stash list)` y `Bash(git stash show:*)`). Plan: aplicar el stash del portero NHL en un worktree, que Sonnet lo complete, revisión Fable y fusión antes de las 12:00.
+- [x] Stash del portero NHL (`stash@{0}`, `e165ab6`): leído con `git show` (autorizado el 2026-11-08), trasplantado a la rama `wip/portero-nhl-stash` y fusionado con `goalie_beta = 0` (inactivo). El stash queda intacto. Ver [[Bitácora/2026-11-08]].
+- [ ] **Antes de `--pre` del portero NHL** (revisión Fable 2026-11-08, APTO CON CAMBIOS para fusionar):
+  - **Decisión del operador, enmienda:** (1) el lado NHL de las exhibiciones contra clubes no NHL: ¿f = 1 (§3.3) o proxy (implementado)?; (2) el partido siguiente a uno sin datos que no está en E: ¿f = 1 (§13.3, implementado) o proxy desfasado?
+  - **Decisión del operador:** aceptar o limitar el desempate ampliado de `assign_appearances` a partidos individuales; pretemporada por mes frente a `gameType`.
+  - **Operador:** reintentar las 19 fechas fallidas (Enmienda 2(c)2, escribe en `data/`) y congelar la instantánea fuera de `data/`; árbol limpio (los dos ficheros sin seguimiento lo ensucian).
+  - **Código, medio:** sustituir la frase fija «la API de la NHL no lista la pretemporada» (`measure_goalie_nhl.py:1192`) por un recuento medido de `game_type`; listar por nombre los partidos sin fila única y las filas en test sin apariciones (§3.3, Enmienda 2(e)1).
+  - **Código, bajo:** informe 8 con `gameType` y respaldo por mes; filas E por lado; capturar `SystemExit` solo en informes secundarios; descartar `goalie_player_id` vacío; quitar β_C de los mensajes de `assert_parity`; exigir `--data-root` explícito y rechazar `--out` existente; test de que M2 del día D no cambia al perturbar el día D; declarar la restricción a C del informe 9.
+  - Tras `--pre`: enmienda con las diferencias frente a §10 y la Enmienda 3(d) (pricing AUD-001).
 - [ ] **Operador**: AUD-022, aceptar el riesgo o reescribir el historial desde su terminal (force-push prohibido a Claude).
 - [ ] **Operador, consola elevada**: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` (AUD-007).
 - [ ] Sin autorizar, informados el 2026-11-07: paridad del run diario frente al backtest en `_decision_probability`; calibrador ausente sin aviso; `daily.py` descarta la fila con `reliability_warning` (contradice «un gate quita el stake, nunca la fila»).

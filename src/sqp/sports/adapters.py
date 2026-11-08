@@ -15,6 +15,7 @@ from typing import Iterator
 
 from sqp.domain.models import Event, EstimatedProbabilities
 from sqp.models import distributions as dist
+from sqp.models.goalies import GoalieRatings
 from sqp.models.park import ParkFactors
 from sqp.models.rest import RestModel
 from sqp.models.starters import StarterRatings
@@ -273,8 +274,42 @@ class BaseballAdapter(PoissonAdapter):
         return base
 
 class HockeyAdapter(PoissonAdapter):
+    """Hockey: Poisson goals, with an optional goalie-quality lambda factor.
+
+    `goalie_beta` (default 0.0 = no-op, byte-identical to the model without
+    goalies; the observer is not even fed) scales the OPPONENT'S lambda by
+    `GoalieRatings.factor` (pre-registro portero NHL, secciones 4-5). Rows carry
+    the appearances of both sides (`home_goalie_appearances` /
+    `away_goalie_appearances`: mappings `id`, `shots_against`, `saves`,
+    `starter`). The goalie of a side is `event.home_goalie` / `event.away_goalie`
+    when informed; otherwise the team's last observed starter (the proxy). An
+    unknown goalie gives factor 1.0 and never blocks candidates."""
     family = "hockey"
     TIE_ADDS_GOAL = True
+
+    def __init__(self, league: str, params: dict):
+        super().__init__(league, params)
+        self.goalie_beta = float(params.get("goalie_beta", 0.0))
+        self.goalies = GoalieRatings(prior_shots=float(params.get("goalie_prior_shots", 0.0)),
+                                     bound=float(params.get("goalie_bound", 0.35)))
+
+    def observe(self, r: dict) -> None:
+        super().observe(r)
+        if self.goalie_beta != 0.0:
+            self.goalies.observe_game(
+                str(r.get("date", ""))[:10], self.normalize(r["home"]), self.normalize(r["away"]),
+                r.get("home_goalie_appearances"), r.get("away_goalie_appearances"))
+
+    def _rates(self, event) -> tuple[float, float]:
+        lam_h, lam_a = super()._rates(event)
+        if self.goalie_beta == 0.0:
+            return lam_h, lam_a
+        date = str(event.start_time)[:10]
+        home_g = event.home_goalie or self.goalies.proxy(self.normalize(event.home))
+        away_g = event.away_goalie or self.goalies.proxy(self.normalize(event.away))
+        f_vs_away_goalie = self.goalies.factor(away_g, date, self.goalie_beta)
+        f_vs_home_goalie = self.goalies.factor(home_g, date, self.goalie_beta)
+        return max(0.1, lam_h * f_vs_away_goalie), max(0.1, lam_a * f_vs_home_goalie)
 
 class SoccerAdapter(PoissonAdapter):
     family = "soccer"
