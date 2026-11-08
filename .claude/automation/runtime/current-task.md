@@ -459,3 +459,9 @@ FABLE-REVIEW: 2026-11-07 | veredicto: APTO (revisor Fable independiente; marcado
 Revision Fable (Agent model=fable, sa-revisor, solo lectura) antes del commit. Veredicto APTO; hallazgo 1 (csv.Error) aplicado despues con el arreglo minimo que la propia revision proponia; hallazgo 2 (lock huerfano tras mutar el registro) anotado en Obsidian/Bitácora/2026-11-08.md.
 
 FABLE-REVIEW: 2026-11-08 | veredicto: APTO (hallazgo 1 aplicado segun su arreglo propuesto) | rutas: src/sqp/storage/atomic.py, src/sqp/calibration/calibrator.py
+
+## 2026-11-08 — Portero NHL: trasplante del stash e165ab6 a wip/portero-nhl-stash y fusion inactiva (goalie_beta=0)
+
+Orden del operador: opcion 2 (leer el stash con git show) y «hazlo». Sonnet completo y valido el WIP sin cambios; revision Fable (Agent model=fable, sa-revisor, solo lectura) antes del commit: APTO CON CAMBIOS para commit y fusion; aplicado el cambio pedido (nota en engine.py de que M1 es cota superior, como AUD-012), condicion = pytest/ruff/mypy completos en el worktree. Hallazgos para antes de --pre anotados en Obsidian/Tareas.md. measure_goalie_nhl.py no se ejecuto en ningun modo.
+
+FABLE-REVIEW: 2026-11-08 | veredicto: APTO CON CAMBIOS (cambio de docstring en engine.py aplicado; pendientes previos a --pre en Tareas) | rutas: src/sqp/backtesting/engine.py, src/sqp/domain/models.py, src/sqp/sports/adapters.py, src/sqp/models/goalies.py, scripts/research/measure_goalie_nhl.py, tests/test_measure_goalie_nhl.py
