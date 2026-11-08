@@ -15,7 +15,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 - [ ] **Operador**: AUD-022, aceptar el riesgo o reescribir el historial desde su terminal (force-push prohibido a Claude).
 - [ ] **Operador, consola elevada**: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` (AUD-007).
 - [ ] Sin autorizar, informados el 2026-11-07: paridad del run diario frente al backtest en `_decision_probability`; calibrador ausente sin aviso; `daily.py` descarta la fila con `reliability_warning` (contradice «un gate quita el stake, nunca la fila»).
-- [ ] Opcionales de la verificación: punto ciego del detector de desplazamiento en `append_csv_log`; lock entre procesos de `promotion_log.csv`.
+- [x] Opcionales de la verificación: punto ciego del detector de desplazamiento en `append_csv_log`; lock entre procesos de `promotion_log.csv`. Hecho el 2026-11-08 con revisión Fable APTO. Ver [[Bitácora/2026-11-08]].
 - [ ] Operador: decidir si borrar `.claude/settings.json.graphify-bak` y `.github/copilot-instructions.md` (sin seguimiento).
 
 ## Derivados MLB — Fase 1 en marcha (2026-09-19)

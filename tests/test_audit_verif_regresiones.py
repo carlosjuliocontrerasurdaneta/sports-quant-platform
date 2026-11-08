@@ -99,6 +99,65 @@ def test_append_csv_log_aparta_columnas_desplazadas(tmp_path):
     assert pd.read_csv(path).to_dict("records") == [{"a": 9, "b": 9}]
 
 
+def test_append_csv_log_aparta_desplazadas_con_primera_columna_0_a_n(tmp_path):
+    # Punto ciego de la verificacion de f5b80e2: si la columna que pandas pasa
+    # al indice es 0..n-1, el indice resultante ES un RangeIndex y el chequeo
+    # por indice no lo ve; el log se reescribia con las columnas corridas.
+    path = tmp_path / "log.csv"
+    path.write_text("a,b\n0,x,y\n1,z,w\n", encoding="utf-8")
+    sha = _sha(path)
+    append_csv_log(pd.DataFrame([{"a": 9, "b": 9}]), path)
+    [apartado] = _apartados(path)
+    assert _sha(apartado) == sha
+    assert pd.read_csv(path).to_dict("records") == [{"a": 9, "b": 9}]
+
+
+def test_append_csv_log_comas_entrecomilladas_no_son_campos_de_mas(tmp_path):
+    path = tmp_path / "log.csv"
+    path.write_text('a,b\n1,"x,y"\n', encoding="utf-8")
+    append_csv_log(pd.DataFrame([{"a": 2, "b": "z"}]), path)
+    assert not _apartados(path)
+    assert pd.read_csv(path)["b"].tolist() == ["x,y", "z"]
+
+
+@pytest.mark.parametrize("contenido", [
+    'a,b\n1,"linea\ncon salto"\n',      # salto de linea entrecomillado
+    "﻿a,b\n1,2\n",                  # BOM
+    "a,b\n1,2\n\n3,4\n",                 # linea en blanco
+    "a,b\n",                             # solo cabecera
+    "a,b\n1," + "x" * 200_000 + "\n",    # campo > csv.field_size_limit()
+], ids=["salto_entrecomillado", "bom", "linea_en_blanco", "solo_cabecera",
+        "campo_enorme"])
+def test_append_csv_log_no_aparta_logs_sanos(tmp_path, contenido):
+    path = tmp_path / "log.csv"
+    path.write_text(contenido, encoding="utf-8")
+    previas = len(pd.read_csv(path))
+    append_csv_log(pd.DataFrame([{"a": 9, "b": 9}]), path)
+    assert not _apartados(path)
+    assert len(pd.read_csv(path)) == previas + 1
+
+
+def test_promotion_log_se_escribe_bajo_lock(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    import sqp.calibration.calibrator as cal
+
+    monkeypatch.setattr(cal, "MODELS_DIR", tmp_path)
+    tomados: list[Path] = []
+
+    @contextmanager
+    def _registra(target, *a, **k):
+        tomados.append(Path(target))
+        yield
+
+    monkeypatch.setattr(cal, "locked", _registra)
+    cal._append_promotion_log([{"timestamp": "t", "key": "k",
+                                "action": "demoted", "method": "",
+                                "n_val": None, "n_val_events": None}])
+    assert tomados == [tmp_path / "promotion_log.csv"]
+    assert len(pd.read_csv(tmp_path / "promotion_log.csv")) == 1
+
+
 def test_append_csv_log_une_columnas_y_conserva_filas(tmp_path):
     path = tmp_path / "log.csv"
     pd.DataFrame([{"a": 1}]).to_csv(path, index=False)

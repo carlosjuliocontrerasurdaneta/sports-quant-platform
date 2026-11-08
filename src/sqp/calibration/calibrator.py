@@ -992,13 +992,11 @@ def promote_calibrators(keys: list[str] | None = None,
                             "method": staged_reg.get(k, ""),
                             "n_val": meta.get("n_val") if meta else None,
                             "n_val_events": meta.get("n_val_events") if meta else None})
-        log_path = MODELS_DIR / "promotion_log.csv"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
         # Log de promocion de calibradores: la traza de que modelo entro en
         # produccion y cuando. `append_csv_log` (NEW-001) aparta a cuarentena
         # un log ilegible en vez de reescribirlo vacio; escribe con
-        # `atomic_write_csv` (AUD-MED-003).
-        append_csv_log(pd.DataFrame(entries), log_path)
+        # `atomic_write_csv` (AUD-MED-003). El helper toma el lock.
+        _append_promotion_log(entries)
     return promoted
 
 
@@ -1009,7 +1007,10 @@ def _append_promotion_log(entries: list[dict]) -> None:
         return
     log_path = MODELS_DIR / "promotion_log.csv"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    append_csv_log(pd.DataFrame(entries), log_path)  # NEW-001
+    # Lock entre procesos: append_csv_log es read-modify-write y deja el lock
+    # al llamador; sin el, dos promociones simultaneas pierden filas.
+    with locked(log_path):
+        append_csv_log(pd.DataFrame(entries), log_path)  # NEW-001
 
 
 def demote_calibrators(keys: list[str], *, reason: str = "") -> list[str]:
@@ -1105,10 +1106,8 @@ def auto_promote_calibrators(results: list[dict], *,
                    "n_val_events": r.get("n_val_events", r.get("n_val"))}
                   for k, r in skipped])
     if entries:
-        log_path = MODELS_DIR / "promotion_log.csv"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        # Mismo helper que los otros escritores de este log (NEW-001).
-        append_csv_log(pd.DataFrame(entries), log_path)
+        # Mismo helper (y lock) que los otros escritores de este log (NEW-001).
+        _append_promotion_log(entries)
     return {"promoted": promoted, "demoted": demoted,
             "skipped": [k for k, _ in skipped]}
 

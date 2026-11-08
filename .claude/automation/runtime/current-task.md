@@ -453,3 +453,9 @@ FABLE-REVIEW: 2026-11-04 | veredicto: APTO CON CAMBIOS (H-1 aplicado: marca accu
 ## 2026-11-07 — Verificacion independiente de f5b80e2 (REG-001, REG-002, NEW-001)
 Orden del operador: «Continua con las tareas pendientes». La sesion principal (`claude-opus-5-5`) no implemento `f5b80e2`. La verificacion se despacho a un subagente nuevo con `model: "fable"` (regla 1: calibracion, gate y contrato del informe), en solo lectura; la sesion principal solo redacto `VERIFICATION.md` §7, `STATUS.md` y el manifest con su evidencia. Veredicto: los tres verificado-corregido, 0 regresiones, ronda APTO CON PENDIENTES (AUD-022 y AUD-007 del operador). Suite rapida 2738 passed, ruff y mypy limpios. Aparte, en solo lectura: KI-079 (1 fila NCAAF mal graduada; la reparacion es del operador).
 FABLE-REVIEW: 2026-11-07 | veredicto: APTO (revisor Fable independiente; marcador 25-18 medido en ResultsStore, liquidacion previa = 24-18 en 30/30 filas; 12+1 transiciones correctas; sin sha256 congelados de graded/settled ncaaf; LOW opcionales: _settle_px, estado parcial graded sin settled, ya_aplicado con un solo fichero marcado) | rutas: scripts/repair_ki079_20261107.py, tests/test_repair_ki079_20261107.py
+
+## 2026-11-08 — append_csv_log (punto ciego 0..n-1) y lock de promotion_log
+
+Revision Fable (Agent model=fable, sa-revisor, solo lectura) antes del commit. Veredicto APTO; hallazgo 1 (csv.Error) aplicado despues con el arreglo minimo que la propia revision proponia; hallazgo 2 (lock huerfano tras mutar el registro) anotado en Obsidian/Bitácora/2026-11-08.md.
+
+FABLE-REVIEW: 2026-11-08 | veredicto: APTO (hallazgo 1 aplicado segun su arreglo propuesto) | rutas: src/sqp/storage/atomic.py, src/sqp/calibration/calibrator.py

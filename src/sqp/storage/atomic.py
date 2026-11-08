@@ -163,6 +163,24 @@ def read_json_retrying(path: Path, *, seconds: float = REPLACE_RETRY_SECONDS,
             time.sleep(wait)
 
 
+def _filas_con_campos_de_mas(path: Path) -> bool:
+    """True si alguna fila trae mas campos que la cabecera (respeta comillas).
+    Es la firma que pandas convierte, sin error, en columnas desplazadas."""
+    import csv
+
+    try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            reader = csv.reader(fh)
+            header = next(reader, None)
+            if header is None:
+                return False
+            return any(len(row) > len(header) for row in reader)
+    except csv.Error:
+        # p.ej. un campo > csv.field_size_limit() que pandas SI lee: no es
+        # evidencia de desplazamiento, y apartar un log sano seria peor.
+        return False
+
+
 def append_csv_log(new: pd.DataFrame, path: Path) -> None:
     """Append a un rastro CSV append-only reconciliando columnas (union).
 
@@ -188,9 +206,10 @@ def append_csv_log(new: pd.DataFrame, path: Path) -> None:
         except pd.errors.ParserError as exc:
             prior, motivo = pd.DataFrame(), f"no parseable ({exc})"
         else:
-            # Indice por defecto exacto: una primera columna entera y
-            # consecutiva desplazada al indice tambien es un RangeIndex.
-            if not prior.index.equals(pd.RangeIndex(len(prior))):
+            # El indice no basta: una primera columna 0..n-1 desplazada al
+            # indice tambien es un RangeIndex. Se cuentan los campos crudos.
+            if (not prior.index.equals(pd.RangeIndex(len(prior)))
+                    or _filas_con_campos_de_mas(path)):
                 prior, motivo = pd.DataFrame(), "columnas desplazadas al indice"
         if motivo is not None:
             log = logging.getLogger("sqp.storage.atomic")
