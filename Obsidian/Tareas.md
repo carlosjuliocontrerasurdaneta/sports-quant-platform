@@ -10,7 +10,7 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 
 ## Pendientes al cierre del 2026-11-07
 
-- [ ] **Operador**: `! python scripts/repair_ki079_20261107.py --apply` fuera de las ventanas de SETTLE y DIARIO (KI-079; Fable APTO; 12 filas de graded_ncaaf y 1 de settled_ncaaf, stake 0). Después, comprobar el MANIFEST en `data/backups/repair-ki079-20261107/` con estado `aplicado`.
+- [x] **Operador**: `! python scripts/repair_ki079_20261107.py --apply` (KI-079). Aplicado el 2026-11-08 a las 14:05 UTC; MANIFEST `aplicado` y sha256 verificados. Ver [[Bitácora/2026-11-08]].
 - [ ] **Operador**: dar acceso de lectura al stash (`! git stash show --stat --include-untracked stash@{0}`, o permitir `Bash(git stash list)` y `Bash(git stash show:*)`). Plan: aplicar el stash del portero NHL en un worktree, que Sonnet lo complete, revisión Fable y fusión antes de las 12:00.
 - [ ] **Operador**: AUD-022, aceptar el riesgo o reescribir el historial desde su terminal (force-push prohibido a Claude).
 - [ ] **Operador, consola elevada**: `wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true` (AUD-007).
