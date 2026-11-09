@@ -30,8 +30,8 @@ from sqp.pipeline.cleanup import (prune_stale_candidates,
 from sqp.pipeline.daily import (_LEAGUE_ID, apply_global_exposure_cap,
                                 run_league)
 from sqp.providers.odds_api import SPORT_KEYS, OddsAPIClient
-from sqp.risk.prediction_gate import (evaluate_markets, gate_allowed_markets,
-                                      write_prediction_gate)
+from sqp.risk.prediction_gate import (gate_allowed_markets,
+                                      write_prediction_gate_with_decisions)
 from sqp.storage.served_store import ServedStore
 
 log = get_logger("sqp.run_all")
@@ -126,8 +126,7 @@ def _refresh_prediction_gate(bets_dir: Path) -> bool:
     Nunca lanza: un fallo aqui no puede tumbar el run."""
     try:
         graded = ServedStore(ROOT).load_all_graded()
-        decided = evaluate_markets(graded)
-        write_prediction_gate(graded, bets_dir)
+        _, decided = write_prediction_gate_with_decisions(graded, bets_dir)
     except Exception as exc:
         log.error("No se pudo actualizar el gate de prediccion (%s): este run "
                   "genera en DEFAULT-DENY, ningun mercado lleva stake real.", exc)

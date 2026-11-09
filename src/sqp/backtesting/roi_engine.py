@@ -37,7 +37,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import pandas as pd
 
@@ -70,9 +70,25 @@ def discover_leagues_with_odds(root: Path) -> list[str]:
     return sorted(leagues)
 
 
+def _months_with_previous(months: Iterable[str]) -> set[str]:
+    """Meses pedidos ('YYYYMM' o 'YYYY-MM') mas el mes inmediatamente anterior
+    de cada uno, como claves 'YYYYMM'."""
+    keys: set[str] = set()
+    for m in months:
+        digits = str(m).strip().replace("-", "")
+        if len(digits) != 6 or not digits.isdigit() or not 1 <= int(digits[4:]) <= 12:
+            raise ValueError(f"mes invalido {m!r}: se espera 'YYYYMM' o 'YYYY-MM'")
+        year, month = int(digits[:4]), int(digits[4:])
+        keys.add(digits)
+        py, pm = (year - 1, 12) if month == 1 else (year, month - 1)
+        keys.add(f"{py:04d}{pm:02d}")
+    return keys
+
+
 def load_closing_odds(root: Path, league: str,
                       max_age_min: float | None = None,
                       captured_out: dict[str, pd.Timestamp] | None = None,
+                      months: Iterable[str] | None = None,
                       ) -> dict[str, EventOdds]:
     """event_id -> EventOdds built from the last snapshot strictly before each
     event's commence_time (the captured proxy for closing odds).
@@ -85,9 +101,23 @@ def load_closing_odds(root: Path, league: str,
 
     ``captured_out``, if given, receives event_id -> capture instant (UTC) of
     the snapshot used as close, so a caller can reject a "close" captured at or
-    before its own entry (audit-2026-10-18, AUD-009)."""
+    before its own entry (audit-2026-10-18, AUD-009).
+
+    ``months`` (opt-in; default None = todos los ficheros, salida identica a la
+    historica) limita los ficheros mensuales leidos. Los ficheros se nombran por
+    mes de CAPTURA (``odds_<liga>_<YYYYMM>.csv``) y se aceptan meses como
+    ``"YYYYMM"`` o ``"YYYY-MM"`` (los de commence que interesan). Para cada mes
+    pedido M se cargan los ficheros de M y de M-1: el ultimo snapshot
+    pre-commence de un partido de principios de M suele haberse capturado en
+    M-1. Un snapshot capturado dos o mas meses antes que M NO se carga, asi que
+    un evento cuyo unico snapshot previo sea tan antiguo se omite (con el
+    parametro por defecto si aparece). El filtro es por FICHERO, no por evento:
+    los eventos de otros meses presentes en esos ficheros tambien se devuelven."""
     odds_dir = root / "data" / "odds"
     files = sorted(odds_dir.glob(f"odds_{league}_*.csv"))
+    if months is not None:
+        wanted = _months_with_previous(months)
+        files = [f for f in files if f.stem.rsplit("_", 1)[-1] in wanted]
     if not files:
         return {}
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)

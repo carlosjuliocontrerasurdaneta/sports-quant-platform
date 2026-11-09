@@ -704,7 +704,28 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
                           alpha: float = PREDICTION_GATE_ALPHA,
                           validation_start: str = VALIDATION_START,
                           umbrales_de_prueba: bool = False) -> Path:
-    """Persiste el registro (reemplazo atomico). Escribe SIEMPRE, incluso sin
+    """Persiste el registro y devuelve su ruta. Ver
+    ``write_prediction_gate_with_decisions`` (misma logica; devuelve ademas la
+    tabla evaluada)."""
+    path, _ = write_prediction_gate_with_decisions(
+        graded, bets_dir, min_n=min_n, alpha=alpha,
+        validation_start=validation_start,
+        umbrales_de_prueba=umbrales_de_prueba)
+    return path
+
+
+def write_prediction_gate_with_decisions(
+        graded: pd.DataFrame, bets_dir: Path, *,
+        min_n: int = PREDICTION_GATE_MIN_N,
+        alpha: float = PREDICTION_GATE_ALPHA,
+        validation_start: str = VALIDATION_START,
+        umbrales_de_prueba: bool = False) -> tuple[Path, pd.DataFrame]:
+    """Como ``write_prediction_gate`` pero devuelve ``(ruta, decided)`` con la
+    tabla de ``evaluate_markets`` ya calculada, para que el llamador no la
+    recalcule (AUD-005, ronda 2026-09-18). ``decided`` es la evaluacion
+    estadistica previa al pestillo, no el veredicto final del registro.
+
+    Persiste el registro (reemplazo atomico). Escribe SIEMPRE, incluso sin
     mercados: un ``markets`` vacio hace explicito el default-deny.
 
     Umbrales NO canonicos (``min_n``, ``alpha`` o ``validation_start`` distintos
@@ -740,8 +761,9 @@ def write_prediction_gate(graded: pd.DataFrame, bets_dir: Path, *,
     # `release_prediction_gate_latch`. Si no se obtiene, `LockNoAdquiridoError`
     # sale sin escribir nada, y el llamador falla cerrado.
     with locked(bets_dir / PREDICTION_GATE_FILENAME):
-        return _persist_under_lock(decided, bets_dir, min_n=min_n, alpha=alpha,
+        path = _persist_under_lock(decided, bets_dir, min_n=min_n, alpha=alpha,
                                    validation_start=validation_start)
+    return path, decided
 
 
 def _persist_under_lock(decided: pd.DataFrame, bets_dir: Path, *, min_n: int,

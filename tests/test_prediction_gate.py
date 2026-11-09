@@ -1632,3 +1632,50 @@ def test_ningun_codigo_de_produccion_pasa_umbrales_de_prueba():
     for sub in ("src", "scripts"):
         for f in (raiz / sub).rglob("*.py"):
             assert "umbrales_de_prueba=True" not in f.read_text(encoding="utf-8"), f
+
+
+def test_refresh_prediction_gate_evaluates_markets_once(monkeypatch, tmp_path):
+    """AUD-005: `_refresh_prediction_gate` no recalcula `evaluate_markets` y el
+    registro escrito es identico al de `write_prediction_gate`."""
+    import importlib.util
+    from pathlib import Path
+
+    import sqp.risk.prediction_gate as pg
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "run_all_once_test", root / "scripts" / "run_all.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    graded = _stream_pass()
+
+    class _Store:
+        def __init__(self, root):
+            pass
+
+        def load_all_graded(self):
+            return graded
+
+    monkeypatch.setattr(mod, "ServedStore", _Store)
+    calls = {"n": 0}
+    real = pg.evaluate_markets
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return real(*a, **k)
+
+    monkeypatch.setattr(pg, "evaluate_markets", counting)
+    a, b = tmp_path / "a", tmp_path / "b"
+    assert mod._refresh_prediction_gate(a) is True
+    assert calls["n"] == 1
+    write_prediction_gate(graded, b)
+
+    def markets(d):
+        raw = json.loads(
+            (d / "prediction_gate.json").read_text(encoding="utf-8"))["markets"]
+        # Los instantes de escritura difieren entre dos escrituras; el resto no.
+        return {k: {f: v for f, v in e.items() if not f.endswith("_at")}
+                for k, e in raw.items()}
+
+    assert markets(a) == markets(b)

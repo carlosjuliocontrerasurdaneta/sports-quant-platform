@@ -273,3 +273,78 @@ class TestAmbiguedadNoSeEmpareja:
         idx = _match_index({"a": primero, "b": segundo})
         r = {"home": "Boston Red Sox", "away": "Tampa Bay Rays", "date": "2026-06-10"}
         assert _match_result(r, idx, {"e1"}) is segundo
+
+
+def _write_monthly(root, name, rows):
+    d = root / "data" / "odds"
+    d.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows)[COLUMNS].to_csv(d / name, index=False)
+
+
+def _snap(eid, commence, captured, price):
+    return {"event_id": eid, "commence_time": commence, "home": "A", "away": "B",
+            "market": "h2h", "point": "", "bookmaker": "dk", "outcome": "A",
+            "captured_at": captured, "price_decimal": price}
+
+
+def _month_fixture(root):
+    _write_monthly(root, "odds_test_202605.csv", [
+        _snap("e_may", "2026-05-20T20:00:00Z", "2026-05-20T10:00:00Z", 1.5),
+        _snap("e_jun", "2026-06-01T20:00:00Z", "2026-05-31T23:00:00Z", 1.6),
+    ])
+    _write_monthly(root, "odds_test_202606.csv", [
+        _snap("e_jun", "2026-06-01T20:00:00Z", "2026-06-01T19:00:00Z", 1.8),
+        _snap("e_jun2", "2026-06-15T20:00:00Z", "2026-06-15T10:00:00Z", 2.0),
+    ])
+    _write_monthly(root, "odds_test_202607.csv", [
+        _snap("e_jul", "2026-07-10T20:00:00Z", "2026-07-10T10:00:00Z", 2.2),
+    ])
+
+
+def _prices(odds):
+    return {k: [ln.price_decimal for ln in v.lines] for k, v in odds.items()}
+
+
+def test_load_closing_odds_default_unchanged_and_months_none_equal(tmp_path):
+    _month_fixture(tmp_path)
+    base = load_closing_odds(tmp_path, "test")
+    assert set(base) == {"e_may", "e_jun", "e_jun2", "e_jul"}
+    assert _prices(base)["e_jun"] == [1.8]
+    assert _prices(load_closing_odds(tmp_path, "test", months=None)) == _prices(base)
+
+
+def test_load_closing_odds_months_reads_fewer_files(tmp_path, monkeypatch):
+    _month_fixture(tmp_path)
+    read: list[str] = []
+    real = pd.read_csv
+
+    def spy(path, *a, **k):
+        read.append(str(path))
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(pd, "read_csv", spy)
+    odds = load_closing_odds(tmp_path, "test", months=["2026-07"])
+    names = sorted(p.replace("\\", "/").rsplit("/", 1)[-1] for p in read)
+    assert names == ["odds_test_202606.csv", "odds_test_202607.csv"]
+    assert set(odds) == {"e_jun", "e_jun2", "e_jul"}
+
+
+def test_load_closing_odds_months_month_end_boundary(tmp_path):
+    """Evento del 1-jun cuyo unico snapshot pre-commence se capturo el 31-may."""
+    _write_monthly(tmp_path, "odds_test_202605.csv",
+                   [_snap("e1", "2026-06-01T00:30:00Z", "2026-05-31T23:00:00Z", 1.7)])
+    _write_monthly(tmp_path, "odds_test_202606.csv",
+                   [_snap("e1", "2026-06-01T00:30:00Z", "2026-06-01T01:00:00Z", 9.9)])
+    odds = load_closing_odds(tmp_path, "test", months=["202606"])
+    assert _prices(odds)["e1"] == [1.7]
+    _write_monthly(tmp_path, "odds_test_202512.csv",
+                   [_snap("e2", "2026-01-01T00:30:00Z", "2025-12-31T23:00:00Z", 1.4)])
+    assert "e2" in load_closing_odds(tmp_path, "test", months=["2026-01"])
+    assert load_closing_odds(tmp_path, "test", months=["2026-03"]) == {}
+
+
+def test_load_closing_odds_months_rejects_bad_month(tmp_path):
+    import pytest
+    _month_fixture(tmp_path)
+    with pytest.raises(ValueError):
+        load_closing_odds(tmp_path, "test", months=["junio"])
