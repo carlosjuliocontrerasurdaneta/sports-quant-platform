@@ -1,5 +1,5 @@
 """Historical results backfill: store dedup/ordering, ESPN parsing, pipeline merge."""
-from sqp.pipeline.daily import _merge_results
+from sqp.pipeline.daily import _merge_results, _possible_local_days
 from sqp.providers.espn_results import parse_scoreboard
 from sqp.storage.results_store import ResultsStore
 
@@ -325,3 +325,111 @@ def test_aud003_mlb_resumed_game_is_returned_once_on_its_last_date():
     results = MLBStatsProvider(session=_Session()).fetch_results("mlb")
     assert sorted((r["game_id"], r["date"]) for r in results) == [
         ("716404", "2023-10-02"), ("716500", "2023-10-02")]
+
+
+# --- AUD-002: identidad (pareja, dia) en la fusion, no "misma pareja en la ventana" ---
+
+def _gids(merged: list[dict]) -> list[str]:
+    return [m["game_id"] for m in merged]
+
+
+def test_aud002_series_d_d1_d2_kept():
+    h1 = dict(_row("2026-06-10", hs=3, as_=2), game_id="h1")
+    r2 = dict(_row("2026-06-11T23:05:00Z", hs=1, as_=5), game_id="r2")
+    r3 = dict(_row("2026-06-12T23:05:00Z", hs=4, as_=0), game_id="r3")
+    for league in ("mlb", None):
+        assert _gids(_merge_results([h1], [r2, r3], league=league)) == ["h1", "r2", "r3"]
+
+
+def test_aud002_same_event_drift_dropped_once():
+    h1 = dict(_row("2026-06-10"), game_id="h1")
+    # MLB: 02:10Z del 11 = 22:10 ET del 10 -> coincidencia exacta.
+    r = dict(_row("2026-06-11T02:10:00Z"), game_id="r")
+    assert _gids(_merge_results([h1], [r], league="mlb")) == ["h1"]
+    # NBA: fecha UTC 11 != 10, un candidato y sin competencia -> tolerancia (paso D).
+    r = dict(_row("2026-06-11T00:30:00Z"), game_id="r")
+    assert _gids(_merge_results([h1], [r], league="nba")) == ["h1"]
+
+
+def test_aud002_same_score_distinct_games_not_merged():
+    h1 = dict(_row("2026-06-10", hs=3, as_=2), game_id="h1")
+    r = dict(_row("2026-06-11T23:05:00Z", hs=3, as_=2), game_id="r")
+    assert _gids(_merge_results([h1], [r], league="mlb")) == ["h1", "r"]
+
+
+def test_aud002_claimed_neighbor_keeps_distinct_game():
+    h0 = dict(_row("2026-06-09", hs=2, as_=1), game_id="h0")
+    r0 = dict(_row("2026-06-09T23:05:00Z", hs=9, as_=9), game_id="r0")  # reclama h0
+    r1 = dict(_row("2026-06-10T10:05:00Z", hs=4, as_=3), game_id="r1")  # juego del dia D
+    # Con el codigo anterior r1 se descartaba (h0 esta en la ventana local de r1).
+    assert _gids(_merge_results([h0], [r0, r1], league="nba")) == ["h0", "r1"]
+
+
+def test_aud002_ambiguity_is_explicit(caplog):
+    import logging
+    h = dict(_row("2026-06-10"), game_id="h")
+    # (a) sin hora en D+1 frente a historico en D: se descarta con WARNING.
+    with caplog.at_level(logging.WARNING):
+        r = dict(_row("2026-06-11"), game_id="r")
+        assert _gids(_merge_results([h], [r], league="mlb")) == ["h"]
+    assert any(x.levelno == logging.WARNING for x in caplog.records)
+    caplog.clear()
+    # (b) 1 juego en el historico, 2 recientes en la misma d.
+    with caplog.at_level(logging.WARNING):
+        rs = [dict(_row("2026-06-10T17:05:00Z"), game_id="r1"),
+              dict(_row("2026-06-10T23:05:00Z"), game_id="r2")]
+        assert _gids(_merge_results([h], rs, league="nba")) == ["h"]
+    warns = [x.getMessage() for x in caplog.records if x.levelno == logging.WARNING]
+    assert warns and "1" in warns[0]
+
+
+def _warnings(caplog) -> list[str]:
+    import logging
+    return [x.getMessage() for x in caplog.records if x.levelno == logging.WARNING]
+
+
+def test_aud002_nhl_consecutive_nights_keeps_second_game(caplog):
+    import logging
+    h = dict(_row("2026-06-11"), game_id="h")
+    r0 = dict(_row("2026-06-11T00:00:00Z"), game_id="r0")   # el juego del historico
+    r1 = dict(_row("2026-06-12T00:00:00Z"), game_id="r1")   # noche siguiente
+    with caplog.at_level(logging.WARNING):
+        # r0 reclama h (exacta); r1 solo tenia a h como vecino, ya reclamado.
+        assert _gids(_merge_results([h], [r0, r1], league="nhl")) == ["h", "r1"]
+    assert not _warnings(caplog)
+    # Con la regla antigua (misma pareja en la ventana local de r1) r1 se perdia.
+    old_window = _possible_local_days("2026-06-12T00:00:00Z")
+    assert "2026-06-11" in old_window
+
+
+def test_aud002_two_unclaimed_recents_compete_for_one_candidate(caplog):
+    import logging
+    h = dict(_row("2026-06-10"), game_id="h")
+    rs = [dict(_row("2026-06-11T00:30:00Z"), game_id="r1"),
+          dict(_row("2026-06-11T01:00:00Z"), game_id="r2")]
+    with caplog.at_level(logging.WARNING):
+        assert _gids(_merge_results([h], rs, league="nba")) == ["h"]
+    assert _warnings(caplog)
+
+
+def test_aud002_doubleheader_recents_not_above_history_is_silent(caplog):
+    import logging
+    hs = [dict(_row("2026-06-10"), game_id="g1"), dict(_row("2026-06-10"), game_id="g2")]
+    rs = [dict(_row("2026-06-10T17:05:00Z"), game_id="r1"),
+          dict(_row("2026-06-10T23:05:00Z"), game_id="r2")]
+    with caplog.at_level(logging.WARNING):
+        assert _gids(_merge_results(hs, rs, league="nba")) == ["g1", "g2"]
+    assert not _warnings(caplog)
+
+
+def test_aud002_unreadable_dates_take_the_none_branch_with_warning(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING):
+        timed = dict(_row("2026-13-45T25:99:00Z"), game_id="bad-timed")
+        assert _gids(_merge_results([], [timed], league="nba")) == ["bad-timed"]
+    assert _warnings(caplog)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        bare = dict(_row("None"), game_id="bad-bare")
+        assert _gids(_merge_results([], [bare], league="nba")) == ["bad-bare"]
+    assert _warnings(caplog)

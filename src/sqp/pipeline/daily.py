@@ -103,38 +103,110 @@ def _league_meta(league: str) -> dict:
 
 
 def _merge_results(history: list[dict], recent: list[dict],
-                   normalize: Callable[[str | None], str] | None = None) -> list[dict]:
+                   normalize: Callable[[str | None], str] | None = None,
+                   league: str | None = None) -> list[dict]:
     """Chronological union; stored history wins over freshly fetched rows.
     Within each source, (day, home, away, game_id) keeps doubleheaders
-    distinct. A recent row is dropped whenever history already covers that
-    (day, home, away): game ids are not comparable across vendors.
+    distinct. Game ids are not comparable across vendors, so a recent row is
+    matched to the history by identity (pair, day):
+
+    A. exact: history holds (pair, d), d = `expected_result_date(league, date)`
+       (the day the history stores THAT game: ET for MLB, UTC otherwise) ->
+       duplicate, dropped. More recent rows than history rows in (pair, d) is
+       an ambiguous doubleheader: WARNING and all are dropped (the score is
+       never used to pick which one survives).
+    B/C. otherwise the history rows of the pair in the possible local days
+       (`_possible_local_days`) other than d, minus those already claimed by
+       another recent row's exact match, are the candidates; none -> the row
+       is a different game of the series and is kept (AUD-002).
+    D. candidates left -> dropped (date drift). Silent only with a timestamp,
+       one candidate and no competing recent row; else WARNING (ambiguous).
 
     `normalize` canonicalizes team names for the comparison keys only (rows are
     returned unchanged), so the same game spelled differently by two vendors is
     recognized as one and not double-counted into the ratings."""
+    from sqp.settlement.runner import expected_result_date  # circular at module level
     nk = normalize or (lambda s: s or "")
     seen: dict[tuple, dict] = {}
     for r in history:
         day = str(r.get("date", ""))[:10]
         seen.setdefault((day, nk(r["home"]), nk(r["away"]), str(r.get("game_id") or "")), r)
-    history_days = {k[:3] for k in seen}
+    hist_count: dict[tuple, int] = defaultdict(int)
+    for k in seen:
+        hist_count[k[:3]] += 1
+
+    # Pass 1: per recent row its identity day d, and the exact matches (step A).
+    infos: list[tuple[dict, tuple[str, str], str, str | None, bool]] = []
+    exact_recent: dict[tuple, int] = defaultdict(int)
     for r in recent:
-        day = str(r.get("date", ""))[:10]
-        # Recent rows are dated by commence_time (UTC date); history carries the
-        # official local date, which can differ by +-1 day (e.g. west-coast night
-        # games start past midnight UTC). Without this tolerance the same game
-        # enters the ratings fit twice (audit 2026-07-24, I-3). The row's own key
-        # keeps its UTC date: only the drop check is widened.
-        #
-        # Con HORA, la tolerancia se acota a las fechas locales posibles de ese
-        # instante (auditoria 2026-10-15, AUD-009): ±1 dia ciego descartaba un
-        # partido REAL del dia siguiente de una serie (A/B el 10 en el historico,
-        # A/B el 11 a las 23:00Z recien jugado) cuando el historico iba retrasado.
-        if any((d, nk(r["home"]), nk(r["away"])) in history_days
-               for d in _possible_local_days(str(r.get("date", "")))):
+        stamp = str(r.get("date", ""))
+        pair = (nk(r["home"]), nk(r["away"]))
+        timed = len(stamp) > 10
+        d = (expected_result_date(league or "", stamp) if timed
+             else (stamp[:10] if _is_iso_day(stamp[:10]) else None))
+        infos.append((r, pair, stamp, d, timed))
+        if d is not None and hist_count.get((d, *pair), 0) > 0:
+            exact_recent[(d, *pair)] += 1
+
+    # Pass 2: candidates (steps B/C) of the rows without an exact match.
+    cand: dict[int, dict[str, int]] = {}
+    competitors: dict[tuple, int] = defaultdict(int)
+    for i, (r, pair, stamp, d, timed) in enumerate(infos):
+        if d is not None and (d, *pair) in exact_recent:
+            continue
+        days = [x for x in _possible_local_days(stamp) if x != d]
+        n = {x: hist_count.get((x, *pair), 0) - exact_recent.get((x, *pair), 0)
+             for x in days}
+        n = {x: c for x, c in n.items() if c > 0}
+        cand[i] = n
+        for x in n:
+            competitors[(x, *pair)] += 1
+
+    warned: set[tuple] = set()
+    for i, (r, pair, stamp, d, timed) in enumerate(infos):
+        day = stamp[:10]
+        if d is None:
+            log.warning("merge_results: fecha ilegible %r (%s/%s); se aplica la "
+                        "ventana de dias locales", stamp, *pair)
+            drop = any(hist_count.get((x, *pair), 0) > 0
+                       for x in _possible_local_days(stamp))
+        elif (d, *pair) in exact_recent:
+            drop = True
+            h, c = hist_count[(d, *pair)], exact_recent[(d, *pair)]
+            # exact_recent only counts matched rows; the group total is c
+            if c > h and (d, *pair) not in warned:
+                warned.add((d, *pair))
+                log.warning("merge_results: doble jornada ambigua %s vs %s el %s: "
+                            "historico %d juego(s), recientes %d; %d omitido(s), "
+                            "se descartan todos los recientes",
+                            pair[0], pair[1], d, h, c, c - h)
+        else:
+            n = cand[i]
+            drop = bool(n)
+            if drop:
+                total = sum(n.values())
+                alone = all(competitors[(x, *pair)] == 1 for x in n)
+                if not (timed and total == 1 and alone):
+                    log.warning("merge_results: ambiguo %s vs %s (%s): %d fila(s) "
+                                "del historico candidata(s) en fechas vecinas; "
+                                "se descarta la reciente", pair[0], pair[1],
+                                stamp, total)
+                else:
+                    log.debug("merge_results: desfase de fecha %s vs %s (%s)",
+                              pair[0], pair[1], stamp)
+        if drop:
             continue
         seen.setdefault((day, nk(r["home"]), nk(r["away"]), str(r.get("game_id") or "")), r)
     return [seen[k] for k in sorted(seen, key=lambda k: k[0])]
+
+
+def _is_iso_day(day: str) -> bool:
+    """True si `day` es una fecha ISO 'YYYY-MM-DD' valida."""
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return False
+    return len(day) == 10
 
 
 def _adjacent_days(day: str) -> tuple[str, ...]:
@@ -768,7 +840,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
             history = ResultsStore(ROOT).load(league)
             recent = (_fetch_recent_scores(client, meta["sport_key"], league)
                       if meta.get("has_scores", False) else [])
-            results = _merge_results(history, recent, adapter.normalize)
+            results = _merge_results(history, recent, adapter.normalize, league)
             if family == "baseball" and results:
                 attached = StartersStore(ROOT).attach(league, results)
                 fip_attached = StarterFIPStore(ROOT).attach(league, results)
