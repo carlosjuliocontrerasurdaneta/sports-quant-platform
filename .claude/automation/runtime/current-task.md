@@ -471,3 +471,14 @@ FABLE-REVIEW: 2026-11-08 | veredicto: APTO CON CAMBIOS (cambio de docstring en e
 Orden del operador: «continua con todo lo pendiente». Sonnet implemento los 11 arreglos de la revision del 2026-11-08; Fable (Agent model=fable, sa-revisor, solo lectura): APTO CON CAMBIOS (H1-H6); ronda 2 de Sonnet (H1 revierte la captura de SystemExit por la seccion 7 del pre-registro); re-verificacion Fable: APTO. measure_goalie_nhl.py no se ejecuto; decisiones del operador sin tomar.
 
 FABLE-REVIEW: 2026-11-09 | veredicto: APTO (ronda 2; H1-H6 cerrados) | rutas: scripts/research/measure_goalie_nhl.py, tests/test_measure_goalie_nhl.py
+
+## 2026-11-09 (tarde) — pendientes antiguos corregidos
+
+- Rama `fix/pendientes-20261109`:
+  - quita la doble `evaluate_markets` por run (residual de AUD-005 de la ronda 09-18);
+  - añade `load_closing_odds(months=...)`, opt-in y sin cambios con `None`;
+  - añade `audit/audit-2026-09-18/VERIFICATION.md` (APTO CON PENDIENTES; 206 tests de la ronda en verde);
+  - cierra en Tareas la tarea de `home_scoring_bonus` como rechazada y la del quota-guard.
+- Rama `fix/aud-002-merge-identity`: identidad de fusión en `_merge_results` (AUD-002). Fable dio APTO CON CAMBIOS y los cambios están aplicados. NO se fusiona a `main` hasta la medición C1 (`scripts/research/measure_aud002_merge.py`, la ejecuta el operador) y debe entrar antes del `--pre` del portero NHL o después del modo completo (C2).
+FABLE-REVIEW: 2026-11-09 | veredicto: APTO (doble evaluate_markets y load_closing_odds months opt-in) | rutas: scripts/run_all.py, src/sqp/risk/prediction_gate.py, src/sqp/backtesting/roi_engine.py, tests/test_prediction_gate.py, tests/test_roi_engine.py, audit/audit-2026-09-18/VERIFICATION.md, Obsidian/Tareas.md
+FABLE-REVIEW: 2026-11-09 | veredicto: APTO CON CAMBIOS aplicados (AUD-002; fusión a main condicionada a C1 y C2) | rutas: src/sqp/pipeline/daily.py, tests/test_results_backfill.py, scripts/research/measure_aud002_merge.py
