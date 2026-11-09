@@ -30,7 +30,10 @@ AMBIGUEDADES que dejaba abiertas, con la lectura mas literal.
   python scripts/research/measure_goalie_nhl.py --pre --out <pre.json> --data-root <root>
   python scripts/research/measure_goalie_nhl.py --out <res.json> --pre-json <pre.json> --data-root <root>
 
-`--data-root` (por defecto `sqp.config.ROOT`) es la raiz con la estructura
+`--data-root` es OBLIGATORIO en `--pre` y en el modo completo y no puede ser la
+raiz viva del repositorio (`sqp.config.ROOT`) ni ningun checkout git (`<root>/.git`); el modo completo rechaza ademas un
+`--out` que ya exista. Solo `--parity-only` conserva `sqp.config.ROOT` por
+defecto. Es la raiz con la estructura
 `<root>/data/historical/{results_nhl.csv,goalies_nhl.csv,
 .goalies_nhl_backfill_failed_dates.json,.goalies_nhl_backfill_checkpoint.json}`
 y `<root>/data/odds/odds_nhl_*.csv`: la INSTANTANEA CONGELADA de la decision
@@ -54,10 +57,13 @@ NO sirven para eso (asumen `TIE_ADDS_GOAL=False`), asi que aqui se reimplementa
    lado usa su proxy si el equipo lo tiene. Lo que NO tiene proxy (f=1) es un
    equipo cuyo ultimo partido observado no tiene un titular inequivoco (sin
    datos, o 0 / 2 o mas titulares marcados), por la regla de la seccion 13.3
-   («sin adivinar»). Consecuencia declarada: la API de la NHL no lista la
-   pretemporada, asi que el primer partido de temporada regular de cada equipo
-   tiene f=1 y el primero de pretemporada usa el proxy de la temporada anterior.
-   `--pre` cuenta los lados sin identidad.
+   («sin adivinar»). Cuanta pretemporada hay en `goalies_nhl.csv` NO se afirma
+   aqui: `--pre` la MIDE (`cobertura.pretemporada_medida`: apariciones por
+   `game_type`, nulos incluidos, y filas del historico de septiembre con
+   apariciones) y cuenta los lados sin identidad. PENDIENTE DE DECISION DEL
+   OPERADOR: que un partido sin apariciones (exhibiciones contra clubes no NHL,
+   sin emparejar) use el proxy de cada lado es la lectura IMPLEMENTADA, no una
+   decision tomada.
 2. **M1 sin titular real identificable** (sin datos, 0 o 2+ titulares): cae al
    proxy por el mismo camino unico.
 3. **Referencia de liga L en el primer dia de temporada.** «El primer dia de
@@ -70,7 +76,9 @@ NO sirven para eso (asumen `TIE_ADDS_GOAL=False`), asi que aqui se reimplementa
    (titular o relevo). Una fila sin `shots_against`/`saves` es un suplente que
    no jugo: no cuenta. Solo cuentan las apariciones unidas a una fila del
    historico de resultados (lo que el adaptador puede observar); las no unidas
-   se listan en `--pre`.
+   se listan en `--pre`. Las apariciones SIN `goalie_player_id` (vacio / NaN) se
+   excluyen por igual de L, de k y de los excesos, en el script y en el motor;
+   `--pre` las cuenta (`cobertura.apariciones_con_tiros_y_paradas_sin_goalie_player_id`).
 5. **Titular inequivoco** = exactamente un portero con `starter=True` por
    equipo y partido. Con 0 o 2+ el proxy/identidad M1 es desconocido.
 6. **k por entrenamiento.** Unidad = (portero, temporada) con las apariciones
@@ -95,7 +103,9 @@ NO sirven para eso (asumen `TIE_ADDS_GOAL=False`), asi que aqui se reimplementa
     no ocurre en la NHL. El control C no lleva suelo.
 11. **Pretemporada (informe 8).** El historico de resultados no trae
     `gameType`; se estima por el mes (septiembre) como
-    `goalie_backfill._guess_season_phase` y se declara asi.
+    `goalie_backfill._guess_season_phase` y se declara asi. Donde la aparicion
+    unida trae `game_type` (1 = pretemporada), el informe anade cuantas filas
+    coinciden o difieren con la estimacion por mes (sin cambiar el criterio).
 12. **Desempate de enfrentamientos duplicados en fecha UTC** (Enmienda 1 a):
     solo si el numero de partidos de la NHL sin emparejar de un (fecha, local,
     visitante) iguala al de filas candidatas libres del historico; se ordenan
@@ -190,10 +200,10 @@ sha256_of = rmnhl.sha256_of
 ll_per_game = rmnhl.ll_per_game
 fit = rmnhl.fit
 bootstrap_por_fecha = rmnhl.bootstrap_por_fecha
-_safe_informe = rmnhl._safe_informe
 bias_of = rmnhl.bias_of
 _lambda_split = rmnhl._lambda_split
 _pendiente_calibracion = tilt._pendiente_calibracion
+_safe_informe = rmnhl._safe_informe   # solo `Exception`: SystemExit (fit no converge) ABORTA (pre-registro 7)
 
 K = 16                               # max_score 15 + 1
 _KS = np.arange(K, dtype=float)
@@ -305,6 +315,28 @@ def read_appearances(path: Path) -> pd.DataFrame:
     return df
 
 
+def _clean_id(x: Any) -> str | None:
+    """Id de portero o None: vacio / NaN / NA = sin id (NaN es truthy)."""
+    if x is None or (not isinstance(x, str) and pd.isna(x)):
+        return None
+    sx = str(x).strip()
+    return sx or None
+
+
+def _game_type_label(x: Any) -> str:
+    """`game_type` como entero en texto ("1.0" -> "1"; el CSV puede traerlo float);
+    "<nulo>" si falta; el texto crudo si no es numerico."""
+    if x is None or (not isinstance(x, str) and pd.isna(x)):
+        return "<nulo>"
+    try:
+        v = float(str(x).strip())
+    except ValueError:
+        return str(x).strip() or "<nulo>"
+    if math.isnan(v):
+        return "<nulo>"
+    return str(int(v)) if v.is_integer() else str(v)
+
+
 def read_failed_dates(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -314,6 +346,9 @@ def read_failed_dates(path: Path) -> list[dict]:
 
 def _gid_key(gid: str) -> tuple[int, Any]:
     return (0, int(gid)) if gid.isdigit() else (1, gid)
+
+
+_INFO_LISTAS = ("sin_emparejar", "matched_sin_fila_unica_lista", "desempatados_grupos_lista")
 
 
 def assign_appearances(ordered: list[dict], app: pd.DataFrame) -> tuple[dict[str, int], dict]:
@@ -332,10 +367,14 @@ def assign_appearances(ordered: list[dict], app: pd.DataFrame) -> tuple[dict[str
             gid_to_pos[gid].append(pos)
         by_date[str(r.get("date", ""))[:10]].append(pos)
     games = app.drop_duplicates("nhl_game_id")
+    names: dict[str, dict[str, str]] = defaultdict(dict)
+    for t in app[["nhl_game_id", "team_side", "team_nhl"]].drop_duplicates().itertuples(index=False):
+        names[t.nhl_game_id][t.team_side] = t.team_nhl
     assigned: dict[str, int] = {}
     claimed: set[int] = set()
     pend: list[Any] = []
     sin_fila = 0
+    sin_fila_lista: list[dict] = []
     for g in games.itertuples(index=False):
         if g.matched and g.espn_game_id:
             ps = gid_to_pos.get(g.espn_game_id, [])
@@ -344,16 +383,19 @@ def assign_appearances(ordered: list[dict], app: pd.DataFrame) -> tuple[dict[str
                 claimed.add(ps[0])
             else:
                 sin_fila += 1
+                nm = names.get(g.nhl_game_id, {})
+                sin_fila_lista.append({"date": str(g.date)[:10], "home_nhl": nm.get("home"),
+                                       "away_nhl": nm.get("away"), "game_type": str(g.game_type),
+                                       "filas_con_ese_game_id": len(ps)})
         else:
             pend.append(g)
-    names: dict[str, dict[str, str]] = defaultdict(dict)
-    for t in app[["nhl_game_id", "team_side", "team_nhl"]].drop_duplicates().itertuples(index=False):
-        names[t.nhl_game_id][t.team_side] = t.team_nhl
     groups: dict[tuple[str, str, str], list[Any]] = defaultdict(list)
     for g in pend:
         nm = names.get(g.nhl_game_id, {})
         groups[(str(g.date)[:10], norm(nm.get("home", "")), norm(nm.get("away", "")))].append(g)
     desempatados = 0
+    en_grupos = 0                       # partidos asignados dentro de grupos de >= 2
+    grupos_lista: list[dict] = []
     sin_emparejar: list[dict] = []
     for (date, hk, ak), gs in sorted(groups.items()):
         cand = [p for p in by_date.get(date, []) if p not in claimed
@@ -366,6 +408,11 @@ def assign_appearances(ordered: list[dict], app: pd.DataFrame) -> tuple[dict[str
                 assigned[g.nhl_game_id] = p
                 claimed.add(p)
                 desempatados += 1
+            if len(gs) >= 2:
+                en_grupos += len(gs)
+                nm0 = names.get(gs[0].nhl_game_id, {})
+                grupos_lista.append({"date": date, "home_nhl": nm0.get("home"),
+                                     "away_nhl": nm0.get("away"), "partidos": len(gs)})
         else:
             for g in gs:
                 nm = names.get(g.nhl_game_id, {})
@@ -375,7 +422,11 @@ def assign_appearances(ordered: list[dict], app: pd.DataFrame) -> tuple[dict[str
                                       "candidatas_en_historico": len(cand)})
     return assigned, {"partidos_nhl": int(len(games)), "asignados": len(assigned),
                       "desempatados_por_orden": desempatados,
+                      "desempatados_en_grupos_de_2_o_mas": en_grupos,
+                      "rescatados_individuales": desempatados - en_grupos,
+                      "desempatados_grupos_lista": grupos_lista,
                       "matched_sin_fila_unica_en_historico": sin_fila,
+                      "matched_sin_fila_unica_lista": sin_fila_lista,
                       "sin_emparejar": sin_emparejar}
 
 
@@ -401,14 +452,20 @@ def attach_goalies(results: list[dict], app: pd.DataFrame
         sa = None if pd.isna(t.shots_against) else float(t.shots_against)
         sv = None if pd.isna(t.saves) else float(t.saves)
         side_apps[(pos, t.team_side)].append(
-            {"id": t.goalie_player_id, "shots_against": sa, "saves": sv,
+            {"id": _clean_id(t.goalie_player_id), "shots_against": sa, "saves": sv,
              "starter": bool(t.starter)})
+    gt_by_pos: dict[int, str | None] = {}
+    for g in app.drop_duplicates("nhl_game_id").itertuples(index=False):
+        if g.nhl_game_id in assigned:
+            lab = _game_type_label(g.game_type)
+            gt_by_pos[assigned[g.nhl_game_id]] = None if lab == "<nulo>" else lab
     rows2: list[dict] = []
     rows1: list[dict] = []
     for pos, r in enumerate(ordered):
         h, a = side_apps.get((pos, "home"), []), side_apps.get((pos, "away"), [])
         r2 = dict(r)
         r2["home_goalie_appearances"], r2["away_goalie_appearances"] = h, a
+        r2["nhl_game_type"] = gt_by_pos.get(pos)       # solo informativo (informe 8)
         r1 = dict(r2)
         r1["home_goalie_announced"], r1["away_goalie_announced"] = _starter_of(h), _starter_of(a)
         rows2.append(r2)
@@ -524,6 +581,7 @@ def goalie_state(rows: list[dict]) -> pd.DataFrame:
         pend.append((th, ta, sh, sa_))
         pend_date = dates[i]
     cols: dict[str, list[Any]] = {"idx": list(range(n)), "ref": [refs.get(d, np.nan) for d in dates],
+                                  "game_type": [r.get("nhl_game_type") for r in rows],
                                   "real_h": real_h, "real_a": real_a,
                                   "proxy_h": proxy_h, "proxy_a": proxy_a}
     ids = {"h1": [x if x is not None else p for x, p in zip(real_h, proxy_h)],
@@ -608,6 +666,37 @@ def exclusion_set(dates: list[str], home: list[str], away: list[str],
                     if not e1[i]:
                         e2[i] = True
     return e1, e2
+
+
+def exclusion_sides(dates: list[str], home: list[str], away: list[str],
+                    failed_dates: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """(E2_local, E2_visitante): como `exclusion_set`, pero separa por LADO del
+    equipo afectado (Enmienda 2 c). Una fila puede estar en ambas. La union es
+    exactamente E2 de `exclusion_set`. Solo informa; no entra en ninguna perdida."""
+    norm = get_team_normalizer(LEAGUE)
+    n = len(dates)
+    bad = set(failed_dates)
+    e1 = np.array([d in bad for d in dates], dtype=bool)
+    e2h = np.zeros(n, dtype=bool)
+    e2a = np.zeros(n, dtype=bool)
+    team_games: dict[str, list[int]] = defaultdict(list)
+    for i in range(n):
+        team_games[norm(home[i])].append(i)
+        team_games[norm(away[i])].append(i)
+    for team, games in team_games.items():
+        by_date: dict[str, list[int]] = defaultdict(list)
+        for i in games:
+            by_date[dates[i]].append(i)
+        days = sorted(by_date)
+        for prev, nxt in zip(days, days[1:]):
+            if prev in bad:
+                for i in by_date[nxt]:
+                    if not e1[i]:
+                        if norm(home[i]) == team:
+                            e2h[i] = True
+                        if norm(away[i]) == team:
+                            e2a[i] = True
+    return e2h, e2a
 
 
 # ==================================================== pricing vectorizado ==
@@ -876,7 +965,7 @@ def assert_parity(rows_m2: list[dict], rows_m1: list[dict], params: dict, rparam
         theirs_y = np.asarray(ref["binary_outcomes"], dtype=float)
         if len(theirs_p) != int(ml_mask.sum()) or not np.allclose(
                 mine["ml"][ml_mask], theirs_p, rtol=0, atol=atol):
-            raise SystemExit(f"PARIDAD ROTA (moneyline, {name}, beta={beta}, k={k}) {label}: "
+            raise SystemExit(f"PARIDAD ROTA (moneyline, {name}, k={k}) {label}: "
                              "no se mide nada.")
         if not np.array_equal(outc["ml"][ml_mask], theirs_y):
             raise SystemExit(f"RESULTADOS DESALINEADOS (moneyline, {name}) {label}.")
@@ -887,7 +976,7 @@ def assert_parity(rows_m2: list[dict], rows_m1: list[dict], params: dict, rparam
             tp = np.asarray(mkt["probs"], dtype=float)
             ty = np.asarray(mkt["outcomes"], dtype=float)
             if len(tp) != len(mine[key]) or not np.allclose(mine[key], tp, rtol=0, atol=atol):
-                raise SystemExit(f"PARIDAD ROTA ({key} probs, {name}, beta={beta}, k={k}) {label}.")
+                raise SystemExit(f"PARIDAD ROTA ({key} probs, {name}, k={k}) {label}.")
             if not np.array_equal(outc[key], ty):
                 raise SystemExit(f"PARIDAD ROTA ({key} outcomes, {name}) {label}.")
     # Cruce con la formula escalar de produccion en una muestra.
@@ -1029,7 +1118,9 @@ def informe_linea_capturada(rows: list[dict], test_c: pd.DataFrame, lam_t: tuple
                             data_root: Path, rparams: dict) -> dict | None:
     """Informe 9: Delta log loss (T de M2 con beta_C frente a base) en la
     submuestra de la particion C con cuotas, h2h / spread / total del consenso.
-    Mide log loss frente al resultado, NO ventaja sobre el mercado."""
+    Mide log loss frente al resultado, NO ventaja sobre el mercado. Se restringe
+    al test de la particion C (precedente `measure_rest_nhl.py`); no se informa
+    sobre A ni B y el JSON lo declara en `alcance`."""
     cap = captured_lines_root(rows, data_root)
     sel = test_c["game_id"].astype(str).isin(cap["ids"]).to_numpy()
     if not sel.any():
@@ -1038,7 +1129,9 @@ def informe_linea_capturada(rows: list[dict], test_c: pd.DataFrame, lam_t: tuple
     mg = int(rparams.get("max_score", 15))
     lh_b, la_b = sub["lam_h"].to_numpy(), sub["lam_a"].to_numpy()
     lh_t, la_t = lam_t[0][sel], lam_t[1][sel]
-    out: dict[str, Any] = {"n_h2h": int(len(sub)), "ficheros_odds_sha256": cap["sha"]}
+    out: dict[str, Any] = {"alcance": ("solo el test de la particion C (test C), precedente "
+                                       "measure_rest_nhl.py; no se informa sobre A ni B"),
+                           "n_h2h": int(len(sub)), "ficheros_odds_sha256": cap["sha"]}
     y = sub["y"].to_numpy()
     ok = np.isin(y, (0.0, 1.0))
     pb, pt = p_home_fast(lh_b, la_b), p_home_fast(lh_t, la_t)
@@ -1092,8 +1185,10 @@ def informe_pre(data_root: Path) -> dict:
                                  (*EXPECTED_PARAMS, *ABSENT_OR_ZERO, *ABSENT)},
         "hashes": procedencia_hashes(data_root),
         "partidos_totales": int(len(results)), "evaluados_tras_warmup": int(len(fr)),
-        "emparejamiento": {k: v for k, v in info.items() if k != "sin_emparejar"},
+        "emparejamiento": {k: v for k, v in info.items() if k not in _INFO_LISTAS},
         "sin_emparejar_nhl_lista": info["sin_emparejar"],
+        "matched_sin_fila_unica_lista": info["matched_sin_fila_unica_lista"],
+        "desempatados_grupos_lista": info["desempatados_grupos_lista"],
         "recuentos_seccion_10_sin_E": cnt_sin_e,
         "contraste_con_seccion_10_sin_E": contraste_seccion_10(cnt_sin_e),
         "recuentos_seccion_10_con_E": cnt_con_e,
@@ -1121,8 +1216,10 @@ def informe_pre(data_root: Path) -> dict:
             .value_counts().to_dict(),
             "E2": e2["date"].str[5:7].map(lambda m: "septiembre (pretemporada)" if m == "09" else "otro mes")
             .value_counts().to_dict()},
-        "E2_por_lado_del_equipo_afectado": {"nota": "ver filas E2: el equipo es local o visitante segun la fila",
-                                            "E2_filas_total": int(len(e2))},
+        "E2_por_game_type": _e2_por_game_type(e2),
+        "E1_game_type": "desconocido (sin datos del backfill en esas fechas)",
+        "E2_por_lado_del_equipo_afectado": _e2_por_lado(rows2, e2, failed_dates),
+        "E1_por_lado": "E1 es la fecha entera: ambos lados de cada fila",
         "lista_E_posiciones": [int(i) for i in fr.loc[fr["excl"], "idx"]],
     }
     # --- cobertura y sanidad de `starter`.
@@ -1157,6 +1254,45 @@ def informe_pre(data_root: Path) -> dict:
     return out
 
 
+def _filas_sin_titular(rows: list[dict], te: pd.DataFrame) -> list[dict]:
+    """Enmienda 2(e)1: POR NOMBRE (fecha, local, visitante) las filas de test sin
+    titular inequivoco en algun lado (las del recuento por mes), con el numero de
+    apariciones de cada lado (0 = sin apariciones; >0 = titular no inequivoco) y
+    si estan en E."""
+    sel = te[te["real_h"].isna() | te["real_a"].isna()]
+    out = []
+    for idx, excl in zip(sel["idx"], sel["excl"]):
+        r = rows[int(idx)]
+        out.append({"date": str(r["date"])[:10], "home": r["home"], "away": r["away"],
+                    "n_apariciones_local": len(r.get("home_goalie_appearances") or []),
+                    "n_apariciones_visitante": len(r.get("away_goalie_appearances") or []),
+                    "en_E": bool(excl)})
+    return out
+
+
+def _e2_por_game_type(e2: pd.DataFrame) -> dict:
+    """Filas de E2 por `game_type` de la aparicion unida (numerico), ademas del mes."""
+    return e2["game_type"].map(_game_type_label).value_counts().sort_index().to_dict()
+
+
+def _e2_por_lado(rows: list[dict], e2: pd.DataFrame, failed_dates: list[str]) -> dict:
+    """Filas de E2 (tras el warmup, sin E1) segun el lado del equipo afectado, en
+    total y por particion de test (Enmienda 2 c)."""
+    dates = [str(r.get("date", ""))[:10] for r in rows]
+    e2h, e2a = exclusion_sides(dates, [r["home"] for r in rows], [r["away"] for r in rows],
+                               failed_dates)
+    idx = e2["idx"].to_numpy(dtype=int)
+    h, a = e2h[idx], e2a[idx]
+
+    def cuenta(m: np.ndarray) -> dict:
+        return {"solo_local": int((h & ~a)[m].sum()), "solo_visitante": int((a & ~h)[m].sum()),
+                "ambos": int((h & a)[m].sum()), "total": int(m.sum())}
+    out: dict[str, Any] = {"total": cuenta(np.ones(len(e2), dtype=bool))}
+    for name, f in FOLDS.items():
+        out[f"test {name}"] = cuenta(fold_masks(e2, f)[1])
+    return out
+
+
 def _cobertura(rows: list[dict], fr: pd.DataFrame, app: pd.DataFrame) -> dict:
     n_rows = len(rows)
     sin_datos = [i for i, r in enumerate(rows) if not (r.get("home_goalie_appearances")
@@ -1174,6 +1310,9 @@ def _cobertura(rows: list[dict], fr: pd.DataFrame, app: pd.DataFrame) -> dict:
         sin_datos_mes[str(rows[i]["date"])[5:7]] += 1
     sin_proxy = {"M2_local": int(fr["h2_id"].isna().sum()), "M2_visitante": int(fr["a2_id"].isna().sum())}
     sin_real = {"local": int(fr["real_h"].isna().sum()), "visitante": int(fr["real_a"].isna().sum())}
+    sept = sum(1 for r in rows if str(r["date"])[5:7] == "09")
+    sept_con = sum(1 for r in rows if str(r["date"])[5:7] == "09"
+                   and (r.get("home_goalie_appearances") or r.get("away_goalie_appearances")))
     por_particion = {}
     for name, fold in FOLDS.items():
         _, test = fold_masks(fr, fold)
@@ -1185,12 +1324,20 @@ def _cobertura(rows: list[dict], fr: pd.DataFrame, app: pd.DataFrame) -> dict:
             "lados_con_proxy": {"local": int(te["h2_id"].notna().sum()),
                                 "visitante": int(te["a2_id"].notna().sum())},
             "filas_sin_apariciones_por_mes": te.loc[te["real_h"].isna() | te["real_a"].isna(), "date"]
-            .str[5:7].value_counts().sort_index().to_dict()}
+            .str[5:7].value_counts().sort_index().to_dict(),
+            "filas_sin_apariciones_lista": _filas_sin_titular(rows, te)}
     return {
         "filas_historico": n_rows, "filas_sin_apariciones_en_algun_lado": len(sin_datos),
         "sin_apariciones_por_mes": dict(sorted(sin_datos_mes.items())),
-        "nota_pretemporada": ("la API de la NHL no lista la pretemporada: las filas de septiembre "
-                              "no tienen apariciones (ambiguedad 1)"),
+        "apariciones_por_game_type": app["game_type"].map(_game_type_label).value_counts().to_dict(),
+        "apariciones_con_tiros_y_paradas_sin_goalie_player_id": int((
+            app["shots_against"].notna() & app["saves"].notna()
+            & app["goalie_player_id"].map(_clean_id).isna()).sum()),
+        "filas_historico_septiembre": sept,
+        "filas_historico_septiembre_con_apariciones": sept_con,
+        "pretemporada_medida": ("recuento medido de goalies_nhl.csv (apariciones por game_type, "
+                                "nulos incluidos) y de filas del historico de septiembre; no se "
+                                "afirma que la API liste o no la pretemporada (ambiguedad 1)"),
         "titulares_marcados_por_equipo_y_partido": {s: dict(sorted(v.items())) for s, v in titulares.items()},
         "porteros_distintos": len(porteros),
         "apariciones_filas_no_unidas_al_historico": int(len(app) - sum(
@@ -1294,7 +1441,7 @@ def run_nhl(results: list[dict], params: dict, rparams: dict, app: pd.DataFrame,
     fr = build_frame(rows2, params, rparams, failed_dates, with_outcomes=True)
     apps = appearance_table(rows2)
     kms = {n: k_moments(apps, f["train_end"]) for n, f in FOLDS.items()}
-    out: dict[str, Any] = {"emparejamiento": {k: v for k, v in info.items() if k != "sin_emparejar"},
+    out: dict[str, Any] = {"emparejamiento": {k: v for k, v in info.items() if k not in _INFO_LISTAS},
                            "k_momentos": kms}
     if any(km["k"] is None for km in kms.values()):
         out["veredicto"] = "RECHAZA"
@@ -1420,6 +1567,28 @@ def _criterios(parts: list[pd.DataFrame], arm_out: dict, betas: dict[str, float]
                 "ll_base": float(ll_b.mean()), "ll_T": float(ll_t.mean()), "ll_C": float(ll_c.mean())}}
 
 
+def _informe_sin_pretemporada(t: pd.DataFrame, y: np.ndarray) -> dict:
+    """Informe 8: la estimacion por mes (septiembre) NO cambia; se anade la
+    concordancia con `game_type` (1 = pretemporada) donde la aparicion unida lo
+    trae. No elige entre mes y `game_type` como criterio."""
+    aff = t["aff"].to_numpy()
+    est_pre = (t["date"].str[5:7] == "09").to_numpy()
+    d = ll_per_game(t["t_ml"].to_numpy(), y) - ll_per_game(t["b_ml"].to_numpy(), y)
+    sel = aff & ~est_pre
+    gt = t["game_type"] if "game_type" in t.columns else pd.Series([None] * len(t), index=t.index)
+    has = gt.notna().to_numpy()
+    real_pre = (pd.to_numeric(gt, errors="coerce") == 1).to_numpy()
+    diff = has & (est_pre != real_pre)
+    conc = {"n_con_game_type": int(has.sum()), "sin_game_type": int((~has).sum()),
+            "coinciden": int((has & ~diff).sum()), "difieren": int(diff.sum()),
+            "estimadas_pretemporada_por_mes_pero_game_type_no_1": int((has & est_pre & ~real_pre).sum()),
+            "game_type_1_pero_no_septiembre": int((has & ~est_pre & real_pre).sum()),
+            "afectados_difieren": int((diff & aff).sum())}
+    return {"nota": "pretemporada estimada por el mes (septiembre); ambiguedad 11",
+            "n": int(sel.sum()), "delta_ll_afectados": float(d[sel].mean()) if sel.any() else None,
+            "concordancia_con_game_type": conc}
+
+
 def _secundarios(arm: str, fr: pd.DataFrame, ok_rows: np.ndarray, ml_ok: np.ndarray,
                  parts: list[pd.DataFrame], k_by: dict[str, float], betas: dict[str, float],
                  rows: list[dict], data_root: Path, rparams: dict) -> dict:
@@ -1490,12 +1659,7 @@ def _secundarios(arm: str, fr: pd.DataFrame, ok_rows: np.ndarray, ml_ok: np.ndar
         return res
 
     def i8_sin_pretemporada() -> dict:
-        aff = t["aff"].to_numpy()
-        not_pre = (t["date"].str[5:7] != "09").to_numpy()
-        d = ll_per_game(t["t_ml"].to_numpy(), y) - ll_per_game(t["b_ml"].to_numpy(), y)
-        sel = aff & not_pre
-        return {"nota": "pretemporada estimada por el mes (septiembre); ambiguedad 11",
-                "n": int(sel.sum()), "delta_ll_afectados": float(d[sel].mean()) if sel.any() else None}
+        return _informe_sin_pretemporada(t, y)
 
     def i9_linea() -> dict | None:
         if arm != "M2":
@@ -1560,6 +1724,26 @@ def _check_pre_provenance(pre: dict, now: dict, head_now: str | None, params_now
         raise SystemExit("LISTA E DISTINTA de la de --pre-json. El modo completo aborta.")
 
 
+def _data_root_error(args: argparse.Namespace) -> str | None:
+    """Reglas de `--data-root` (instantanea congelada, decision 2026-10-01): en
+    `--pre` y en el modo completo debe pasarse explicitamente y no ser la raiz
+    viva del repositorio ni ningun checkout git (existe `<root>/.git`); el modo
+    completo rechaza un `--out` ya existente. `--parity-only` conserva el default."""
+    if args.parity_only:
+        return None
+    if args.data_root is None:
+        return "--data-root es obligatorio en --pre y en el modo completo (instantanea congelada)."
+    if Path(args.data_root).resolve() == Path(DEFAULT_ROOT).resolve():
+        return ("--data-root no puede ser la raiz viva del repositorio (sqp.config.ROOT): "
+                "usa la instantanea congelada.")
+    if (Path(args.data_root) / ".git").exists():
+        return ("--data-root es un checkout git (existe .git): puede ser la raiz viva de "
+                "produccion u otro arbol; usa una instantanea de datos.")
+    if not args.pre and args.out is not None and Path(args.out).exists():
+        return f"--out ya existe ({args.out}): el modo completo es UNA SOLA EJECUCION; no se sobrescribe."
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1567,7 +1751,7 @@ def main() -> int:
     ap.add_argument("--parity-only", action="store_true")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--pre-json", type=Path, default=None)
-    ap.add_argument("--data-root", type=Path, default=DEFAULT_ROOT)
+    ap.add_argument("--data-root", type=Path, default=None)
     args = ap.parse_args()
     if args.pre and args.parity_only:
         ap.error("--pre y --parity-only son mutuamente excluyentes.")
@@ -1577,6 +1761,11 @@ def main() -> int:
         ap.error("--pre-json solo aplica al modo completo.")
     if not args.pre and not args.parity_only and args.pre_json is None:
         ap.error("--pre-json es obligatorio en el modo completo.")
+    err = _data_root_error(args)
+    if err:
+        ap.error(err)
+    if args.data_root is None:
+        args.data_root = DEFAULT_ROOT                     # solo --parity-only
 
     t0 = time.perf_counter()
     out: dict[str, Any]

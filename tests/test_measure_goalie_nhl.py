@@ -188,8 +188,10 @@ def test_goalie_ratings_hand_computed_and_strictly_prior():
 
 
 def test_no_temporal_leak_in_engine_estimates():
-    """Perturbar TODO lo que ocurre desde la fecha D no cambia ninguna
-    probabilidad estimada para partidos con fecha <= D."""
+    """Perturbar TODO lo que ocurre desde la fecha D (inclusive) no cambia
+    ninguna probabilidad estimada para partidos con fecha ESTRICTAMENTE anterior
+    a D. La invariancia del propio dia D se prueba aparte
+    (`test_engine_probabilities_of_day_d_ignore_day_d_data`)."""
     results, _ = make_world(seasons=(2014,), days=12)
     app_rows, _ = _rows_with_goalies(results)
     params, _ = nhl_params()
@@ -209,12 +211,38 @@ def test_no_temporal_leak_in_engine_estimates():
     alt = walk_forward_backtest(pert, "nhl", "hockey", p, warmup=0)
     n_prev = sum(1 for r in app_rows if r["date"] < d0)
     assert n_prev > 20
-    # el motor evalua el dia entero contra el cierre del dia anterior: las del dia D
-    # tambien son identicas, asi que basta con <= D.
-    n_le = sum(1 for r in app_rows if r["date"] <= d0)
-    # M2 puro (sin announced en la fila base): solo cambian los datos desde d0
-    assert n_le >= n_prev
     assert ref["binary_probs"][:n_prev] == alt["binary_probs"][:n_prev]
+
+
+def test_engine_probabilities_of_day_d_ignore_day_d_data():
+    """M2 (sin `*_goalie_announced`): perturbar las apariciones Y los marcadores
+    de los partidos del propio dia D no cambia ninguna probabilidad de ese dia
+    (el motor predice el dia contra el cierre del anterior); la perturbacion
+    SI mueve los dias posteriores (la prueba no es vacua)."""
+    results, _ = make_world(seasons=(2014,), days=12)
+    app_rows, _ = _rows_with_goalies(results)
+    for r in app_rows:
+        r.pop("home_goalie_announced"), r.pop("away_goalie_announced")
+    params, _ = nhl_params()
+    p = {**params, "goalie_beta": 1.7, "goalie_prior_shots": 200.0}
+    d0 = "2014-10-08"
+    pert = []
+    for r in app_rows:
+        r = dict(r)
+        if r["date"] == d0:
+            r["home_goalie_appearances"] = [dict(a, shots_against=99.0, saves=1.0, id="ZZ")
+                                            for a in r["home_goalie_appearances"]]
+            r["away_goalie_appearances"] = [dict(a, shots_against=10.0, saves=10.0, id="YY")
+                                            for a in r["away_goalie_appearances"]]
+            r["home_score"], r["away_score"] = r["away_score"], r["home_score"]
+        pert.append(r)
+    ref = walk_forward_backtest(app_rows, "nhl", "hockey", p, warmup=0)
+    alt = walk_forward_backtest(pert, "nhl", "hockey", p, warmup=0)
+    n_le = sum(1 for r in app_rows if r["date"] <= d0)
+    n_d = sum(1 for r in app_rows if r["date"] == d0)
+    assert n_d >= 2 and len(ref["binary_probs"]) == len(app_rows)
+    assert ref["binary_probs"][:n_le] == alt["binary_probs"][:n_le]
+    assert ref["binary_probs"][n_le:] != alt["binary_probs"][n_le:]
 
 
 def _rows_with_goalies(results):
@@ -519,3 +547,246 @@ def test_hash_and_head_mismatch_abort_the_full_mode(mod):
             mod._check_pre_provenance(*args)
     with pytest.raises(SystemExit):
         mod._check_git_clean(" M src/x.py\n")
+
+
+# ============================================ arreglos de la revision Fable ==
+def _folds_all(mod, monkeypatch):
+    monkeypatch.setattr(mod, "FOLDS", {
+        "A": {"train_end": "2014-10-02", "test_start": "2014-10-03", "test_end": "2014-11-05"},
+        "B": {"train_end": "2014-11-05", "test_start": "2014-11-06", "test_end": "2014-11-08"},
+        "C": {"train_end": "2014-11-08", "test_start": "2014-11-09", "test_end": "2014-12-31"}})
+
+
+def test_cobertura_reports_measured_preseason_counts_not_a_fixed_claim(small_mod, monkeypatch):
+    mod = small_mod
+    _folds_all(mod, monkeypatch)
+    results, app = make_world(seasons=(2014,), days=10)
+    first = {r["game_id"] for r in results if r["date"] == "2014-10-01"}
+    for r in results:
+        if r["game_id"] in first:
+            r["date"] = "2014-09-30"                       # septiembre CON apariciones
+    app = app.copy()
+    app.loc[app["espn_game_id"].isin(first), "date"] = "2014-09-30"
+    app.loc[app.index[10:14], "game_type"] = "1"
+    app.loc[app.index[20:23], "game_type"] = None
+    rows2, _, _, fr, _, _ = _frame(mod, (results, app))
+    cob = mod._cobertura(rows2, fr, app)
+    want = app["game_type"].fillna("<nulo>").value_counts().to_dict()
+    assert cob["apariciones_por_game_type"] == want and want["<nulo>"] == 3
+    assert cob["filas_historico_septiembre"] == 4
+    assert cob["filas_historico_septiembre_con_apariciones"] == 4
+    assert "no lista la pretemporada" not in mod._dump(cob)
+
+
+def test_matched_without_unique_row_and_test_rows_without_appearances_are_listed_by_name(small_mod, monkeypatch):
+    mod = small_mod
+    _folds_all(mod, monkeypatch)
+    results, app = make_world(seasons=(2014,), days=10)
+    victim = results[29]
+    gone = app["nhl_game_id"] == "N30"                     # sin apariciones en este partido
+    app = app[~gone].reset_index(drop=True)
+    ghost = app[app["nhl_game_id"] == "N31"].copy()        # matched=True pero su ESPN id no existe
+    ghost["nhl_game_id"], ghost["espn_game_id"] = "NG", "999999"
+    app2 = pd.concat([app, ghost], ignore_index=True)
+    rows2, _, info, fr, _, _ = _frame(mod, (results, app2))
+    assert info["matched_sin_fila_unica_en_historico"] == 1
+    lst = info["matched_sin_fila_unica_lista"]
+    assert len(lst) == 1 and lst[0]["date"] == ghost["date"].iloc[0]
+    assert {lst[0]["home_nhl"], lst[0]["away_nhl"]} == set(ghost["team_nhl"])
+    cob = mod._cobertura(rows2, fr, app2)
+    listed = [e for p in cob["por_particion"].values() for e in p["filas_sin_apariciones_lista"]]
+    mine = [e for e in listed if (e["date"], e["home"], e["away"]) ==
+            (victim["date"], victim["home"], victim["away"])]
+    assert len(mine) == 1 and mine[0]["n_apariciones_local"] == 0 == mine[0]["n_apariciones_visitante"]
+    assert "goalie_name" not in str(cob)
+
+
+def test_assign_appearances_separates_tied_groups_from_individual_rescues(mod):
+    ordered = [{"date": "2016-04-15", "home": "New York Islanders", "away": "Florida Panthers", "game_id": "400900002"},
+               {"date": "2016-04-15", "home": "New York Islanders", "away": "Florida Panthers", "game_id": "400900001"},
+               {"date": "2016-04-16", "home": "Boston Bruins", "away": "Detroit Red Wings", "game_id": "5"}]
+    rows = []
+    for gid, d, start, h, a in (("N2", "2016-04-15", "2016-04-15T23:00:00Z", "Islanders", "Panthers"),
+                                ("N1", "2016-04-15", "2016-04-15T20:00:00Z", "Islanders", "Panthers"),
+                                ("N3", "2016-04-16", "2016-04-16T23:00:00Z", "Bruins", "Red Wings")):
+        for side, team in (("home", h), ("away", a)):
+            rows.append({"nhl_game_id": gid, "espn_game_id": "", "date": d, "game_type": "2",
+                         "start_time_utc": start, "team_side": side, "team_nhl": team, "matched": False,
+                         "goalie_player_id": f"{gid}{side}", "starter": True,
+                         "shots_against": 20.0, "saves": 18.0})
+    assigned, info = mod.assign_appearances(ordered, pd.DataFrame(rows))
+    assert assigned == {"N1": 1, "N2": 0, "N3": 2}              # la asignacion NO cambia
+    assert info["desempatados_por_orden"] == 3
+    assert info["desempatados_en_grupos_de_2_o_mas"] == 2
+    assert info["rescatados_individuales"] == 1
+
+
+def test_sin_pretemporada_report_adds_game_type_concordance(mod):
+    t = pd.DataFrame({"date": ["2015-09-20", "2015-09-21", "2015-10-05", "2015-10-06", "2015-09-22"],
+                      "game_type": ["1", "2", "2", None, "1"],
+                      "aff": [True, True, True, True, False],
+                      "t_ml": [0.6] * 5, "b_ml": [0.5] * 5})
+    y = np.array([1.0, 0.0, 1.0, 1.0, 0.0])
+    out = mod._informe_sin_pretemporada(t, y)
+    assert out["n"] == 2 and out["delta_ll_afectados"] is not None      # estimacion por mes intacta
+    c = out["concordancia_con_game_type"]
+    assert c["n_con_game_type"] == 4 and c["coinciden"] == 3 and c["difieren"] == 1
+    assert c["sin_game_type"] == 1 and c["afectados_difieren"] == 1
+
+
+def test_exclusion_sides_split_e2_by_team_side_and_match_exclusion_set(mod):
+    dates = ["2015-01-01", "2015-01-02", "2015-01-03", "2015-01-04", "2015-01-05"]
+    home = [TEAMS[0], TEAMS[2], TEAMS[0], TEAMS[2], TEAMS[3]]
+    away = [TEAMS[1], TEAMS[3], TEAMS[2], TEAMS[1], TEAMS[0]]
+    e1, e2 = mod.exclusion_set(dates, home, away, ["2015-01-02"])
+    e2h, e2a = mod.exclusion_sides(dates, home, away, ["2015-01-02"])
+    assert (e2h | e2a).tolist() == e2.tolist() and e2.any()
+    assert e2a[2] and not e2h[2]            # Canadiens (TEAMS[2]) visitantes el 03
+    assert e2h[4] and not e2a[4]            # Rangers (TEAMS[3]) locales el 05
+
+
+def test_safe_informe_catches_exceptions_only_so_systemexit_aborts(small_mod):
+    """Pre-registro 7: si `fit` no converge el script ABORTA (precedente
+    measure_rest_nhl._safe_informe: solo `Exception`)."""
+    mod = small_mod
+
+    def boom():
+        raise ValueError("informe roto")
+
+    def no_converge():
+        raise SystemExit("no convergio")
+    res = mod._safe_informe("x", boom)
+    assert res is not None and "informe roto" in res["error"]
+    assert mod._safe_informe("ok", lambda: {"a": 1}) == {"a": 1}
+    with pytest.raises(SystemExit):
+        mod._safe_informe("x", no_converge)
+    assert mod._safe_informe is mod.rmnhl._safe_informe
+
+
+def test_blank_goalie_player_id_is_treated_as_no_id(small_mod, tmp_path):
+    mod = small_mod
+    results, app = make_world(seasons=(2014,), days=8)
+    app = app.copy()
+    i = app.index[(app["nhl_game_id"] == "N10") & (app["team_side"] == "home") & app["starter"]][0]
+    app.loc[i, "goalie_player_id"] = ""
+    p = tmp_path / "g.csv"
+    app.to_csv(p, index=False)
+    loaded = mod.read_appearances(p)
+    rows2, rows1, _ = mod.attach_goalies(results, loaded)
+    ids = [a["id"] for r in rows2 for a in r["home_goalie_appearances"] + r["away_goalie_appearances"]]
+    assert all(x is None or isinstance(x, str) for x in ids) and ids.count(None) == 1
+    assert rows1[9]["home_goalie_announced"] is None
+    assert mod.appearance_table(rows2)["id"].map(lambda x: isinstance(x, str)).all()
+
+
+@pytest.mark.slow
+def test_parity_failure_messages_do_not_reveal_beta(small_mod):
+    mod = small_mod
+    world = make_world(seasons=(2014,), days=10)
+    rows2, rows1, _, fr, params, rparams = _frame(mod, world)
+    broken = fr.copy()
+    broken["h2_num"] = broken["h2_num"] + 5.0
+    with pytest.raises(SystemExit) as e:
+        mod.assert_parity(rows2, rows1, params, rparams, broken, 1.2345, 800.0)
+    assert "1.2345" not in str(e.value) and "beta=" not in str(e.value)
+
+
+def test_data_root_must_be_explicit_and_not_the_live_root_outside_parity_only(mod, monkeypatch, tmp_path):
+    out = tmp_path / "o.json"
+    pre = tmp_path / "pre.json"
+    cases = [["--pre", "--out", str(out)],                                       # sin --data-root
+             ["--pre", "--out", str(out), "--data-root", str(mod.DEFAULT_ROOT)],  # raiz viva
+             ["--out", str(out), "--pre-json", str(pre)],
+             ["--out", str(out), "--pre-json", str(pre), "--data-root", str(mod.DEFAULT_ROOT)]]
+    for argv in cases:
+        monkeypatch.setattr(sys, "argv", ["x", *argv])
+        with pytest.raises(SystemExit) as e:
+            mod.main()
+        assert e.value.code == 2, argv
+    out.write_text("{}", encoding="utf-8")                                       # --out ya existe
+    monkeypatch.setattr(sys, "argv", ["x", "--out", str(out), "--pre-json", str(pre),
+                                      "--data-root", str(tmp_path)])
+    with pytest.raises(SystemExit) as e:
+        mod.main()
+    assert e.value.code == 2
+    # reglas puras: parity-only conserva el default; un data-root ajeno y explicito pasa.
+    ns = lambda **k: type("NS", (), k)()  # noqa: E731
+    assert mod._data_root_error(ns(pre=False, parity_only=True, data_root=None, out=None)) is None
+    assert mod._data_root_error(ns(pre=True, parity_only=False, data_root=tmp_path, out=out)) is None
+
+
+def test_informe_linea_capturada_declares_its_scope_is_test_c(small_mod, monkeypatch, tmp_path):
+    mod = small_mod
+    ids = ["1", "2"]
+    monkeypatch.setattr(mod, "captured_lines_root", lambda rows, root: {
+        "spreads": {"1": -1.5, "2": -1.5}, "totals": {"1": 5.5, "2": 5.5}, "ids": set(ids), "sha": {}})
+    tc = pd.DataFrame({"game_id": ids, "lam_h": [3.1, 2.9], "lam_a": [2.8, 3.0], "y": [1.0, 0.0],
+                       "margin": [2, -1], "total": [6, 5]})
+    lam_t = (np.array([3.0, 3.0]), np.array([2.9, 2.9]))
+    out = mod.informe_linea_capturada([], tc, lam_t, tmp_path, {"max_score": 15})
+    assert out is not None and "particion C" in out["alcance"] and "test C" in out["alcance"]
+
+
+# ====================================================== ronda 2 de arreglos ==
+def test_clean_id_direct(mod):
+    assert mod._clean_id("8478403.0") == "8478403.0"
+    assert mod._clean_id(" 8478403 ") == "8478403"
+    for v in ("", "  ", float("nan"), pd.NA, None):
+        assert mod._clean_id(v) is None
+
+
+def test_exclusion_sides_both_sides_case(mod):
+    # Rangers (3) y Canadiens (2) juegan el 02 (E1) y se enfrentan el 03: la fila es E2 por ambos lados.
+    dates = ["2015-01-02", "2015-01-02", "2015-01-03"]
+    home = [TEAMS[2], TEAMS[3], TEAMS[2]]
+    away = [TEAMS[0], TEAMS[1], TEAMS[3]]
+    e2h, e2a = mod.exclusion_sides(dates, home, away, ["2015-01-02"])
+    assert e2h[2] and e2a[2]
+    e1, e2 = mod.exclusion_set(dates, home, away, ["2015-01-02"])
+    assert e2.tolist() == (e2h | e2a).tolist()
+
+
+def test_game_type_is_compared_numerically(mod):
+    t = pd.DataFrame({"date": ["2015-09-20", "2015-09-21", "2015-10-05", "2015-10-06"],
+                      "game_type": ["1.0", "2.0", "2", "1"],
+                      "aff": [True, True, True, True], "t_ml": [0.6] * 4, "b_ml": [0.5] * 4})
+    c = mod._informe_sin_pretemporada(t, np.array([1.0, 0.0, 1.0, 1.0]))["concordancia_con_game_type"]
+    assert c["n_con_game_type"] == 4 and c["coinciden"] == 2 and c["difieren"] == 2
+    assert c["game_type_1_pero_no_septiembre"] == 1
+    assert mod._game_type_label("1.0") == "1" and mod._game_type_label("2") == "2"
+    assert mod._game_type_label(None) == "<nulo>" and mod._game_type_label(float("nan")) == "<nulo>"
+
+
+def test_cobertura_groups_game_type_numerically_and_counts_idless_appearances(small_mod, monkeypatch):
+    mod = small_mod
+    _folds_all(mod, monkeypatch)
+    results, app = make_world(seasons=(2014,), days=10)
+    app = app.copy()
+    app["game_type"] = app["game_type"].astype(object)
+    app.loc[app.index[:6], "game_type"] = "2.0"
+    app.loc[app.index[6:9], "game_type"] = "1.0"
+    played = app.index[app["shots_against"].notna()][:2]
+    app.loc[played, "goalie_player_id"] = None
+    rows2, _, _, fr, _, _ = _frame(mod, (results, app))
+    cob = mod._cobertura(rows2, fr, app)
+    assert cob["apariciones_por_game_type"]["1"] == 3 and "1.0" not in cob["apariciones_por_game_type"]
+    assert cob["apariciones_con_tiros_y_paradas_sin_goalie_player_id"] == 2
+
+
+def test_e2_breakdown_by_game_type_is_numeric(mod):
+    e2 = pd.DataFrame({"game_type": ["1.0", "2", None, "2.0"]})
+    assert mod._e2_por_game_type(e2) == {"1": 1, "2": 2, "<nulo>": 1}
+
+
+def test_data_root_rejects_any_git_checkout(mod, tmp_path):
+    ns = lambda **k: type("NS", (), k)()  # noqa: E731
+    root = tmp_path / "snap"
+    root.mkdir()
+    args = ns(pre=True, parity_only=False, data_root=root, out=tmp_path / "o.json")
+    assert mod._data_root_error(args) is None
+    (root / ".git").mkdir()
+    assert mod._data_root_error(args) is not None                 # directorio
+    (root / ".git").rmdir()
+    (root / ".git").write_text("gitdir: elsewhere", encoding="utf-8")
+    assert mod._data_root_error(args) is not None                 # fichero (worktree)
+    assert mod._data_root_error(ns(pre=True, parity_only=True, data_root=root, out=None)) is None
