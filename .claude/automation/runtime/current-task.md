@@ -465,3 +465,9 @@ FABLE-REVIEW: 2026-11-08 | veredicto: APTO (hallazgo 1 aplicado segun su arreglo
 Orden del operador: opcion 2 (leer el stash con git show) y «hazlo». Sonnet completo y valido el WIP sin cambios; revision Fable (Agent model=fable, sa-revisor, solo lectura) antes del commit: APTO CON CAMBIOS para commit y fusion; aplicado el cambio pedido (nota en engine.py de que M1 es cota superior, como AUD-012), condicion = pytest/ruff/mypy completos en el worktree. Hallazgos para antes de --pre anotados en Obsidian/Tareas.md. measure_goalie_nhl.py no se ejecuto en ningun modo.
 
 FABLE-REVIEW: 2026-11-08 | veredicto: APTO CON CAMBIOS (cambio de docstring en engine.py aplicado; pendientes previos a --pre en Tareas) | rutas: src/sqp/backtesting/engine.py, src/sqp/domain/models.py, src/sqp/sports/adapters.py, src/sqp/models/goalies.py, scripts/research/measure_goalie_nhl.py, tests/test_measure_goalie_nhl.py
+
+## 2026-11-09 — Portero NHL: arreglos previos a --pre (wip/portero-nhl-prepre)
+
+Orden del operador: «continua con todo lo pendiente». Sonnet implemento los 11 arreglos de la revision del 2026-11-08; Fable (Agent model=fable, sa-revisor, solo lectura): APTO CON CAMBIOS (H1-H6); ronda 2 de Sonnet (H1 revierte la captura de SystemExit por la seccion 7 del pre-registro); re-verificacion Fable: APTO. measure_goalie_nhl.py no se ejecuto; decisiones del operador sin tomar.
+
+FABLE-REVIEW: 2026-11-09 | veredicto: APTO (ronda 2; H1-H6 cerrados) | rutas: scripts/research/measure_goalie_nhl.py, tests/test_measure_goalie_nhl.py
