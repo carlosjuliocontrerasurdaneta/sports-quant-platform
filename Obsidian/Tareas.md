@@ -8,6 +8,16 @@ actualizada: 2026-11-07
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
 
+## Auditoría de prompts deportivos (2026-11-10)
+
+- [ ] Operador: decidir la política de mercado en producción (`market_shrink`, `uncertainty_penalty`) frente al principio de independencia, solo después de la medición única «el modelo manda». Ver `docs/prompts-audit/07-independencia-del-mercado.md`.
+- [ ] Candados del principio, sin cambiar probabilidades: test de fronteras de importación, test de columnas de mercado, `model_probability` independiente de `fair` y ningún override por ROI (`docs/prompts-audit/09-principios-fundamentales.md`, P1/P2/P8/P9).
+- [ ] `prediction_id`/`frozen_at`/`model_version`/`params_hash` en el stream servido y separación `estimate_league`/`price_league` (`06-arquitectura-recomendada.md` §4-5).
+- [ ] Columna `brier_model_puro` en el registro de degradación (R4), solo como medición.
+- [ ] Pre-registro: revalidar `park_bound` de MLB por log loss frente a resultados (R2).
+- [ ] Pre-registros de modelo según `08-plan-de-optimizacion.md`: distribución conjunta margen-total; ritmo × eficiencia en `wnba/totals`; fuerza log-lineal en fútbol, después de `tune_ratings` de `dc_rho` y `elo_home_adv` en las 8 ligas por defecto.
+- [ ] Operador: cerrar los tres matices de redacción de los prompts y reconciliar las versiones v1.0/v2.0 de `C:\dev\Prompts` con los v3 de `docs/prompts/`.
+
 ## Pendientes al cierre del 2026-11-07
 
 - [x] **Operador**: `! python scripts/repair_ki079_20261107.py --apply` (KI-079). Aplicado el 2026-11-08 a las 14:05 UTC; MANIFEST `aplicado` y sha256 verificados. Ver [[Bitácora/2026-11-08]].
