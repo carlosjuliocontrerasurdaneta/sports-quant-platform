@@ -482,3 +482,11 @@ FABLE-REVIEW: 2026-11-09 | veredicto: APTO (ronda 2; H1-H6 cerrados) | rutas: sc
 - Rama `fix/aud-002-merge-identity`: identidad de fusión en `_merge_results` (AUD-002). Fable dio APTO CON CAMBIOS y los cambios están aplicados. NO se fusiona a `main` hasta la medición C1 (`scripts/research/measure_aud002_merge.py`, la ejecuta el operador) y debe entrar antes del `--pre` del portero NHL o después del modo completo (C2).
 FABLE-REVIEW: 2026-11-09 | veredicto: APTO (doble evaluate_markets y load_closing_odds months opt-in) | rutas: scripts/run_all.py, src/sqp/risk/prediction_gate.py, src/sqp/backtesting/roi_engine.py, tests/test_prediction_gate.py, tests/test_roi_engine.py, audit/audit-2026-09-18/VERIFICATION.md, Obsidian/Tareas.md
 FABLE-REVIEW: 2026-11-09 | veredicto: APTO CON CAMBIOS aplicados (AUD-002; fusión a main condicionada a C1 y C2) | rutas: src/sqp/pipeline/daily.py, tests/test_results_backfill.py, scripts/research/measure_aud002_merge.py
+
+## 2026-11-10 — candados de independencia del mercado
+
+- `tests/test_market_independence.py` (54 tests): P1, P2, P8 y P9 de `docs/prompts-audit/09-principios-fundamentales.md` y la frontera de importación de 06 §5.1. Solo tests; no hay cambios en src, scripts ni configs.
+- Violaciones reales registradas, no corregidas:
+  - `settlement_math.py:11` importa `sqp.markets.odds`;
+  - `markets/__init__.py` carga `odds` y `vig` de forma ansiosa vía `distributions.py:16`.
+FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (H1-H5 aplicados) | rutas: tests/test_market_independence.py
