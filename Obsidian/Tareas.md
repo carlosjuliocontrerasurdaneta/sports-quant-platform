@@ -11,7 +11,8 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 ## Auditoría de prompts deportivos (2026-11-10)
 
 - [ ] Operador: decidir la política de mercado en producción (`market_shrink`, `uncertainty_penalty`) frente al principio de independencia, solo después de la medición única «el modelo manda». Ver `docs/prompts-audit/07-independencia-del-mercado.md`.
-- [ ] Candados del principio, sin cambiar probabilidades: test de fronteras de importación, test de columnas de mercado, `model_probability` independiente de `fair` y ningún override por ROI (`docs/prompts-audit/09-principios-fundamentales.md`, P1/P2/P8/P9).
+- [x] **HECHO 2026-11-10:** `tests/test_market_independence.py` tiene 54 tests y Fable dio APTO CON CAMBIOS, ya aplicados. Registró dos violaciones reales que siguen sin corregir: `settlement_math.py:11` importa `markets.odds`, y `markets/__init__.py` carga ansiosamente `odds` y `vig`. Ver la tarea siguiente. Texto original: Candados del principio, sin cambiar probabilidades: test de fronteras de importación, test de columnas de mercado, `model_probability` independiente de `fair` y ningún override por ROI (`docs/prompts-audit/09-principios-fundamentales.md`, P1/P2/P8/P9).
+- [ ] Corregir en `src` las dos violaciones de frontera que registra `tests/test_market_independence.py`: mover `is_usable_price` fuera de `settlement_math` (o importarlo perezosamente) y hacer perezoso `sqp/markets/__init__.py`. Después, vaciar `KNOWN_VIOLATIONS` y `KNOWN_DYNAMIC_VIOLATIONS`.
 - [ ] `prediction_id`/`frozen_at`/`model_version`/`params_hash` en el stream servido y separación `estimate_league`/`price_league` (`06-arquitectura-recomendada.md` §4-5).
 - [ ] Columna `brier_model_puro` en el registro de degradación (R4), solo como medición.
 - [ ] Pre-registro: revalidar `park_bound` de MLB por log loss frente a resultados (R2).
