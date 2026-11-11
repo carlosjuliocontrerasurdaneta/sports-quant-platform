@@ -650,3 +650,18 @@ Relacionado: [[2026-09-29-preregistro-tilt-nhl]], [[2026-09-27-preregistro-bater
 [[2026-08-26-resultado-correlacion-marcadores]], [[2026-08-26-preregistro-el-modelo-manda]],
 [[2026-11-02-repreregistro-gate-k69]], [[2026-10-13-preregistro-peso-mercado-por-segmento]],
 [[2026-09-26-preregistro-clima-mlb]], [[2026-09-26-preregistro-clima-parque-mlb]].
+
+---
+
+## Addendum 1: 2026-11-11, antes de ejecutar y sin datos vistos
+
+Redacción de Fable en la revisión del script `scripts/research/measure_park_bound_mlb.py`. Ninguno de estos puntos cambia un criterio; precisan lo que el texto anterior dejaba ambiguo.
+
+1. **Δ(b_C) − Δ(0,10)** (§11 y §12.2). Se calcula sobre todas las filas del test combinado con dos brazos fijos, T(b_C) y T(0,10), no con el b_P de cada partición; equivale a ll(T(b_C)) − ll(T(0,10)). Si b_C = 0,10, no se informa.
+2. **Universo del informe 8.** El store MLB solo contiene partidos con `gameType=R` (`src/sqp/providers/mlb_statsapi.py:56-58`). El universo es la temporada regular, así que el apartado «regular frente a postemporada» del informe 8 no aplica. Se mantienen Δ por temporada y Δ por mes.
+3. **Claves de equipo local del informe 7.** Son las que el `--pre` liste para los Athletics («Oakland Athletics» o «Athletics») y para «Tampa Bay Rays». Corrección de §6: si las claves de los Athletics cambian según la temporada, su factor no mezcla recintos, sino que se reinicia en 2025 con muestra corta. El informe 7 excluye igualmente sus partidos en casa.
+4. **«Δ medio de run line»** = (Δ_{−1,5} + Δ_{+1,5}) / 2.
+5. **Duración y paridad.**
+   - El modo completo tarda varias horas; T2 es lo que domina.
+   - El JSON se escribe con criterios y bootstrap antes de los informes, y se reescribe al final.
+   - La paridad del modo completo corre siempre con stride 1; `--parity-stride` solo se aplica a `--parity-only`.

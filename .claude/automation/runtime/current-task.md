@@ -515,3 +515,4 @@ FABLE-REVIEW: 2026-11-10 | veredicto: APTO (Enmienda 5 redactada por Fable, ante
 
 - `docs/research/2026-11-10-preregistro-park-bound-mlb.md`, redactado por Fable sin medir. Métrica: log loss frente a resultados, sin cuotas. Se aplica después de «el modelo manda». El script `measure_park_bound_mlb.py` queda pendiente (Sonnet + revisión Fable).
 FABLE-REVIEW: 2026-11-11 | veredicto: APTO (pre-registro redactado por Fable; sin datos vistos) | rutas: docs/research/2026-11-10-preregistro-park-bound-mlb.md
+FABLE-REVIEW: 2026-11-11 | veredicto: APTO (addendum 1 del pre-registro park_bound, redactado por Fable antes de ejecutar) | rutas: docs/research/2026-11-10-preregistro-park-bound-mlb.md
