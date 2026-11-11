@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / ".claude" / "hooks" / "_stop_tests.py"
 HEAVY = [
     "tests/research/test_measure_adjustment_battery.py",
+    "tests/research/test_measure_park_bound_mlb.py",
     "tests/research/test_measure_segment_market_weight.py",
     "tests/research/test_measure_tier_a_gap.py",
     "tests/research/test_measure_totals_recency.py",
