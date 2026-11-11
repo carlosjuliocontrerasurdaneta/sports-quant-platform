@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 
-from sqp.markets.odds import is_usable_price
+from sqp.domain.prices import is_usable_price
 
 
 @dataclass(frozen=True)

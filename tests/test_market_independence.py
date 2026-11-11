@@ -61,20 +61,14 @@ MARKET_STARTSWITH = ("sqp.audit.clv",)
 ALLOWED_MARKET_MODULES = ("sqp.markets.settlement_math",)
 
 # (modulo importador -> modulo importado, motivo). Fecha del hallazgo: 2026-11-10.
-KNOWN_VIOLATIONS: dict[tuple[str, str], str] = {
-    ("sqp.markets.settlement_math", "sqp.markets.odds"): (
-        "settlement_math.py:11 importa is_usable_price (matematica pura, sin "
-        "datos); REGLA 2 clausula 2 rota; corregir en src moviendo "
-        "is_usable_price o importando perezosamente. 2026-11-10"),
-}
-_LAZY_INIT = ("markets/__init__.py:1-2 importa odds y vig de forma ansiosa; los "
-              "arrastra distributions.py:16 via settlement_math; corregir en src "
-              "con __init__ perezoso. 2026-11-10")
-KNOWN_DYNAMIC_VIOLATIONS: dict[str, str] = {
-    "sqp.markets": _LAZY_INIT,
-    "sqp.markets.odds": _LAZY_INIT,
-    "sqp.markets.vig": _LAZY_INIT,
-}
+KNOWN_VIOLATIONS: dict[tuple[str, str], str] = {}
+KNOWN_DYNAMIC_VIOLATIONS: dict[str, str] = {}
+# Frontera dinamica, REGLA 2 (06 §5.1): el paquete ``sqp.markets`` SIEMPRE esta
+# en sys.modules, porque Python carga el paquete padre de
+# ``sqp.markets.settlement_math``. Es aceptable SOLO si es el paquete vacio y
+# perezoso: ``sqp.markets.odds`` y ``sqp.markets.vig`` no deben estar cargados.
+PARENT_PACKAGE = "sqp.markets"
+FORBIDDEN_WITH_PARENT = ("sqp.markets.odds", "sqp.markets.vig")
 # LIMITE conocido: ``import sqp.markets.settlement_math`` enlaza el nombre
 # ``sqp`` y eso permite llegar a ``sqp.markets.*`` por atributo sin que ninguna
 # importacion lo nombre; el analisis estatico no puede verlo.
@@ -143,6 +137,9 @@ def _sporting_files() -> list[Path]:
     for d in SPORTING_DIRS:
         files += sorted((SRC / "sqp" / d).rglob("*.py"))
     files.append(SRC / "sqp" / "markets" / "settlement_math.py")  # REGLA 2, clausula 2
+    # sqp/markets/__init__.py NO se barre en estatico: su bloque TYPE_CHECKING
+    # importa odds/vig solo para tipos. Una carga ansiosa en el la detecta el
+    # test dinamico (odds/vig en sys.modules).
     return files
 
 
@@ -220,18 +217,42 @@ def test_sporting_imports_do_not_load_market_modules_dynamic():
     sqp.providers.odds_api y sqp.storage.odds_store). Misma tecnica que
     tests/test_audit_pipeline_isolation.py. Limite: ``import
     sqp.markets.settlement_math`` enlaza el nombre ``sqp`` y permite llegar a
-    ``sqp.markets.*`` por atributo."""
+    ``sqp.markets.*`` por atributo.
+
+    REGLA 2 (06 §5.1) y paquete padre: ``sqp.markets`` queda en sys.modules
+    porque Python siempre carga el paquete padre de
+    ``sqp.markets.settlement_math``. Se permite SOLO si ``sqp.markets.odds`` y
+    ``sqp.markets.vig`` NO estan cargados (el paquete vacio y perezoso es
+    aceptable; sus submodulos de mercado no)."""
     env = {**os.environ, "PYTHONPATH": str(SRC)}
     proc = subprocess.run([sys.executable, "-c", _DYNAMIC_CODE], env=env,
                           capture_output=True, text=True, timeout=180)
     assert proc.returncode == 0, proc.stderr
     every = set(json.loads(proc.stdout.strip().splitlines()[-1]))
     assert "sqp.sports.registry" in every
-    loaded = {m for m in every if _is_market_module(m)}
+    assert "sqp.markets.settlement_math" in every     # el padre se cargo de verdad
+    assert PARENT_PACKAGE in every
+    assert not (set(FORBIDDEN_WITH_PARENT) & every), "el paquete padre dejo de ser perezoso"
+    loaded = {m for m in every if _is_market_module(m)} - {PARENT_PACKAGE}
     new = sorted(loaded - KNOWN_DYNAMIC_VIOLATIONS.keys())
     stale = sorted(KNOWN_DYNAMIC_VIOLATIONS.keys() - loaded)
     assert not new, f"modulos de mercado cargados por la capa deportiva: {new}"
     assert not stale, f"entradas obsoletas en KNOWN_DYNAMIC_VIOLATIONS: {stale}"
+
+
+def test_domain_prices_imports_nothing_from_sqp():
+    """REGLA 2 (06 §5.1): sqp.domain.prices es hoja pura, sin imports de sqp."""
+    path = SRC / "sqp" / "domain" / "prices.py"
+    assert path.exists()
+    mods = _imported_modules(path)
+    assert not [m for m in mods if m == "sqp" or m.startswith("sqp.")], mods
+
+
+def test_odds_reexports_the_single_is_usable_price():
+    """La fuente unica vive en sqp.domain.prices; markets.odds solo la reexporta."""
+    import sqp.domain.prices as prices
+    import sqp.markets.odds as odds
+    assert odds.is_usable_price is prices.is_usable_price
 
 
 # --------------------------------------------------------------------------
