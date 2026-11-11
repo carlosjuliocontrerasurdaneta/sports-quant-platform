@@ -490,3 +490,13 @@ FABLE-REVIEW: 2026-11-09 | veredicto: APTO CON CAMBIOS aplicados (AUD-002; fusi�
   - `settlement_math.py:11` importa `sqp.markets.odds`;
   - `markets/__init__.py` carga `odds` y `vig` de forma ansiosa vía `distributions.py:16`.
 FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (H1-H5 aplicados) | rutas: tests/test_market_independence.py
+
+## 2026-11-10 (noche) — frontera del mercado y Brier del modelo puro
+
+- Rama `fix/frontera-mercado`:
+  - `is_usable_price` pasa a `sqp/domain/prices.py` y se reexporta desde `odds`;
+  - `sqp/markets/__init__.py` carga sus submódulos bajo demanda (PEP 562);
+  - `KNOWN_VIOLATIONS` y `KNOWN_DYNAMIC_VIOLATIONS` quedan vacíos.
+- Rama `feat/brier-modelo-puro`: `brier_model_pure` en el registro de degradación, solo como medición (R4/M10). No cambia ninguna regla de pausa ni el log CSV.
+FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (TYPE_CHECKING aplicado; barrido estatico del __init__ descartado) | rutas: src/sqp/domain/prices.py, src/sqp/markets/, tests/test_market_independence.py, Obsidian/
+FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (docstring H1 aplicado) | rutas: src/sqp/risk/degradation.py, tests/test_degradation.py
