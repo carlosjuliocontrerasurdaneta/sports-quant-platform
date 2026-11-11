@@ -510,3 +510,8 @@ FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (docstring H1 aplicado) |
   - pretemporada: por `gameType`.
 - El código que implementa la enmienda está en la rama `feat/portero-enmienda5` (Sonnet). Fable lo revisará antes del commit.
 FABLE-REVIEW: 2026-11-10 | veredicto: APTO (Enmienda 5 redactada por Fable, antes de --pre, sin datos vistos) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
+
+## 2026-11-11 — pre-registro de revalidación de `park_bound` (MLB)
+
+- `docs/research/2026-11-10-preregistro-park-bound-mlb.md`, redactado por Fable sin medir. Métrica: log loss frente a resultados, sin cuotas. Se aplica después de «el modelo manda». El script `measure_park_bound_mlb.py` queda pendiente (Sonnet + revisión Fable).
+FABLE-REVIEW: 2026-11-11 | veredicto: APTO (pre-registro redactado por Fable; sin datos vistos) | rutas: docs/research/2026-11-10-preregistro-park-bound-mlb.md
