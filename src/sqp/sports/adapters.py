@@ -282,8 +282,10 @@ class HockeyAdapter(PoissonAdapter):
     the appearances of both sides (`home_goalie_appearances` /
     `away_goalie_appearances`: mappings `id`, `shots_against`, `saves`,
     `starter`). The goalie of a side is `event.home_goalie` / `event.away_goalie`
-    when informed; otherwise the team's last observed starter (the proxy). An
-    unknown goalie gives factor 1.0 and never blocks candidates."""
+    when informed (not None); `None` means not informed and uses the team's last
+    observed starter (the proxy), while an empty string means declared unknown
+    and gives factor 1.0 (Enmienda 5). An unknown goalie never blocks
+    candidates."""
     family = "hockey"
     TIE_ADDS_GOAL = True
 
@@ -305,8 +307,11 @@ class HockeyAdapter(PoissonAdapter):
         if self.goalie_beta == 0.0:
             return lam_h, lam_a
         date = str(event.start_time)[:10]
-        home_g = event.home_goalie or self.goalies.proxy(self.normalize(event.home))
-        away_g = event.away_goalie or self.goalies.proxy(self.normalize(event.away))
+        # None = no informado -> proxy; "" = desconocido declarado -> factor 1.
+        home_g = (event.home_goalie if event.home_goalie is not None
+                  else self.goalies.proxy(self.normalize(event.home)))
+        away_g = (event.away_goalie if event.away_goalie is not None
+                  else self.goalies.proxy(self.normalize(event.away)))
         f_vs_away_goalie = self.goalies.factor(away_g, date, self.goalie_beta)
         f_vs_home_goalie = self.goalies.factor(home_g, date, self.goalie_beta)
         return max(0.1, lam_h * f_vs_away_goalie), max(0.1, lam_a * f_vs_home_goalie)

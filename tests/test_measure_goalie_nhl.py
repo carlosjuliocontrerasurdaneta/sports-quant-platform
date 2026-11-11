@@ -615,10 +615,12 @@ def test_assign_appearances_separates_tied_groups_from_individual_rescues(mod):
                          "goalie_player_id": f"{gid}{side}", "starter": True,
                          "shots_against": 20.0, "saves": 18.0})
     assigned, info = mod.assign_appearances(ordered, pd.DataFrame(rows))
-    assert assigned == {"N1": 1, "N2": 0, "N3": 2}              # la asignacion NO cambia
-    assert info["desempatados_por_orden"] == 3
+    assert assigned == {"N1": 1, "N2": 0}                       # el individual NO se une (Enmienda 5)
+    assert info["desempatados_por_orden"] == 2
     assert info["desempatados_en_grupos_de_2_o_mas"] == 2
-    assert info["rescatados_individuales"] == 1
+    assert info["individuales_no_asignados"] == 1
+    assert [u["home_nhl"] for u in info["sin_emparejar"]] == ["Bruins"]
+    assert info["sin_emparejar"][0]["motivo"] == mod.MOTIVO_INDIVIDUAL
 
 
 def test_sin_pretemporada_report_adds_game_type_concordance(mod):
@@ -790,3 +792,98 @@ def test_data_root_rejects_any_git_checkout(mod, tmp_path):
     (root / ".git").write_text("gitdir: elsewhere", encoding="utf-8")
     assert mod._data_root_error(args) is not None                 # fichero (worktree)
     assert mod._data_root_error(ns(pre=True, parity_only=True, data_root=root, out=None)) is None
+
+
+def test_hockey_adapter_distinguishes_not_informed_from_declared_unknown():
+    params, _ = nhl_params()
+    ad = get_adapter("nhl", "hockey", {**params, "goalie_beta": 1.0, "goalie_prior_shots": 100.0})
+    base = _Plain("nhl", dict(get_adapter("nhl", "hockey", params).params))
+    for r in _fake_rows(24):
+        ad.observe(r)
+        base.observe(r)
+    ev = dict(event_id="1", sport_key="bt", league="nhl", home=TEAMS[0], away=TEAMS[1],
+              start_time="2015-10-20")
+    assert ad.goalies.proxy(ad.normalize(TEAMS[0])) is not None
+    assert ad.goalies.proxy(ad.normalize(TEAMS[1])) is not None
+    # None = no informado: se aplica el proxy
+    assert ad._rates(Event(**ev)) != base._rates(Event(**ev))
+    # "" = desconocido declarado: lambdas de base aunque haya proxy
+    assert ad._rates(Event(**ev, home_goalie="", away_goalie="")) == base._rates(Event(**ev))
+    only_home = ad._rates(Event(**ev, home_goalie=""))
+    only_away = ad._rates(Event(**ev, away_goalie=""))
+    full = ad._rates(Event(**ev))
+    assert only_home[1] == base._rates(Event(**ev))[1] and only_home[0] == full[0]
+    assert only_away[0] == base._rates(Event(**ev))[0] and only_away[1] == full[1]
+
+
+def test_exhibition_vs_non_nhl_club_gets_factor_one_and_keeps_engine_parity(small_mod, monkeypatch):
+    mod = small_mod
+    _folds_all(mod, monkeypatch)
+    results, app = make_world(seasons=(2014,), days=12)
+    ex = {"date": "2014-10-08", "home": TEAMS[0], "away": "Ottawa Exhibition Club",
+          "game_id": "999001", "home_score": 3, "away_score": 1, "neutral": False}
+    nxt = {"date": "2014-10-09", "home": TEAMS[0], "away": TEAMS[1],
+           "game_id": "999002", "home_score": 2, "away_score": 1, "neutral": False}
+    results = [*results, ex, nxt]
+    rows2, rows1, info, fr, params, rparams = _frame(mod, (results, app))
+    clubs = mod.nhl_club_keys(rows2)
+    assert "Ottawa Exhibition Club" not in clubs and len(clubs) == 8
+    mask = mod.exhibition_mask(rows2, clubs)
+    pos = [i for i, r in enumerate(rows2) if r["game_id"] == "999001"][0]
+    assert [i for i, m in enumerate(mask) if m] == [pos]
+    assert rows2[pos]["exhibicion_no_nhl"] and rows1[pos]["exhibicion_no_nhl"]
+    for rr in (rows2[pos], rows1[pos]):
+        assert rr["home_goalie_announced"] == "" == rr["away_goalie_announced"]
+    assert info["exhibiciones_no_nhl"] == 1
+    assert info["exhibiciones_no_nhl_lista"][0]["con_apariciones"] is False
+    row = fr[fr["idx"] == pos].iloc[0]
+    for tag in ("h1", "a1", "h2", "a2"):
+        assert row[f"{tag}_id"] is None or pd.isna(row[f"{tag}_id"])
+    for arm in mod.ARMS:
+        qh, qa, fh, fa = mod.arm_qf(fr[fr["idx"] == pos], arm, 1500.0, 1.3)
+        assert qh[0] == 0.0 and qa[0] == 0.0 and fh[0] == 1.0 and fa[0] == 1.0
+        assert not mod.affected_mask(fr[fr["idx"] == pos], arm, 1500.0)[0]
+    # la exhibicion no cuenta como "sin proxy": se informa aparte
+    assert fr[fr["idx"] == pos].iloc[0]["proxy_h"] is not None
+    assert not pd.isna(fr[fr["idx"] == pos].iloc[0]["proxy_h"])
+    cob = mod._cobertura(rows2, fr, app)
+    assert cob["lados_sin_proxy_tras_warmup"]["lados_exhibicion_no_nhl"] == 2
+    assert cob["lados_sin_proxy_tras_warmup"]["M2_local"] == int(fr["proxy_h"].isna().sum())
+    assert sum(p["lados_exhibicion"] for p in cob["por_particion"].values()) <= 2
+    # el partido siguiente a una exhibicion sin datos: sin proxy del equipo, f = 1
+    npos = [i for i, r in enumerate(rows2) if r["game_id"] == "999002"][0]
+    assert pd.isna(fr[fr["idx"] == npos].iloc[0]["h2_id"])
+    for beta, k in ((1.3, 1500.0), (-0.7, 200.0)):
+        mod.assert_parity(rows2, rows1, params, rparams, fr, beta, k, label="test")
+
+
+def test_sin_pretemporada_report_uses_game_type_and_counts_missing(mod):
+    t = pd.DataFrame({"date": ["2015-10-01", "2015-10-05", "2015-09-20", "2015-10-07"],
+                      "game_type": ["1", "2", "3", None],
+                      "aff": [True, True, True, True],
+                      "t_ml": [0.6] * 4, "b_ml": [0.5] * 4})
+    y = np.array([1.0, 0.0, 1.0, 1.0])
+    out = mod._informe_sin_pretemporada(t, y)
+    assert out["n"] == 2                          # octubre con game_type 1 fuera; septiembre con 3 dentro
+    assert out["n_game_type_1"] == 1
+    assert out["n_sin_game_type_excluidos"] == 1
+
+
+def test_goalie_state_splits_sides_without_proxy_by_cause(mod):
+    m = mod
+    ap = lambda sid, st: {"id": sid, "shots_against": 20.0, "saves": 18.0, "starter": st}  # noqa: E731
+    rows = [
+        {"date": "2015-10-01", "home": TEAMS[0], "away": TEAMS[1],
+         "home_goalie_appearances": [], "away_goalie_appearances": [ap("A", True), ap("B", True)]},
+        {"date": "2015-10-02", "home": TEAMS[0], "away": TEAMS[1],
+         "home_goalie_appearances": [ap("C", True)], "away_goalie_appearances": [ap("D", True)]},
+        {"date": "2015-10-03", "home": TEAMS[0], "away": TEAMS[2],
+         "home_goalie_appearances": [], "away_goalie_appearances": []},
+    ]
+    st = m.goalie_state(rows)
+    assert list(st["cause_h"])[0] == m.CAUSA_SIN_PARTIDO_PREVIO
+    assert st["cause_h"][1] == m.CAUSA_SIN_APARICIONES
+    assert st["cause_a"][1] == m.CAUSA_TITULARES
+    assert pd.isna(st["cause_h"][2]) and st["proxy_h"][2] == "C"
+    assert st["cause_a"][2] == m.CAUSA_SIN_PARTIDO_PREVIO
+    assert m._por_causa(st)[m.CAUSA_TITULARES] == {"local": 0, "visitante": 1}

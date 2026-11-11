@@ -27,7 +27,8 @@ altogether, so the output is byte-identical to the model without goalies.
 
 Goalie identity: the announced goalie when the event carries one (M1 in the
 backtest: the real starter; phase 2 in production), otherwise the LAST STARTER
-OBSERVED for the team (the proxy, M2). A team whose last observed game has no
+OBSERVED for the team (the proxy, M2). `None` = not informed (proxy); an empty
+string = declared unknown (f = 1, no proxy; Enmienda 5). A team whose last observed game has no
 unambiguous starter (no goalie data, or 0 / 2+ starters flagged) has no proxy:
 f = 1 for that side (section 13.3, "sin adivinar").
 """
