@@ -118,9 +118,14 @@ def _merge_results(history: list[dict], recent: list[dict],
     B/C. otherwise the history rows of the pair in the possible local days
        (`_possible_local_days`) other than d, minus those already claimed by
        another recent row's exact match, are the candidates; none -> the row
-       is a different game of the series and is kept (AUD-002).
+       is a different game of the series and is kept (AUD-002). The claim is
+       not applied to days with a doubleheader in the history (>= 2 rows of
+       the pair).
     D. candidates left -> dropped (date drift). Silent only with a timestamp,
        one candidate and no competing recent row; else WARNING (ambiguous).
+
+    Asume el contrato de /scores de settle.py:15 (un aplazado nunca llega con
+    marcador bajo su hora original).
 
     `normalize` canonicalizes team names for the comparison keys only (rows are
     returned unchanged), so the same game spelled differently by two vendors is
@@ -155,7 +160,11 @@ def _merge_results(history: list[dict], recent: list[dict],
         if d is not None and (d, *pair) in exact_recent:
             continue
         days = [x for x in _possible_local_days(stamp) if x != d]
-        n = {x: hist_count.get((x, *pair), 0) - exact_recent.get((x, *pair), 0)
+        # La reclamacion no se descuenta en un dia con doble jornada en el
+        # historico (>= 2 filas del par): ahi un aplazado recuperado puede
+        # estar entre ellas.
+        n = {x: hist_count.get((x, *pair), 0)
+             - (exact_recent.get((x, *pair), 0) if hist_count.get((x, *pair), 0) < 2 else 0)
              for x in days}
         n = {x: c for x, c in n.items() if c > 0}
         cand[i] = n

@@ -1,5 +1,5 @@
 """Historical results backfill: store dedup/ordering, ESPN parsing, pipeline merge."""
-from sqp.pipeline.daily import _merge_results, _possible_local_days
+from sqp.pipeline.daily import _fetch_recent_scores, _merge_results, _possible_local_days
 from sqp.providers.espn_results import parse_scoreboard
 from sqp.storage.results_store import ResultsStore
 
@@ -433,3 +433,44 @@ def test_aud002_unreadable_dates_take_the_none_branch_with_warning(caplog):
         bare = dict(_row("None"), game_id="bad-bare")
         assert _gids(_merge_results([], [bare], league="nba")) == ["bad-bare"]
     assert _warnings(caplog)
+
+
+def test_aud002_g1_postponed_recovered_in_next_day_doubleheader(caplog):
+    # Caso Orioles: el aplazado del 22 se recupero en la doble jornada del 23.
+    import logging
+    hs = [dict(_row("2026-09-21"), game_id="h1"), dict(_row("2026-09-23"), game_id="h2"),
+          dict(_row("2026-09-23"), game_id="h3")]
+    rs = [dict(_row("2026-09-22T22:36:00Z"), game_id="r0"),
+          dict(_row("2026-09-23T17:07:00Z"), game_id="r1"),
+          dict(_row("2026-09-23T21:07:00Z"), game_id="r2")]
+    with caplog.at_level(logging.WARNING):
+        assert _gids(_merge_results(hs, rs, league="mlb")) == ["h1", "h2", "h3"]
+    assert len(_warnings(caplog)) == 1
+
+
+def test_aud002_g1_contrast_recovery_on_a_free_day_is_not_covered(caplog):
+    # G1 NO cubre una recuperacion jugada en un dia libre (sin doble jornada en
+    # el historico): r1 reclama h2 y r0 se conserva como partido distinto.
+    import logging
+    hs = [dict(_row("2026-09-21"), game_id="h1"), dict(_row("2026-09-23"), game_id="h2")]
+    rs = [dict(_row("2026-09-22T22:36:00Z"), game_id="r0"),
+          dict(_row("2026-09-23T17:07:00Z"), game_id="r1")]
+    with caplog.at_level(logging.WARNING):
+        assert _gids(_merge_results(hs, rs, league="mlb")) == ["h1", "r0", "h2"]  # orden cronologico por dia
+    assert not _warnings(caplog)
+
+
+def test_aud002_g2_fetch_recent_scores_keeps_only_completed_with_scores():
+    def ev(eid: str, completed: bool, scores):
+        return {"id": eid, "completed": completed, "scores": scores,
+                "commence_time": "2026-06-10T23:05:00Z", "home_team": "A", "away_team": "B"}
+
+    sc = [{"name": "A", "score": "3"}, {"name": "B", "score": "1"}]
+
+    class _Client:
+        def fetch_scores(self, sport_key, days_from=3):
+            return [ev("live", False, sc), ev("noscore", True, None), ev("ok", True, sc)]
+
+    out = _fetch_recent_scores(_Client(), "baseball_mlb", "mlb")
+    assert [r["game_id"] for r in out] == ["ok"]
+    assert (out[0]["home_score"], out[0]["away_score"]) == (3, 1)
