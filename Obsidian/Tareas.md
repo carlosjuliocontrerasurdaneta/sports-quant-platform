@@ -156,11 +156,11 @@ Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anot
 - [x] Seguimiento del quota-guard del proveedor de odds (follow-up de closing-capture). **CERRADA 2026-11-09 (orden del operador):**
   - `src/sqp/pipeline/budget.py` raciona la cuota real restante por día.
   - `src/sqp/pipeline/closing_capture.py` tiene un tope de créditos diario, persistido y con contador propio para cada colector.
-- [ ] (2026-11-09: medido el lado de cuotas.
+- [x] (2026-11-09: medido el lado de cuotas.
   - Los 18 equipos de Liga MX, los 25 de UCL y los 16 de Chile normalizan sin colisiones; los nombres que difieren tienen alias en `configs/leagues/team_aliases.yaml`.
   - Falta comparar contra las claves ESPN de `data/historical/`, que la sesión no tiene permiso de leer.)
 
-  KI-002: verificar nombres ESPN vs Odds API en soccer cuando el Apertura MX reactive la liga (~post 19-jul); re-validar dc_rho de UCL/Chile con temporada nueva.
+  **[x] RESUELTO 2026-11-10:** el lado ESPN está verificado y hay 0 nombres de cuotas sin pareja en Liga MX, UCL y Chile (ver `known-issues.md`). KI-002: verificar nombres ESPN vs Odds API en soccer cuando el Apertura MX reactive la liga (~post 19-jul); re-validar dc_rho de UCL/Chile con temporada nueva.
 - [ ] KI-006 (parcial): moneyline MLB/NHL sigue sin señal específica validada (abridor refutado ×2 — no re-perseguir; portero NHL construido e inactivo con `goalie_beta=0` desde `299a30f`, pendiente de su pre-registro, alto riesgo de rechazo).
 - [x] KI-005: vendor de resultados para Frauen-Bundesliga. **RESUELTO 2026-09-06 por retirada de la liga** (`.claude/memory/known-issues.md`, KI-005); marcado en la revisión de pendientes del 2026-11-09.
 - [ ] NFL OOS: requiere mejora `--start/--end` en `backfill_historical_odds.py` (ventana Sept 2025–Feb 2026); sin gasto hasta decidirlo.

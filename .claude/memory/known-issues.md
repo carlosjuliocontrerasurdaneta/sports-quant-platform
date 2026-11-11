@@ -20,7 +20,12 @@ Format:
 - Description: Posible mismatch de nombres de equipos entre ESPN (histórico, con acentos: "Club América") y The Odds API (eventos live) en ligas de fútbol. Un mismatch deja al equipo con rating default y dispara el warning de confiabilidad por evento, pero degrada la estimación en silencio si no se revisa la columna `warning`. NBA/WNBA verificados sin mismatch.
 - Affected files: src/sqp/providers/espn_results.py, src/sqp/sports/base.py (Elo keyed por nombre).
 - Proposed fix: Normalización unicode (NFKD, sin acentos, casefold) en la frontera de fit/lookup de Elo cuando Liga MX se reactive y se pueda verificar empíricamente.
-- Status: Abierto (2026-06-12). Verificable cuando el Apertura 2026 reactive `soccer_mexico_ligamx` (~después del 19-jul).
+- Status: RESUELTO (2026-11-10), verificado empíricamente con `get_team_normalizer` sobre los resultados ESPN desde el 2026-07-01 y las cuotas servidas:
+  - **Liga MX:** 18 equipos ESPN y 18 en cuotas, 0 sin pareja.
+  - **Chile:** 16 y 16, 0 sin pareja.
+  - **UCL:** 0 nombres de cuotas sin pareja en ESPN. ESPN tiene además 11 equipos sin cuotas (rondas previas no cotizadas, como Sabah, Slovan o Viking), lo que no es un desajuste.
+  - La normalización NFKD está en `src/sqp/sports/team_names.py`, con los alias de `configs/leagues/team_aliases.yaml`.
+  - Queda pendiente re-validar `dc_rho` de UCL y Chile, que es otra pregunta y se sigue en el plan de `docs/prompts-audit/08`.
 
 - ID: KI-003
 - Severity: Alta
