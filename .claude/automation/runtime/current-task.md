@@ -517,3 +517,10 @@ FABLE-REVIEW: 2026-11-10 | veredicto: APTO (Enmienda 5 redactada por Fable, ante
 FABLE-REVIEW: 2026-11-11 | veredicto: APTO (pre-registro redactado por Fable; sin datos vistos) | rutas: docs/research/2026-11-10-preregistro-park-bound-mlb.md
 FABLE-REVIEW: 2026-11-11 | veredicto: APTO (addendum 1 del pre-registro park_bound, redactado por Fable antes de ejecutar) | rutas: docs/research/2026-11-10-preregistro-park-bound-mlb.md
 FABLE-REVIEW: 2026-11-11 | veredicto: APTO CON CAMBIOS (C1-C3, R1-R2 aplicados) | rutas: scripts/research/measure_park_bound_mlb.py, tests/research/test_measure_park_bound_mlb.py
+
+## 2026-11-11 — AUD-002 fusionado con guarda
+
+- Veredicto de Fable tras la medición C1 real: FUSIONAR CON GUARDA, y antes del `--pre` del portero NHL.
+- Guarda G1, test G2 y docstring G3 aplicados.
+- Nueva medición: 0 dobles conteos con ambas reglas; `cambio_sin_verdad` 4 → 0; (a) = (b) = 0, es decir, impacto medido nulo.
+FABLE-REVIEW: 2026-11-11 | veredicto: APTO (FUSIONAR CON GUARDA; G1-G3 aplicados, medicion C1 sin dobles conteos) | rutas: src/sqp/pipeline/daily.py, tests/test_results_backfill.py, scripts/research/measure_aud002_merge.py
