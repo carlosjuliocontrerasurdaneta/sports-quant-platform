@@ -43,7 +43,8 @@ DEFAULT_BRIER_MARGIN = 0.01
 DEFAULT_ROI_PAUSE = -0.15
 DEFAULT_ROI_RESUME = -0.05
 
-_METRIC_COLS = ["league", "market", "n", "brier_model", "brier_market", "roi_flat"]
+_METRIC_COLS = ["league", "market", "n", "brier_model", "brier_market", "roi_flat",
+                "brier_model_pure"]
 
 
 def _num(df: pd.DataFrame, col: str) -> pd.Series:
@@ -63,15 +64,28 @@ def degradation_metrics(settled: pd.DataFrame, *,
     """Metricas de ventana movil por (league, market) sobre picks graduados
     win/loss: n, brier_model (probabilidad estimada vs resultado), brier_market
     (probabilidad implicita sin vig vs resultado; NaN sin la columna) y
-    roi_flat (ROI realizado a stake plano de 1 unidad por pick)."""
+    roi_flat (ROI realizado a stake plano de 1 unidad por pick).
+
+    brier_model_pure: Brier de ``model_probability`` frente al resultado; NaN
+    sin la columna. SOLO MEDICION: ninguna regla de pausa la usa (auditoria de
+    prompts 2026-11-10, R4/M10). Para leerla bien:
+    (a) ``brier_model`` es la MEZCLA CRUDA ``estimated_probability`` =
+        (1-s)*adjusted + s*fair, tampoco calibrada: no es "la mezcla calibrada";
+    (b) ``model_probability`` es anterior a la capa de ajustes de features
+        (descanso, abridor) y a la calibracion: es el modelo deportivo crudo;
+    (c) por el pre-registro "el modelo manda" (MM:69-71) ese crudo es un rival
+        de paja frente al mercado: NO comparar brier_model_pure con
+        brier_market como juicio del modelo ni como anticipo de MM."""
     df = graded_in_window(settled, window_days=window_days, today=today)
     if df.empty:
         return pd.DataFrame(columns=_METRIC_COLS)
     y = (df["result"] == "win").astype(float)
     p_model = _num(df, "estimated_probability")
     p_market = _num(df, "implied_probability_novig")
+    p_pure = _num(df, "model_probability")
     price = _num(df, "price_decimal")
     df = df.assign(_se_model=(p_model - y) ** 2, _se_market=(p_market - y) ** 2,
+                   _se_pure=(p_pure - y) ** 2,
                    _pnl_flat=(price - 1.0).where(y > 0, -1.0))
     rows = []
     for (lg, mk), g in df.groupby(["league", "market"]):
@@ -80,6 +94,7 @@ def degradation_metrics(settled: pd.DataFrame, *,
             "brier_model": float(g["_se_model"].mean()),
             "brier_market": float(g["_se_market"].mean()),
             "roi_flat": float(g["_pnl_flat"].mean()),
+            "brier_model_pure": float(g["_se_pure"].mean()),
         })
     return pd.DataFrame(rows, columns=_METRIC_COLS)
 
@@ -116,6 +131,8 @@ def evaluate_pauses(metrics: pd.DataFrame, previous: dict[str, dict], *,
                 "brier_model": _jsonable(r.brier_model) if r is not None else None,
                 "brier_market": _jsonable(r.brier_market) if r is not None else None,
                 "roi_flat": _jsonable(r.roi_flat) if r is not None else None,
+                "brier_model_pure": (_jsonable(getattr(r, "brier_model_pure", None))
+                                     if r is not None else None),
                 "updated_at": now,
             }
             continue
@@ -143,6 +160,7 @@ def evaluate_pauses(metrics: pd.DataFrame, previous: dict[str, dict], *,
             "brier_model": _jsonable(r.brier_model),
             "brier_market": _jsonable(r.brier_market),
             "roi_flat": _jsonable(r.roi_flat),
+            "brier_model_pure": _jsonable(getattr(r, "brier_model_pure", None)),
             "updated_at": now,
         }
         markets[key] = entry

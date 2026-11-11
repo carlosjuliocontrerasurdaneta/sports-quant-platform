@@ -390,3 +390,35 @@ def test_fallback_conserva_la_histeresis_del_log(tmp_path):
         tmp_path / "settled_mlb.csv", index=False)
     assert auto_pauses_from_persisted_registry(
         tmp_path, min_n=30, roi_resume=0.05, today=TODAY) == {"mlb": ["totals"]}
+
+
+# --- brier del modelo puro (auditoria de prompts 2026-11-10, R4/M10) -----------
+
+def test_metrics_report_pure_model_brier_from_model_probability():
+    df = _settled(4, result="win").assign(model_probability=0.6)
+    r = degradation_metrics(df, today=TODAY).iloc[0]
+    assert r["brier_model_pure"] == pytest.approx(0.16)       # (0.6-1)^2
+    assert r["brier_model"] == pytest.approx(0.09)            # sigue siendo la mezcla
+
+
+def test_pure_brier_is_nan_without_model_probability_column():
+    r = degradation_metrics(_settled(4), today=TODAY).iloc[0]
+    assert pd.isna(r["brier_model_pure"])
+    markets, _ = evaluate_pauses(degradation_metrics(_settled(40), today=TODAY), {})
+    assert markets["mlb|totals"]["brier_model_pure"] is None
+
+
+def test_pure_brier_is_measurement_only_and_never_changes_pauses():
+    """La columna pura se registra pero ninguna regla de pausa la usa."""
+    base = _settled(40, result="loss", est=0.7, implied=0.5)
+    good = degradation_metrics(base.assign(model_probability=0.01), today=TODAY)
+    bad = degradation_metrics(base.assign(model_probability=0.99), today=TODAY)
+    m_good, t_good = evaluate_pauses(good, {})
+    m_bad, t_bad = evaluate_pauses(bad, {})
+    strip = lambda m: {k: {f: v for f, v in e.items()  # noqa: E731
+                           if f not in ("brier_model_pure", "updated_at", "since")}
+                       for k, e in m.items()}
+    assert strip(m_good) == strip(m_bad)
+    assert [t["action"] for t in t_good] == [t["action"] for t in t_bad]
+    assert m_good["mlb|totals"]["brier_model_pure"] != m_bad["mlb|totals"]["brier_model_pure"]
+    assert "brier_model_pure" not in t_good[0]               # el log CSV no cambia de esquema
