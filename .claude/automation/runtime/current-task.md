@@ -524,3 +524,4 @@ FABLE-REVIEW: 2026-11-11 | veredicto: APTO CON CAMBIOS (C1-C3, R1-R2 aplicados) 
 - Guarda G1, test G2 y docstring G3 aplicados.
 - Nueva medición: 0 dobles conteos con ambas reglas; `cambio_sin_verdad` 4 → 0; (a) = (b) = 0, es decir, impacto medido nulo.
 FABLE-REVIEW: 2026-11-11 | veredicto: APTO (FUSIONAR CON GUARDA; G1-G3 aplicados, medicion C1 sin dobles conteos) | rutas: src/sqp/pipeline/daily.py, tests/test_results_backfill.py, scripts/research/measure_aud002_merge.py
+FABLE-REVIEW: 2026-11-11 | veredicto: APTO CON CAMBIOS (C1 por causa y C2 docstring aplicados) | rutas: src/sqp/sports/adapters.py, src/sqp/models/goalies.py, scripts/research/measure_goalie_nhl.py, tests/test_measure_goalie_nhl.py

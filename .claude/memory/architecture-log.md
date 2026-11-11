@@ -220,3 +220,20 @@ liquidación no cambian.
 **Razón:** el 2026-09-26 un cambio de parámetro de modelo se commiteó sin la revisión previa de Fable, y la revisión posterior encontró un bloqueante (KI-066). El hook de delegación solo actúa al delegar.
 **Validación:** 52 tests; dos rondas de revisión de Fable; verificado en vivo (bloqueó un commit de `configs/`).
 **Riesgo:** impide olvidarse de la revisión, pero no puede verificar que ocurrió. No cubre commits hechos fuera de Claude Code.
+
+
+## 2026-11-10 — Frontera del mercado en la capa deportiva
+
+**Módulos afectados:** `src/sqp/domain/prices.py` (nuevo), `src/sqp/markets/__init__.py`, `src/sqp/markets/odds.py`, `src/sqp/markets/settlement_math.py`, `tests/test_market_independence.py`, `src/sqp/risk/degradation.py`.
+
+**Cambio:**
+- `is_usable_price` vive ahora en `sqp.domain.prices`, sin dependencias, y `odds` lo reexporta.
+- `sqp.markets` carga `odds` y `vig` bajo demanda (PEP 562).
+- La capa deportiva (sports, models, features) no importa ni carga módulos de mercado, y un test lo impide.
+- El registro de degradación añade `brier_model_pure`, solo como medición.
+
+**Razón:** el principio de independencia del mercado (`docs/prompts-audit/09-principios-fundamentales.md`, P1/P2/P8/P9).
+
+**Validación:** suite completa en verde, más la revisión de Fable.
+
+**Riesgo:** `hasattr(sqp.markets, "odds")` es False hasta que se importa el submódulo.

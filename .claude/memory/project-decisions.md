@@ -496,3 +496,25 @@ Format:
 - Reason: el `implied_probability_novig` de nhl|h2h estaba deprimido por el Draw del 1X2 (baseline de mercado falso). Las 118 unidades del corte eran todas anteriores al arreglo y el test unico de entrada no se habia gastado (n<300). Stakes de esas filas = 0, asi que no hay PnL que reparar. Resultado ya conocido y declarado: 49-69, p=0,97.
 - Alternatives: dejarlas (el test de entrada mezclaria 118 unidades con baseline falso); recalcular el baseline desde los snapshots (re-derivacion fragil); excluir tambien en degradacion (debilitaria la pausa por ROI, que es valida).
 - Consequences: nhl|h2h vuelve a n=0 y desaparece del registro hasta que acumule filas nuevas. Degradacion conserva un sesgo permisivo en `brier_market` hasta el 2026-12-15. Las mediciones pre-registradas que leen el stream (el modelo manda, peso del mercado, brecha tier A) deben declarar como tratan nhl|h2h antes de ejecutarse. Revision Fable: APTO CON CAMBIOS, aplicados.
+
+- Date: 2026-11-10
+- Decision: **Principio innegociable de independencia del mercado** (orden del operador): las probabilidades solo se construyen con datos deportivos, y el mercado solo se compara después de congelarlas. Está protegido por `tests/test_market_independence.py`.
+- Reason: auditoría de los prompts deportivos (`docs/prompts-audit/`).
+- Alternatives: mantener la mezcla `market_shrink` 0,5 sin revisarla.
+- Consequences: la capa de estimación ya cumple. La de decisión (`market_shrink`, `uncertainty_penalty`) se decide después de la medición única «el modelo manda». `park_bound` se revalida por log loss (`docs/research/2026-11-10-preregistro-park-bound-mlb.md`).
+
+- Date: 2026-11-10
+- Decision: **Enmienda 5 del pre-registro portero NHL**, decidida por Fable con autorización del operador y antes de `--pre`:
+  - exhibiciones contra clubes no NHL: f=1;
+  - partido siguiente a uno sin datos: f=1;
+  - desempate: solo los duplicados;
+  - pretemporada: por `gameType`.
+- Reason: eran las cuatro ambigüedades que bloqueaban `--pre`.
+- Alternatives: f=1 o el proxy en cada caso; el mes o `gameType`.
+- Consequences: el código está en `e6d6bf3`. Producción no cambia (`goalie_beta=0`).
+
+- Date: 2026-11-11
+- Decision: **AUD-002 fusionado con guarda de doble jornada** (veredicto de Fable tras la medición C1).
+- Reason: identidad de fusión correcta; dobles conteos 0 con ambas reglas.
+- Alternatives: no fusionar, porque el impacto medido es nulo.
+- Consequences: queda un residual documentado: la recuperación de un aplazado jugada en un día libre solo la protege el contrato de `/scores`.

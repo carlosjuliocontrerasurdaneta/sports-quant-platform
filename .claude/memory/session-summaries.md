@@ -1066,3 +1066,48 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Pendientes completos en `Obsidian/Tareas.md`, seccion «Pendientes al cierre del 2026-11-07».
 - Leccion: sumar el desglose antes de congelar recuentos en la especificacion de un reparador.
 
+
+## 2026-11-08 a 2026-11-11 — Pendientes, auditoría de prompts e independencia del mercado
+
+**2026-11-08 y 2026-11-09**
+- Guarda CSV y lock de `promotion_log` (`8c3ee7a`). KI-079 cerrado.
+- Portero NHL trasplantado del stash, inactivo (`299a30f`), con sus arreglos previos a `--pre` (`c66c4af`).
+- Agentes nuevos: revisor-demo y predictor-mlb.
+
+**2026-11-09, pendientes antiguos**
+- Seis tareas resueltas que seguían sin marcar.
+- Arreglos: una sola `evaluate_markets` por run y `load_closing_odds(months=...)` (`53db702`).
+- Verificación de la ronda del 09-18: APTO CON PENDIENTES.
+- `home_scoring_bonus` cerrado como rechazado.
+
+**2026-11-10, auditoría de los 21 prompts de `C:\dev\Prompts`**
+- `docs/prompts-audit/` (`aca9b98`). Veredicto: los prompts son independientes del mercado; la plataforma estima sin el mercado, pero decide con él (R1) y tres parámetros se eligieron por ROI (R2).
+- Principio innegociable del operador: las probabilidades salen solo de datos deportivos.
+
+**2026-11-10, candados e independencia**
+- Candados del principio en `tests/test_market_independence.py` (`2eda816`).
+- Violaciones de frontera corregidas (`00c5b5c`): `sqp/domain/prices.py` y `sqp.markets` perezoso.
+- `brier_model_pure` en el registro de degradación (`9bf43b8`).
+
+**2026-11-11**
+- KI-002 resuelto.
+- AUD-002 fusionado con guarda tras la medición C1 real: 0 dobles conteos e impacto nulo (`36918d1`, `2ab478f`).
+- Enmienda 5 del portero NHL: las decisiones de Fable (`c7b41ee`) y su código (`e6d6bf3`).
+- Pre-registro de `park_bound` (`0715a14`), su addendum (`4f96514`) y el script (`3c16a6c`), sin ejecutar.
+
+**Validación**
+- Suite completa en `main` antes de la Enmienda 5: 3.663 passed y 1 fallo, un test de la lista heavy corregido en `eed8981`.
+- Tras la Enmienda 5: 117 pruebas afectadas en verde, ruff y mypy limpios.
+
+**Lecciones**
+- La línea FABLE-REVIEW se escribe en un comando aparte del commit.
+- `git checkout --` está denegado: si un fichero ya está commiteado en otra rama, se commitea igual y el rebase lo absorbe.
+- Un test nuevo marcado `heavy` exige añadirlo a la lista de `tests/test_stop_tests_hook.py`.
+
+**Pendiente del operador**
+- `--pre` del portero NHL: antes, las 19 fechas fallidas y la instantánea fuera de `data/`.
+- Ejecutar la medición de `park_bound`, después de «el modelo manda».
+- Política de mercado tras MM.
+- Borrar el stash `e165ab6` (`git stash` denegado).
+- `wevtutil`, en consola elevada.
+- AUD-022.
