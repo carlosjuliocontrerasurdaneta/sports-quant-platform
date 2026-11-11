@@ -80,3 +80,15 @@ Etiquetas de evidencia: [COMPROBADO] [INFERENCIA] [HIPÓTESIS] [RECOMENDACIÓN].
 3. Columna paralela `brier_model_puro` en el registro de degradación (M10) como medición.
 4. Renombrar en documentación lo que `uncertainty_penalty` mide realmente (desacuerdo con el mercado), sin cambiar su valor.
 5. Registrar en MM, como addendum «antes de ejecutar», este informe como lectura previa, sin cambiar criterio alguno (los addenda existentes son el precedente: `preregistro-el-modelo-manda.md:256-272`).
+
+**Estado al 2026-11-11:**
+- **(1) Hecho.** Los 21 prompts de `C:\dev\Prompts` llevan la frase «Ningún hiperparámetro, calibrador ni umbral se selecciona por métricas calculadas contra cuotas (ROI, CLV o distancia al consenso)» en su regla de independencia. Además:
+  - SERIE_A:21 pierde la condición «cuando operas en el modo independiente aquí especificado»;
+  - LIGUE_1:19 pierde «durante la ejecución»;
+  - LALIGA:152 dice «ventana de traspasos».
+
+  Esa carpeta no está bajo git; los originales están en `C:\dev\Prompts\_respaldo_2026-11-11\`.
+- **(2) Hecho** en `tests/test_market_independence.py`.
+- **(3) Hecho:** `brier_model_pure` en `src/sqp/risk/degradation.py`, solo como medición.
+- **(4) Sin cambios:** el comentario de `configs/default.yaml:18-25` ya describe la penalización como función del desacuerdo entre modelo y mercado.
+- **(5)** Addendum de MM del 2026-11-11.
