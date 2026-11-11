@@ -500,3 +500,13 @@ FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (H1-H5 aplicados) | rutas
 - Rama `feat/brier-modelo-puro`: `brier_model_pure` en el registro de degradación, solo como medición (R4/M10). No cambia ninguna regla de pausa ni el log CSV.
 FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (TYPE_CHECKING aplicado; barrido estatico del __init__ descartado) | rutas: src/sqp/domain/prices.py, src/sqp/markets/, tests/test_market_independence.py, Obsidian/
 FABLE-REVIEW: 2026-11-10 | veredicto: APTO CON CAMBIOS (docstring H1 aplicado) | rutas: src/sqp/risk/degradation.py, tests/test_degradation.py
+
+## 2026-11-10 (noche) — Enmienda 5 del portero NHL
+
+- El operador autorizó delegar en Fable las cuatro decisiones previas a `--pre`. Fable las fijó sin ver datos:
+  - exhibiciones: f=1;
+  - partido siguiente a uno sin datos: f=1;
+  - desempate: solo los duplicados;
+  - pretemporada: por `gameType`.
+- El código que implementa la enmienda está en la rama `feat/portero-enmienda5` (Sonnet). Fable lo revisará antes del commit.
+FABLE-REVIEW: 2026-11-10 | veredicto: APTO (Enmienda 5 redactada por Fable, antes de --pre, sin datos vistos) | rutas: docs/research/2026-09-26-preregistro-portero-nhl.md
