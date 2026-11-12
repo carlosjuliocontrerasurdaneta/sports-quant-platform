@@ -1111,3 +1111,9 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Borrar el stash `e165ab6` (`git stash` denegado).
 - `wevtutil`, en consola elevada.
 - AUD-022.
+
+
+## 2026-11-12 — Skills find-skills y skill-creator versionadas
+
+- `find-skills` (vercel-labs/skills) y `skill-creator` (anthropics/skills) ya estaban instaladas con `npx skills add` pero sin commit; se versionan junto con `skills-lock.json` (fuente y hash) en `8abda1c`. Sin secretos; `tests/test_claude_system_contract.py` 21 passed.
+- Sin cambios de código, datos ni decisiones cuantitativas; known-issues, decisiones, arquitectura y roadmap sin cambios.
