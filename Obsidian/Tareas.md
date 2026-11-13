@@ -8,6 +8,20 @@ actualizada: 2026-11-07
 
 Pendientes activos del proyecto, por prioridad. Al completar una: marcarla, anotar el commit y reflejar el cambio en la [[Bitácora]].
 
+## Pendientes al cierre del 2026-11-13
+
+- [ ] **Operador:** `! git stash drop stash@{0}` (`e165ab6`). Su contenido ya está en `main` vía `wip/portero-nhl-stash`. El clasificador lo denegó a Claude.
+- [ ] **Operador:** `! rm .claude/settings.json.graphify-bak .github/copilot-instructions.md`. Revisados el 2026-11-13: no tienen valor. Denegado a Claude.
+- [ ] **Operador:** si sigue vivo, el pytest huérfano PID 18784 (de las 14:35 del 2026-11-13). `Stop-Process` denegado a Claude.
+- [ ] **Operador:** borrar el worktree `C:\dev\3\sqp-wt-20261113` y la rama `fix/pendientes-20261113`, ya fusionada en `main` (`9449c38`).
+- [ ] **Operador:** revisar D1 de `docs/research/2026-11-13-regla-adopcion-tras-mm.md`, adoptada por delegación. Es revocable solo hasta el commit del resultado de «el modelo manda».
+- [ ] Re-ejecutar el backtest y anotar el antes y el después de `n_skipped_unreliable` (`9e08613`). Cambia los ROI históricos citados.
+- [ ] KI-080: `fable_gate.py` no resuelve la raíz desde un worktree (usa `CLAUDE_PROJECT_DIR`).
+- [ ] Vigilar en los próximos runs la cantidad de filas `low_reliability` (50 de 278 el 2026-11-13) y el `n_skipped_unreliable` del backtest en MLB, donde un abridor ausente da `reliability_warning`.
+- [ ] `SQP_Dashboard_Cdev` terminó con `0x41306` (ejecución anterior detenida antes de acabar). Sin investigar.
+- [ ] `test_shadow_mode_records_picks_with_zero_stake` sigue siendo vacuo: en el demo MLB no hay filas fiables. Necesita un fixture con una fila fiable en shadow.
+- Siguen vigentes, más abajo: `wevtutil` en consola elevada (AUD-007/AUD-004), AUD-022, el portero NHL antes de `--pre` (19 fechas e instantánea), MM a 3.402 eventos y después `park_bound`.
+
 ## Auditoría de prompts deportivos (2026-11-10)
 
 - [ ] Operador: decidir la política de mercado en producción (`market_shrink`, `uncertainty_penalty`) frente al principio de independencia, solo después de la medición única «el modelo manda». **2026-11-13:** la regla por desenlace queda fijada ANTES de medir en `docs/research/2026-11-13-regla-adopcion-tras-mm.md` (`b8d0952`, Fable APTO CON CAMBIOS); D1 es revocable por el operador hasta el commit del resultado de MM. Ver `docs/prompts-audit/07-independencia-del-mercado.md`.
