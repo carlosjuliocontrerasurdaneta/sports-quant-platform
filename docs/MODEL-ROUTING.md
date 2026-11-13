@@ -1,6 +1,6 @@
 # Selección de modelos Claude por complejidad de tarea
 
-Política activa del proyecto (`CLAUDE.md`): **Opus 5.5 por defecto** y para arquitectura, auditoría e incidentes; Sonnet 5 para trabajo diario de ingeniería; Haiku para lookups acotados; **Fable 5.1 reservado para máxima capacidad de razonamiento**.
+Política activa del proyecto (`CLAUDE.md`): **Opus 5.5 por defecto** y para arquitectura, auditoría e incidentes; Sonnet 5 para trabajo diario de ingeniería; Haiku para lookups acotados; **Fable 5.2 reservado para máxima capacidad de razonamiento**.
 
 > El punto de partida pasó de Opus 5 a **Opus 5.5** el 2026-09-22 (decisión del operador). Opus 5 sigue servido pero la documentación oficial ya lo clasifica como **legacy**.
 
@@ -48,15 +48,15 @@ Política activa del proyecto (`CLAUDE.md`): **Opus 5.5 por defecto** y para arq
 
 ---
 
-## Fable 5.1 — máxima capacidad de razonamiento
+## Fable 5.2 — máxima capacidad de razonamiento
 
 **Cuándo:** tareas que exigen el máximo nivel de razonamiento disponible. Es el destino del disparador de escalado de `.claude/automation/MODEL_ROUTING.md`, no el punto de partida: se llega aquí subiendo desde Opus 5, no arrancando.
 
-Es el modelo más capaz de Anthropic. Cuesta 2,5x lo que Opus 5.5 ($10/$50 frente a $4/$20 por MTok), y por eso no es el defecto: la mayoría del volumen no lo necesita. La documentación oficial lo sitúa para *"demanding reasoning and long-horizon agentic work, or when your evals on Claude Opus 5.5 at higher effort still fall short"*. Contexto de 1M, thinking adaptativo siempre activo, corte de conocimiento jun-2026.
+Es el modelo más capaz de Anthropic. Cuesta 2x lo que Opus 5.5 ($8/$40 frente a $4/$20 por MTok), y por eso no es el defecto: la mayoría del volumen no lo necesita. La documentación oficial lo sitúa para *"demanding reasoning and long-horizon agentic work, or when your evals on Claude Opus 5.5 at higher effort still fall short"*. Contexto de 1M, thinking adaptativo siempre activo, corte de conocimiento jun-2026.
 
-> **El ID lleva guiones: `claude-fable-5-1`, no `claude-fable-5.1`.** El punto es la forma de escribir el NOMBRE ("Claude Fable 5.1"), no el identificador de API. Con punto, `claude --model` falla. `claude-fable-5` (sin sufijo) es un modelo distinto y ya **legacy**; verificado contra el catálogo vivo el 2026-09-04.
+> **El ID lleva guiones: `claude-fable-5-2`, no `claude-fable-5.2`.** El punto es la forma de escribir el NOMBRE ("Claude Fable 5.2"), no el identificador de API. Con punto, `claude --model` falla. `claude-fable-5-1` y `claude-fable-5` son modelos distintos, ya anteriores; verificado contra la documentación oficial el 2026-11-13.
 
-**Activar con:** `/model fable` o `claude --model claude-fable-5-1`
+**Activar con:** `/model fable` o `claude --model claude-fable-5-2`
 
 ---
 
@@ -75,7 +75,7 @@ Es el modelo más capaz de Anthropic. Cuesta 2,5x lo que Opus 5.5 ($10/$50 frent
 claude --model claude-opus-5-5
 claude --model claude-sonnet-5-5
 claude --model claude-haiku-5-5
-claude --model claude-fable-5-1
+claude --model claude-fable-5-2
 ```
 
 **El modelo del proyecto** vive en `.claude/settings.json` → `"model": "claude-opus-5-5"` (decisión del operador, 2026-09-22; antes `claude-opus-5` desde el 2026-08-30). Tiene precedencia sobre la configuración global (`~/.claude/settings.json`). Editarlo **no** cambia el modelo de una sesión ya abierta: rige en la siguiente, o antes con `/model`.
