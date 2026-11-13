@@ -8,6 +8,23 @@ from sqp.config import RiskConfig
 from sqp.domain.models import Event, EventOdds, MarketLine
 
 
+@pytest.fixture(autouse=True)
+def _sin_aviso_de_fiabilidad(monkeypatch):
+    """Estos tests miden el staking/los ajustes del backtest con historiales de
+    juguete (< 10 partidos por equipo). La paridad con produccion (stake 0 con
+    `reliability_warning`) se prueba en test_roi_engine_parity.py; aqui se apaga
+    para no vaciar la muestra."""
+    from sqp.backtesting import roi_engine
+    real = roi_engine.get_adapter
+
+    def _get(*a, **k):
+        ad = real(*a, **k)
+        ad.reliability_warning = lambda *x, **y: None
+        return ad
+
+    monkeypatch.setattr(roi_engine, "get_adapter", _get)
+
+
 @pytest.mark.parametrize("field", ["line_movement_penalty", "line_velocity_penalty"])
 def test_missing_trajectory_rejected(field):
     with pytest.raises(ValueError, match="historical trajectories"):

@@ -95,9 +95,9 @@ Consecuencias vinculantes:
 - Delegar hacia abajo es legítimo y esperado **cuando la tarea lo es**: lookups
   acotados, resúmenes, extracción mecánica y trabajo repetitivo bien definido.
 - Jerarquía de capacidad **de Anthropic** (hecho, no política):
-  `claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`.
+  `claude-fable-5-2` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`.
   La documentación oficial lo dice explícitamente: *"start with Claude Opus 5.5
-  for most workloads"*, y se sube a Fable 5.1 *"for demanding reasoning and
+  for most workloads"*, y se sube a Fable 5.2 *"for demanding reasoning and
   long-horizon agentic work, or when your evals on Claude Opus 5.5 at higher
   effort still fall short"*.
 
@@ -113,33 +113,33 @@ Consecuencias vinculantes:
   proyecto fija `effortLevel: max` en `settings.json`, así que el defecto del
   modelo no decide aquí), retirada no antes del 2027-09-22.
 
-  **El ID lleva guiones: `claude-fable-5-1`.** `claude-fable-5.1` no es un
-  identificador válido —el punto pertenece al NOMBRE, no a la API— y
-  `claude-fable-5` (sin sufijo) es un modelo distinto, hoy **legacy**.
+  **El ID lleva guiones: `claude-fable-5-2`.** `claude-fable-5.2` no es un
+  identificador válido —el punto pertenece al NOMBRE, no a la API—;
+  `claude-fable-5-1` y `claude-fable-5` son modelos distintos, hoy anteriores.
 
 - Reparto **operativo de este proyecto** (decisión del operador, 2026-08-30;
-  techo actualizado a Fable 5.1 el 2026-09-04; punto de partida actualizado a
+  techo actualizado a Fable 5.1 el 2026-09-04 y a Fable 5.2 el 2026-11-13; punto de partida actualizado a
   Opus 5.5 el 2026-09-22):
   - **`claude-opus-5-5` es el modelo por defecto**, y el punto de partida de
     todo (decisión del operador 2026-09-22; antes `claude-opus-5`).
-  - **`claude-fable-5-1` se reserva para máxima capacidad de razonamiento**: es
+  - **`claude-fable-5-2` se reserva para máxima capacidad de razonamiento**: es
     el destino del disparador de escalado, no el punto de partida.
 
   Punto de partida y techo son cosas distintas, y aquí están separados a
-  propósito. Empezar en Fable 5.1 costaría 2,5x ($10/$50 frente a $4/$20 por
+  propósito. Empezar en Fable 5.2 costaría 2x ($8/$40 frente a $4/$20 por
   MTok) sin que la mayoría del volumen lo necesite; no tenerlo disponible
   dejaría el principio rector sin destino al que escalar. Por eso Opus 5.5 abajo
-  y Fable 5.1 arriba.
+  y Fable 5.2 arriba.
 
   La actualización del 2026-09-22 movió el **punto de partida**, no el techo:
-  Opus 5.5 sustituye a Opus 5 en el escalón de abajo y Fable 5.1 sigue siendo el
+  Opus 5.5 sustituye a Opus 5 en el escalón de abajo y Fable 5.2 sigue siendo el
   destino del escalado. La separación entre los dos no se toca — es lo único que
   hace accionable al principio rector.
 
   El principio rector queda intacto y **accionable**: "el modelo superior para
-  lo que exige máximo razonamiento" apunta a `claude-fable-5-1`, que es de hecho
+  lo que exige máximo razonamiento" apunta a `claude-fable-5-2`, que es de hecho
   el escalón superior de la jerarquía de arriba. Ante la duda, se sube a Fable
-  5.1 y se registra el escalado en `current-task.md`.
+  5.2 y se registra el escalado en `current-task.md`.
 - Un modelo inferior **no revierte unilateralmente** trabajo o decisiones
   producidas por uno superior. Si detecta un problema, lo **reporta**.
 
@@ -206,7 +206,7 @@ propia), jamás un argumento de autoridad sobre el fondo.
   nuevo rige en la siguiente sesión, o antes con `/model claude-opus-5-5`.
 
   `claude-opus-5-5` es el **punto de partida**, no el techo. El techo es
-  `claude-fable-5-1`, reservado para máxima capacidad de razonamiento (ver el
+  `claude-fable-5-2`, reservado para máxima capacidad de razonamiento (ver el
   reparto operativo del principio rector, arriba). Punto de partida y techo
   están separados a propósito y **no deben volver a fundirse**: sin un escalón
   por encima, el principio rector se queda sin destino al que escalar y deja de
@@ -221,7 +221,8 @@ propia), jamás un argumento de autoridad sobre el fondo.
   las de `claude-fable-5`.
 
   **El techo pasó de `claude-fable-5` a `claude-fable-5-1` el 2026-09-04**, por
-  decisión del operador. Fable 5.1 es el modelo actual y Fable 5 quedó legacy.
+  decisión del operador. Fable 5.1 era el modelo actual entonces y Fable 5 quedó legacy.
+  Y de `claude-fable-5-1` a `claude-fable-5-2` el 2026-11-13 (Fable 5.2 en la doc oficial; 5.1 pasa a anterior).
   Las menciones a `claude-fable-5` que siguen más abajo en esta sección son
   REGISTRO HISTÓRICO de decisiones de agosto y no se reescriben: cambiar lo que
   se decidió entonces para que encaje con lo de hoy es justo lo que este archivo
@@ -281,13 +282,13 @@ parámetro sobreescribe cuando la política lo exige.
 
 Reglas de despacho, en orden de precedencia:
 
-1. **Las cinco clases del disparador de escalado van a `claude-fable-5-1`.** Si
+1. **Las cinco clases del disparador de escalado van a `claude-fable-5-2`.** Si
    la tarea delegada cae en cualquiera de las cinco clases, se despacha con
    `model: "fable"`, diga lo que diga la ruta, la tabla o el frontmatter, y el
    escalado se registra en `current-task.md`. `fable` no aparece — a propósito —
    ni en `model-routing.json` ni en ningún frontmatter: las cinco clases no son
    léxicas y ningún clasificador por palabras clave puede asignarlas; **solo
-   esta regla despacha a Fable 5.1**, y por eso sin ella el techo de la política
+   esta regla despacha a Fable 5.2**, y por eso sin ella el techo de la política
    era inalcanzable en la práctica.
 
    El parámetro que se pasa sigue siendo el alias corto `"fable"`, no el ID
@@ -298,6 +299,8 @@ Reglas de despacho, en orden de precedencia:
    No por inferencia: se despachó una consulta mínima con `--model fable` y se
    leyó qué modelo respondió en el transcript de esa sesión. Resultado:
    `claude-fable-5-1`.
+   **2026-11-13:** un subagente despachado con `model: "fable"` se identificó como
+   `claude-fable-5-2`; el alias entrega el techo vigente.
 
    Hubo brecha ese mismo día y conviene saber por qué, porque es la condición
    que hay que revisar si vuelve a aparecer. La documentación de Claude Code

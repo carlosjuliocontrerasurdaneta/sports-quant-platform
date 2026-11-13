@@ -39,7 +39,7 @@ import pandas as pd
 
 from sqp.audit.patterns import (conclusions, load_pick_history,
                                 pattern_breakdowns)
-from sqp.audit.report import (DISCLAIMER, _segment_audit, load_all_candidates,
+from sqp.audit.report import (DISCLAIMER, visible_flags, _segment_audit, load_all_candidates,
                               load_all_settled)
 from sqp.config import ROOT
 from sqp.monitoring.health import RUN_MAX_AGE_DAYS, pipeline_liveness
@@ -117,7 +117,7 @@ def _picks_records(predictions_dir: Path,
             return []
     ranked = df.sort_values("estimated_edge", ascending=False).copy()
     # `estado` explica el 0: sin el, 63 filas a stake 0 parecen una averia.
-    flags = (ranked["flags"].fillna("").astype(str)
+    flags = (visible_flags(ranked["flags"])
              if "flags" in ranked.columns
              else pd.Series("", index=ranked.index))
     stake = pd.to_numeric(ranked.get("stake"), errors="coerce").fillna(0.0)
@@ -743,7 +743,7 @@ def _estado_por_pick(servido: pd.DataFrame) -> pd.Series:
                 + d["selection"].astype(str) + "|" + ln)
 
     stake = pd.to_numeric(cand.get("stake"), errors="coerce").fillna(0.0)
-    flags = (cand["flags"].fillna("").astype(str) if "flags" in cand.columns
+    flags = (visible_flags(cand["flags"]) if "flags" in cand.columns
              else pd.Series("", index=cand.index))
     etiqueta = pd.Series(
         [("STAKE %.2f" % v) if v > 0 else (f or "supera min_edge")

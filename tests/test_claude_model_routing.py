@@ -98,7 +98,7 @@ def test_main_model_matches_the_authorized_policy():
     # settings.json model changed.
     #
     # claude-opus-5-5 es el PUNTO DE PARTIDA, no el techo. El techo es
-    # claude-fable-5-1, reservado para maxima capacidad de razonamiento
+    # claude-fable-5-2, reservado para maxima capacidad de razonamiento
     # (b3f9cfb, 2026-08-30). Este comentario afirmaba lo contrario -- que Fable
     # habia salido de la jerarquia -- y sobrevivio a esa correccion,
     # contradiciendo a las aserciones de mas abajo en este mismo fichero.
@@ -113,7 +113,7 @@ def test_main_model_matches_the_authorized_policy():
     # operador, verificada en vivo contra platform.claude.com (modelos y
     # precios) el mismo dia -- NO contra la tabla cacheada de una skill, que es
     # el error del 2026-09-03. En esa pagina claude-opus-5 ya figura como
-    # legacy. El techo NO se mueve: sigue siendo claude-fable-5-1.
+    # legacy. El techo NO se mueve (en esa fecha): seguia siendo claude-fable-5-1; el 2026-11-13 paso a claude-fable-5-2.
     assert settings["model"] == "claude-opus-5-5"
     assert CONFIG["default"]["model"] == "sonnet"
 
@@ -264,23 +264,26 @@ def test_governing_principle_is_declared_and_takes_precedence():
     # confundirlas es como se rompio esto el 2026-08-30:
     #
     # 1. La jerarquia de CAPACIDAD es un hecho de Anthropic, no una politica de
-    #    este proyecto. claude-fable-5-1 es el escalon mas alto y la documentacion
+    #    este proyecto. claude-fable-5-2 es el escalon mas alto y la documentacion
     #    oficial lo dice ("for the highest available capability, use Claude
     #    Fable 5"). Escribirla sin Fable seria afirmar algo falso.
     # 2. El REPARTO operativo de este proyecto (decision del operador
     #    2026-09-22, que movio el punto de partida de claude-opus-5 a
     #    claude-opus-5-5 sin tocar el techo): claude-opus-5-5 por defecto,
-    #    claude-fable-5-1 reservado para maxima capacidad de razonamiento. Punto de partida y techo son cosas
+    #    claude-fable-5-2 reservado para maxima capacidad de razonamiento. Punto de partida y techo son cosas
     #    distintas -- empezar en Fable costaria el doble sin que la mayoria del
     #    volumen lo necesite, y no tenerlo disponible dejaria el principio
     #    rector sin destino al que escalar.
-    assert "`claude-fable-5-1` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`" in policy
+    assert "`claude-fable-5-2` > `claude-opus-5-5` > `claude-sonnet-5-5` > `claude-haiku-5-5`" in policy
     # El candado tiene dos lados: la jerarquia real y el reparto declarado. Sin
     # el segundo, mover el defecto o el techo en la prosa no rompe nada y la
     # politica vuelve a divergir en silencio -- que es el modo de fallo que este
     # archivo entero existe para impedir.
     assert "`claude-opus-5-5` es el modelo por defecto" in policy
-    assert "`claude-fable-5-1` se reserva para máxima capacidad de razonamiento" in policy
+    # 2026-11-13: claude-fable-5-1 ya no figura como techo vigente en la jerarquia.
+    assert "`claude-fable-5-1` > `claude-opus-5-5`" not in policy
+    assert "`claude-fable-5-1` se reserva" not in policy
+    assert "`claude-fable-5-2` se reserva para máxima capacidad de razonamiento" in policy
 
 
 def test_escalation_trigger_is_observable_and_not_self_assessed():
@@ -322,7 +325,7 @@ def test_measurement_outranks_model_capability():
 
 
 def test_policy_never_claims_opus_is_also_the_ceiling():
-    """El techo es claude-fable-5-1. Opus 5 es solo el punto de partida.
+    """El techo es claude-fable-5-2. Opus 5 es solo el punto de partida.
 
     Los candados existentes exigian la PRESENCIA de las frases correctas, pero
     nada impedia que otra seccion del mismo fichero afirmase lo contrario -- y
@@ -352,7 +355,7 @@ def test_policy_never_claims_opus_is_also_the_ceiling():
         f"reparto operativo y al principio rector: {presentes}")
     # Y la afirmacion positiva correspondiente, para que la ausencia de arriba no
     # se pueda satisfacer borrando la seccion entera.
-    assert "El techo es\n  `claude-fable-5-1`" in policy or "El techo es `claude-fable-5-1`" in policy
+    assert "El techo es\n  `claude-fable-5-2`" in policy or "El techo es `claude-fable-5-2`" in policy
 
 
 def test_claude_md_states_the_principle_as_governing_not_advisory():
@@ -369,7 +372,8 @@ def test_claude_md_states_the_principle_as_governing_not_advisory():
     assert "advisory only" not in text, (
         "CLAUDE.md rebaja el principio rector a consejo")
     assert "governing principle" in text.lower()
-    assert cita_el_modelo(text, "claude-fable-5-1")
+    assert cita_el_modelo(text, "claude-fable-5-2")
+    assert "`claude-fable-5-1` is the ceiling" not in text  # 2026-11-13
     # El hecho del harness sobrevive a la subida de rango.
     assert "does not change the active model" in text or \
            "itself changes the active model" in text
@@ -399,10 +403,13 @@ def test_docs_model_routing_is_the_fourth_prong_of_the_lock():
     # Coherencia con el reparto operativo: Fable 5 es el destino del escalado,
     # no el punto de partida; sin estas frases el doc puede volver a contar una
     # politica distinta de la de .claude/automation/MODEL_ROUTING.md.
-    assert cita_el_modelo(docs, "claude-fable-5-1"), (
-        "docs/MODEL-ROUTING.md no cita `claude-fable-5-1` como token completo. "
-        "OJO: el ID lleva GUIONES. `claude-fable-5.1` no es un identificador "
-        "valido, y `claude-fable-5` es otro modelo, hoy legacy.")
+    assert cita_el_modelo(docs, "claude-fable-5-2"), (
+        "docs/MODEL-ROUTING.md no cita `claude-fable-5-2` como token completo. "
+        "OJO: el ID lleva GUIONES. `claude-fable-5.2` no es un identificador "
+        "valido; `claude-fable-5-1` y `claude-fable-5` son otros modelos.")
+    # 2026-11-13: claude-fable-5-1 ya no es el techo vigente en la jerarquia.
+    assert "`claude-fable-5-1` >" not in docs
+    assert "claude --model claude-fable-5-1" not in docs
     assert "destino del disparador de escalado" in docs
     assert "no el punto de partida" in docs
 
@@ -413,7 +420,7 @@ def test_policy_declares_the_dispatch_mechanism():
     aplicaba nunca: 26 de 27 subagentes declaraban `model: opus` y nadie pasaba
     un modelo al delegar. El mecanismo real es el parametro `model` del Agent
     tool, que tiene precedencia sobre el frontmatter; las cinco clases del
-    disparador se despachan con el a claude-fable-5-1. Sin esta seccion el techo
+    disparador se despachan con el a claude-fable-5-2. Sin esta seccion el techo
     de la politica es inalcanzable en la practica.
     """
     policy = (ROOT / ".claude/automation/MODEL_ROUTING.md").read_text(
@@ -425,7 +432,7 @@ def test_policy_declares_the_dispatch_mechanism():
     assert "`sonnet | opus | haiku | fable`" in normalized
     assert "precedencia sobre el frontmatter" in normalized
     # Las cinco clases van a Fable 5 y por este mecanismo, no por la tabla.
-    assert "Las cinco clases del disparador de escalado van a `claude-fable-5-1`" \
+    assert "Las cinco clases del disparador de escalado van a `claude-fable-5-2`" \
         in normalized
     assert 'se despacha con `model: "fable"`' in normalized
     assert "solo esta regla despacha a Fable 5" in normalized

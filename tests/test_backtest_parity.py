@@ -10,6 +10,8 @@ reparto dependia del orden de entrada y el backtest no era reproducible.
 """
 from __future__ import annotations
 
+import pytest
+
 import random
 from dataclasses import dataclass
 
@@ -17,6 +19,23 @@ from sqp.backtesting.roi_engine import realized_roi_backtest
 from sqp.config import RiskConfig
 from sqp.domain.models import Event, EventOdds, MarketLine
 from sqp.pipeline.probabilities import build_model_map
+
+
+@pytest.fixture(autouse=True)
+def _sin_aviso_de_fiabilidad(monkeypatch):
+    """Estos tests miden el staking/los ajustes del backtest con historiales de
+    juguete (< 10 partidos por equipo). La paridad con produccion (stake 0 con
+    `reliability_warning`) se prueba en test_roi_engine_parity.py; aqui se apaga
+    para no vaciar la muestra."""
+    from sqp.backtesting import roi_engine
+    real = roi_engine.get_adapter
+
+    def _get(*a, **k):
+        ad = real(*a, **k)
+        ad.reliability_warning = lambda *x, **y: None
+        return ad
+
+    monkeypatch.setattr(roi_engine, "get_adapter", _get)
 
 
 @dataclass

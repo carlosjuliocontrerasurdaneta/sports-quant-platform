@@ -1117,3 +1117,12 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 
 - `find-skills` (vercel-labs/skills) y `skill-creator` (anthropics/skills) ya estaban instaladas con `npx skills add` pero sin commit; se versionan junto con `skills-lock.json` (fuente y hash) en `8abda1c`. Sin secretos; `tests/test_claude_system_contract.py` 21 passed.
 - Sin cambios de código, datos ni decisiones cuantitativas; known-issues, decisiones, arquitectura y roadmap sin cambios.
+
+
+## 2026-11-13 — «Continúa con todas las tareas pendientes» (rama fix/pendientes-20261113)
+
+- La regla de adopción tras MM queda fijada antes de medir (`b8d0952`). El techo de modelos pasa a `claude-fable-5-2` (`b8d0952`).
+- Líneas de cuarto en el modelo normal (`1b243c1`) y defectos a/b/c del 07-11 (`9e08613`). Todo con revisión previa de Fable.
+- Detalle en `Obsidian/Bitácora/2026-11-13.md`. Problema nuevo: KI-080.
+- Denegado por el clasificador, queda para el operador: `git stash drop`, `rm` de dos ficheros excluidos y `Stop-Process` de un pytest huérfano.
+- Lección: la memoria del line shopping estaba desfasada (`execution.books: [pinnacle]` está activo desde el 2026-10-20). Se verifica en `configs/` antes de recomendar.

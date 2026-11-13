@@ -1,10 +1,10 @@
-# Integración Fable 5.1 ↔ GPT-6 Astra
+# Integración Fable 5.2 ↔ GPT-6 Astra
 
 ## Objetivo
 
 Sports Quant Platform mantiene dos funciones separadas:
 
-- Claude/Fable 5.1: razonamiento y ejecución de trabajo de máxima criticidad
+- Claude/Fable 5.2: razonamiento y ejecución de trabajo de máxima criticidad
   según `.claude/automation/MODEL_ROUTING.md`.
 - GPT-6 Astra: revisión independiente mediante Codex.
 
@@ -37,14 +37,14 @@ Trabajo normal
   └─ Claude según routing
 
 Trabajo de máxima criticidad
-  └─ Fable 5.1
+  └─ Fable 5.2
        ├─ medición / implementación / tests
        └─ GPT-6 Astra (revisión independiente)
             ├─ PASS con verificación
             └─ findings → corregir o refutar con evidencia
 ```
 
-La política existente sigue gobernando cuándo escalar a Fable 5.1. Este cambio
+La política existente sigue gobernando cuándo escalar a Fable 5.2. Este cambio
 no altera umbrales, riesgo, modelos estadísticos, calibración, picks ni
 settlement.
 

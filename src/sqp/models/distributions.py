@@ -42,16 +42,28 @@ def normal_margin_probs(mu_margin: float, sigma: float, spread_line: float | Non
     p_home_win = 1.0 - norm.cdf(0.0, loc=mu_margin, scale=sigma)
     out = {"home_win": p_home_win, "away_win": 1.0 - p_home_win}
     if spread_line is not None:
-        thr = -spread_line  # home covers if margin > -line
-        if float(thr).is_integer():
-            p_cover = 1.0 - norm.cdf(thr + 0.5, mu_margin, sigma)
-            p_push = norm.cdf(thr + 0.5, mu_margin, sigma) - norm.cdf(thr - 0.5, mu_margin, sigma)
-            denom = max(1e-12, 1.0 - p_push)
-            out["home_cover"] = p_cover / denom
-        else:
-            out["home_cover"] = 1.0 - norm.cdf(thr, mu_margin, sigma)
+        # Home covers a handicap h when margin > -h; las lineas de cuarto se
+        # liquidan a medias (AUD-001): se precian como dos lineas adyacentes.
+        out["home_cover"] = _normal_over_probability(
+            mu_margin, sigma, [-h for h in _adjacent_lines(spread_line)])
         out["away_cover"] = 1.0 - out["home_cover"]
     return out
+
+
+def _normal_over_probability(mu: float, sigma: float, thresholds: list[float]) -> float:
+    """P(X > t | no push) bajo N(mu, sigma); con dos umbrales adyacentes (linea
+    de cuarto) pondera por stake las medias victorias/derrotas. Los umbrales
+    enteros usan correccion de continuidad +-0.5 (push excluido)."""
+    wins, pushes = [], []
+    for t in thresholds:
+        if float(t).is_integer():
+            hi, lo = norm.cdf(t + 0.5, mu, sigma), norm.cdf(t - 0.5, mu, sigma)
+            wins.append(1.0 - hi)
+            pushes.append(hi - lo)
+        else:
+            wins.append(1.0 - norm.cdf(t, mu, sigma))
+            pushes.append(0.0)
+    return _decision_probability(wins, pushes, 1.0)
 
 
 def normal_total_probs(mu_total: float, sigma: float, total_line: float | None):
@@ -59,12 +71,7 @@ def normal_total_probs(mu_total: float, sigma: float, total_line: float | None):
         return {}
     _normal_parameters(mu_total, sigma)
     _finite("total_line", total_line)
-    if float(total_line).is_integer():
-        p_over = 1.0 - norm.cdf(total_line + 0.5, mu_total, sigma)
-        p_push = norm.cdf(total_line + 0.5, mu_total, sigma) - norm.cdf(total_line - 0.5, mu_total, sigma)
-        denom = max(1e-12, 1.0 - p_push)
-        return {"over": p_over / denom, "under": 1.0 - p_over / denom}
-    p_over = 1.0 - norm.cdf(total_line, mu_total, sigma)
+    p_over = _normal_over_probability(mu_total, sigma, _adjacent_lines(total_line))
     return {"over": p_over, "under": 1.0 - p_over}
 
 

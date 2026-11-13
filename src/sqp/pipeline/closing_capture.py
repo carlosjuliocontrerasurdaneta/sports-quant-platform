@@ -35,11 +35,16 @@ def leagues_with_imminent_bets(predictions_dir: Path, now: datetime,
     for cf in sorted(predictions_dir.glob("candidates_*.csv")):
         league = cf.stem.replace("candidates_", "")
         try:
-            cands = pd.read_csv(cf, usecols=lambda c: c == "event_id")
+            cands = pd.read_csv(cf, usecols=lambda c: c in ("event_id", "flags"))
         except (pd.errors.EmptyDataError, ValueError):
             continue
         if cands.empty:
             continue
+        # Un evento low_reliability queda a stake 0: no gastar creditos de API
+        # en capturar su cierre.
+        if "flags" in cands.columns:
+            cands = cands[~cands["flags"].fillna("").astype(str).map(
+                lambda f: "low_reliability" in [t.strip() for t in f.split(";")])]
         bet_ids = set(cands["event_id"].astype(str))
         pf = predictions_dir / f"predictions_{league}.csv"
         if not pf.exists() or pf.stat().st_size <= 1:
