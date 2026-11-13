@@ -79,7 +79,7 @@ def test_paused_market_produces_no_actionable_candidates():
     c = pd.read_csv(f)
     tot = c[c["market"] == "totals"]
     if not tot.empty:
-        flags = tot["flags"].fillna("")
+        flags = tot["flags"].fillna("").map(lambda f: ";".join(t for t in f.split(";") if t not in ("uncalibrated", "low_reliability")))
         # every MLB totals candidate is suspended: stake 0 and flagged, none actionable
         assert ((tot["stake"] <= 0) & (flags == "market_paused")).all()
 
@@ -121,11 +121,17 @@ def test_shadow_mode_records_picks_with_zero_stake():
     c = pd.read_csv(f)
     assert (c["stake"] <= 0).all()
     assert (c["kelly_stake_pct"] <= 0).all()
-    flags = c["flags"].fillna("")
+    flags = c["flags"].fillna("").map(lambda f: ";".join(t for t in f.split(";") if t not in ("uncalibrated", "low_reliability")))
     # every row carries its zero-stake reason; more specific flags win
     assert flags.isin(["shadow_mode", "market_paused",
                        "edge_exceeds_max_plausible"]).all()
-    assert (flags == "shadow_mode").any()
+    # Las filas `low_reliability` (equipo/abridor sin muestra; desde 2026-11-13 se
+    # CONSERVAN a stake 0 en vez de descartarse) nunca habrian llevado stake, asi
+    # que no pueden ser las filas "shadow": el aserto aplica a las fiables. Antes
+    # el test pasaba en vacio porque el demo MLB las descartaba todas.
+    fiables = ~c["flags"].fillna("").str.contains("low_reliability")
+    if fiables.any():
+        assert (flags[fiables] == "shadow_mode").any()
 
 
 def test_archive_existing_preserves_prior_picks(tmp_path: Path):

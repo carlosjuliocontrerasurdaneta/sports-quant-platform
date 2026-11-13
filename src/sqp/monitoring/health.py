@@ -175,6 +175,24 @@ def _served_calibration_inventory(root: Path) -> dict[str, list[str]]:
     return {lg: _live_calibration_markets(models_dir, lg) for lg in sorted(ligas)}
 
 
+def _served_markets_without_calibration(
+        root: Path, served_calibration: dict[str, list[str]]) -> list[str]:
+    """Pares ``liga|mercado`` SERVIDOS sin calibrador vivo. Aditivo a
+    ``served_without_calibration`` (por liga): una liga con h2h calibrado y
+    totals en crudo no aparece en aquella, y aqui si. Informativo, sin aviso:
+    la ausencia es un no-op soportado."""
+    out: list[str] = []
+    for lg in sorted(served_calibration):
+        path = root / "data" / "calibration" / f"served_{lg}.csv"
+        try:
+            mk = pd.read_csv(path, usecols=["market"])["market"]
+        except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError):
+            continue
+        vivos = set(served_calibration[lg])
+        out.extend(f"{lg}|{m}" for m in sorted(set(mk.dropna().astype(str)) - vivos))
+    return out
+
+
 def _served_pending_expired(root: Path) -> tuple[dict[str, int], dict[str, int]]:
     """(recientes, total) por liga de filas servidas que ya NO pueden graduarse.
 
@@ -554,6 +572,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
     # 2026-09-01 los dos conjuntos se cruzaban en una sola liga (`mlb`).
     served_calibration = _served_calibration_inventory(root)
     sin_calib = sorted(lg for lg, m in served_calibration.items() if not m)
+    sin_calib_mercados = _served_markets_without_calibration(root, served_calibration)
     if sin_calib:
         log.info("Ligas servidas sin calibrador vivo: %d de %d (%s). No es un "
                  "fallo -- sin modelo la calibracion es un no-op --; se registra "
@@ -566,6 +585,7 @@ def generate_health_report(root: Path = ROOT) -> dict:
         "ml_leagues": list(ML_LEAGUES),
         "served_calibration": served_calibration,
         "served_without_calibration": sin_calib,
+        "served_markets_without_calibration": sin_calib_mercados,
         "orphan_calibration_entries": huerfanas,
         "registry_exists": (data / "models" / "registry.json").exists(),
         "features_stale": features_stale,

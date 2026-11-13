@@ -16,6 +16,13 @@ DISCLAIMER = ("Estas son probabilidades estimadas, no certezas. El edge estimado
               "no es ROI realizado y no garantiza ganancias. Auditar antes de usar.")
 
 
+def visible_flags(flags: pd.Series) -> pd.Series:
+    """``flags`` sin el token informativo `uncalibrated` (no explica un stake 0:
+    un pick con stake lo lleva y debe seguir mostrandose "con stake")."""
+    return flags.fillna("").astype(str).map(
+        lambda f: ";".join(t for t in f.split(";") if t and t != "uncalibrated"))
+
+
 def has_flag(flags: pd.Series, flag: str) -> pd.Series:
     """Token-wise membership test over the `;`-separated ``flags`` column.
 
@@ -28,6 +35,15 @@ def has_flag(flags: pd.Series, flag: str) -> pd.Series:
     """
     s = flags.fillna("").astype(str)
     return s.str.split(";").apply(lambda toks: flag in [t.strip() for t in toks])
+
+
+def drop_low_reliability(df: pd.DataFrame) -> pd.DataFrame:
+    """Quita las filas con el token `low_reliability` (stake 0 por fiabilidad de
+    la muestra, no un pick colocado): no deben contar en ROI, degradacion,
+    segmentos ni historial."""
+    if df.empty or "flags" not in df.columns:
+        return df
+    return df[~has_flag(df["flags"], "low_reliability")]
 
 
 def write_calibration_report(backtest_result: dict) -> str:
@@ -69,7 +85,8 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     stake>0-only filter blanked the whole dashboard on the first shadow day)."""
     d = df.copy()
     flags = d["flags"].fillna("") if "flags" in d.columns else pd.Series("", index=d.index)
-    visible = d[(d["stake"] > 0) | has_flag(flags, "shadow_mode")]
+    visible = d[((d["stake"] > 0) | has_flag(flags, "shadow_mode"))
+                & ~has_flag(flags, "low_reliability")]
     return visible.sort_values("estimated_edge", ascending=False)
 
 
@@ -152,7 +169,8 @@ def consolidated_report(predictions_dir: Path | None = None, top: int = 100) -> 
         df["flags"] = df["flags"].fillna("") if "flags" in df.columns else ""
         # Visible = stake>0 or shadow (see rank_candidates): blocking flags zero
         # the stake AND hide the row; shadow zeroes the stake but stays visible.
-        visible_mask = (df["stake"] > 0) | has_flag(df["flags"], "shadow_mode")
+        visible_mask = (((df["stake"] > 0) | has_flag(df["flags"], "shadow_mode"))
+                        & ~has_flag(df["flags"], "low_reliability"))
         summary = (df.assign(actionable=visible_mask)
                    .groupby("league")
                    .agg(candidatos=("selection", "size"),
@@ -204,7 +222,7 @@ def graded_in_window(settled: pd.DataFrame, *, window_days: int,
     del monitor de degradacion y el diagnostico por segmentos."""
     if settled.empty or "result" not in settled.columns:
         return settled.iloc[0:0]
-    df = settled[settled["result"].isin(["win", "loss"])].copy()
+    df = drop_low_reliability(settled[settled["result"].isin(["win", "loss"])].copy())
     if df.empty:
         return df
     gd = df["game_date"].astype(str) if "game_date" in df.columns else pd.Series("", index=df.index)
@@ -308,7 +326,7 @@ def settlement_audit_report(bets_dir: Path | None = None) -> str:
     market, plus an estimated-edge vs realized-ROI reality check. Timestamped."""
     bets_dir = bets_dir or (ROOT / "data" / "bets")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    df = load_all_settled(bets_dir)
+    df = drop_low_reliability(load_all_settled(bets_dir))
     lines = [f"# Auditoria de liquidacion (ROI realizado) - {ts[:8]}",
              f"Generado: {ts}", ""]
     if df.empty:
@@ -405,7 +423,7 @@ def _estado(df: pd.DataFrame, *, is_closed: bool) -> pd.Series:
     "Picks del Dia"."""
     if is_closed:
         return pd.Series("cerrado", index=df.index, dtype=str)
-    flags = (df["flags"].fillna("").astype(str) if "flags" in df.columns
+    flags = (visible_flags(df["flags"]) if "flags" in df.columns
              else pd.Series("", index=df.index, dtype=str))
     stake = pd.to_numeric(df.get("stake"), errors="coerce").fillna(0.0)
     return pd.Series([f if f else ("con stake" if s > 0 else "sin stake")
@@ -506,14 +524,14 @@ def load_history(predictions_dir: Path, bets_dir: Path, *,
     riesgo aplica ese mismo numero al EDGE (`p-novig`), no al EV.
     """
     frames = []
-    closed = _unique_settled_picks(load_all_settled(bets_dir))
+    closed = _unique_settled_picks(drop_low_reliability(load_all_settled(bets_dir)))
     if not closed.empty:
         gen = closed["generated_at"] if "generated_at" in closed.columns else pd.Series("", index=closed.index)
         gd = game_date_local(closed)
         fecha = gd.where(gd.astype(str).str.len() >= 10, gen)
         frames.append(_normalize_history(closed, fecha=fecha, is_closed=True,
                                          max_plausible_ev=max_plausible_ev))
-    open_df = load_all_candidates(predictions_dir)
+    open_df = drop_low_reliability(load_all_candidates(predictions_dir))
     if not open_df.empty:
         frames.append(_normalize_history(open_df, fecha=game_date_local(open_df),
                                          is_closed=False,

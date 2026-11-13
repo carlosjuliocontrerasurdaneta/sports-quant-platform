@@ -100,7 +100,7 @@ def test_accuracy_mode_demo_pipeline_selects_by_probability(monkeypatch):
     assert not c.empty
     assert (c["market"] == "h2h").all()                          # solo moneyline
     assert (c["calibrated_probability"] >= 0.51).all()           # umbral cumplido
-    flags = c["flags"].fillna("")
+    flags = c["flags"].fillna("").map(lambda f: ";".join(t for t in f.split(";") if t != "uncalibrated"))
     assert flags.str.contains("accuracy_mode").all()
     flat = round(settings.bankroll * settings.risk.max_stake_pct, 2)
     plain = c[flags == "accuracy_mode"]                          # sin razon de stake 0
@@ -109,7 +109,7 @@ def test_accuracy_mode_demo_pipeline_selects_by_probability(monkeypatch):
     zeroed = c[flags != "accuracy_mode"]
     assert (zeroed["stake"] == 0).all()
     # REG-001: la marca viaja tambien en el stream servido (tipster y tablero).
-    assert set(_flags_ultimo_servido()) == {"served_stream;accuracy_mode"}
+    assert set(_flags_ultimo_servido()) == {"served_stream;accuracy_mode;uncalibrated"}
 
 
 def _flags_ultimo_servido(league: str = "nba") -> list[str]:
@@ -125,7 +125,7 @@ def test_modo_edge_no_marca_el_stream_servido_como_accuracy():
     settings = Settings.load()
     settings.pick_mode = "edge"
     run_league("nba", settings, mode="demo")
-    assert set(_flags_ultimo_servido()) == {"served_stream"}
+    assert set(_flags_ultimo_servido()) == {"served_stream;uncalibrated"}
 
 
 
@@ -142,7 +142,7 @@ def test_accuracy_mode_guarda_de_ev_en_ejecucion_anula_el_stake_plano():
     run_league("nba", settings, mode="demo")
     c = pd.read_csv(ROOT / "data" / "predictions" / "demo" / "candidates_nba.csv")
     assert not c.empty
-    flags = c["flags"].fillna("")
+    flags = c["flags"].fillna("").map(lambda f: ";".join(t for t in f.split(";") if t != "uncalibrated"))
     ev_ejec = c["estimated_probability"] * c["settle_price"] - 1
     guardadas = flags.str.contains("ev_ejecucion_no_positivo")
     assert (c.loc[guardadas, "stake"] == 0).all()
@@ -161,6 +161,6 @@ def test_accuracy_mode_under_shadow_records_zero_stake():
     c = pd.read_csv(f)
     assert not c.empty
     assert (c["stake"] <= 0).all()
-    flags = c["flags"].fillna("")
+    flags = c["flags"].fillna("").map(lambda f: ";".join(t for t in f.split(";") if t != "uncalibrated"))
     assert flags.str.contains("accuracy_mode").all()
     assert flags.str.contains("shadow_mode").any()

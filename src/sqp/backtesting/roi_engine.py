@@ -24,9 +24,17 @@ time.
 
 The backtest intentionally does NOT apply today's live calibrator to
 past rows (that would leak a model trained with later outcomes). The global
-cross-league cap, dynamic bankroll, shadow mode and CLV gate are also outside
-this single-league benchmark. It is therefore not an exact reconstruction of
-live capital deployment and cannot prove a production edge.
+cross-league cap, dynamic bankroll, shadow mode, CLV gate, prediction gate,
+paused markets and line-shopping execution price are also outside this
+single-league benchmark (the output carries them in ``parity``, all False). It
+is therefore not an exact reconstruction of live capital deployment and cannot
+prove a production edge.
+
+Parity with production that DOES hold: the decision probability goes through
+``pipeline.probabilities._decision_probability`` (calibration off), no-vig uses
+the league's ``three_way`` and the event's home/away outcomes, and events the
+adapter flags with ``reliability_warning`` place no bets (production records
+them at stake 0), counted in ``n_skipped_unreliable``.
 
 Realized ROI is the field truth that calibration cannot provide; it is still a
 backtest (selection, regime change, single closing snapshot rather than true
@@ -44,9 +52,10 @@ import pandas as pd
 from sqp.domain.models import Event, EventOdds, MarketLine
 from sqp.logging_config import get_logger
 from sqp.markets.edge import adjusted_edge
-from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _novig_probs,
-                                _pick_main_lines, _spread_novig)
-from sqp.pipeline.probabilities import (_consensus_spread, adjust_model_probability,
+from sqp.pipeline.daily import (_consensus_counts, _consensus_lines, _league_meta,
+                                _novig_probs, _pick_main_lines, _spread_novig)
+from sqp.pipeline.probabilities import (_consensus_spread, _decision_probability,
+                                        adjust_model_probability,
                                         build_adjustment_context,
                                         build_model_map)
 from sqp.risk.kelly import edge, kelly_fraction_stake
@@ -56,6 +65,17 @@ from sqp.sports.registry import get_adapter
 from sqp.sports.team_names import get_team_normalizer, normalize_key
 
 log = get_logger("sqp.roi_engine")
+
+# Lo que este backtest NO replica de produccion (se publica en la salida).
+PARITY = {"calibration": False, "execution_price": False,
+          "paused_markets": False, "prediction_gate": False}
+
+
+class _NoCalibration:
+    """Ajustes minimos para `_decision_probability`: calibracion apagada (el
+    calibrador live se entreno con resultados posteriores: fuga)."""
+    calibration_enabled = False
+    calibration_method = "auto"
 
 
 def discover_leagues_with_odds(root: Path) -> list[str]:
@@ -414,6 +434,11 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     if risk.line_movement_penalty != 0 or risk.line_velocity_penalty != 0:
         raise ValueError("ROI backtest cannot apply movement/velocity penalties without historical trajectories")
     adapter = get_adapter(league, family, league_params)
+    try:
+        three_way = bool(_league_meta(league).get("three_way", family == "soccer"))
+    except KeyError:
+        three_way = family == "soccer"
+    n_skipped_unreliable = 0
     # Orden determinista. Desde AUD-001 (2026-10-16) el emparejamiento de las
     # familias con local/visitante (`match_results`) no depende del orden; el de
     # tenis sigue siendo voraz con consumo (`used`), y ahi el reparto SI depende
@@ -488,9 +513,19 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                            home_pitcher=r.get("home_starter"), away_pitcher=r.get("away_starter"))
                 spread, total = _pick_main_lines(eo)
                 est = adapter.estimate(ev, spread, total)
-                cons = _consensus_lines(eo)
-                cons_n = _consensus_counts(eo)
-                cons_spread = _consensus_spread(eo)
+                if adapter.reliability_warning(ev) is not None:
+                    # Paridad con daily: fiabilidad baja = stake 0 = sin apuesta.
+                    n_skipped_unreliable += 1
+                    pending.append(r)
+                    hn, an = _norm(str(r.get("home", ""))), _norm(str(r.get("away", "")))
+                    rec = (i, str(r.get("date", ""))[:10], r)
+                    team_hist[hn].append(rec)
+                    if an != hn:
+                        team_hist[an].append(rec)
+                    continue
+                cons = _consensus_lines(eo, three_way=three_way)
+                cons_n = _consensus_counts(eo, three_way=three_way)
+                cons_spread = _consensus_spread(eo, three_way=three_way)
                 # Map final score to the odds' home/away orientation.
                 if match_normalize(r["home"]) == match_normalize(eo.event.home):
                     hs, as_ = int(r["home_score"]), int(r["away_score"])
@@ -513,14 +548,16 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
                         fair = _spread_novig(cons, ev.home, ev.away, spread).get(key[1])
                     else:
                         fair = _novig_probs(cons, key[0], key[2],
-                                            three_way=(family == "soccer")).get(key[1])
+                                            three_way=three_way,
+                                            outcomes=(ev.home, ev.away)).get(key[1])
                     if fair is None:
                         continue  # incomplete market: the live pipeline cannot remove vig
                     p_adj = adjust_model_probability(
                         p_model, key[0], key[1], key[2], ev.home, ev.away,
                         adj_ctx, risk)
-                    s = risk.market_shrink
-                    p_used = (1.0 - s) * p_adj + s * fair if (fair is not None and s > 0) else p_adj
+                    _p_used, p_used = _decision_probability(
+                        p_adj, fair, risk.market_shrink, league, key[0],
+                        _NoCalibration())
                     e = edge(p_used, price)
                     # Same EV penalty as the live pipeline (no-op when off), so the
                     # realized-ROI backtest replays the actual staking. Calibration
@@ -560,9 +597,11 @@ def realized_roi_backtest(results: list[dict], odds_by_id: dict[str, EventOdds],
     if not cands.empty:
         cands = _apply_backtest_daily_cap(
             cands, bankroll, getattr(risk, "max_daily_exposure_pct", 0.0))
-    settled = (settle_candidates(cands, scores, three_way=(family == "soccer"))
+    settled = (settle_candidates(cands, scores, three_way=three_way)
                if not cands.empty else pd.DataFrame())
     out = _summarize(league, settled, n_matched)
+    out["n_skipped_unreliable"] = n_skipped_unreliable
+    out["parity"] = dict(PARITY)
     out["settled"] = settled  # per-bet detail (team, side, result) for history/audit
     return out
 

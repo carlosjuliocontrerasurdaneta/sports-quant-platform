@@ -95,6 +95,16 @@ def _project_training(frame: pd.DataFrame, with_key: bool = False) -> pd.DataFra
     double-weighting the picks, which exist in both."""
     if frame.empty:
         return pd.DataFrame(columns=TRAINING_COLS + ([_KEY_COL] if with_key else []))
+    # Filas con `low_reliability` (equipo con < min_games): el run las deja a
+    # stake 0 como evidencia, pero su p_model viene de un modelo con muestra
+    # insuficiente y no deben entrenar el calibrador.
+    if "flags" in frame:
+        _flags = frame["flags"].fillna("").astype(str)
+        frame = frame[~_flags.map(
+            lambda f: "low_reliability" in [t.strip() for t in f.split(";")])]
+        if frame.empty:
+            return pd.DataFrame(
+                columns=TRAINING_COLS + ([_KEY_COL] if with_key else []))
     out = pd.DataFrame(index=frame.index)
     out["league"] = frame["league"].astype(str) if "league" in frame else ""
     out["market"] = frame["market"].astype(str) if "market" in frame else ""

@@ -1142,27 +1142,52 @@ def apply_calibration(probs: np.ndarray, sport: str = "mlb",
     ordenada por probabilidad. Degradar a crudo es la direccion segura: si el
     mapa no es valido, que hable el modelo.
     """
-    if method == "auto":
-        resolved = _load_method_registry().get(sport)
-        if resolved is None:
-            return probs
-        method = resolved
-    name = {"isotonic": "iso", "beta": "beta"}.get(method)
-    if name is None:
-        return probs
-    path = _model_path(sport, name)
-    if not path.exists():
-        return probs
-    cal = _load_calibrator(str(path))
-    if cal is None:
-        return probs        # digest que no cuadra -> crudo (AUD-LOW-001)
-    defecto = structural_defect(cal.predict)
-    if defecto is not None:
+    state, cal, defecto = _resolve_live_calibrator(sport, method)
+    if state == "structural_defect":
         log.warning("[%s] calibrador live INVALIDO (%s): se ignora y se sirve "
                     "en crudo. Es el mismo criterio que aplica la promocion. "
                     "Revisar con scripts/promote_calibration.py.", sport, defecto)
         return probs
+    if state != "applied" or cal is None:
+        return probs        # sin registro / metodo / fichero / digest -> crudo
     return np.clip(cal.predict(probs), 0.01, 0.99)
+
+
+LIVE_CALIBRATION_STATES = ("applied", "none", "unknown_method", "missing_file",
+                           "bad_digest", "structural_defect")
+
+
+def _resolve_live_calibrator(sport: str, method: str):
+    """(estado, calibrador | None, defecto | None). Unica resolucion del
+    calibrador live: ``apply_calibration`` y ``live_calibration_state`` pasan
+    por aqui para que lo que se APLICA y lo que se INFORMA no puedan divergir."""
+    if method == "auto":
+        resolved = _load_method_registry().get(sport)
+        if resolved is None:
+            return "none", None, None
+        method = resolved
+    name = {"isotonic": "iso", "beta": "beta"}.get(method)
+    if name is None:
+        return "unknown_method", None, None
+    path = _model_path(sport, name)
+    if not path.exists():
+        return "missing_file", None, None
+    cal = _load_calibrator(str(path))
+    if cal is None:
+        return "bad_digest", None, None     # digest que no cuadra (AUD-LOW-001)
+    defecto = structural_defect(cal.predict)
+    if defecto is not None:
+        return "structural_defect", None, defecto
+    return "applied", cal, None
+
+
+def live_calibration_state(key: str, method: str) -> str:
+    """Estado del calibrador live de ``key`` (``"<liga>_<mercado>"``) bajo
+    ``method``: ``applied | none | unknown_method | missing_file | bad_digest |
+    structural_defect``. ``none`` = el registro no tiene entrada (ausencia
+    legitima con ``method='auto'``); el resto son un calibrador que el registro
+    o la configuracion afirman y que NO se aplica."""
+    return _resolve_live_calibrator(key, method)[0]
 
 
 def calibration_key(sport: str, market: str | None = None) -> str:

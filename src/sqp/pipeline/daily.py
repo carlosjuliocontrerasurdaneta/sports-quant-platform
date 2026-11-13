@@ -611,7 +611,8 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
                      clv_blocked: bool = False,
                      incomplete_market: bool = False,
                      prediction_blocked: bool = False,
-                     stale_quote: bool = False) -> str | None:
+                     stale_quote: bool = False,
+                     low_reliability: bool = False) -> str | None:
     """Reason a selected candidate must be recorded with stake 0, or None to
     stake it. Pausing wins over the plausibility cap; shadow mode (global,
     stake-0 evidence gathering) zeroes whatever remains; then the per-market
@@ -628,7 +629,24 @@ def _zero_stake_flag(paused: bool, suspect: bool, shadow: bool,
 
     Prediction outranks CLV so the reported reason is the rule actually in
     force. Shadow outranks both, so reports keep the shadow_mode flag while
-    shadow is on."""
+    shadow is on.
+
+    ``low_reliability`` (equipo con muestra insuficiente segun el adaptador):
+    el token se SUMA a la razon primaria en vez de competir con ella, para que
+    siempre quede marcado (los consumidores lo excluyen por flag) y la fila
+    lleve stake 0 aunque no haya otra razon."""
+    primary = _zero_stake_primary(paused, suspect, shadow, clv_blocked,
+                                  incomplete_market, prediction_blocked,
+                                  stale_quote)
+    if low_reliability:
+        return f"{primary};low_reliability" if primary else "low_reliability"
+    return primary
+
+
+def _zero_stake_primary(paused: bool, suspect: bool, shadow: bool,
+                        clv_blocked: bool, incomplete_market: bool,
+                        prediction_blocked: bool,
+                        stale_quote: bool) -> str | None:
     # Precede a todo lo demas: si el PRECIO no es accionable, ninguna razon
     # posterior describe bien por que no lleva dinero. La cuota vino de una
     # respuesta mas vieja que `revalidation_price_max_age_min`, que es el limite
@@ -747,6 +765,43 @@ def _tennis_results(league: str, provider=None) -> list[dict]:
     except Exception as exc:
         log.warning("[%s] could not fetch tennis results: %s", league, exc)
         return []
+
+
+_CAL_WARN_STATES = frozenset({"unknown_method", "bad_digest", "structural_defect"})
+
+
+def _calibration_applied(league: str, market: str, settings: Settings,
+                         cache: dict[str, str]) -> bool:
+    """True si el calibrador live de (liga, mercado) se aplica en este run.
+    El estado se resuelve UNA vez por mercado y run (``cache``) con
+    ``live_calibration_state``, la misma resolucion que usa ``apply_calibration``.
+    Con la calibracion desactivada el estado es ``disabled`` (no aplicado)."""
+    if market not in cache:
+        if not settings.calibration_enabled:
+            cache[market] = "disabled"
+        else:
+            from sqp.calibration.calibrator import (calibration_key,
+                                                    live_calibration_state)
+            cache[market] = live_calibration_state(
+                calibration_key(league, market), settings.calibration_method)
+    return cache[market] == "applied"
+
+
+def _log_calibration_states(league: str, settings: Settings,
+                            cache: dict[str, str], raw_markets: set[str]) -> None:
+    """Una linea INFO con los mercados servidos en crudo; WARNING solo si el
+    registro/configuracion afirma un calibrador que NO se aplica. La mera
+    ausencia no es alarma (health.py: la ausencia es un no-op soportado)."""
+    if raw_markets:
+        log.info("[%s] mercados servidos sin calibrador aplicado (crudo): %s.",
+                 league, ", ".join(f"{m}={cache.get(m, '?')}"
+                                   for m in sorted(raw_markets)))
+    warn_states = _CAL_WARN_STATES | (
+        {"missing_file"} if settings.calibration_method == "auto" else set())
+    rotos = {m: st for m, st in cache.items() if st in warn_states}
+    if rotos:
+        log.warning("[%s] el registro afirma un calibrador que NO se aplica: %s.",
+                    league, ", ".join(f"{m}={st}" for m, st in sorted(rotos.items())))
 
 
 def run_league(league: str, settings: Settings, mode: str | None = None, *,
@@ -922,6 +977,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
     rows: list[dict] = []
     candidates: list[BetCandidate] = []
     served: list[dict] = []
+    _cal_states: dict[str, str] = {}
+    _raw_markets: set[str] = set()
     # One timestamp for the whole run: the served-stream dedup key is
     # (event, market, selection, line, run DAY), so re-running the same day is
     # idempotent while consecutive-day serves of the same event both persist.
@@ -968,7 +1025,12 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
         spread, total = _pick_main_lines(eo)
         est = adapter.estimate(eo.event, spread, total)
         warn = adapter.reliability_warning(eo.event)
-        if _already_started(eo.event.start_time):
+        # Un gate quita el STAKE, nunca la fila: la fiabilidad baja deja el
+        # candidato a stake 0 (`low_reliability`); el evento ya empezado sigue
+        # descartandose porque su precio es in-play.
+        unreliable = warn is not None
+        started = _already_started(eo.event.start_time)
+        if started:
             started_msg = "Event already started: prices are in-play, pregame estimate invalid, no candidates."
             warn = f"{warn} {started_msg}" if warn else started_msg
         # `three_way` explicito de la liga: en ligas a dos vias las casas que
@@ -1025,7 +1087,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
 
         for key, p_model in model_map.items():
             price = cons.get(key)
-            if price is None or p_model is None or warn:
+            if price is None or p_model is None or started:
                 continue
             exec_price, exec_book = exec_px.get(key, (float(price), "consensus_median"))
             if key[0] == "spreads":
@@ -1100,7 +1162,13 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
             # any stake/edge filtering. Placed picks alone are a small, adversely
             # selected calibration sample; the full serve distribution lets the
             # calibrator train unbiased (graded later by settlement).
-            served.append({
+            # Las filas `low_reliability` NO entran al stream servido: protegen
+            # las poblaciones de pre-registros, gate y calibrador.
+            _cal_ok = _calibration_applied(league, key[0], settings, _cal_states)
+            _uncal = "" if _cal_ok else ";uncalibrated"
+            if not _cal_ok:
+                _raw_markets.add(key[0])
+            _served_row = {
                 "league": league, "event_id": eo.event.event_id,
                 "home": eo.event.home, "away": eo.event.away,
                 "start_time": eo.event.start_time,
@@ -1126,8 +1194,10 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 # servido, del que leen el tipster y el tablero.
                 "flags": ("served_stream;accuracy_mode"
                           if settings.pick_mode == "accuracy"
-                          else "served_stream"),
-                "generated_at": served_at})
+                          else "served_stream") + _uncal,
+                "generated_at": served_at}
+            if not unreliable:
+                served.append(_served_row)
             # An edge above the plausibility cap is almost certainly model
             # miscalibration, not market value: record it for the audit trail but
             # do not stake it.
@@ -1175,7 +1245,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 clv_blocked=clv_blocked,
                 incomplete_market=incomplete_market,
                 prediction_blocked=pred_blocked,
-                stale_quote=cuota_vencida) or ""
+                stale_quote=cuota_vencida,
+                low_reliability=unreliable) or ""
             if sin_banca:
                 # El gate quita el stake, nunca la fila; la banca tampoco.
                 flag = f"{flag};bankroll_zero" if flag else "bankroll_zero"
@@ -1191,6 +1262,8 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 stake, pct = 0.0, 0.0
                 flag = (f"{flag};ev_ejecucion_no_positivo" if flag
                         else "ev_ejecucion_no_positivo")
+            if _uncal:
+                flag = f"{flag};uncalibrated" if flag else "uncalibrated"
             if accuracy:
                 # Marca de origen para el KPI (hit rate por liga y banda) y para
                 # que la revocacion por edge del segundo pase salte estos picks.
@@ -1216,6 +1289,7 @@ def run_league(league: str, settings: Settings, mode: str | None = None, *,
                 data_label=eo.event.data_label,
                 flags=flag))
 
+    _log_calibration_states(league, settings, _cal_states, _raw_markets)
     if served:
         n_served = ServedStore(ROOT, demo=(mode == "demo")).append_served(league, served)
         log.info("[%s] served-probability stream: %d rows persisted for "

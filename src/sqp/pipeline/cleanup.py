@@ -49,7 +49,7 @@ PURGE_RETENTION_DAYS = 90
 # `accuracy_mode`, which would make the emptiness test drop all of them once
 # shadow mode is lifted -- pruning candidate files whose picks are still
 # pending settlement (audit 2026-07-29, B-01 class).
-INFORMATIONAL_FLAGS = frozenset({"accuracy_mode"})
+INFORMATIONAL_FLAGS = frozenset({"accuracy_mode", "uncalibrated"})
 
 
 def _actionable(cands: pd.DataFrame) -> pd.DataFrame:
