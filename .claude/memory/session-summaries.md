@@ -1126,3 +1126,4 @@ Auditoría integral (segunda pasada, no ciega) sobre el árbol sucio. 4 hallazgo
 - Detalle en `Obsidian/Bitácora/2026-11-13.md`. Problema nuevo: KI-080.
 - Denegado por el clasificador, queda para el operador: `git stash drop`, `rm` de dos ficheros excluidos y `Stop-Process` de un pytest huérfano.
 - Lección: la memoria del line shopping estaba desfasada (`execution.books: [pinnacle]` está activo desde el 2026-10-20). Se verifica en `configs/` antes de recomendar.
+- Fusión en `main` (`9449c38`; suite 3.633 passed). Run manual de `DIARIO_COMPLETO.bat` a las 17:40, OK: 50 filas `low_reliability` con stake 0 y 275 `uncalibrated` de 278 candidates.
