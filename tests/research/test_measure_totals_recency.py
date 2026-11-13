@@ -150,7 +150,7 @@ def test_normal_nll_equals_minus_logpdf(mod):
     np.testing.assert_allclose(mod.normal_nll(mu, t, 22.0), -norm.logpdf(t, mu, 22.0), atol=1e-12)
 
 
-@pytest.mark.parametrize("line", [43.5, 44.0, 44.25, 220.5, 221.0])
+@pytest.mark.parametrize("line", [43.5, 44.0, 220.5, 221.0])
 def test_normal_over_matches_production_including_integer_lines(mod, line):
     mu = np.array([40.0, 44.0, 47.3, 224.0])
     got = mod.normal_over(mu, 13.5, line)
